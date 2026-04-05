@@ -127,7 +127,7 @@ def painel_sensor(mac_id):
     conn.close()
     
     if not sensor: return "Sensor não encontrado", 404
-    return render_template('sensor.html', sensor=sensor, nome=session['user_nome'])
+    return render_template('sensor.html', sensor=sensor, nome=session['usuario'])
 
 # ==========================================
 # 📥 RECEPÇÃO DE DADOS (SENSORES FÍSICOS E VIRTUAIS)
