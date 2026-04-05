@@ -211,21 +211,56 @@ def loop_telemetria():
                     threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
                 elif comando == "update_agent":
                     try:
-                        print("🔄 Baixando novo código-fonte da Nuvem...")
-                        # 🚨 COLOQUE AQUI O SEU LINK RAW DO GITHUB
-                        url_codigo = "https://raw.githubusercontent.com/mattdavii/NOC-Central/refs/heads/main/agente_v2.py"
+                        import sys, os, subprocess
                         
-                        req_update = urllib.request.Request(url_codigo)
-                        with urllib.request.urlopen(req_update, timeout=15) as resp:
-                            novo_codigo = resp.read()
+                        # Checa se está rodando como .EXE (PyInstaller) ou como script .PY normal
+                        is_exe = getattr(sys, 'frozen', False)
+                        
+                        if is_exe:
+                            print("🔄 [OTA] Modo Executável detectado. Baixando novo .exe da nuvem...")
+                            # 🚨 AQUI VAI O LINK RAW DO SEU .EXE NO GITHUB (Não do .py)
+                            url_codigo = "https://github.com/mattdavii/NOC-Central/blob/main/dist/agente_v2.exe"
                             
-                        # O Agente apaga o próprio arquivo e escreve o novo por cima
-                        with open(__file__, 'wb') as f:
-                            f.write(novo_codigo)
+                            exe_path = sys.executable
+                            new_exe_path = exe_path + ".new"
                             
-                        print("✅ Código atualizado com sucesso! Reiniciando agente para aplicar funções...")
-                        # O Agente se suicida e nasce de novo rodando o código fresco
-                        os.execv(sys.executable, ['python', __file__])
+                            # Baixa o novo .exe
+                            req_update = urllib.request.Request(url_codigo)
+                            with urllib.request.urlopen(req_update, timeout=60) as resp:
+                                with open(new_exe_path, 'wb') as f:
+                                    f.write(resp.read())
+                                    
+                            print("✅ [OTA] Download concluído! Criando script de substituição...")
+                            
+                            # Cria o arquivo .bat ninja para burlar o bloqueio do Windows
+                            bat_path = os.path.join(os.path.dirname(exe_path), "updater.bat")
+                            with open(bat_path, 'w') as bat:
+                                bat.write(f"""@echo off
+timeout /t 3 /nobreak > NUL
+del "{exe_path}"
+ren "{new_exe_path}" "{os.path.basename(exe_path)}"
+start "" "{exe_path}"
+del "%~f0"
+""")
+                            print("🚀 [OTA] Reiniciando para aplicar a atualização...")
+                            subprocess.Popen(bat_path, shell=True)
+                            sys.exit() # O agente velho se desliga aqui!
+                            
+                        else:
+                            print("🔄 [OTA] Modo Script detectado. Baixando novo .py da nuvem...")
+                            # 🚨 AQUI VAI O LINK RAW DO SEU .PY NO GITHUB
+                            url_codigo = "https://raw.githubusercontent.com/mattdavii/NOC-Central/refs/heads/main/agente_v2.py"
+                            
+                            req_update = urllib.request.Request(url_codigo)
+                            with urllib.request.urlopen(req_update, timeout=15) as resp:
+                                novo_codigo = resp.read()
+                                
+                            with open(__file__, 'wb') as f:
+                                f.write(novo_codigo)
+                                
+                            print("✅ [OTA] Código atualizado! Reiniciando agente...")
+                            os.execv(sys.executable, ['python', __file__])
+                            
                     except Exception as e:
                         print(f"❌ Erro na Atualização OTA: {e}")
                     
