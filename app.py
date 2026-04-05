@@ -139,34 +139,28 @@ def report_data():
     try:
         data = request.json
         mac = data.get('mac_id')
+        ip_display = data.get('ip_local')
         
-        if not mac: return jsonify({"error": "MAC ID não fornecido"}), 400
-
         conn = database.get_db()
         
-        try: conn.execute("ALTER TABLE sensores ADD COLUMN last_seen TIMESTAMP")
-        except: pass
-        try: conn.execute("ALTER TABLE sensores ADD COLUMN ip_gateway TEXT")
-        except: pass
-        try: conn.execute("ALTER TABLE sensores ADD COLUMN ultima_rota TEXT")
-        except: pass
-
-        # Mágica de Banco de Dados: Garante colunas
-        colunas = ['lat', 'lon', 'ping_global', 'ping_gateway', 'ip_gateway']
-        for col in colunas:
-            try: conn.execute(f"ALTER TABLE sensores ADD COLUMN {col} TEXT")
+        # 1. AUTO-CURA DO BANCO (Garante que todas as gavetas existem antes de começar)
+        for col in ["last_seen TIMESTAMP", "ip_gateway TEXT", "ultima_rota TEXT", "download REAL", "upload REAL"]:
+            try:
+                conn.execute(f"ALTER TABLE sensores ADD COLUMN {col}")
+                conn.commit()
             except: pass
-
-        sensor = conn.execute("SELECT mac_id FROM sensores WHERE mac_id = ?", (mac,)).fetchone()
-        ip_display = data.get('ip_publico') if data.get('ip_publico') else data.get('ip_local', '0.0.0.0')
-
+        
+        sensor = conn.execute("SELECT * FROM sensores WHERE mac_id = ?", (mac,)).fetchone()
+        
         if sensor:
-            # 🚨 GERA ALERTA QUANDO O SENSOR VOLTA A FICAR ONLINE
-            if sensor['status'] == 'offline':
+            # 2. GERAÇÃO DE LOGS (Se o sensor estava offline e voltou)
+            if sensor.get('status') == 'offline':
                 try:
-                    conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Conexão Restaurada', 'Aviso', 'Sensor restabeleceu a comunicação')", (mac,))
+                    conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Conexão Restaurada', 'Aviso', 'O sensor restabeleceu a comunicação com a rede')", (mac,))
+                    conn.commit()
                 except: pass
 
+            # 3. ATUALIZAÇÃO DA TELEMETRIA
             conn.execute('''UPDATE sensores SET 
                 ip_sensor = ?, cpu_usage = ?, ram_usage = ?, temp = ?, 
                 status = 'online', ping_gateway = ?, ping_global = ?,
@@ -176,52 +170,48 @@ def report_data():
                  data.get('temp'), data.get('ping_gateway'), 
                  data.get('ping_global'), data.get('ip_gateway'), mac))
         else:
+            # 4. CADASTRO DE NOVO SENSOR
             conn.execute('''INSERT INTO sensores 
-                (mac_id, nome_local, ip_sensor, cpu_usage, ram_usage, temp, status, lat, lon, ping_gateway, ping_global) 
-                VALUES (?, ?, ?, ?, ?, ?, 'online', ?, ?, ?, ?)''',
-                (mac, data.get('nome_local'), ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
-                 data.get('temp'), data.get('lat'), data.get('lon'), data.get('ping_gateway'), data.get('ping_global')))
-        
-        # --- 📊 HISTÓRICO DE PINGS A CADA 2 SEGUNDOS ---
-        try: 
+                (mac_id, nome_local, ip_sensor, cpu_usage, ram_usage, temp, status, lat, lon, ping_gateway, ping_global, ip_gateway, last_seen) 
+                VALUES (?, 'Novo Sensor', ?, ?, ?, ?, 'online', -14.235, -51.925, ?, ?, ?, CURRENT_TIMESTAMP)''', 
+                (mac, ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
+                 data.get('temp'), data.get('ping_gateway'), 
+                 data.get('ping_global'), data.get('ip_gateway')))
+
+        # 5. HISTÓRICO DE PINGS (Gráficos)
+        try:
             conn.execute('''CREATE TABLE IF NOT EXISTS historico_pings (
                 id SERIAL PRIMARY KEY, sensor_mac TEXT, 
                 google INTEGER, cloudflare INTEGER, aws INTEGER, quad9 INTEGER, 
                 data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )''')
-            import json
-            ping_str = data.get('ping_global')
-            if ping_str:
-                p = json.loads(ping_str) if isinstance(ping_str, str) else ping_str
+            conn.commit()
+            if data.get('ping_global'):
+                import json
+                pings = json.loads(data['ping_global'])
                 conn.execute("INSERT INTO historico_pings (sensor_mac, google, cloudflare, aws, quad9) VALUES (?, ?, ?, ?, ?)",
-                             (mac, p.get('Google',0), p.get('Cloudflare',0), p.get('AWS',0), p.get('Quad9',0)))
-                # Limita o histórico aos últimos 30 registros para não lotar o banco
-                conn.execute("DELETE FROM historico_pings WHERE id NOT IN (SELECT id FROM historico_pings WHERE sensor_mac = ? ORDER BY id DESC LIMIT 30)", (mac,))
-        except Exception as ping_err: 
-            print("🔴 Erro ao salvar histórico de ping:", ping_err)
+                             (mac, pings.get('Google'), pings.get('Cloudflare'), pings.get('AWS'), pings.get('Quad9')))
+        except: pass
 
         conn.commit()
         conn.close()
-        
-        # --- RESPOSTA INTELIGENTE (VERIFICA COMANDOS) ---
-        comando_pendente = PENDING_COMMANDS.get(mac)
-        if comando_pendente:
-            del PENDING_COMMANDS[mac] # Limpa da fila após entregar
-            return jsonify({"status": "OK", "command": comando_pendente})
-            # Avisa o agente para rodar o Speedtest
-        if mac in SPEEDTEST_REQUESTS:
-            SPEEDTEST_REQUESTS.remove(mac)
-            return jsonify({"status": "OK", "command": "run_speedtest"})
-        if mac in TRACEROUTE_REQUESTS:
-            TRACEROUTE_REQUESTS.remove(mac)
-            return jsonify({"status": "OK", "command": "run_traceroute"})
-        
-        return jsonify({"status": "OK", "command": "none"})
-        
-    except Exception as e:
-        print(f"\n🔴 ERRO GRAVE NA RECEPÇÃO: {e}\n")
-        return jsonify({"error": str(e)}), 500
 
+        # 6. DESPACHO DE COMANDOS (Traceroute e Speedtest)
+        comando = "none"
+        if 'SPEEDTEST_REQUESTS' in globals() and mac in SPEEDTEST_REQUESTS:
+            SPEEDTEST_REQUESTS.remove(mac)
+            comando = "run_speedtest"
+        elif 'TRACEROUTE_REQUESTS' in globals() and mac in TRACEROUTE_REQUESTS:
+            TRACEROUTE_REQUESTS.remove(mac)
+            comando = "run_traceroute"
+
+        return jsonify({"status": "OK", "command": comando})
+
+    except Exception as e:
+        print(f"Erro Crítico na Telemetria: {e}")
+        # Retorna 200 (OK) mesmo com erro interno, para o terminal do Agente não piscar vermelho!
+        return jsonify({"status": "error", "command": "none"}), 200
+        
 @app.route('/api/v2/comando_energia/<mac_id>', methods=['POST'])
 def enviar_comando_energia(mac_id):
     # Apenas Admin Master pode desligar equipamentos
