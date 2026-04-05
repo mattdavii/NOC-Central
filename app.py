@@ -153,11 +153,12 @@ def report_data():
         ip_display = data.get('ip_publico') if data.get('ip_publico') else data.get('ip_local', '0.0.0.0')
 
         if sensor:
+            # Note que tiramos o 'nome_local = ?' daqui e também do tuplo embaixo
             conn.execute('''UPDATE sensores SET 
-                nome_local = ?, ip_sensor = ?, cpu_usage = ?, ram_usage = ?, temp = ?, 
+                ip_sensor = ?, cpu_usage = ?, ram_usage = ?, temp = ?, 
                 status = 'online', lat = ?, lon = ?, ping_gateway = ?, ping_global = ? 
                 WHERE mac_id = ?''', 
-                (data.get('nome_local'), ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
+                (ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
                  data.get('temp'), data.get('lat'), data.get('lon'), data.get('ping_gateway'), 
                  data.get('ping_global'), mac))
         else:
@@ -670,6 +671,24 @@ def sensor_virtual():
         return "Acesso Negado. Ferramenta Exclusiva.", 403
     
     return render_template('sensor_virtual.html', nome_operador=session.get('nome', 'Admin'))
+
+@app.route('/api/v2/renomear_sensor', methods=['POST'])
+def renomear_sensor():
+    # Trava de Segurança: Apenas Administrador Master
+    if 'user_id' not in session or session.get('role') != 'Administrador Master':
+        return jsonify({"error": "Acesso Negado"}), 403
+        
+    data = request.json
+    novo_nome = data.get('novo_nome')
+    mac_id = data.get('mac_id')
+    
+    if novo_nome and mac_id:
+        conn = database.get_db()
+        conn.execute("UPDATE sensores SET nome_local = ? WHERE mac_id = ?", (novo_nome, mac_id))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "OK"})
+    return jsonify({"error": "Dados inválidos"}), 400
 
 if __name__ == '__main__':
     # O host='0.0.0.0' permite que o site seja acessado pelo IP da rede local

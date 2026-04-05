@@ -36,7 +36,9 @@
 
         .alerta-novo { background: rgba(249,226,175,0.1); border-left: 4px solid var(--yellow); }
         
-
+        /* Efeito de hover no botão de editar */
+        .edit-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; margin-left: 10px; transition: 0.2s; font-size: 1.1em;}
+        .edit-btn:hover { color: var(--yellow); transform: scale(1.1); }
     </style>
 </head>
 <body>
@@ -54,7 +56,14 @@
                 <tbody>
                     {% for s in sensores %}
                     <tr class="{% if not s.cliente_id %}alerta-novo{% endif %}">
-                        <td><strong>{{ s.nome_local }}</strong></td>
+                        <td>
+                            <strong>{{ s.nome_local }}</strong>
+                            {% if session.get('role') == 'Administrador Master' %}
+                            <button class="edit-btn" onclick="renomearSensor('{{ s.mac_id }}', '{{ s.nome_local }}')" title="Renomear Sensor">
+                                <i class="fa-solid fa-pen-to-square"></i>
+                            </button>
+                            {% endif %}
+                        </td>
                         <td class="mac-text">{{ s.mac_id }}</td>
                         <td style="color: var(--blue);">{{ s.ip_sensor }}</td>
                         <td>
@@ -102,6 +111,29 @@
             } else {
                 alert("Erro ao vincular.");
                 btn.innerHTML = '<i class="fa-solid fa-link"></i> Salvar Vínculo';
+            }
+        }
+
+        async function renomearSensor(mac_id, nome_atual) {
+            let novo_nome = prompt("Digite o novo nome para este Sensor:", nome_atual);
+            
+            if (novo_nome && novo_nome.trim() !== "" && novo_nome !== nome_atual) {
+                try {
+                    let response = await fetch('/api/v2/renomear_sensor', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mac_id: mac_id, novo_nome: novo_nome.trim() })
+                    });
+                    
+                    if (response.ok) {
+                        location.reload(); // Recarrega a página para mostrar o novo nome imediatamente
+                    } else {
+                        alert("Erro: Acesso Negado ou dados inválidos.");
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert("Erro ao comunicar com a Central.");
+                }
             }
         }
     </script>

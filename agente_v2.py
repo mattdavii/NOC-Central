@@ -140,18 +140,41 @@ def loop_telemetria():
             "pings": pings, "custom_ips": resultados_alvos, "topologia": topologia_bruta, "logs": logs_formatados
         }
 
-        # Envio para a Nuvem c/ Tratamento de Erros Visível
+        # ========================================================
+        # 🚀 ENVIO PARA A NUVEM (PACOTE COMPLETO)
+        # ========================================================
+        
+        # 1. Envio da Telemetria Básica (CPU, RAM, Pings)
         payload = {"mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", "ip_local": meu_ip, "cpu_usage": cpu, "ram_usage": ram, "temp": 40, "ping_gateway": ping_gw, "ping_global": json.dumps(pings)}
         try:
             req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
             with urllib.request.urlopen(req, timeout=5) as response:
-                print("✅ SUCESSO: Dados enviados para a Central na Nuvem!")
+                print("✅ [TELEMETRIA] Dados básicos sincronizados!")
                 comando = json.loads(response.read().decode('utf-8')).get("command")
                 if comando == "reboot": os.system("shutdown /r /t 0" if os_name == "Windows" else "sudo reboot")
-                elif comando == "shutdown": os.system("shutdown /s /t 0" if os_name == "Windows" else "sudo shutdown -h now")
         except Exception as e: 
-            print(f"❌ FALHA DE COMUNICAÇÃO: {e}")
-        
+            print(f"❌ Erro Telemetria: {e}")
+
+        # 2. Envio da Topologia (Radar de Rede)
+        try:
+            url_topo = URL_CENTRAL.replace("report_data", "atualizar_dispositivos")
+            lista_topo = [{"mac": t["mac"], "ip": t["ip"], "fabricante": "Desconhecido"} for t in topologia_bruta]
+            req_topo = urllib.request.Request(url_topo, data=json.dumps({"mac_id": mac, "lista": lista_topo}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+            urllib.request.urlopen(req_topo, timeout=5)
+            print("✅ [TOPOLOGIA] Radar de rede sincronizado!")
+        except Exception as e: 
+            pass # Ignora silenciosamente se falhar
+
+        # 3. Envio dos Logs Locais (Avisos de Internet caindo, etc)
+        try:
+            if logs_formatados:
+                url_logs = URL_CENTRAL.replace("report_data", "alertas_ia")
+                alertas = [{"tipo": l["tipo"], "gravidade": l["gravidade"], "detalhes": l["detalhes"]} for l in logs_formatados]
+                req_logs = urllib.request.Request(url_logs, data=json.dumps({"mac_id": mac, "alertas": alertas}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+                urllib.request.urlopen(req_logs, timeout=5)
+        except Exception as e:
+            pass 
+
         time.sleep(2)
 
 # ==========================================
