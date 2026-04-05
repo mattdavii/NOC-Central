@@ -18,7 +18,7 @@ try:
     
     if not admin:
         # Se o banco for novo, ele injeta o usuário padrão
-        conn.execute("INSERT INTO clientes (usuario, senha, role) VALUES ('admin', '15975364Davi.', 'Administrador Master')")
+        conn.execute("INSERT INTO clientes (usuario, senha, role) VALUES ('admin', 'admin123', 'Administrador Master')")
         conn.commit()
         print("Usuário admin criado com sucesso na nuvem!")
         
