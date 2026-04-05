@@ -49,7 +49,7 @@ UPDATE_REQUESTS = set()
 PENDING_COMMANDS = {}
 
 # ==========================================
-# 🔐 SISTEMA DE LOGIN E SESSÃO
+# 🔐 SISTEMA DE LOGIN E SESSÃO (BLINDADO)
 # ==========================================
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -64,43 +64,65 @@ def login():
         try:
             conn = database.get_db()
             
-            # 🚨 CHAVE MESTRA E AUTO-CORREÇÃO DO BANCO 🚨
+            # 🚨 CHAVE MESTRA E AUTO-CORREÇÃO DO ADMIN
             if usuario_digitado == 'admin' and senha_digitada == 'admin123':
                 user = conn.execute("SELECT * FROM clientes WHERE usuario = 'admin'").fetchone()
                 
                 if not user:
                     conn.execute("INSERT INTO clientes (usuario, senha, role) VALUES ('admin', 'admin123', 'Administrador Master')")
-                    user = conn.execute("SELECT * FROM clientes WHERE usuario = 'admin'").fetchone() # Puxa o ID gerado
+                    user = conn.execute("SELECT * FROM clientes WHERE usuario = 'admin'").fetchone()
                 else:
                     conn.execute("UPDATE clientes SET senha = 'admin123' WHERE usuario = 'admin'")
                 
                 conn.commit()
-                conn.close()
                 
-                # Libera a entrada COM O ID!
                 session['logged_in'] = True
                 session['usuario'] = 'admin'
                 session['role'] = 'Administrador Master'
-                session['user_id'] = user['id'] if user else 1 # <--- A MÁGICA AQUI
+                session['user_id'] = user['id'] if user else 1
+                conn.close()
                 return redirect(url_for('index'))
 
-            # Fluxo normal
-            user = conn.execute("SELECT * FROM clientes WHERE usuario = ?", (usuario_digitado,)).fetchone()
+            # 🕵️‍♂️ FLUXO NORMAL (Busca Inteligente Multi-Banco)
+            user = None
+            try:
+                # Tenta o dialeto SQLite (?)
+                user = conn.execute("SELECT * FROM clientes WHERE usuario = ?", (usuario_digitado,)).fetchone()
+            except:
+                # Se falhar, tenta o dialeto PostgreSQL (%s)
+                user = conn.execute("SELECT * FROM clientes WHERE usuario = %s", (usuario_digitado,)).fetchone()
             
-            if user and str(user['senha']).strip() == senha_digitada:
-                session['logged_in'] = True
-                session['usuario'] = user['usuario']
-                session['role'] = user['role']
-                session['user_id'] = user['id'] # <--- A MÁGICA AQUI
-                conn.close()
-                return redirect(url_for('index'))
+            if user:
+                senha_banco = str(user['senha']).strip()
+                senha_valida = False
+                
+                # O Sistema testa as duas possibilidades (Texto Puro ou Hash Criptografado)
+                if senha_banco == senha_digitada:
+                    senha_valida = True
+                else:
+                    try:
+                        from werkzeug.security import check_password_hash
+                        if check_password_hash(senha_banco, senha_digitada):
+                            senha_valida = True
+                    except: pass
+                
+                if senha_valida:
+                    session['logged_in'] = True
+                    session['usuario'] = user['usuario']
+                    session['role'] = user['role']
+                    session['user_id'] = user['id']
+                    conn.close()
+                    return redirect(url_for('index'))
+                else:
+                    erro = "Usuário ou senha incorretos!"
             else:
-                erro = "Usuário ou senha incorretos!"
-                conn.close()
+                erro = "Usuário ou senha incorretos!" # Mensagem genérica por segurança
+                
+            conn.close()
                 
         except Exception as e:
-            erro = f"Erro no banco de dados: {e}"
-            print(erro)
+            erro = "Erro interno ao validar as credenciais."
+            print(f"❌ [ERRO CRÍTICO NO LOGIN]: {e}") # Printa no log do Render para nós lermos
 
     return render_template('login.html', erro=erro)
 
