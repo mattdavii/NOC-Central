@@ -5,6 +5,28 @@ import database
 app = Flask(__name__)
 app.secret_key = 'chave_super_secreta_noc_md' 
 
+# =========================================================
+# SETUP INICIAL: Cria as tabelas e o usuário Admin na Nuvem
+# =========================================================
+try:
+    import database
+    database.init_db() # Garante que as tabelas sejam criadas
+    
+    conn = database.get_db()
+    # Verifica se o admin já existe no banco
+    admin = conn.execute("SELECT * FROM clientes WHERE usuario = 'admin'").fetchone()
+    
+    if not admin:
+        # Se o banco for novo, ele injeta o usuário padrão
+        conn.execute("INSERT INTO clientes (usuario, senha, role) VALUES ('admin', '15975364Davi.', 'Administrador Master')")
+        conn.commit()
+        print("Usuário admin criado com sucesso na nuvem!")
+        
+    conn.close()
+except Exception as e:
+    print(f"Aviso na inicialização do banco: {e}")
+# =========================================================
+
 # Inicializa o banco de dados
 database.init_db()
 
