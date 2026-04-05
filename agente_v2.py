@@ -107,18 +107,22 @@ def log_local_event(tipo, detalhes, gravidade="Alerta"):
 
 def executar_speedtest(mac, url_central):
     try:
-        print("⏳ Central solicitou Speedtest! Testando... (Leva uns 20s)")
-        st = speedtest.Speedtest()
+        print("⏳ Iniciando medição de velocidade automática (15 min)...")
+        # Força o uso de SSL/TLS para evitar erros de 'Internal Server Error'
+        st = speedtest.Speedtest(secure=True) 
         st.get_best_server()
         d = st.download() / 1_000_000
         u = st.upload() / 1_000_000
+        
         payload = {"mac_id": mac, "down": round(d, 2), "up": round(u, 2)}
-
         url_speed = url_central.replace('report_data', 'reportar_velocidade')
         req = urllib.request.Request(url_speed, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
-        urllib.request.urlopen(req, timeout=40)
-        print(f"✅ Speedtest Enviado: Down {round(d, 2)} Mbps | Up {round(u, 2)} Mbps")
-    except Exception as e: print(f"❌ Erro no Speedtest: {e}")
+        
+        with urllib.request.urlopen(req, timeout=40) as resp:
+            print(f"✅ [SPEEDTEST] Enviado: Down {round(d, 2)} Mbps | Up {round(u, 2)} Mbps")
+            
+    except Exception as e:
+        print(f"❌ Erro no Speedtest: {e}")
 
 # ==========================================
 # 📡 MOTOR 1: ENVIO E COLETA (BACKGROUND)
@@ -148,20 +152,36 @@ def loop_telemetria():
     os_name = platform.system()
     estado_anterior = {"wan": True, "gw": True}
     
+    # ⏱️ Cronômetro para o Speedtest Automático (900 segundos = 15 minutos)
+    ultima_medicao_speedtest = 0 
+    
     while True:
-        try: import psutil; cpu = psutil.cpu_percent(interval=1) if psutil else 0.0; ram = psutil.virtual_memory().percent if psutil else 0.0
-        except: cpu = 10.0; ram = 10.0
+        agora = time.time()
 
-        # Dispara os 4 pings ao MESMO TEMPO (Muito mais rápido)
+        # 🚀 LÓGICA AUTOMÁTICA: Roda o Speedtest a cada 15 minutos em segundo plano
+        if agora - ultima_medicao_speedtest > 900:
+            threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
+            ultima_medicao_speedtest = agora
+
+        try: 
+            import psutil
+            cpu = psutil.cpu_percent(interval=1) if psutil else 0.0
+            ram = psutil.virtual_memory().percent if psutil else 0.0
+        except: 
+            cpu = 10.0; ram = 10.0
+
+        # Parallel Pings
         hosts_ping = {"Google": "8.8.8.8", "Cloudflare": "1.1.1.1", "AWS": "aws.amazon.com", "Quad9": "9.9.9.9"}
         pings = {}
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = {executor.submit(ping, ip): name for name, ip in hosts_ping.items()}
             for future in concurrent.futures.as_completed(futures):
                 pings[futures[future]] = future.result()
+
         meu_ip, gateway_ip = get_network_info()
         ping_gw = ping(gateway_ip) if gateway_ip != "Desconhecido" else 0
         
+        # Lógica de Logs Locais
         wan_online = any(v > 0 for k, v in pings.items())
         gw_online = ping_gw > 0
         if wan_online != estado_anterior["wan"]:
@@ -171,6 +191,7 @@ def loop_telemetria():
             log_local_event("Gateway Local", f"Comunicação com Roteador ({gateway_ip}) {'Voltou' if gw_online else 'Falhou'}", "OK" if gw_online else "Crítica")
             estado_anterior["gw"] = gw_online
 
+        # Banco Local
         conn = sqlite3.connect('sensor_local.db')
         alvos = conn.execute("SELECT id, ip, descricao FROM alvos_locais").fetchall()
         logs_db = conn.execute("SELECT tipo, detalhes, gravidade, strftime('%H:%M:%S', data_hora) FROM logs_locais ORDER BY id DESC LIMIT 15").fetchall()
@@ -190,19 +211,26 @@ def loop_telemetria():
         }
 
         # ========================================================
-        # 🚀 ENVIO PARA A NUVEM (PACOTE COMPLETO)
+        # 🚀 ENVIO PARA A NUVEM
         # ========================================================
-        
-        # 1. Envio da Telemetria Básica (CPU, RAM, Pings)
-        # 1. Envio da Telemetria Básica (Agora enviando o Gateway junto)
-        payload = {"mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", "ip_local": meu_ip, "ip_gateway": gateway_ip, "cpu_usage": cpu, "ram_usage": ram, "temp": 40, "ping_gateway": ping_gw, "ping_global": json.dumps(pings)}
+        payload = {
+            "mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", 
+            "ip_local": meu_ip, "ip_gateway": gateway_ip, 
+            "cpu_usage": cpu, "ram_usage": ram, "temp": 40, 
+            "ping_gateway": ping_gw, "ping_global": json.dumps(pings)
+        }
+
         try:
             req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
             with urllib.request.urlopen(req, timeout=5) as response:
-                print("✅ [TELEMETRIA] Dados básicos sincronizados!")
+                print("✅ [TELEMETRIA] Dados sincronizados!")
                 
-                # A variável comando nasce e já é checada aqui dentro com segurança
-                comando = json.loads(response.read().decode('utf-8')).get("command")
+                res_data = json.loads(response.read().decode('utf-8'))
+                comando = res_data.get("command")
+                
+                # O tempo de espera agora vem da nuvem (se configurado), senão usa 2s
+                espera_remota = res_data.get("intervalo", 2)
+
                 if comando == "reboot": 
                     os.system("shutdown /r /t 0" if os_name == "Windows" else "sudo reboot")
                 elif comando == "run_speedtest": 
@@ -211,83 +239,47 @@ def loop_telemetria():
                     threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
                 elif comando == "update_agent":
                     try:
-                        import sys, os, subprocess
-                        
-                        # Checa se está rodando como .EXE (PyInstaller) ou como script .PY normal
+                        import sys, subprocess
                         is_exe = getattr(sys, 'frozen', False)
                         
                         if is_exe:
-                            print("🔄 [OTA] Modo Executável detectado. Baixando novo .exe da nuvem...")
-                            # 🚨 AQUI VAI O LINK RAW DO SEU .EXE NO GITHUB (Não do .py)
-                            url_codigo = "https://github.com/mattdavii/NOC-Central/blob/main/dist/agente_v2.exe"
-                            
+                            # 🚨 LINK CORRIGIDO PARA RAW (DIRETO)
+                            url_codigo = "https://github.com/mattdavii/NOC-Central/raw/main/dist/agente_v2.exe"
                             exe_path = sys.executable
                             new_exe_path = exe_path + ".new"
                             
-                            # Baixa o novo .exe
-                            req_update = urllib.request.Request(url_codigo)
-                            with urllib.request.urlopen(req_update, timeout=60) as resp:
-                                with open(new_exe_path, 'wb') as f:
-                                    f.write(resp.read())
-                                    
-                            print("✅ [OTA] Download concluído! Criando script de substituição...")
+                            with urllib.request.urlopen(url_codigo, timeout=60) as resp:
+                                with open(new_exe_path, 'wb') as f: f.write(resp.read())
                             
-                            # Cria o arquivo .bat ninja para burlar o bloqueio do Windows
                             bat_path = os.path.join(os.path.dirname(exe_path), "updater.bat")
                             with open(bat_path, 'w') as bat:
-                                bat.write(f"""@echo off
-timeout /t 3 /nobreak > NUL
-del "{exe_path}"
-ren "{new_exe_path}" "{os.path.basename(exe_path)}"
-start "" "{exe_path}"
-del "%~f0"
-""")
-                            print("🚀 [OTA] Reiniciando para aplicar a atualização...")
+                                bat.write(f'@echo off\ntimeout /t 3 /nobreak > NUL\ndel "{exe_path}"\nren "{new_exe_path}" "{os.path.basename(exe_path)}"\nstart "" "{exe_path}"\ndel "%~f0"')
+                            
                             subprocess.Popen(bat_path, shell=True)
-                            sys.exit() # O agente velho se desliga aqui!
-                            
+                            sys.exit()
                         else:
-                            print("🔄 [OTA] Modo Script detectado. Baixando novo .py da nuvem...")
-                            # 🚨 AQUI VAI O LINK RAW DO SEU .PY NO GITHUB
-                            url_codigo = "https://raw.githubusercontent.com/mattdavii/NOC-Central/refs/heads/main/agente_v2.py"
-                            
-                            req_update = urllib.request.Request(url_codigo)
-                            with urllib.request.urlopen(req_update, timeout=15) as resp:
+                            # 🚨 LINK CORRIGIDO PARA RAW (DIRETO)
+                            url_codigo = "https://raw.githubusercontent.com/mattdavii/NOC-Central/main/agente_v2.py"
+                            with urllib.request.urlopen(url_codigo, timeout=15) as resp:
                                 novo_codigo = resp.read()
-                                
-                            with open(__file__, 'wb') as f:
-                                f.write(novo_codigo)
-                                
-                            print("✅ [OTA] Código atualizado! Reiniciando agente...")
+                            with open(__file__, 'wb') as f: f.write(novo_codigo)
                             os.execv(sys.executable, ['python', __file__])
-                            
                     except Exception as e:
-                        print(f"❌ Erro na Atualização OTA: {e}")
+                        print(f"❌ Erro OTA: {e}")
                     
         except Exception as e: 
             print(f"❌ Erro Telemetria: {e}")
+            espera_remota = 5 # Se a internet cair, tenta de 5 em 5 segundos
 
-        # 2. Envio da Topologia (Radar de Rede)
+        # 2. Sincroniza Topologia
         try:
             url_topo = URL_CENTRAL.replace("report_data", "atualizar_dispositivos")
             lista_topo = [{"mac": t["mac"], "ip": t["ip"], "fabricante": "Desconhecido"} for t in topologia_bruta]
             req_topo = urllib.request.Request(url_topo, data=json.dumps({"mac_id": mac, "lista": lista_topo}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
             urllib.request.urlopen(req_topo, timeout=5)
-            print("✅ [TOPOLOGIA] Radar de rede sincronizado!")
-        except Exception as e: 
-            pass # Ignora silenciosamente se falhar
+        except: pass
 
-        # 3. Envio dos Logs Locais (Avisos de Internet caindo, etc)
-        try:
-            if logs_formatados:
-                url_logs = URL_CENTRAL.replace("report_data", "alertas_ia")
-                alertas = [{"tipo": l["tipo"], "gravidade": l["gravidade"], "detalhes": l["detalhes"]} for l in logs_formatados]
-                req_logs = urllib.request.Request(url_logs, data=json.dumps({"mac_id": mac, "alertas": alertas}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
-                urllib.request.urlopen(req_logs, timeout=5)
-        except Exception as e:
-            pass 
-
-        time.sleep(2)
+        time.sleep(espera_remota)
 
 # ==========================================
 # 🖥️ MOTOR 2: PAINEL WEB LOCAL (FOREGROUND)

@@ -473,18 +473,18 @@ def reportar_velocidade():
 
 @app.route('/api/v2/graficos/<mac_id>')
 def obter_graficos(mac_id):
-    """ Busca os últimos 15 testes de velocidade do sensor para montar o gráfico """
     conn = database.get_db()
-    try:
-        # Pega as últimas 15 medições e extrai apenas a Hora e o Minuto
-        registros = conn.execute("SELECT download, upload, to_char(data_hora - INTERVAL '3 hours', 'HH24:MI') as hora FROM historico_telemetria WHERE sensor_mac = ? ORDER BY id DESC LIMIT 15", (mac_id,)).fetchall()
-    except:
-        registros = []
+    # 🚨 O segredo está no - INTERVAL '3 hours'
+    registros = conn.execute("""
+        SELECT download, upload, to_char(data_hora - INTERVAL '3 hours', 'HH24:MI') as hora 
+        FROM historico_telemetria 
+        WHERE sensor_mac = ? 
+        ORDER BY id DESC LIMIT 15
+    """, (mac_id,)).fetchall()
     conn.close()
-
-    # Inverte a lista para o gráfico ficar na ordem cronológica certa (da esquerda pra direita)
-    registros.reverse()
-    return jsonify([dict(r) for r in registros])
+    
+    # Inverte para o gráfico correr da esquerda para a direita
+    return jsonify([dict(r) for r in registros][::-1])
 
 # --- GERENCIAMENTO DE IPs CUSTOMIZADOS ---
 @app.route('/api/v2/ips_customizados/<mac_id>', methods=['GET', 'POST'])
