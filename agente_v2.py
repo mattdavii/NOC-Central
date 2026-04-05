@@ -2,11 +2,14 @@ import time, json, platform, subprocess, uuid, os, threading, sqlite3, socket
 import urllib.request
 from datetime import datetime
 from flask import Flask, request, Response, render_template_string, jsonify
+import pystray
+from PIL import Image, ImageDraw
 
 # ==========================================
 # ⚙️ CONFIGURAÇÃO DO AGENTE
 # ==========================================
-URL_CENTRAL = "http://127.0.0.1:10000/api/v2/report_data" 
+# Link atualizado da sua Central na Nuvem
+URL_CENTRAL = "https://noc-central.onrender.com/api/v2/report_data" 
 PORTA_LOCAL = 10000
 
 app = Flask(__name__)
@@ -22,11 +25,8 @@ def get_mac():
     return ':'.join(("%012X" % mac)[i:i+2] for i in range(0, 12, 2))
 
 def get_network_info():
-    """ Inteligência: Descobre o PRÓPRIO IP e o ROTEADOR dinamicamente """
     meu_ip = "127.0.0.1"
     gateway = "Desconhecido"
-    
-    # 1. Descobre o próprio IP de forma dinâmica
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('8.8.8.8', 80))
@@ -34,7 +34,6 @@ def get_network_info():
         s.close()
     except: pass
 
-    # 2. Descobre o Gateway
     try:
         if platform.system().lower() == 'windows':
             saida = subprocess.check_output("route print 0.0.0.0", shell=True, universal_newlines=True, creationflags=subprocess.CREATE_NO_WINDOW)
@@ -47,14 +46,11 @@ def get_network_info():
             saida = subprocess.check_output("ip route | grep default", shell=True, universal_newlines=True)
             gateway = saida.split()[2]
     except: pass
-    
     return meu_ip, gateway
 
 def get_topologia_arp(meu_ip):
-    """ Lê a tabela ARP limpando o lixo (Broadcast/Multicast) """
     dispositivos = []
-    prefixo_rede = '.'.join(meu_ip.split('.')[:-1]) + '.' # Ex: "192.168.76."
-    
+    prefixo_rede = '.'.join(meu_ip.split('.')[:-1]) + '.'
     try:
         saida = subprocess.check_output("arp -a", shell=True, universal_newlines=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == 'Windows' else 0)
         for linha in saida.split('\n'):
@@ -62,8 +58,6 @@ def get_topologia_arp(meu_ip):
             if len(partes) >= 2 and '.' in partes[0] and ('-' in partes[1] or ':' in partes[1]):
                 ip = partes[0]
                 mac = partes[1].replace('-', ':').upper()
-                
-                # Filtros de Inteligência: Só pega IPs da mesma rede e ignora finais .255 (Broadcast)
                 if ip.startswith(prefixo_rede) and not ip.endswith(".255"):
                     dispositivos.append({"ip": ip, "mac": mac, "nome": "Dispositivo Genérico"})
     except: pass
@@ -74,10 +68,7 @@ def ping(host):
     comando = ['ping', param, '1', host]
     try:
         saida = subprocess.check_output(comando, stderr=subprocess.STDOUT, universal_newlines=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == 'Windows' else 0)
-        
-        # Inteligência extra: Se a rede for muito rápida (tempo<1ms ou time<1ms)
         if '<1ms' in saida: return 1
-        
         if 'time=' in saida or 'tempo=' in saida:
             for palavra in saida.split():
                 if palavra.startswith('time=') or palavra.startswith('tempo='):
@@ -119,11 +110,9 @@ def loop_telemetria():
         except: cpu = 10.0; ram = 10.0
 
         pings = {"Google": ping("8.8.8.8"), "Cloudflare": ping("1.1.1.1"), "AWS": ping("aws.amazon.com"), "Quad9": ping("9.9.9.9")}
-        
         meu_ip, gateway_ip = get_network_info()
         ping_gw = ping(gateway_ip) if gateway_ip != "Desconhecido" else 0
         
-        # Logs Inteligentes
         wan_online = any(v > 0 for k, v in pings.items())
         gw_online = ping_gw > 0
         if wan_online != estado_anterior["wan"]:
@@ -133,7 +122,6 @@ def loop_telemetria():
             log_local_event("Gateway Local", f"Comunicação com Roteador ({gateway_ip}) {'Voltou' if gw_online else 'Falhou'}", "OK" if gw_online else "Crítica")
             estado_anterior["gw"] = gw_online
 
-        # Banco de Dados
         conn = sqlite3.connect('sensor_local.db')
         alvos = conn.execute("SELECT id, ip, descricao FROM alvos_locais").fetchall()
         logs_db = conn.execute("SELECT tipo, detalhes, gravidade, strftime('%H:%M:%S', data_hora) FROM logs_locais ORDER BY id DESC LIMIT 15").fetchall()
@@ -149,19 +137,21 @@ def loop_telemetria():
 
         dados_sensores = {
             "cpu": cpu, "ram": ram, "meu_ip": meu_ip, "gateway_ip": gateway_ip, "ping_gateway": ping_gw, 
-            "pings": pings, "custom_ips": resultados_alvos, 
-            "topologia": topologia_bruta, "logs": logs_formatados
+            "pings": pings, "custom_ips": resultados_alvos, "topologia": topologia_bruta, "logs": logs_formatados
         }
 
-        # Envio para Nuvem
+        # Envio para a Nuvem c/ Tratamento de Erros Visível
         payload = {"mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", "ip_local": meu_ip, "cpu_usage": cpu, "ram_usage": ram, "temp": 40, "ping_gateway": ping_gw, "ping_global": json.dumps(pings)}
         try:
             req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
-            with urllib.request.urlopen(req, timeout=3) as response:
+            with urllib.request.urlopen(req, timeout=5) as response:
+                print("✅ SUCESSO: Dados enviados para a Central na Nuvem!")
                 comando = json.loads(response.read().decode('utf-8')).get("command")
                 if comando == "reboot": os.system("shutdown /r /t 0" if os_name == "Windows" else "sudo reboot")
                 elif comando == "shutdown": os.system("shutdown /s /t 0" if os_name == "Windows" else "sudo shutdown -h now")
-        except: pass
+        except Exception as e: 
+            print(f"❌ FALHA DE COMUNICAÇÃO: {e}")
+        
         time.sleep(2)
 
 # ==========================================
@@ -218,11 +208,9 @@ def index():
         .container { padding: 30px; max-width: 1600px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; }
         .card { background: linear-gradient(145deg, var(--bg-card) 0%, #11111b 100%); border: 1px solid var(--border); border-radius: 12px; padding: 22px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5);}
         .card h3 { margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 15px; display: flex; justify-content: space-between; color: var(--text-main);}
-        
         .card-hw { border-top: 4px solid var(--blue); } .card-net { border-top: 4px solid var(--green); } .card-speed { border-top: 4px solid var(--purple); }
         .card-radar { border-top: 4px solid var(--blue); grid-column: 1 / -1; } .card-global { border-top: 4px solid var(--yellow); grid-column: span 2;}
         .card-custom { border-top: 4px solid var(--red); } .card-hist { border-top: 4px solid var(--text-muted); grid-column: span 2;}
-        
         .data-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px dashed var(--bg-input); padding-bottom: 8px;}
         .highlight { font-family: 'JetBrains Mono', monospace; font-size: 2.2em; font-weight: bold; }
         .progress-bg { background: rgba(0,0,0,0.4); border: 1px solid var(--bg-input); border-radius: 10px; height: 12px; width: 100%; margin-top: 6px; overflow: hidden;}
@@ -232,11 +220,8 @@ def index():
         .ms { font-family: 'JetBrains Mono', monospace; font-size: 1.4em; font-weight: bold; margin-top: 5px; color: var(--green);}
         .pill-ok { background: rgba(166,227,161,0.1); color: var(--green); border: 1px solid var(--green); padding: 5px 12px; border-radius: 6px; font-size: 0.75em; font-weight: bold;}
         .pill-fail { background: rgba(243,139,168,0.1); color: var(--red); border: 1px solid var(--red); padding: 5px 12px; border-radius: 6px; font-size: 0.75em; font-weight: bold;}
-        
         input { width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); color: var(--text-main); border-radius: 6px; box-sizing: border-box; outline: none;}
         button.action-btn { cursor: pointer; padding: 10px 15px; border: none; border-radius: 6px; font-weight: bold; color: var(--bg-base); background: var(--red);}
-        
-        /* Topologia CSS */
         .topology-box { display: flex; flex-direction: column; align-items: center; background: rgba(0,0,0,0.2); padding: 30px; border-radius: 8px; border: 1px solid var(--bg-input); overflow-x: auto;}
         .t-card { background: var(--bg-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border); width: 170px; text-align: center; position: relative; border-top: 4px solid var(--blue);}
         .t-gateway { border-top: 4px solid var(--red); } .t-sensor { border-top: 4px solid var(--purple); }
@@ -251,7 +236,6 @@ def index():
             <div style="color: var(--text-muted);"><i class="fa-solid fa-microchip"></i> MAC: <strong style="color:var(--text-main)" id="mac-id">--</strong></div>
         </nav>
         <div class="container">
-            
             <div class="card card-hw">
                 <h3><span><i class="fa-solid fa-microchip"></i> Telemetria Local</span> <span class="pill-ok">ONLINE</span></h3>
                 <div style="margin-bottom: 15px; margin-top: 10px;">
@@ -266,7 +250,7 @@ def index():
 
             <div class="card card-net">
                 <h3><span><i class="fa-solid fa-shield-heart"></i> Integridade da Rede</span></h3>
-                <div class="data-row"><span><i class="fa-solid fa-network-wired" style="color:var(--green)"></i> Gateway Local (<span id="gw-ip">--</span>):</span> <span id="status-local" class="pill-ok">ESTÁVEL</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-network-wired" style="color:var(--green)"></i> Gateway (<span id="gw-ip">--</span>):</span> <span id="status-local" class="pill-ok">ESTÁVEL</span></div>
                 <div class="data-row"><span><i class="fa-solid fa-globe" style="color:var(--blue)"></i> Internet (WAN):</span> <span id="status-wan" class="pill-ok">ONLINE</span></div>
                 <div style="margin-top: auto; background: rgba(0,0,0,0.3); padding: 18px; border-radius: 8px; text-align: center; border: 1px solid var(--bg-input);">
                     <div style="font-size: 0.75em; color: var(--text-muted);">Latência Sensor ➔ Gateway</div>
@@ -276,7 +260,7 @@ def index():
 
             <div class="card card-speed" style="display: flex; align-items: center; justify-content: center; border-top: 4px solid var(--border); opacity: 0.7;">
                 <i class="fa-solid fa-cloud-arrow-up" style="font-size: 3em; color: var(--yellow); margin-bottom: 15px;"></i>
-                <div style="font-weight: bold; color: var(--yellow); font-size: 1.1em; text-align: center;">Speedtest Orquestrado<br>pela Central NOC</div>
+                <div style="font-weight: bold; color: var(--yellow); font-size: 1.1em; text-align: center;">Orquestrado<br>pela Central NOC</div>
             </div>
 
             <div class="card card-radar">
@@ -320,29 +304,23 @@ def index():
 
         <script>
             let chartPingInstance = null; let historicoHoras = [], dGoogle = [], dCf = [], dAws = [], dQuad = [];
-
             async function addIP() { const ip = document.getElementById('new-ip').value; const desc = document.getElementById('new-desc').value; if(!ip) return; await fetch('/api/alvos', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip, descricao:desc}) }); document.getElementById('new-ip').value=''; document.getElementById('new-desc').value=''; }
             async function excluirIP(id) { if(confirm("Remover alvo local?")) { await fetch('/api/alvos/' + id, { method: 'DELETE' }); } }
             async function renomearTopo(mac, atual) { let n = prompt("Novo nome para este dispositivo na topologia:", atual); if(n) { await fetch('/api/topologia/nome', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mac, nome:n}) }); } }
-
             async function atualizarLocal() {
                 try {
                     const res = await fetch('/api/local_data'); const data = await res.json();
-                    
                     document.getElementById('mac-id').innerText = data.mac; document.getElementById('topo-mac').innerText = data.mac;
                     document.getElementById('meu-ip').innerText = data.meu_ip;
                     document.getElementById('cpu-text').innerText = data.cpu + '%'; document.getElementById('cpu-fill').style.width = data.cpu + '%';
                     document.getElementById('ram-text').innerText = data.ram + '%'; document.getElementById('ram-fill').style.width = data.ram + '%';
-                    
                     document.getElementById('gw-ip').innerText = data.gateway_ip;
                     const pl = data.ping_gateway;
                     document.getElementById('ping-local').innerText = pl + ' ms';
                     if(pl === 0 || pl > 100) { document.getElementById('status-local').className = "pill-fail"; document.getElementById('status-local').innerText = "FALHA"; }
                     else { document.getElementById('status-local').className = "pill-ok"; document.getElementById('status-local').innerText = "ESTÁVEL"; }
-                    
                     if(data.pings.Google === 0 && data.pings.Cloudflare === 0) { document.getElementById('status-wan').className = "pill-fail"; document.getElementById('status-wan').innerText = "OFFLINE"; }
                     else { document.getElementById('status-wan').className = "pill-ok"; document.getElementById('status-wan').innerText = "ONLINE"; }
-
                     document.getElementById('pg-google').innerText = data.pings.Google + ' ms'; document.getElementById('pg-cf').innerText = data.pings.Cloudflare + ' ms';
                     document.getElementById('pg-aws').innerText = data.pings.AWS + ' ms'; document.getElementById('pg-quad9').innerText = data.pings.Quad9 + ' ms';
 
@@ -384,8 +362,36 @@ def index():
     """
     return render_template_string(HTML_CYBERPUNK)
 
+# ==========================================
+# 🛠️ MOTOR 3: SYSTEM TRAY E INICIALIZAÇÃO
+# ==========================================
+
+# Cria a imagem do ícone (Um escudo/círculo azul simples)
+def create_image():
+    image = Image.new('RGB', (64, 64), color=(11, 11, 19))
+    dc = ImageDraw.Draw(image)
+    dc.ellipse((8, 8, 56, 56), fill=(137, 180, 250))
+    return image
+
+# Função que o usuário chama ao clicar em "Sair"
+def on_quit(icon, item):
+    icon.stop()
+    os._exit(0) # Mata todas as threads e fecha o programa
+
+def run_tray():
+    image = create_image()
+    menu = pystray.Menu(pystray.MenuItem('Encerrar Sensor NOC', on_quit))
+    icon = pystray.Icon("NOC Sensor", image, "NOC Sensor (Ativo)", menu)
+    icon.run()
+
 if __name__ == "__main__":
     init_local_db() 
-    thread_telemetria = threading.Thread(target=loop_telemetria, daemon=True)
-    thread_telemetria.start()
-    app.run(host='0.0.0.0', port=PORTA_LOCAL, debug=False)
+    
+    # 1. Inicia a telemetria em segundo plano
+    threading.Thread(target=loop_telemetria, daemon=True).start()
+    
+    # 2. Inicia o painel local em segundo plano (use_reloader=False é vital para .exe)
+    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=PORTA_LOCAL, debug=False, use_reloader=False), daemon=True).start()
+    
+    # 3. Inicia o Ícone na Bandeja do Windows (Trava a thread principal mantendo o programa vivo)
+    run_tray()
