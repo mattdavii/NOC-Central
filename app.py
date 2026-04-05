@@ -55,35 +55,35 @@ def login():
     
     erro = None
     if request.method == 'POST':
+        # Pega os dados do HTML
         usuario_digitado = request.form.get('usuario')
         senha_digitada = request.form.get('senha')
         
+        # RASTREADOR PARA O RENDER (Vai aparecer no LOG)
+        print(f"TENTATIVA DE LOGIN -> User: '{usuario_digitado}' | Pass: '{senha_digitada}'")
+        
         try:
             conn = database.get_db()
-            # Busca o usuário no banco da nuvem
             user = conn.execute("SELECT * FROM clientes WHERE usuario = ?", (usuario_digitado,)).fetchone()
-            conn.close()
             
-            # Força a criação do admin se por acaso o banco estiver vazio
             if not user and usuario_digitado == 'admin' and senha_digitada == 'admin123':
-                conn = database.get_db()
                 conn.execute("INSERT INTO clientes (usuario, senha, role) VALUES ('admin', 'admin123', 'Administrador Master')")
                 conn.commit()
-                conn.close()
-                # Libera o acesso logo após criar
                 session['logged_in'] = True
                 session['usuario'] = 'admin'
                 session['role'] = 'Administrador Master'
-                return redirect(url_for('dashboard')) # ou 'index', dependendo do nome da sua rota principal
+                print("SUCESSO: Admin criado e liberado!")
+                return redirect(url_for('index')) # Redirecionamento correto
             
-            # Verifica se achou o usuário e se a senha bate
             elif user and user['senha'] == senha_digitada:
                 session['logged_in'] = True
                 session['usuario'] = user['usuario']
                 session['role'] = user['role']
-                return redirect(url_for('dashboard')) # Substitua 'dashboard' pela sua rota principal se for diferente (ex: 'index')
+                print("SUCESSO: Login autorizado!")
+                return redirect(url_for('index')) # Redirecionamento correto
             else:
                 erro = "Usuário ou senha incorretos!"
+                print("FALHA: Senha não bateu ou usuário não existe no banco.")
                 
         except Exception as e:
             erro = f"Erro no banco de dados: {e}"
