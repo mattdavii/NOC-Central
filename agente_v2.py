@@ -119,13 +119,16 @@ def executar_speedtest(mac, url_central):
 # 📡 MOTOR 1: ENVIO E COLETA (BACKGROUND)
 # ==========================================
 def executar_traceroute(mac, url_central):
+    import platform
+    import subprocess
+    os_name = platform.system() # O segredo: Ele descobre o SO aqui dentro agora!
+    
     try:
         print("⏳ Central solicitou Traceroute! Rastreando rota para 8.8.8.8...")
-        # Comando tracert do Windows (máximo 15 saltos para não demorar muito)
         cmd = ['tracert', '-d', '-h', '15', '8.8.8.8'] if os_name == "Windows" else ['traceroute', '-m', '15', '-n', '8.8.8.8']
-
+        
         resultado = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=40).decode('cp850' if os_name == "Windows" else 'utf-8', errors='ignore')
-
+        
         payload = {"mac_id": mac, "rota": resultado}
         url_trace = url_central.replace('report_data', 'reportar_rota')
         req = urllib.request.Request(url_trace, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')

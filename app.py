@@ -163,11 +163,11 @@ def report_data():
         if sensor:
             conn.execute('''UPDATE sensores SET 
                 ip_sensor = ?, cpu_usage = ?, ram_usage = ?, temp = ?, 
-                status = 'online', lat = ?, lon = ?, ping_gateway = ?, ping_global = ?,
+                status = 'online', ping_gateway = ?, ping_global = ?,
                 ip_gateway = ?, last_seen = CURRENT_TIMESTAMP
                 WHERE mac_id = ?''', 
                 (ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
-                 data.get('temp'), data.get('lat'), data.get('lon'), data.get('ping_gateway'), 
+                 data.get('temp'), data.get('ping_gateway'), 
                  data.get('ping_global'), data.get('ip_gateway'), mac))
         else:
             conn.execute('''INSERT INTO sensores 
@@ -424,11 +424,12 @@ def get_sensor_data(mac_id):
 def configurar_sensor():
     data = request.json
     conn = database.get_db()
+    # Salva o Nome e as Coordenadas digitadas no painel
     conn.execute("UPDATE sensores SET nome_local = ?, lat = ?, lon = ? WHERE mac_id = ?", 
                  (data['nome'], data['lat'], data['lon'], data['mac_id']))
     conn.commit()
     conn.close()
-    return jsonify({"status": "Configurado!"})
+    return jsonify({"status": "OK"})
 
 @app.route('/api/v2/solicitar_speedtest/<mac_id>', methods=['POST'])
 def solicitar_speedtest(mac_id):

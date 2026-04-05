@@ -474,6 +474,8 @@
             document.getElementById('lista-historico').innerHTML = html || '<div style="text-align:center; padding:10px; color:var(--text-muted);">Sem logs no período.</div>';
         }
 
+        async function salvarConfig() { const data = { mac_id, nome: document.getElementById('edit-nome').value, lat: parseFloat(document.getElementById('edit-lat').value), lon: parseFloat(document.getElementById('edit-lon').value) }; await fetch('/api/v2/configurar_sensor', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }); alert("Sincronizado!"); }
+
         async function forcarTraceroute() {
          document.getElementById('btn-trace').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Rastreado...';
          document.getElementById('trace-result').innerText = 'Executando salto a salto pelo Windows... (pode levar até 40 segundos)';
@@ -481,7 +483,7 @@
          setTimeout(() => { document.getElementById('btn-trace').innerHTML = '<i class="fa-solid fa-play"></i> Rastrear Rota'; buscarDadosAoVivo(); }, 40000);
      }
 
-        async function salvarConfig() { const data = { mac_id, nome: document.getElementById('edit-nome').value, lat: parseFloat(document.getElementById('edit-lat').value), lon: parseFloat(document.getElementById('edit-lon').value) }; await fetch('/api/v2/configurar_sensor', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }); alert("Sincronizado!"); }
+        
 
         // ==========================================
         // LOOPS DE ATUALIZAÇÃO (MOTORES)
