@@ -2,14 +2,13 @@ import sqlite3
 import os
 from urllib.parse import urlparse
 
-# A nuvem (Render) injeta essa variável automaticamente. No seu PC, ela não existe.
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 def get_db_connection():
     if DATABASE_URL:
-        # --- CONEXÃO NUVEM (POSTGRESQL) ---
         import psycopg2
-        # Corrige a URL caso o Render mande o formato antigo
+        import psycopg2.extras # Essencial para funcionar igual ao SQLite
+        
         url_corrigida = DATABASE_URL.replace("postgres://", "postgresql://", 1)
         url = urlparse(url_corrigida)
         
@@ -18,11 +17,24 @@ def get_db_connection():
             user=url.username,
             password=url.password,
             host=url.hostname,
-            port=url.port
+            port=url.port,
+            cursor_factory=psycopg2.extras.DictCursor # Faz os dados virem em formato de Dicionário
         )
+        
+        # --- TRADUTOR UNIVERSAL SQLITE -> POSTGRES ---
+        # Ensina o Postgres a aceitar "conn.execute" e trocar "?" por "%s"
+        def adaptador_execute(query, params=None):
+            cur = conn.cursor()
+            query_pg = query.replace('?', '%s')
+            if params:
+                cur.execute(query_pg, params)
+            else:
+                cur.execute(query_pg)
+            return cur
+            
+        conn.execute = adaptador_execute
         return conn
     else:
-        # --- CONEXÃO LOCAL (SQLITE) ---
         conn = sqlite3.connect('database.db')
         conn.row_factory = sqlite3.Row
         return conn
