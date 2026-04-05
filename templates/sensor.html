@@ -98,7 +98,6 @@
                     {% if sensor.status == 'online' %}SENSOR ON{% else %}SENSOR OFF{% endif %}
                 </span>
             </h3>
-            
             <div class="data-row" style="margin-top:10px;">
                 <span><i class="fa-solid fa-temperature-half" style="color:var(--yellow); width: 20px;"></i> Temperatura:</span> 
                 <strong id="temp-text" style="color:var(--yellow); text-shadow: 0 0 10px rgba(249,226,175,0.3);">-- °C</strong>
@@ -115,7 +114,6 @@
                 </div>
                 <div class="progress-bg"><div id="ram-fill" class="progress-fill"></div></div>
             </div>
-
             <div style="display: flex; gap: 10px; margin-top: 20px;">
                 <button class="action-btn" onclick="enviarComandoEnergia('reboot')" style="background: rgba(249, 226, 175, 0.2); color: var(--yellow); flex: 1; border: 1px solid var(--yellow);"><i class="fa-solid fa-arrows-rotate"></i> Reiniciar</button>
                 <button class="action-btn" onclick="enviarComandoEnergia('shutdown')" style="background: rgba(243, 139, 168, 0.2); color: var(--red); flex: 1; border: 1px solid var(--red);"><i class="fa-solid fa-power-off"></i> Desligar</button>
@@ -200,7 +198,6 @@
                 <div id="card-aws" class="g-card"><i class="fa-brands fa-aws"></i> AWS Amazon <div id="pg-aws" class="ms">--</div></div>
                 <div id="card-quad9" class="g-card"><i class="fa-solid fa-shield-halved"></i> DNS Quad9 <div id="pg-quad9" class="ms">--</div></div>
             </div>
-            
             <div style="position: relative; height: 220px; width: 100%; margin-top: 15px; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--bg-input); padding: 10px; box-sizing: border-box;">
                 <canvas id="chartPing"></canvas>
             </div>
@@ -239,28 +236,9 @@
                 <span><i class="fa-solid fa-route"></i> Análise de Rota Wan (Traceroute)</span>
                 <button class="action-btn" onclick="forcarTraceroute()" id="btn-trace" style="background:var(--purple); color:white; font-size: 0.8em;"><i class="fa-solid fa-play"></i> Rastrear Rota</button>
             </h3>
-            <pre id="trace-result" style="background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px; border: 1px solid var(--bg-input); color: var(--green); font-family: 'JetBrains Mono', monospace; font-size: 0.85em; overflow-x: auto; min-height: 100px; white-space: pre-wrap;">Nenhum teste de rota executado recentemente.</pre>
-        </div>
-
-    </div> 
-
-
-        <div class="card" style="grid-column: 1 / -1; border-top: 4px solid var(--purple);">
-         <h3>
-             <span><i class="fa-solid fa-route"></i> Análise de Rota Wan (Traceroute)</span>
-             <button class="action-btn" onclick="forcarTraceroute()" id="btn-trace" style="background:var(--purple); color:white; font-size: 0.8em;"><i class="fa-solid fa-play"></i> Rastrear Rota</button>
-         </h3>
-         <pre id="trace-result" style="background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px; border: 1px solid var(--bg-input); color: var(--green); font-family: 'JetBrains Mono', monospace; font-size: 0.85em; overflow-x: auto; min-height: 100px;">Nenhum teste de rota executado recentemente.</pre>
-     </div>
-
-        <div class="card card-calib">
-            <h3><span><i class="fa-solid fa-map-location-dot"></i> Calibração GPS</span></h3>
-            <div style="margin-bottom: 8px;"><input type="text" id="edit-nome" value="{{ sensor.nome_local }}"></div>
-            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                <input type="number" id="edit-lat" step="any" value="{{ sensor.lat or '-14.235' }}">
-                <input type="number" id="edit-lon" step="any" value="{{ sensor.lon or '-51.925' }}">
+            <div id="trace-result" style="min-height: 100px;">
+                <div style="text-align:center; color: var(--text-muted); padding: 20px;">Nenhum teste de rota executado recentemente.</div>
             </div>
-            <button class="action-btn" onclick="salvarConfig()" style="background: #fab387; width: 100%;">Sincronizar</button>
         </div>
 
     </div>
@@ -368,6 +346,74 @@
         }
 
         // ==========================================
+        // TRADUTOR VISUAL DE TRACEROUTE
+        // ==========================================
+        function desenharTraceroute(rawText) {
+            if (!rawText || rawText.includes("Nenhum teste") || rawText.includes("Executando salto")) {
+                return `<div style="text-align:center; color: var(--text-muted); padding: 20px; font-style: italic;">${rawText || "Sem dados."}</div>`;
+            }
+
+            const linhas = rawText.split('\n');
+            let html = '<div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">';
+            let hops = 0;
+
+            linhas.forEach(linha => {
+                let l = linha.trim();
+                if (!l) return;
+
+                if (l.match(/^[A-Za-z]/)) {
+                     html += `<div style="font-size: 0.85em; color: var(--text-muted); border-bottom: 1px dashed var(--border); padding-bottom: 5px; margin-bottom: 5px;">${l}</div>`;
+                     return;
+                }
+
+                const match = l.match(/^(\d+)\s+(.*)/);
+                if (match) {
+                    hops++;
+                    const hopNum = match[1];
+                    let info = match[2].trim();
+
+                    let isTimeout = info.includes('*') && (info.includes('Esgotado') || info.includes('Request timed out'));
+                    let cardColor = isTimeout ? 'var(--red)' : 'var(--blue)';
+                    
+                    let ip = "Desconhecido";
+                    let latencia = info;
+
+                    if (!isTimeout) {
+                        const partes = info.split(/\s+/);
+                        ip = partes.pop();
+                        latencia = partes.join(' ');
+                    } else {
+                        ip = "Tempo Esgotado / Firewall";
+                        latencia = "<span style='color: var(--red);'>* * *</span>";
+                    }
+
+                    html += `
+                        <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--bg-input); border-radius: 8px; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; border-left: 4px solid ${cardColor}; transition: transform 0.2s;">
+                            <div style="display: flex; align-items: center; gap: 15px;">
+                                <span style="background: var(--bg-input); color: var(--text-main); font-weight: bold; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 0.85em;">${hopNum}</span>
+                                <i class="fa-solid ${isTimeout ? 'fa-shield-virus' : 'fa-server'}" style="color: ${cardColor}; font-size: 1.2em;"></i>
+                                <span style="font-family: 'JetBrains Mono', monospace; font-weight: bold; color: ${isTimeout ? 'var(--red)' : 'var(--text-main)'}; font-size: 1.1em;">${ip}</span>
+                            </div>
+                            <div style="font-family: 'JetBrains Mono', monospace; color: var(--text-muted); font-size: 0.9em; text-align: right;">
+                                ${latencia}
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            html += '</div>';
+            return hops > 0 ? html : `<pre style="color: var(--text-muted); white-space: pre-wrap;">${rawText}</pre>`;
+        }
+
+        async function forcarTraceroute() {
+            document.getElementById('btn-trace').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Rastreado...';
+            document.getElementById('trace-result').innerHTML = desenharTraceroute('Executando salto a salto pelo Windows... (pode levar até 40 segundos)');
+            await fetch('/api/v2/solicitar_traceroute/' + mac_id, { method: 'POST' });
+            setTimeout(() => { document.getElementById('btn-trace').innerHTML = '<i class="fa-solid fa-play"></i> Rastrear Rota'; buscarDadosAoVivo(); }, 40000);
+        }
+
+        // ==========================================
         // MOTOR PRINCIPAL DE TELEMETRIA
         // ==========================================
         async function buscarDadosAoVivo() {
@@ -375,7 +421,6 @@
                 const response = await fetch('/api/v2/sensor_data/' + mac_id);
                 const data = await response.json();
                 
-                // --- ATUALIZAÇÃO DO BADGE DE STATUS (O CEIFEIRO NA TELA) ---
                 const badge = document.getElementById('badge-status');
                 if(data.status === 'online') {
                     badge.innerText = "SENSOR ON";
@@ -385,8 +430,6 @@
                     badge.className = "status-pill pill-fail";
                 }
                 
-                if(data.ultima_rota) document.getElementById('trace-result').innerText = data.ultima_rota;
-
                 document.getElementById('cpu-text').innerText = data.cpu_usage + '%';
                 document.getElementById('cpu-fill').style.width = data.cpu_usage + '%';
                 document.getElementById('ram-text').innerText = data.ram_usage + '%';
@@ -441,6 +484,9 @@
                     document.getElementById('speed-down').innerText = data.download || '0.0';
                     document.getElementById('speed-up').innerText = data.upload || '0.0';
                 }
+
+                if(data.ultima_rota) document.getElementById('trace-result').innerHTML = desenharTraceroute(data.ultima_rota);
+
             } catch (e) {}
         }
 
@@ -496,15 +542,6 @@
         }
 
         async function salvarConfig() { const data = { mac_id, nome: document.getElementById('edit-nome').value, lat: parseFloat(document.getElementById('edit-lat').value), lon: parseFloat(document.getElementById('edit-lon').value) }; await fetch('/api/v2/configurar_sensor', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }); alert("Sincronizado!"); }
-
-        async function forcarTraceroute() {
-         document.getElementById('btn-trace').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Rastreado...';
-         document.getElementById('trace-result').innerText = 'Executando salto a salto pelo Windows... (pode levar até 40 segundos)';
-         await fetch('/api/v2/solicitar_traceroute/' + mac_id, { method: 'POST' });
-         setTimeout(() => { document.getElementById('btn-trace').innerHTML = '<i class="fa-solid fa-play"></i> Rastrear Rota'; buscarDadosAoVivo(); }, 40000);
-     }
-
-        
 
         // ==========================================
         // LOOPS DE ATUALIZAÇÃO (MOTORES)

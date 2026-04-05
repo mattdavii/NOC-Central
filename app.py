@@ -161,6 +161,12 @@ def report_data():
         ip_display = data.get('ip_publico') if data.get('ip_publico') else data.get('ip_local', '0.0.0.0')
 
         if sensor:
+            # 🚨 GERA ALERTA QUANDO O SENSOR VOLTA A FICAR ONLINE
+            if sensor['status'] == 'offline':
+                try:
+                    conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Conexão Restaurada', 'Aviso', 'Sensor restabeleceu a comunicação')", (mac,))
+                except: pass
+
             conn.execute('''UPDATE sensores SET 
                 ip_sensor = ?, cpu_usage = ?, ram_usage = ?, temp = ?, 
                 status = 'online', ping_gateway = ?, ping_global = ?,
@@ -379,8 +385,12 @@ def api_mapa_sensores():
     
     conn = database.get_db()
     
-    # 🚨 O CEIFEIRO (HEARTBEAT): Derruba qualquer sensor que não mandou dados nos últimos 15 segundos
+    # 🚨 O CEIFEIRO INTELIGENTE: Pega quem caiu e GERA O ALERTA sozinho!
     try:
+        caidos = conn.execute("SELECT mac_id FROM sensores WHERE status = 'online' AND last_seen < NOW() - INTERVAL '15 seconds'").fetchall()
+        for c in caidos:
+            conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder à Central (Offline)')", (c['mac_id'],))
+        
         conn.execute("UPDATE sensores SET status = 'offline' WHERE last_seen < NOW() - INTERVAL '15 seconds'")
         conn.commit()
     except: pass
@@ -806,12 +816,26 @@ def reportar_rota():
 @app.route('/api/v2/logs_globais')
 def logs_globais():
     conn = database.get_db()
-    logs = conn.execute('''
-        SELECT l.tipo_evento, l.gravidade, l.detalhes, to_char(l.data_hora, 'DD/MM HH24:MI:SS') as hora, s.nome_local 
-        FROM logs_ia l 
-        LEFT JOIN sensores s ON l.sensor_mac = s.mac_id 
-        ORDER BY l.id DESC LIMIT 50
-    ''').fetchall()
+    
+    # 🚨 PREVENÇÃO: Cria a tabela caso ela não exista para não travar o painel
+    try:
+        conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (
+            id SERIAL PRIMARY KEY, sensor_mac TEXT, tipo_evento TEXT, 
+            gravidade TEXT, detalhes TEXT, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        conn.commit()
+    except: pass
+
+    try:
+        logs = conn.execute('''
+            SELECT l.tipo_evento, l.gravidade, l.detalhes, to_char(l.data_hora, 'DD/MM HH24:MI:SS') as hora, s.nome_local 
+            FROM logs_ia l 
+            LEFT JOIN sensores s ON l.sensor_mac = s.mac_id 
+            ORDER BY l.id DESC LIMIT 50
+        ''').fetchall()
+    except:
+        logs = []
+        
     conn.close()
     return jsonify([dict(l) for l in logs])
 
