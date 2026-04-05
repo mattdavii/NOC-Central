@@ -2,37 +2,24 @@ import sys
 import os
 
 # 🛡️ TRUQUE ANTI-CRASH DO PYINSTALLER (--noconsole)
-# Cria um terminal fantasma (buraco negro) para bibliotecas teimosas não quebrarem
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")
 if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 if sys.stdin is None:  sys.stdin = open(os.devnull, "r")
 
-# Agora sim, fazemos os imports normais...
-import time, json, urllib.request, threading, sqlite3, concurrent.futures
-import speedtest 
-import platform
-import os, sys, time, json, urllib.request, threading, sqlite3, concurrent.futures
-import speedtest # 🚨 TEM QUE ESTAR AQUI NO TOPO AGORA!
-import time, json, platform, subprocess, uuid, os, threading, sqlite3, socket
-import urllib.request
+# 📦 IMPORTS LIMPOS E ORGANIZADOS
+import time, json, platform, subprocess, uuid, threading, sqlite3, socket, urllib.request, concurrent.futures
 from datetime import datetime
 from flask import Flask, request, Response, render_template_string, jsonify
 import pystray
 from PIL import Image, ImageDraw
-import concurrent.futures
-import subprocess
-try: import speedtest
-except: pass
-try:
-    import psutil
-except ImportError:
-    psutil = None
-import sys
+import speedtest 
+
+try: import psutil
+except ImportError: psutil = None
 
 # ==========================================
 # ⚙️ CONFIGURAÇÃO DO AGENTE
 # ==========================================
-# Link atualizado da sua Central na Nuvem
 URL_CENTRAL = "https://noc-central.onrender.com/api/v2/report_data" 
 PORTA_LOCAL = 10000
 
@@ -105,8 +92,8 @@ def ping(host):
 # ==========================================
 def init_local_db():
     conn = sqlite3.connect('sensor_local.db')
-    conn.execute('''CREATE TABLE IF NOT EXISTS alvos_locais (id INTEGER PRIMARY KEY AUTOINCREMENT, ip TEXT, descricao TEXT)''')
-    conn.execute('''CREATE TABLE IF NOT EXISTS logs_locais (id INTEGER PRIMARY KEY AUTOINCREMENT, tipo TEXT, detalhes TEXT, gravidade TEXT, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS alvos_locais (id INTEGER PRIMARY KEY, ip TEXT, descricao TEXT)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS logs_locais (id INTEGER PRIMARY KEY, tipo TEXT, detalhes TEXT, gravidade TEXT, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     conn.execute('''CREATE TABLE IF NOT EXISTS nomes_topologia (mac TEXT PRIMARY KEY, nome TEXT)''')
     conn.commit()
     conn.close()
@@ -121,104 +108,68 @@ def log_local_event(tipo, detalhes, gravidade="Alerta"):
     except: pass
 
 def executar_speedtest(mac, url_central):
-    import urllib.request, json, time
-    
     d, u = 0.0, 0.0
     erro_principal = ""
-    
-    # 🏎️ MOTOR 1: Oficial (Ookla Speedtest)
     try:
-        import speedtest
-        # secure=False ajuda a evitar alguns bloqueios corporativos
         st = speedtest.Speedtest(secure=False)
         st.get_best_server()
-        
-        # 8 Threads forçam uma extração maior de banda sem parecer um ataque DDoS
         d = st.download(threads=8) / 1_000_000
         u = st.upload(threads=8) / 1_000_000
-        
     except Exception as e:
         erro_principal = str(e)
-        print(f"⚠️ [SPEEDTEST] Ookla bloqueou ({erro_principal}). Acionando Motor de Backup...")
-        
-        # 🚜 MOTOR 2: Redundância Pública (Tele2 Holanda - Sem Firewall)
         try:
-            # Baixa um arquivo neutro de 10 Megabytes em um servidor sem bloqueio
             url_dl = "http://speedtest.tele2.net/10MB.zip"
             inicio = time.time()
             urllib.request.urlopen(url_dl, timeout=20).read()
             tempo_dl = time.time() - inicio
-            
-            d = 80.0 / tempo_dl  # 10MB = 80 Megabits. (Megabits / tempo = Mbps)
-            u = d * 0.5  # Como o Motor 2 não faz upload, estimamos em 50% para o gráfico não zerar
-            
+            d = 80.0 / tempo_dl 
+            u = d * 0.5 
         except Exception as e2:
-            # Se a internet realmente tiver caído (e o backup também falhar), geramos o log
             try:
                 url_log = url_central.replace('report_data', 'alertas_ia')
-                alerta = [{"tipo": "Falha de Speedtest", "gravidade": "Aviso", "detalhes": f"Motor 1 (Ookla): {erro_principal} | Motor 2 (Tele2): {str(e2)}"}]
+                alerta = [{"tipo": "Falha de Speedtest", "gravidade": "Aviso", "detalhes": f"Ookla: {erro_principal} | Tele2: {str(e2)}"}]
                 req_log = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": alerta}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
                 urllib.request.urlopen(req_log, timeout=5)
             except: pass
             return
 
-    # 🚀 SALVA OS DADOS NA CENTRAL (Seja do Motor 1 ou do Motor 2)
     try:
         payload = {"mac_id": mac, "down": round(d, 2), "up": round(u, 2)}
         url_speed = url_central.replace('report_data', 'reportar_velocidade')
         req = urllib.request.Request(url_speed, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
         urllib.request.urlopen(req, timeout=10)
-        print(f"✅ [SPEEDTEST] Finalizado: {round(d, 2)} Mbps")
+    except: pass
+
+def executar_traceroute(mac, url_central):
+    os_name = platform.system() 
+    try:
+        cmd = ['tracert', '-d', '-h', '15', '8.8.8.8'] if os_name == "Windows" else ['traceroute', '-m', '15', '-n', '8.8.8.8']
+        resultado = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=40).decode('cp850' if os_name == "Windows" else 'utf-8', errors='ignore')
+        payload = {"mac_id": mac, "rota": resultado}
+        url_trace = url_central.replace('report_data', 'reportar_rota')
+        req = urllib.request.Request(url_trace, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+        urllib.request.urlopen(req, timeout=10)
     except: pass
 
 # ==========================================
 # 📡 MOTOR 1: ENVIO E COLETA (BACKGROUND)
 # ==========================================
-def executar_traceroute(mac, url_central):
-    import platform
-    import subprocess
-    os_name = platform.system() # O segredo: Ele descobre o SO aqui dentro agora!
-    
-    try:
-        print("⏳ Central solicitou Traceroute! Rastreando rota para 8.8.8.8...")
-        cmd = ['tracert', '-d', '-h', '15', '8.8.8.8'] if os_name == "Windows" else ['traceroute', '-m', '15', '-n', '8.8.8.8']
-        
-        resultado = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=40).decode('cp850' if os_name == "Windows" else 'utf-8', errors='ignore')
-        
-        payload = {"mac_id": mac, "rota": resultado}
-        url_trace = url_central.replace('report_data', 'reportar_rota')
-        req = urllib.request.Request(url_trace, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
-        urllib.request.urlopen(req, timeout=10)
-        print("✅ Traceroute Enviado para a Central!")
-    except Exception as e:
-        print(f"❌ Erro no Traceroute: {e}")
-
 def loop_telemetria():
     global dados_sensores
     mac = get_mac()
     os_name = platform.system()
     estado_anterior = {"wan": True, "gw": True}
-    
-    # ⏱️ CRONÔMETRO: Começa em 0 para rodar um teste assim que o agente ligar
     ultima_medicao_speedtest = 0 
     
     while True:
         agora = time.time()
-
-        # 🚀 LÓGICA AUTOMÁTICA: Se passou 15 minutos (900s), roda o Speedtest em background
         if agora - ultima_medicao_speedtest > 900:
-            print("🕒 [AUTO] Iniciando ciclo de 15 minutos do Speedtest...")
             threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
             ultima_medicao_speedtest = agora
 
-        try: 
-            import psutil
-            cpu = psutil.cpu_percent(interval=1) if psutil else 0.0
-            ram = psutil.virtual_memory().percent if psutil else 0.0
-        except: 
-            cpu = 10.0; ram = 10.0
+        cpu = psutil.cpu_percent(interval=1) if psutil else 0.0
+        ram = psutil.virtual_memory().percent if psutil else 0.0
 
-        # ... (Mantém o código de Pings e Network Info igual) ...
         hosts_ping = {"Google": "8.8.8.8", "Cloudflare": "1.1.1.1", "AWS": "aws.amazon.com", "Quad9": "9.9.9.9"}
         pings = {}
         with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -229,19 +180,41 @@ def loop_telemetria():
         meu_ip, gateway_ip = get_network_info()
         ping_gw = ping(gateway_ip) if gateway_ip != "Desconhecido" else 0
         
-        # ... (Mantém a lógica de topologia e logs locais igual) ...
-        # (Abaixo, na parte de ENVIO PARA NUVEM)
+        # Leitura e Atualização do Banco Local (Restauração da Lógica!)
+        try:
+            conn = sqlite3.connect('sensor_local.db')
+            alvos = conn.execute("SELECT id, ip, descricao FROM alvos_locais").fetchall()
+            logs_db = conn.execute("SELECT tipo, detalhes, gravidade, strftime('%H:%M:%S', data_hora) FROM logs_locais ORDER BY id DESC LIMIT 15").fetchall()
+            nomes_db = {row[0]: row[1] for row in conn.execute("SELECT mac, nome FROM nomes_topologia").fetchall()}
+            conn.close()
+            
+            resultados_alvos = [{"id": a[0], "ip": a[1], "descricao": a[2], "latencia": ping(a[1])} for a in alvos]
+            logs_formatados = [{"tipo": l[0], "detalhes": l[1], "gravidade": l[2], "hora": l[3]} for l in logs_db]
+            
+            topologia_bruta = get_topologia_arp(meu_ip)
+            for t in topologia_bruta:
+                if t["mac"] in nomes_db: t["nome"] = nomes_db[t["mac"]]
+
+            dados_sensores["cpu"] = cpu
+            dados_sensores["ram"] = ram
+            dados_sensores["meu_ip"] = meu_ip
+            dados_sensores["gateway_ip"] = gateway_ip
+            dados_sensores["ping_gateway"] = ping_gw
+            dados_sensores["pings"] = pings
+            dados_sensores["custom_ips"] = resultados_alvos
+            dados_sensores["topologia"] = topologia_bruta
+            dados_sensores["logs"] = logs_formatados
+        except: pass
 
         payload = {"mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", "ip_local": meu_ip, "ip_gateway": gateway_ip, "cpu_usage": cpu, "ram_usage": ram, "temp": 40, "ping_gateway": ping_gw, "ping_global": json.dumps(pings)}
-        
+        espera_remota = 3
+
         try:
             req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
             with urllib.request.urlopen(req, timeout=5) as response:
                 res_data = json.loads(response.read().decode('utf-8'))
-                print("✅ [TELEMETRIA] Dados sincronizados!")
-                
                 comando = res_data.get("command")
-                espera_remota = res_data.get("intervalo", 3) # Respeita o intervalo da central
+                espera_remota = res_data.get("intervalo", 3) 
 
                 if comando == "reboot": 
                     os.system("shutdown /r /t 0" if os_name == "Windows" else "sudo reboot")
@@ -250,14 +223,10 @@ def loop_telemetria():
                 elif comando == "run_traceroute": 
                     threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
                 elif comando == "update_agent":
-                    # (Mantenha o seu código de OTA aqui, certificando-se de usar links RAW)
+                    # Mantenha seu código OTA aqui
                     pass
-                    
-        except Exception as e: 
-            print(f"❌ Erro Telemetria: {e}")
-            espera_remota = 5
+        except: espera_remota = 5
 
-        # (Fim do loop)
         time.sleep(espera_remota)
 
 # ==========================================
@@ -469,20 +438,17 @@ def index():
     return render_template_string(HTML_CYBERPUNK)
 
 # ==========================================
-# 🛠️ MOTOR 3: SYSTEM TRAY E INICIALIZAÇÃO
+# 🛠️ MOTOR 3: SYSTEM TRAY (ÍCONE NO RELÓGIO)
 # ==========================================
-
-# Cria a imagem do ícone (Um escudo/círculo azul simples)
 def create_image():
     image = Image.new('RGB', (64, 64), color=(11, 11, 19))
     dc = ImageDraw.Draw(image)
     dc.ellipse((8, 8, 56, 56), fill=(137, 180, 250))
     return image
 
-# Função que o usuário chama ao clicar em "Sair"
 def on_quit(icon, item):
     icon.stop()
-    os._exit(0) # Mata todas as threads e fecha o programa
+    os._exit(0) # Força o desligamento absoluto de todas as Threads
 
 def run_tray():
     image = create_image()
@@ -490,14 +456,26 @@ def run_tray():
     icon = pystray.Icon("NOC Sensor", image, "NOC Sensor (Ativo)", menu)
     icon.run()
 
+# ==========================================
+# 🚀 IGNIÇÃO (MULTI-THREADING OBRIGATÓRIO)
+# ==========================================
 if __name__ == "__main__":
-    init_local_db() 
-    
-    # 1. Inicia a telemetria em segundo plano
-    threading.Thread(target=loop_telemetria, daemon=True).start()
-    
-    # 2. Inicia o painel local em segundo plano (use_reloader=False é vital para .exe)
-    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=PORTA_LOCAL, debug=False, use_reloader=False), daemon=True).start()
-    
-    # 3. Inicia o Ícone na Bandeja do Windows (Trava a thread principal mantendo o programa vivo)
-    run_tray()
+    try:
+        # 1. Cria/Reconecta o Banco de Dados
+        init_local_db()
+
+        # 2. Liga o Servidor Local (Thread Isolada)
+        threading.Thread(target=lambda: app.run(host='0.0.0.0', port=PORTA_LOCAL, debug=False, use_reloader=False), daemon=True).start()
+
+        # 3. Liga o Loop de Telemetria (Thread Isolada)
+        threading.Thread(target=loop_telemetria, daemon=True).start()
+
+        # 4. Liga o Ícone do Pystray (DEVE RODA NA THREAD PRINCIPAL)
+        run_tray() 
+        
+    except Exception as e:
+        import traceback
+        caminho_erro = os.path.join(os.path.dirname(os.path.abspath(__file__)), "erro_fatal_agente.txt")
+        with open(caminho_erro, "w", encoding="utf-8") as f:
+            f.write("O AGENTE MORREU. MOTIVO:\n\n")
+            f.write(traceback.format_exc())
