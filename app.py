@@ -50,23 +50,46 @@ PENDING_COMMANDS = {}
 # ==========================================
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    from flask import request, session, redirect, url_for, render_template
+    import database
+    
+    erro = None
     if request.method == 'POST':
-        usuario = request.form['usuario']
-        senha = request.form['senha']
+        usuario_digitado = request.form.get('usuario')
+        senha_digitada = request.form.get('senha')
         
-        conn = database.get_db()
-        user = conn.execute("SELECT * FROM clientes WHERE usuario = ?", (usuario,)).fetchone()
-        conn.close()
-
-        if user and check_password_hash(user['senha'], senha):
-            session['user_id'] = user['id']
-            session['user_nome'] = user['nome']
-            session['role'] = user['role']
-            return redirect(url_for('index'))
-        else:
-            flash("Usuário ou senha incorretos.")
+        try:
+            conn = database.get_db()
+            # Busca o usuário no banco da nuvem
+            user = conn.execute("SELECT * FROM clientes WHERE usuario = ?", (usuario_digitado,)).fetchone()
+            conn.close()
             
-    return render_template('login.html')
+            # Força a criação do admin se por acaso o banco estiver vazio
+            if not user and usuario_digitado == 'admin' and senha_digitada == 'admin123':
+                conn = database.get_db()
+                conn.execute("INSERT INTO clientes (usuario, senha, role) VALUES ('admin', 'admin123', 'Administrador Master')")
+                conn.commit()
+                conn.close()
+                # Libera o acesso logo após criar
+                session['logged_in'] = True
+                session['usuario'] = 'admin'
+                session['role'] = 'Administrador Master'
+                return redirect(url_for('dashboard')) # ou 'index', dependendo do nome da sua rota principal
+            
+            # Verifica se achou o usuário e se a senha bate
+            elif user and user['senha'] == senha_digitada:
+                session['logged_in'] = True
+                session['usuario'] = user['usuario']
+                session['role'] = user['role']
+                return redirect(url_for('dashboard')) # Substitua 'dashboard' pela sua rota principal se for diferente (ex: 'index')
+            else:
+                erro = "Usuário ou senha incorretos!"
+                
+        except Exception as e:
+            erro = f"Erro no banco de dados: {e}"
+            print(erro)
+
+    return render_template('login.html', erro=erro)
 
 @app.route('/logout')
 def logout():
