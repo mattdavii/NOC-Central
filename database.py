@@ -21,7 +21,7 @@ class PostgresWrapper:
         except Exception as e:
             # O SEGREDO: Se o comando falhar (ex: coluna já existe), limpa a memória do Postgres para ele não travar o resto do site!
             self.conn.rollback()
-            raise e # Repassa o erro para o app.py ignorar suavemente
+            raise e # Repassa o erro
 
     def commit(self):
         self.conn.commit()
@@ -58,7 +58,7 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     
-    # Criação das tabelas
+    # 1. CRIAÇÃO BASE (Caso o banco venha do zero)
     conn.execute('''
         CREATE TABLE IF NOT EXISTS sensores (
             mac_id TEXT PRIMARY KEY, nome_local TEXT, ip_sensor TEXT,
@@ -75,9 +75,29 @@ def init_db():
         conn.execute('''CREATE TABLE IF NOT EXISTS historico_pings (id INTEGER PRIMARY KEY AUTOINCREMENT, sensor_mac TEXT, google INTEGER, cloudflare INTEGER, aws INTEGER, quad9 INTEGER, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
         conn.execute('''CREATE TABLE IF NOT EXISTS clientes (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, senha TEXT, role TEXT)''')
 
+    # ========================================================
+    # 🚀 2. AUTO-MIGRAÇÃO (ATUALIZAÇÃO DE BANCOS EXISTENTES)
+    # ========================================================
+    
+    # Adiciona a Logomarca na tabela de Clientes
+    try:
+        conn.execute("ALTER TABLE clientes ADD COLUMN logo_url TEXT DEFAULT ''")
+    except Exception:
+        # Se a coluna já existir, o Postgres joga um erro e bloqueia a transação. 
+        # Nós usamos o rollback para "limpar" o erro e seguir em frente!
+        if DATABASE_URL: conn.conn.rollback() 
+        pass 
+
+    # Adiciona a vinculação do Nome do Cliente na tabela de Sensores
+    try:
+        conn.execute("ALTER TABLE sensores ADD COLUMN cliente_nome TEXT DEFAULT 'Cliente Padrão'")
+    except Exception:
+        if DATABASE_URL: conn.conn.rollback()
+        pass
+
     conn.commit()
     conn.close()
-    print("Banco de dados sincronizado e pronto para operação!")
+    print("✅ Banco de dados sincronizado (Com Suporte a White-Label e Filtros) e pronto para operação!")
 
 # O famoso apelido para o app.py não quebrar
 get_db = get_db_connection

@@ -2,7 +2,6 @@ from flask import Flask, jsonify, request, render_template, session, redirect, u
 from werkzeug.security import check_password_hash, generate_password_hash
 import database
 
-
 app = Flask(__name__)
 app.secret_key = 'chave_super_secreta_noc_md' 
 
@@ -80,6 +79,7 @@ def login():
                 session['usuario'] = 'admin'
                 session['role'] = 'Administrador Master'
                 session['user_id'] = user['id'] if user else 1
+                session['logo_cliente'] = dict(user).get('logo_url', '') if user else ''
                 conn.close()
                 return redirect(url_for('index'))
 
@@ -111,6 +111,8 @@ def login():
                     session['usuario'] = user['usuario']
                     session['role'] = user['role']
                     session['user_id'] = user['id']
+                    # 🖼️ INJEÇÃO DA LOGOMARCA NA SESSÃO
+                    session['logo_cliente'] = dict(user).get('logo_url', '')
                     conn.close()
                     return redirect(url_for('index'))
                 else:
@@ -122,7 +124,7 @@ def login():
                 
         except Exception as e:
             erro = "Erro interno ao validar as credenciais."
-            print(f"❌ [ERRO CRÍTICO NO LOGIN]: {e}") # Printa no log do Render para nós lermos
+            print(f"❌ [ERRO CRÍTICO NO LOGIN]: {e}") 
 
     return render_template('login.html', erro=erro)
 
@@ -136,11 +138,8 @@ def logout():
 # ==========================================
 @app.route('/')
 def index():
-    # Agora ele procura a chave correta que o login gerou
     if 'usuario' not in session: 
         return redirect(url_for('login'))
-    
-    # Passa o nome correto para o HTML mostrar na tela
     return render_template('index.html', nome=session['usuario'])
 
 @app.route('/sensor/<mac_id>')
@@ -236,12 +235,10 @@ def report_data():
 
     except Exception as e:
         print(f"Erro Crítico na Telemetria: {e}")
-        # Retorna 200 (OK) mesmo com erro interno, para o terminal do Agente não piscar vermelho!
         return jsonify({"status": "error", "command": "none"}), 200
         
 @app.route('/api/v2/comando_energia/<mac_id>', methods=['POST'])
 def enviar_comando_energia(mac_id):
-    # Apenas Admin Master pode desligar equipamentos
     if 'user_id' not in session or session.get('role') != 'Administrador Master':
         return jsonify({"error": "Acesso Negado"}), 403
         
@@ -254,7 +251,6 @@ def enviar_comando_energia(mac_id):
 # ==========================================
 @app.route('/api/v2/graficos_ping/<mac_id>')
 def obter_graficos_ping(mac_id):
-    """ Busca os últimos 30 pings para o gráfico de disponibilidade """
     conn = database.get_db()
     try:
         registros = conn.execute("SELECT google, cloudflare, aws, quad9, to_char(data_hora - INTERVAL '3 hours', 'HH24:MI:SS') as hora FROM historico_pings WHERE sensor_mac = ? ORDER BY id DESC LIMIT 30", (mac_id,)).fetchall()
@@ -262,7 +258,7 @@ def obter_graficos_ping(mac_id):
         registros = []
     conn.close()
     
-    registros.reverse() # Inverte para mostrar da esquerda (mais antigo) para a direita (mais novo)
+    registros.reverse()
     return jsonify([dict(r) for r in registros])
 
 @app.route('/api/v2/registrar_sensor', methods=['POST'])
@@ -283,7 +279,6 @@ def telemetria_instantanea():
     data = request.json
     mac_id = data['mac_id']
     
-    # Verifica se a central pediu um speedtest para este sensor
     run_st = mac_id in SPEEDTEST_REQUESTS
     if run_st: 
         SPEEDTEST_REQUESTS.remove(mac_id) 
@@ -296,8 +291,6 @@ def telemetria_instantanea():
     """, (data.get('cpu'), data.get('ram'), data.get('temp', 0), data.get('ping_gw'), data.get('ip_sensor'), data.get('ip_gateway'), mac_id))
     conn.commit()
     conn.close()
-    
-    # Responde ao sensor mandando a ordem de rodar o speedtest, se houver
     return jsonify({"status": "OK", "run_speedtest": run_st})
 
 @app.route('/api/v2/telemetria_global', methods=['POST'])
@@ -316,11 +309,9 @@ def atualizar_dispositivos():
     sensor_mac = data.get('mac_id')
     conn = database.get_db()
     
-    # 1. Puxa o IP do Gateway que o Sensor reportou na telemetria
     sensor_data = conn.execute("SELECT ip_gateway FROM sensores WHERE mac_id = ?", (sensor_mac,)).fetchone()
     ip_gw = sensor_data['ip_gateway'] if sensor_data else None
 
-    # 2. Criação de tabelas seguras
     try:
         conn.execute('''CREATE TABLE IF NOT EXISTS dispositivos (
             id SERIAL PRIMARY KEY, sensor_mac TEXT, ip TEXT, 
@@ -340,12 +331,9 @@ def atualizar_dispositivos():
     for disp in data.get('lista', []):
         nome = nomes_salvos.get(disp['mac'])
         
-        # 🚨 AUTO-IDENTIFICAÇÃO INTELIGENTE DO GATEWAY
         if not nome:
-            if disp['ip'] == ip_gw:
-                nome = "Gateway / Roteador"
-            else:
-                nome = "Desconhecido"
+            if disp['ip'] == ip_gw: nome = "Gateway / Roteador"
+            else: nome = "Desconhecido"
                 
         conn.execute("INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, nome_custom) VALUES (?, ?, ?, ?, ?)",
                        (sensor_mac, disp['ip'], disp['mac'], disp['fabricante'], nome))
@@ -360,10 +348,7 @@ def renomear_dispositivo():
     try: conn.execute("CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)")
     except: pass
     
-    # Salva na Memória Permanente (para nunca mais esquecer)
     conn.execute("INSERT OR REPLACE INTO nomes_conhecidos (mac, nome) VALUES (?, ?)", (data['mac'], data['nome']))
-    
-    # Atualiza a tela atual
     conn.execute("UPDATE dispositivos SET nome_custom = ? WHERE mac = ? AND sensor_mac = ?",
                  (data['nome'], data['mac'], data['sensor_mac']))
     conn.commit()
@@ -375,7 +360,6 @@ def alertas_ia():
     data = request.json
     conn = database.get_db()
     
-    # 🚨 MÁGICA: Cria a tabela de logs na nuvem se não existir
     try:
         conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (
             id SERIAL PRIMARY KEY, sensor_mac TEXT, tipo_evento TEXT, 
@@ -402,7 +386,6 @@ def api_mapa_sensores():
     
     conn = database.get_db()
     
-    # 🚨 O CEIFEIRO INTELIGENTE: Pega quem caiu e GERA O ALERTA sozinho!
     try:
         caidos = conn.execute("SELECT mac_id FROM sensores WHERE status = 'online' AND last_seen < NOW() - INTERVAL '15 seconds'").fetchall()
         for c in caidos:
@@ -417,14 +400,26 @@ def api_mapa_sensores():
         conn.commit()
     except: pass
 
+    # 🚨 JOIN INTELIGENTE: Puxa o nome do cliente associado ao sensor!
     if role in ['Administrador Master', 'Operador Master']:
-        sensores = conn.execute("SELECT mac_id, nome_local, status, lat, lon, cpu_usage FROM sensores").fetchall()
+        sensores = conn.execute("""
+            SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, c.nome as cliente_nome 
+            FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id
+        """).fetchall()
     elif role == 'Cliente':
-        sensores = conn.execute("SELECT mac_id, nome_local, status, lat, lon, cpu_usage FROM sensores WHERE cliente_id = ?", (user_id,)).fetchall()
+        sensores = conn.execute("""
+            SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, c.nome as cliente_nome 
+            FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id 
+            WHERE s.cliente_id = ?
+        """, (user_id,)).fetchall()
     else:
         user_info = conn.execute("SELECT cliente_pai_id FROM clientes WHERE id = ?", (user_id,)).fetchone()
         if user_info and user_info['cliente_pai_id']:
-            sensores = conn.execute("SELECT mac_id, nome_local, status, lat, lon, cpu_usage FROM sensores WHERE cliente_id = ?", (user_info['cliente_pai_id'],)).fetchall()
+            sensores = conn.execute("""
+                SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, c.nome as cliente_nome 
+                FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id 
+                WHERE s.cliente_id = ?
+            """, (user_info['cliente_pai_id'],)).fetchall()
         else:
             sensores = []
 
@@ -434,8 +429,6 @@ def api_mapa_sensores():
 @app.route('/api/v2/sensor_data/<mac_id>', methods=['GET'])
 def get_sensor_data(mac_id):
     conn = database.get_db()
-    
-    # 🚨 O CEIFEIRO: Verifica o relógio ANTES de mandar os dados para a tela
     try:
         conn.execute("UPDATE sensores SET status = 'offline' WHERE last_seen < NOW() - INTERVAL '15 seconds'")
         conn.commit()
@@ -451,7 +444,6 @@ def get_sensor_data(mac_id):
 def configurar_sensor():
     data = request.json
     conn = database.get_db()
-    # Salva o Nome e as Coordenadas digitadas no painel
     conn.execute("UPDATE sensores SET nome_local = ?, lat = ?, lon = ? WHERE mac_id = ?", 
                  (data['nome'], data['lat'], data['lon'], data['mac_id']))
     conn.commit()
@@ -474,7 +466,6 @@ def reportar_velocidade():
         mac = data.get('mac_id')
         conn = database.get_db()
         
-        # 🚨 VOLTANDO PARA O PADRÃO SQLITE (?)
         conn.execute("UPDATE sensores SET download = ?, upload = ? WHERE mac_id = ?", 
                      (data['down'], data['up'], mac))
         
@@ -491,7 +482,6 @@ def reportar_velocidade():
 @app.route('/api/v2/graficos/<mac_id>')
 def obter_graficos(mac_id):
     conn = database.get_db()
-    # 🚨 O segredo está no - INTERVAL '3 hours'
     registros = conn.execute("""
         SELECT download, upload, to_char(data_hora - INTERVAL '3 hours', 'HH24:MI') as hora 
         FROM historico_telemetria 
@@ -499,16 +489,12 @@ def obter_graficos(mac_id):
         ORDER BY id DESC LIMIT 15
     """, (mac_id,)).fetchall()
     conn.close()
-    
-    # Inverte para o gráfico correr da esquerda para a direita
     return jsonify([dict(r) for r in registros][::-1])
 
 # --- GERENCIAMENTO DE IPs CUSTOMIZADOS ---
 @app.route('/api/v2/ips_customizados/<mac_id>', methods=['GET', 'POST'])
 def gerenciar_ips(mac_id):
     conn = database.get_db()
-    
-    # 🚨 MÁGICA: Cria a tabela do Radar de Alvos Customizados se não existir
     try:
         conn.execute('''CREATE TABLE IF NOT EXISTS ips_custom (
             id SERIAL PRIMARY KEY, sensor_mac TEXT, ip TEXT, 
@@ -553,7 +539,6 @@ def historico_alertas(mac_id):
     data_filtro = request.args.get('data')
     conn = database.get_db()
     
-    # Prevenção: Cria a tabela na hora de LER caso o Agente nunca tenha enviado logs
     try:
         conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (
             id SERIAL PRIMARY KEY, sensor_mac TEXT, tipo_evento TEXT, 
@@ -565,7 +550,7 @@ def historico_alertas(mac_id):
     params = [mac_id]
     
     if data_filtro:
-        query += " AND DATE(data_hora) = %s" # %s é o jeito certo de falar com o Postgres
+        query += " AND DATE(data_hora) = %s" 
         params.append(data_filtro)
     
     logs = conn.execute(query + " ORDER BY data_hora DESC", params).fetchall()
@@ -574,7 +559,6 @@ def historico_alertas(mac_id):
 
 @app.route('/api/v2/dispositivos/<mac_id>', methods=['GET'])
 def get_dispositivos(mac_id):
-    """ Busca todos os dispositivos encontrados na rede local do sensor """
     conn = database.get_db()
     dispositivos = conn.execute("SELECT * FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
     conn.close()
@@ -592,7 +576,7 @@ def service_worker():
     return send_from_directory('static', 'sw.js')
 
 # ==========================================
-# 👥 SISTEMA DE GERENCIAMENTO DE USUÁRIOS
+# 👥 SISTEMA DE GERENCIAMENTO DE USUÁRIOS E WHITE-LABEL
 # ==========================================
 
 @app.route('/usuarios')
@@ -602,7 +586,6 @@ def gerenciar_usuarios():
     
     conn = database.get_db()
     
-    # 🚨 CORREÇÃO DO ERRO 500: Cria a coluna 'nome' que estava faltando!
     try: 
         conn.execute("ALTER TABLE clientes ADD COLUMN nome TEXT")
         conn.execute("UPDATE clientes SET nome = usuario WHERE nome IS NULL")
@@ -618,7 +601,8 @@ def gerenciar_usuarios():
     except: pass
 
     if session['role'] == 'Administrador Master':
-        usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id FROM clientes ORDER BY id DESC").fetchall()
+        # Busca usuários com todos os detalhes
+        usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url FROM clientes ORDER BY id DESC").fetchall()
         clientes_pais = conn.execute("SELECT id, nome FROM clientes WHERE role = 'Cliente'").fetchall()
     else:
         if session['role'] == 'Cliente': tenant_id = session['user_id']
@@ -626,7 +610,7 @@ def gerenciar_usuarios():
             user_info = conn.execute("SELECT cliente_pai_id FROM clientes WHERE id = ?", (session['user_id'],)).fetchone()
             tenant_id = user_info['cliente_pai_id']
 
-        usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id FROM clientes WHERE cliente_pai_id = ? ORDER BY id DESC", (tenant_id,)).fetchall()
+        usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url FROM clientes WHERE cliente_pai_id = ? ORDER BY id DESC", (tenant_id,)).fetchall()
         clientes_pais = [] 
         
     conn.close()
@@ -638,8 +622,10 @@ def criar_usuario():
     data = request.json
     senha_hash = generate_password_hash(data['senha'])
     
+    # 🖼️ Mágica da LOGO URL na criação de cliente
+    logo_url = data.get('logo_url', '')
+    
     conn = database.get_db()
-    # Mágica do Vínculo
     if session['role'] == 'Cliente':
         cliente_pai = session['user_id'] 
     elif session['role'] == 'Administrador Cliente':
@@ -650,8 +636,8 @@ def criar_usuario():
         if not cliente_pai or cliente_pai == "null": cliente_pai = None
 
     try:
-        conn.execute("INSERT INTO clientes (nome, usuario, senha, role, cliente_pai_id, ativo) VALUES (?, ?, ?, ?, ?, 1)",
-                     (data['nome'], data['usuario'], senha_hash, data['role'], cliente_pai))
+        conn.execute("INSERT INTO clientes (nome, usuario, senha, role, cliente_pai_id, ativo, logo_url) VALUES (?, ?, ?, ?, ?, 1, ?)",
+                     (data['nome'], data['usuario'], senha_hash, data['role'], cliente_pai, logo_url))
         conn.commit()
         status = "OK"
     except: status = "Erro: Usuário já existe"
@@ -686,9 +672,11 @@ def alterar_senha_user(id_user):
 def editar_usuario_info(id_user):
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return jsonify({"error": "Acesso Negado"}), 403
     data = request.json
+    logo_url = data.get('logo_url', '')
     conn = database.get_db()
     try:
-        conn.execute("UPDATE clientes SET nome = ?, usuario = ? WHERE id = ?", (data.get('nome'), data.get('usuario'), id_user))
+        conn.execute("UPDATE clientes SET nome = ?, usuario = ?, logo_url = ? WHERE id = ?", 
+                     (data.get('nome'), data.get('usuario'), logo_url, id_user))
         conn.commit()
         status = "OK"
     except: status = "Erro: Login já está em uso."
@@ -716,13 +704,11 @@ def gerenciar_sensores():
     
     conn = database.get_db()
     
-    # CEIFEIRO: 15 segundos
     try:
         conn.execute("UPDATE sensores SET status = 'offline' WHERE last_seen < NOW() - INTERVAL '15 seconds'")
         conn.commit()
     except: pass
     
-    # CORREÇÃO DO ERRO 500
     try: 
         conn.execute("ALTER TABLE clientes ADD COLUMN nome TEXT")
         conn.commit() 
@@ -753,7 +739,6 @@ def alocar_sensor():
     cliente_id = data.get('cliente_id')
     mac_id = data.get('mac_id')
     
-    # Se o valor for "null" ou vazio, transformamos em None (para desvincular)
     if not cliente_id or cliente_id == "null":
         cliente_id = None
         
@@ -770,15 +755,12 @@ def alocar_sensor():
 
 @app.route('/sensor_virtual')
 def sensor_virtual():
-    # Ferramenta estritamente restrita ao Chefão
     if 'user_id' not in session or session.get('role') != 'Administrador Master':
         return "Acesso Negado. Ferramenta Exclusiva.", 403
-    
     return render_template('sensor_virtual.html', nome_operador=session.get('nome', 'Admin'))
 
 @app.route('/api/v2/renomear_sensor', methods=['POST'])
 def renomear_sensor():
-    # Trava de Segurança: Apenas Administrador Master
     if 'user_id' not in session or session.get('role') != 'Administrador Master':
         return jsonify({"error": "Acesso Negado"}), 403
         
@@ -814,7 +796,6 @@ def reportar_rota():
     data = request.json
     conn = database.get_db()
     
-    # 🚨 O SEGREDO: Cria a gaveta e SALVA antes de tentar colocar algo dentro!
     try: 
         conn.execute("ALTER TABLE sensores ADD COLUMN ultima_rota TEXT")
         conn.commit()
@@ -829,7 +810,6 @@ def reportar_rota():
 def logs_globais():
     conn = database.get_db()
     
-    # 🚨 PREVENÇÃO: Cria a tabela caso ela não exista para não travar o painel
     try:
         conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (
             id SERIAL PRIMARY KEY, sensor_mac TEXT, tipo_evento TEXT, 
@@ -839,8 +819,9 @@ def logs_globais():
     except: pass
 
     try:
+        # 🚨 CORRIGIDO: SSELECT alterado para SELECT
         logs = conn.execute('''
-            SSELECT l.tipo_evento, l.gravidade, l.detalhes, to_char(l.data_hora - INTERVAL '3 hours', 'DD/MM HH24:MI:SS') as hora, s.nome_local 
+            SELECT l.tipo_evento, l.gravidade, l.detalhes, to_char(l.data_hora - INTERVAL '3 hours', 'DD/MM HH24:MI:SS') as hora, s.nome_local 
             FROM logs_ia l 
             LEFT JOIN sensores s ON l.sensor_mac = s.mac_id 
             ORDER BY l.id DESC LIMIT 50
@@ -857,5 +838,4 @@ def solicitar_update(mac_id):
     return jsonify({"status": "OK"})
 
 if __name__ == '__main__':
-    # O host='0.0.0.0' permite que o site seja acessado pelo IP da rede local
     app.run(host='0.0.0.0', port=10000, debug=True)
