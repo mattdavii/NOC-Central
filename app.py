@@ -447,29 +447,24 @@ def solicitar_speedtest(mac_id):
 
 @app.route('/api/v2/reportar_velocidade', methods=['POST'])
 def reportar_velocidade():
-    data = request.json
-    mac = data.get('mac_id')
-    conn = database.get_db()
-    
-    # 🚨 GAVETAS FALTANTES: Cria as colunas se não existirem
-    try: conn.execute("ALTER TABLE sensores ADD COLUMN download REAL")
-    except: pass
-    try: conn.execute("ALTER TABLE sensores ADD COLUMN upload REAL")
-    except: pass
-
-    try: 
-        conn.execute('''CREATE TABLE IF NOT EXISTS historico_telemetria (
-            id SERIAL PRIMARY KEY, sensor_mac TEXT, 
-            download REAL, upload REAL, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )''')
-    except: pass
-
-    conn.execute("UPDATE sensores SET download = ?, upload = ? WHERE mac_id = ?", (data['down'], data['up'], mac))
-    conn.execute("INSERT INTO historico_telemetria (sensor_mac, download, upload) VALUES (?, ?, ?)", (mac, data['down'], data['up']))
-    
-    conn.commit()
-    conn.close()
-    return jsonify({"status": "OK"})
+    try:
+        data = request.json
+        mac = data.get('mac_id')
+        conn = database.get_db()
+        
+        # 🚨 IMPORTANTE: PostgreSQL usa %s em vez de ?
+        conn.execute("UPDATE sensores SET download = %s, upload = %s WHERE mac_id = %s", 
+                     (data['down'], data['up'], mac))
+        
+        conn.execute("INSERT INTO historico_telemetria (sensor_mac, download, upload) VALUES (%s, %s, %s)", 
+                     (mac, data['down'], data['up']))
+        
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "OK"})
+    except Exception as e:
+        print(f"Erro no Speedtest: {e}")
+        return jsonify({"status": "error"}), 500
 
 @app.route('/api/v2/graficos/<mac_id>')
 def obter_graficos(mac_id):
