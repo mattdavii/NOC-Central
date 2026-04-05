@@ -8,6 +8,10 @@ import concurrent.futures
 import subprocess
 try: import speedtest
 except: pass
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 # ==========================================
 # ⚙️ CONFIGURAÇÃO DO AGENTE
@@ -144,7 +148,7 @@ def loop_telemetria():
     estado_anterior = {"wan": True, "gw": True}
     
     while True:
-        try: import psutil; cpu = psutil.cpu_percent(interval=0.1); ram = psutil.virtual_memory().percent
+        try: import psutil; cpu = psutil.cpu_percent(interval=1) if psutil else 0.0; ram = psutil.virtual_memory().percent if psutil else 0.0
         except: cpu = 10.0; ram = 10.0
 
         # Dispara os 4 pings ao MESMO TEMPO (Muito mais rápido)
