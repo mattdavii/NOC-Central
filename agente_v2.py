@@ -1,3 +1,16 @@
+import sys
+import os
+
+# 🛡️ TRUQUE ANTI-CRASH DO PYINSTALLER (--noconsole)
+# Cria um terminal fantasma (buraco negro) para bibliotecas teimosas não quebrarem
+if sys.stdout is None: sys.stdout = open(os.devnull, "w")
+if sys.stderr is None: sys.stderr = open(os.devnull, "w")
+if sys.stdin is None:  sys.stdin = open(os.devnull, "r")
+
+# Agora sim, fazemos os imports normais...
+import time, json, urllib.request, threading, sqlite3, concurrent.futures
+import speedtest 
+import platform
 import os, sys, time, json, urllib.request, threading, sqlite3, concurrent.futures
 import speedtest # 🚨 TEM QUE ESTAR AQUI NO TOPO AGORA!
 import time, json, platform, subprocess, uuid, os, threading, sqlite3, socket
