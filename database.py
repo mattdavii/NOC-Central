@@ -11,14 +11,17 @@ class PostgresWrapper:
 
     def execute(self, query, params=None):
         cur = self.conn.cursor()
-        # Traduz o SQLite (?) para o Postgres (%s)
         query_pg = query.replace('?', '%s')
-        if params:
-            cur.execute(query_pg, params)
-        else:
-            cur.execute(query_pg)
-        # Retornamos o cursor para que o .fetchone() e .fetchall() funcionem no app.py!
-        return cur 
+        try:
+            if params:
+                cur.execute(query_pg, params)
+            else:
+                cur.execute(query_pg)
+            return cur
+        except Exception as e:
+            # O SEGREDO: Se o comando falhar (ex: coluna já existe), limpa a memória do Postgres para ele não travar o resto do site!
+            self.conn.rollback()
+            raise e # Repassa o erro para o app.py ignorar suavemente
 
     def commit(self):
         self.conn.commit()
@@ -28,7 +31,7 @@ class PostgresWrapper:
 
     def cursor(self):
         return self.conn.cursor()
-
+    
 def get_db_connection():
     if DATABASE_URL:
         import psycopg2
