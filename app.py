@@ -352,39 +352,32 @@ def alertas_ia():
 
 @app.route('/api/v2/mapa_sensores')
 def api_mapa_sensores():
-    """ Retorna a lista de sensores filtrada pelo nível de acesso do usuário """
-    if 'user_id' not in session:
-        return jsonify({"error": "Acesso Negado"}), 401
-        
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 401
     role = session.get('role')
     user_id = session.get('user_id')
     
     conn = database.get_db()
     
-    # Prevenção passiva: garante que a coluna cliente_id existe
-    try: conn.execute("ALTER TABLE sensores ADD COLUMN cliente_id INTEGER")
+    # 🚨 O CEIFEIRO (HEARTBEAT): Derruba qualquer sensor que não mandou dados nos últimos 15 segundos
+    try:
+        conn.execute("UPDATE sensores SET status = 'offline' WHERE last_seen < NOW() - INTERVAL '15 seconds'")
+        conn.commit()
+    except: pass
+    
+    try: 
+        conn.execute("ALTER TABLE sensores ADD COLUMN cliente_id INTEGER")
+        conn.commit()
     except: pass
 
-    # LÓGICA DE ISOLAMENTO DE TENANT (MULTI-EMPRESA)
     if role in ['Administrador Master', 'Operador Master']:
-        # Nível Supremo: Vê o mapa global com todos os sensores de todas as empresas
         sensores = conn.execute("SELECT mac_id, nome_local, status, lat, lon, cpu_usage FROM sensores").fetchall()
-        
     elif role == 'Cliente':
-        # Dono da Empresa: Vê apenas os sensores onde ele é o dono (cliente_id = ID dele)
         sensores = conn.execute("SELECT mac_id, nome_local, status, lat, lon, cpu_usage FROM sensores WHERE cliente_id = ?", (user_id,)).fetchall()
-        
     else:
-        # Administrador Cliente, Operador Cliente ou Local:
-        # 1º Passo: Descobre quem é a "Empresa" (cliente_pai_id) desse funcionário
         user_info = conn.execute("SELECT cliente_pai_id FROM clientes WHERE id = ?", (user_id,)).fetchone()
-        
-        # 2º Passo: Se ele tem uma empresa vinculada, mostra os sensores daquela empresa
         if user_info and user_info['cliente_pai_id']:
-            tenant_id = user_info['cliente_pai_id']
-            sensores = conn.execute("SELECT mac_id, nome_local, status, lat, lon, cpu_usage FROM sensores WHERE cliente_id = ?", (tenant_id,)).fetchall()
+            sensores = conn.execute("SELECT mac_id, nome_local, status, lat, lon, cpu_usage FROM sensores WHERE cliente_id = ?", (user_info['cliente_pai_id'],)).fetchall()
         else:
-            # Se for um operador "solto" (sem vínculo), ele vê o mapa vazio por segurança
             sensores = []
 
     conn.close()
@@ -552,24 +545,28 @@ def service_worker():
 
 @app.route('/usuarios')
 def gerenciar_usuarios():
-    # Agora o Administrador Cliente também entra na festa
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: 
         return "Acesso Negado.", 403
     
     conn = database.get_db()
-    try: conn.execute("ALTER TABLE clientes ADD COLUMN cliente_pai_id INTEGER")
+    
+    # 🚨 CORREÇÃO DO ERRO 500: Adiciona e COMITA as colunas
+    try: 
+        conn.execute("ALTER TABLE clientes ADD COLUMN cliente_pai_id INTEGER")
+        conn.commit()
     except: pass
-    try: conn.execute("ALTER TABLE clientes ADD COLUMN ativo INTEGER DEFAULT 1")
+    try: 
+        conn.execute("ALTER TABLE clientes ADD COLUMN ativo INTEGER DEFAULT 1")
+        conn.commit()
     except: pass
 
     if session['role'] == 'Administrador Master':
         usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id FROM clientes ORDER BY id DESC").fetchall()
         clientes_pais = conn.execute("SELECT id, nome FROM clientes WHERE role = 'Cliente'").fetchall()
     else:
-        # Lógica Multi-Tenant: Descobre a qual "Empresa" esse cara pertence
         if session['role'] == 'Cliente':
             tenant_id = session['user_id']
-        else: # Se for Administrador Cliente, puxa o ID do Cliente Dono
+        else: 
             user_info = conn.execute("SELECT cliente_pai_id FROM clientes WHERE id = ?", (session['user_id'],)).fetchone()
             tenant_id = user_info['cliente_pai_id']
 
@@ -658,23 +655,23 @@ def deletar_usuario(id_user):
 
 @app.route('/sensores')
 def gerenciar_sensores():
-    # Apenas o Chefão pode acessar essa tela
     if 'user_id' not in session or session.get('role') != 'Administrador Master':
         return "Acesso Negado. Área restrita ao Administrador Master.", 403
     
     conn = database.get_db()
     
-    # 🚨 O CEIFEIRO: Marca como OFFLINE sensores inativos há mais de 2 minutos
+    # 🚨 O CEIFEIRO NA TELA DE GESTÃO (15 segundos)
     try:
-        conn.execute("UPDATE sensores SET status = 'offline' WHERE last_seen < (CURRENT_TIMESTAMP - INTERVAL '2 minutes')")
+        conn.execute("UPDATE sensores SET status = 'offline' WHERE last_seen < NOW() - INTERVAL '15 seconds'")
         conn.commit()
-    except: pass # Ignora silenciosamente se a coluna last_seen ainda estiver sendo criada
+    except: pass
     
-    # Prevenção: Garante que a coluna cliente_id existe no banco
-    try: conn.execute("ALTER TABLE sensores ADD COLUMN cliente_id INTEGER")
+    # 🚨 CORREÇÃO DO ERRO 500: Adiciona e COMITA as colunas
+    try: 
+        conn.execute("ALTER TABLE sensores ADD COLUMN cliente_id INTEGER")
+        conn.commit() 
     except: pass
 
-    # Busca todos os sensores e cruza com a tabela de clientes para saber o nome do dono
     sensores = conn.execute('''
         SELECT s.mac_id, s.nome_local, s.status, s.ip_sensor, s.cliente_id, c.nome as cliente_nome 
         FROM sensores s 
@@ -682,7 +679,6 @@ def gerenciar_sensores():
         ORDER BY s.cliente_id ASC
     ''').fetchall()
     
-    # Busca apenas os usuários que são "Clientes" ou "Admins" para popular a lista de seleção
     clientes = conn.execute("SELECT id, nome FROM clientes WHERE role IN ('Cliente', 'Administrador Master')").fetchall()
     conn.close()
     
