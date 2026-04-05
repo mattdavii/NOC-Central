@@ -62,6 +62,9 @@
                             <button class="edit-btn" onclick="renomearSensor('{{ s.mac_id }}', '{{ s.nome_local }}')" title="Renomear Sensor">
                                 <i class="fa-solid fa-pen-to-square"></i>
                             </button>
+                            <button class="edit-btn" onclick="excluirSensor('{{ s.mac_id }}')" title="Excluir Sensor" style="color: var(--red);">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
                             {% endif %}
                         </td>
                         <td class="mac-text">{{ s.mac_id }}</td>
@@ -136,6 +139,15 @@
                 }
             }
         }
+
+        async function excluirSensor(mac_id) {
+            if(confirm("ALERTA CRÍTICO: Tem certeza que deseja REMOVER este sensor definitivamente da rede?")) {
+                let res = await fetch(`/api/v2/deletar_sensor/${mac_id}`, { method: 'DELETE' });
+                if(res.ok) location.reload();
+                else alert("Erro ao tentar remover o sensor.");
+            }
+        }
+        
     </script>
 </body>
 </html>

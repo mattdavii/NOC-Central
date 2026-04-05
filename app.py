@@ -143,6 +143,11 @@ def report_data():
 
         conn = database.get_db()
         
+        try: conn.execute("ALTER TABLE sensores ADD COLUMN last_seen TIMESTAMP")
+        except: pass
+        try: conn.execute("ALTER TABLE sensores ADD COLUMN ip_gateway TEXT")
+        except: pass
+
         # Mágica de Banco de Dados: Garante colunas
         colunas = ['lat', 'lon', 'ping_global', 'ping_gateway', 'ip_gateway']
         for col in colunas:
@@ -153,14 +158,14 @@ def report_data():
         ip_display = data.get('ip_publico') if data.get('ip_publico') else data.get('ip_local', '0.0.0.0')
 
         if sensor:
-            # Note que tiramos o 'nome_local = ?' daqui e também do tuplo embaixo
             conn.execute('''UPDATE sensores SET 
                 ip_sensor = ?, cpu_usage = ?, ram_usage = ?, temp = ?, 
-                status = 'online', lat = ?, lon = ?, ping_gateway = ?, ping_global = ? 
+                status = 'online', lat = ?, lon = ?, ping_gateway = ?, ping_global = ?,
+                ip_gateway = ?, last_seen = CURRENT_TIMESTAMP
                 WHERE mac_id = ?''', 
                 (ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
                  data.get('temp'), data.get('lat'), data.get('lon'), data.get('ping_gateway'), 
-                 data.get('ping_global'), mac))
+                 data.get('ping_global'), data.get('ip_gateway'), mac))
         else:
             conn.execute('''INSERT INTO sensores 
                 (mac_id, nome_local, ip_sensor, cpu_usage, ram_usage, temp, status, lat, lon, ping_gateway, ping_global) 
@@ -418,7 +423,12 @@ def reportar_velocidade():
     mac = data.get('mac_id')
     conn = database.get_db()
     
-    # Mágica: Cria a tabela de histórico silenciosamente se não existir
+    # 🚨 GAVETAS FALTANTES: Cria as colunas se não existirem
+    try: conn.execute("ALTER TABLE sensores ADD COLUMN download REAL")
+    except: pass
+    try: conn.execute("ALTER TABLE sensores ADD COLUMN upload REAL")
+    except: pass
+
     try: 
         conn.execute('''CREATE TABLE IF NOT EXISTS historico_telemetria (
             id SERIAL PRIMARY KEY, sensor_mac TEXT, 
@@ -426,10 +436,7 @@ def reportar_velocidade():
         )''')
     except: pass
 
-    # 1. Atualiza a velocidade atual na tela
     conn.execute("UPDATE sensores SET download = ?, upload = ? WHERE mac_id = ?", (data['down'], data['up'], mac))
-    
-    # 2. Guarda na "Caixa Preta" para desenhar o gráfico
     conn.execute("INSERT INTO historico_telemetria (sensor_mac, download, upload) VALUES (?, ?, ?)", (mac, data['down'], data['up']))
     
     conn.commit()
@@ -500,11 +507,20 @@ def reportar_latencia_custom():
 def historico_alertas(mac_id):
     data_filtro = request.args.get('data')
     conn = database.get_db()
+    
+    # Prevenção: Cria a tabela na hora de LER caso o Agente nunca tenha enviado logs
+    try:
+        conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (
+            id SERIAL PRIMARY KEY, sensor_mac TEXT, tipo_evento TEXT, 
+            gravidade TEXT, detalhes TEXT, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+    except: pass
+
     query = "SELECT * FROM logs_ia WHERE sensor_mac = ?"
     params = [mac_id]
     
     if data_filtro:
-        query += " AND date(data_hora) = ?"
+        query += " AND DATE(data_hora) = %s" # %s é o jeito certo de falar com o Postgres
         params.append(data_filtro)
     
     logs = conn.execute(query + " ORDER BY data_hora DESC", params).fetchall()
@@ -648,6 +664,12 @@ def gerenciar_sensores():
     
     conn = database.get_db()
     
+    # 🚨 O CEIFEIRO: Marca como OFFLINE sensores inativos há mais de 2 minutos
+    try:
+        conn.execute("UPDATE sensores SET status = 'offline' WHERE last_seen < (CURRENT_TIMESTAMP - INTERVAL '2 minutes')")
+        conn.commit()
+    except: pass # Ignora silenciosamente se a coluna last_seen ainda estiver sendo criada
+    
     # Prevenção: Garante que a coluna cliente_id existe no banco
     try: conn.execute("ALTER TABLE sensores ADD COLUMN cliente_id INTEGER")
     except: pass
@@ -715,6 +737,16 @@ def renomear_sensor():
         conn.close()
         return jsonify({"status": "OK"})
     return jsonify({"error": "Dados inválidos"}), 400
+
+@app.route('/api/v2/deletar_sensor/<mac_id>', methods=['DELETE'])
+def deletar_sensor(mac_id):
+    if 'user_id' not in session or session.get('role') != 'Administrador Master':
+        return jsonify({"error": "Acesso Negado"}), 403
+    conn = database.get_db()
+    conn.execute("DELETE FROM sensores WHERE mac_id = ?", (mac_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "OK"})
 
 if __name__ == '__main__':
     # O host='0.0.0.0' permite que o site seja acessado pelo IP da rede local

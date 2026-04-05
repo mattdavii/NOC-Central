@@ -110,7 +110,7 @@ def executar_speedtest(mac, url_central):
 
         url_speed = url_central.replace('report_data', 'reportar_velocidade')
         req = urllib.request.Request(url_speed, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
-        urllib.request.urlopen(req, timeout=10)
+        urllib.request.urlopen(req, timeout=40)
         print(f"✅ Speedtest Enviado: Down {round(d, 2)} Mbps | Up {round(u, 2)} Mbps")
     except Exception as e: print(f"❌ Erro no Speedtest: {e}")
 
@@ -169,7 +169,8 @@ def loop_telemetria():
         # ========================================================
         
         # 1. Envio da Telemetria Básica (CPU, RAM, Pings)
-        payload = {"mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", "ip_local": meu_ip, "cpu_usage": cpu, "ram_usage": ram, "temp": 40, "ping_gateway": ping_gw, "ping_global": json.dumps(pings)}
+        # 1. Envio da Telemetria Básica (Agora enviando o Gateway junto)
+        payload = {"mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", "ip_local": meu_ip, "ip_gateway": gateway_ip, "cpu_usage": cpu, "ram_usage": ram, "temp": 40, "ping_gateway": ping_gw, "ping_global": json.dumps(pings)}
         try:
             req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
             with urllib.request.urlopen(req, timeout=5) as response:
