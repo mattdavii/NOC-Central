@@ -82,6 +82,8 @@ def init_db():
     conn.close()
     print("Banco de dados sincronizado e pronto para operação!")
 
+get_db = get_db_connection
+
 if __name__ == '__main__':
     # Se rodar este arquivo direto no PC, ele reseta o banco local para testes
     if not DATABASE_URL and os.path.exists('database.db'):
