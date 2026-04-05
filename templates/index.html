@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>NOC Central - Dashboard</title>
+    <title>NOC Central - Dashboard Operacional</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -11,6 +11,14 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <style>
+        /* 🚨 ALARME DEFCON 1 🚨 */
+        .alerta-vermelho { animation: piscar-fundo 1.5s infinite; }
+        @keyframes piscar-fundo {
+            0% { box-shadow: inset 0 0 0px rgba(243,139,168, 0); }
+            50% { box-shadow: inset 0 0 80px rgba(243,139,168, 0.4); }
+            100% { box-shadow: inset 0 0 0px rgba(243,139,168, 0); }
+        }
+
         :root {
             --bg-base: #0b0b13; 
             --bg-card: #151521; 
@@ -27,81 +35,106 @@
         
         .container { padding: 30px; max-width: 1600px; margin: 0 auto; display: flex; flex-direction: column; gap: 25px; }
         
-        /* Painel de Resumo (Kpis) */
+        /* 🌍 BACKBONE E RELÓGIOS */
+        .top-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .clock-card { display: flex; justify-content: space-around; align-items: center; padding: 15px; border-top: 3px solid var(--blue); background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border); box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+        .clock-item { text-align: center; }
+        .clock-label { font-size: 0.7em; color: var(--text-muted); margin-bottom: 3px;}
+        .clock-time { font-family: 'JetBrains Mono', monospace; font-size: 1.5em; font-weight: bold; color: var(--text-main); }
+        
+        .pulso-verde { width: 10px; height: 10px; background-color: var(--green); border-radius: 50%; box-shadow: 0 0 10px var(--green); animation: pulsar 1.5s infinite; }
+        @keyframes pulsar {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(166, 227, 161, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(166, 227, 161, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(166, 227, 161, 0); }
+        }
+
+        /* 📊 KPIs */
         .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
         .kpi-card { background: linear-gradient(145deg, var(--bg-card) 0%, #11111b 100%); border: 1px solid var(--border); border-radius: 12px; padding: 20px; display: flex; align-items: center; gap: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border-left: 4px solid var(--blue);}
         .kpi-icon { font-size: 2.5em; color: var(--blue); opacity: 0.8; }
         .kpi-dados h4 { margin: 0; color: var(--text-muted); font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px;}
         .kpi-dados span { font-family: 'JetBrains Mono', monospace; font-size: 2.2em; font-weight: bold; color: var(--text-main); }
         
-        /* Cores Específicas dos KPIs */
         .kpi-online { border-left-color: var(--green); } .kpi-online .kpi-icon { color: var(--green); }
-        .kpi-offline { border-left-color: var(--red); } .kpi-offline .kpi-icon { color: var(--red); }
+        .kpi-offline { border-left-color: var(--red); } .kpi-offline .kpi-icon { color: var(--red); animation: blink 2s infinite;}
 
-        /* Container do Mapa */
+        /* 🗺️ MAPA */
         .map-wrapper { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); height: 400px; position: relative; z-index: 1;}
         #mapa { width: 100%; height: 100%; border-radius: 8px; background-color: var(--bg-input); }
 
-        /* Grid de Sensores */
+        /* 💻 TERMINAL HACKER */
+        .terminal-wrapper { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; border-top: 4px solid var(--yellow); box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .terminal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 15px; font-weight: bold; font-size: 1.1em; color: var(--yellow); }
+        .terminal-box { background: #09090e; padding: 15px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.85em; height: 200px; overflow-y: auto; border: 1px inset #2a2a35; box-shadow: inset 0 0 15px rgba(0,0,0,0.8); }
+
+        /* 📡 SENSORES */
         .section-title { font-size: 1.2em; font-weight: bold; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-top: 10px; color: var(--blue);}
         .sensor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
-        
         .sensor-card { background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 10px; padding: 20px; transition: 0.3s; box-shadow: inset 0 0 15px rgba(0,0,0,0.5); display: flex; flex-direction: column;}
         .sensor-card:hover { transform: translateY(-5px); border-color: var(--blue); box-shadow: 0 10px 20px rgba(0,0,0,0.4), inset 0 0 10px rgba(137,180,250,0.1); }
-        
         .s-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;}
         .s-title { font-size: 1.1em; font-weight: bold; color: var(--text-main); margin-bottom: 5px; }
         .s-mac { font-family: 'JetBrains Mono', monospace; font-size: 0.75em; color: var(--text-muted); }
-        
         .status-badge { padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 0.75em; letter-spacing: 0.5px; border: 1px solid transparent; }
         .badge-on { background: rgba(166,227,161,0.1); color: var(--green); border-color: var(--green); box-shadow: 0 0 10px rgba(166,227,161,0.2);}
         .badge-off { background: rgba(243,139,168,0.1); color: var(--red); border-color: var(--red); box-shadow: 0 0 10px rgba(243,139,168,0.3); animation: blink 1s infinite;}
         @keyframes blink { 50% { opacity: 0.6; } }
-
         .s-stats { display: flex; gap: 15px; margin-bottom: 20px; font-size: 0.85em; color: var(--text-muted); }
         .s-stats strong { color: var(--text-main); font-family: 'JetBrains Mono', monospace;}
-
         .btn-acesso { background: rgba(137,180,250,0.1); color: var(--blue); border: 1px solid var(--blue); padding: 10px; text-align: center; border-radius: 6px; text-decoration: none; font-weight: bold; transition: 0.2s; margin-top: auto;}
         .btn-acesso:hover { background: var(--blue); color: var(--bg-base); box-shadow: 0 0 15px var(--blue); }
-
         .btn-logout { color: var(--text-muted); text-decoration: none; font-size: 0.9em; transition: 0.2s; }
         .btn-logout:hover { color: var(--red); }
 
-        /* ESTILOS DO POPUP DO MAPA (CYBERPUNK) */
+        /* POPUP DO MAPA */
         .leaflet-popup-content-wrapper { background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.8); padding: 0; }
         .leaflet-popup-tip { background: var(--bg-card); border: 1px solid var(--border); border-top: none; border-left: none; }
         .leaflet-popup-content { margin: 15px; font-family: 'Inter', sans-serif; min-width: 200px; }
         .leaflet-popup-content h4 { margin: 0 0 10px 0; color: var(--blue); font-size: 1.1em; border-bottom: 1px dashed var(--border); padding-bottom: 8px; display: flex; align-items: center; gap: 8px;}
-        
         .popup-status { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; letter-spacing: 0.5px;}
         .popup-on { background: rgba(166,227,161,0.1); color: var(--green); border: 1px solid var(--green); }
         .popup-off { background: rgba(243,139,168,0.1); color: var(--red); border: 1px solid var(--red); box-shadow: 0 0 10px rgba(243,139,168,0.3);}
-        
         .popup-btn { display: block; text-align: center; background: rgba(137,180,250,0.1); color: var(--blue); padding: 8px; border: 1px solid var(--blue); border-radius: 6px; text-decoration: none; margin-top: 15px; font-weight: bold; transition: 0.2s;}
         .popup-btn:hover { background: var(--blue); color: var(--bg-base); box-shadow: 0 0 10px var(--blue);}
-
     </style>
 </head>
 <body>
 
+    <audio id="alarme-critico" src="https://assets.mixkit.co/active_storage/sfx/991/991-preview.mp3" preload="auto"></audio>
+    
     <nav class="navbar">
         <div class="navbar-brand"><i class="fa-solid fa-earth-americas"></i> NOC CENTRAL</div>
         <div style="display: flex; gap: 20px; align-items: center;">
-            
             {% if session.role == 'Administrador Master' %}
                 <a href="/sensor_virtual" target="_blank" class="btn-logout" style="color: var(--green); border: 1px solid var(--green); padding: 5px 10px; border-radius: 4px;"><i class="fa-solid fa-laptop-code"></i> Iniciar Demo</a>
-                
                 <a href="/sensores" class="btn-logout" style="color: var(--yellow);"><i class="fa-solid fa-satellite-dish"></i> Gestão de Sensores</a>
                 <a href="/usuarios" class="btn-logout" style="color: var(--blue);"><i class="fa-solid fa-users-gear"></i> Gestão de Acessos</a>
             {% endif %}
-
-            <span style="color: var(--text-muted); font-size: 0.9em; margin-left: 10px; padding-left: 15px; border-left: 1px solid var(--border);">Operador: <strong style="color: var(--text-main);">{{ nome }}</strong></span>
+            <span style="color: var(--text-muted); font-size: 0.9em; margin-left: 10px; padding-left: 15px; border-left: 1px solid var(--border);">Operador: <strong style="color: var(--text-main);">{{ session.usuario }}</strong></span>
             <a href="/logout" class="btn-logout"><i class="fa-solid fa-right-from-bracket"></i> Sair</a>
         </div>
     </nav>
 
     <div class="container">
         
+        <div class="top-panel">
+            <div class="clock-card">
+                <div class="clock-item"><div class="clock-label"><i class="fa-solid fa-clock"></i> TOKYO</div><div id="clk-tk" class="clock-time">--:--:--</div></div>
+                <div class="clock-item"><div class="clock-label"><i class="fa-solid fa-clock"></i> LONDON</div><div id="clk-ln" class="clock-time">--:--:--</div></div>
+                <div class="clock-item"><div class="clock-label"><i class="fa-solid fa-clock"></i> NEW YORK</div><div id="clk-ny" class="clock-time">--:--:--</div></div>
+                <div class="clock-item" style="border-left: 1px solid var(--border); padding-left: 20px;"><div class="clock-label" style="color: var(--green);"><i class="fa-solid fa-location-dot"></i> BRASÍLIA (LOCAL)</div><div id="clk-br" class="clock-time" style="color: var(--green);">--:--:--</div></div>
+            </div>
+
+            <div class="clock-card" style="border-top-color: var(--purple);">
+                <div style="font-size: 0.8em; font-weight: bold; color: var(--text-muted);"><i class="fa-solid fa-server"></i> GLOBAL BACKBONE:</div>
+                <div style="display: flex; align-items: center; gap: 8px;"><div class="pulso-verde"></div> AWS <span style="font-size: 0.7em; color: var(--green);">99.9%</span></div>
+                <div style="display: flex; align-items: center; gap: 8px;"><div class="pulso-verde"></div> CLOUDFLARE <span style="font-size: 0.7em; color: var(--green);">100%</span></div>
+                <div style="display: flex; align-items: center; gap: 8px;"><div class="pulso-verde"></div> AZURE <span style="font-size: 0.7em; color: var(--green);">99.8%</span></div>
+                <div style="display: flex; align-items: center; gap: 8px;"><div class="pulso-verde"></div> GOOGLE <span style="font-size: 0.7em; color: var(--green);">100%</span></div>
+            </div>
+        </div>
+
         <div class="kpi-grid">
             <div class="kpi-card">
                 <i class="fa-solid fa-microchip kpi-icon"></i>
@@ -120,17 +153,21 @@
         <div class="map-wrapper">
             <div id="mapa"></div>
         </div>
-        <div class="card" style="border-top: 4px solid var(--yellow); margin-top: -5px;">
-         <div class="section-title" style="border:none; margin:0; padding-bottom: 10px;"><i class="fa-solid fa-list-check"></i> Central de Alertas e Eventos Globais</div>
-         <div id="global-logs" style="max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; border: 1px solid var(--bg-input);">
-             <p style="color: var(--text-muted); padding: 10px;">Aguardando eventos...</p>
-         </div>
-     </div>
+        
+        <div class="terminal-wrapper">
+            <div class="terminal-header">
+                <span><i class="fa-solid fa-terminal"></i> Terminal de Eventos Globais</span>
+                <button onclick="document.getElementById('terminal-logs').innerHTML = '';" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text-main); border-radius: 4px; cursor: pointer; padding: 4px 10px; font-size: 0.8em; font-weight: bold;"><i class="fa-solid fa-eraser"></i> Limpar Buffer</button>
+            </div>
+            <div id="terminal-logs" class="terminal-box">
+                <div style="color: var(--text-muted);">[SISTEMA] NOC Central Operacional. Estabelecendo handshake seguro... OK.</div>
+            </div>
+        </div>
 
         <div>
-            <div class="section-title"><i class="fa-solid fa-server"></i> Sensores Implantados</div>
+            <div class="section-title"><i class="fa-solid fa-network-wired"></i> Sensores Implantados (Edge Nodes)</div>
             <div class="sensor-grid" id="sensor-list">
-                <p style="color: var(--text-muted); padding: 20px;">Carregando sensores...</p>
+                <p style="color: var(--text-muted); padding: 20px;"><i class="fa-solid fa-circle-notch fa-spin"></i> Procurando sinais de satélite...</p>
             </div>
         </div>
 
@@ -138,23 +175,40 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // Inicia o App (PWA)
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(reg => console.log('App NOC Registrado com sucesso!', reg.scope))
-                    .catch(err => console.error('Erro ao registrar App:', err));
-            });
+        // 🕒 MOTOR 1: RELÓGIOS MUNDIAIS
+        function atualizarRelogios() {
+            const agora = new Date();
+            document.getElementById('clk-br').innerText = agora.toLocaleTimeString('pt-BR', {timeZone: 'America/Sao_Paulo'});
+            document.getElementById('clk-ny').innerText = agora.toLocaleTimeString('en-US', {timeZone: 'America/New_York', hour12:false});
+            document.getElementById('clk-tk').innerText = agora.toLocaleTimeString('ja-JP', {timeZone: 'Asia/Tokyo', hour12:false});
+            document.getElementById('clk-ln').innerText = agora.toLocaleTimeString('en-GB', {timeZone: 'Europe/London', hour12:false});
+        }
+        setInterval(atualizarRelogios, 1000);
+        atualizarRelogios();
+
+        // 🚨 MOTOR 2: SIRENE DEFCON 1
+        let alarmeTocando = false;
+        function checarDefcon(quantidadeFalhasCriticas) {
+            const body = document.body;
+            const sirene = document.getElementById('alarme-critico');
+
+            if (quantidadeFalhasCriticas > 0) {
+                body.classList.add('alerta-vermelho');
+                if (!alarmeTocando) {
+                    sirene.play().catch(e => console.log("Permissão de áudio bloqueada. Interaja com a tela."));
+                    alarmeTocando = true;
+                }
+            } else {
+                body.classList.remove('alerta-vermelho');
+                sirene.pause();
+                sirene.currentTime = 0;
+                alarmeTocando = false;
+            }
         }
 
-        // Configuração do Mapa com Tema Escuro (CartoDB Dark Matter)
-        const map = L.map('mapa').setView([-14.235, -51.925], 4); // Centro do Brasil
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-            maxZoom: 18
-        }).addTo(map);
-
-        // Camada isolada para os pinos para facilitar a atualização
+        // 🌍 MOTOR 3: MAPA E SENSORES
+        const map = L.map('mapa').setView([-14.235, -51.925], 4); 
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap', maxZoom: 18 }).addTo(map);
         let layerSensores = L.layerGroup().addTo(map);
 
         async function carregarSensores() {
@@ -168,46 +222,38 @@
                 let online = 0; 
                 let offline = 0;
 
-                // Limpa os pinos do mapa antes de desenhar os novos
                 layerSensores.clearLayers();
 
                 sensores.forEach(s => {
-                    // Blindagem contra valores nulos
                     let statusSeguro = s.status ? s.status.toLowerCase() : 'offline';
                     let isOnline = statusSeguro === 'online';
                     if (isOnline) online++; else offline++;
                     let statusText = isOnline ? 'ONLINE' : 'OFFLINE';
 
-                    // --- LÓGICA DO PINO NEON NO MAPA ---
                     let lat = parseFloat(s.lat);
                     let lon = parseFloat(s.lon);
-                    
-                    // Se não tiver coordenada, usa o centro do Brasil por padrão
                     if (isNaN(lat)) lat = -14.235;
                     if (isNaN(lon)) lon = -51.925;
 
-                    let corBase = isOnline ? '#a6e3a1' : '#f38ba8'; // Verde ou Vermelho
+                    let corBase = isOnline ? '#a6e3a1' : '#f38ba8'; 
                     let sombra = isOnline ? '0 0 15px #a6e3a1' : '0 0 20px #f38ba8';
                     let badgeClassPopup = isOnline ? 'popup-on' : 'popup-off';
 
-                    // Cria o ícone com a div invisível do Leaflet e desenha o círculo dentro
                     let customIcon = L.divIcon({
-                        className: '', // Vazio para remover o fundo branco padrão do Leaflet
+                        className: '',
                         html: `<div style="background-color: ${corBase}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid #11111b; box-shadow: ${sombra};"></div>`,
                         iconSize: [16, 16],
-                        iconAnchor: [8, 8] // Puxa o pino exatamente pelo centro
+                        iconAnchor: [8, 8]
                     });
 
-                    // Adiciona o marcador à camada de sensores
                     L.marker([lat, lon], {icon: customIcon}).addTo(layerSensores)
                         .bindPopup(`
                             <h4><i class="fa-solid fa-server"></i> ${s.nome_local || 'Desconhecido'}</h4>
                             <div style="margin-bottom: 8px; font-size: 0.9em;">Status: <span class="popup-status ${badgeClassPopup}">${statusText}</span></div>
                             <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.75em; color: var(--text-muted);">MAC: ${s.mac_id}</div>
-                            <a href="/sensor/${s.mac_id}" class="popup-btn"><i class="fa-solid fa-magnifying-glass-chart"></i> Acessar Painel</a>
+                            <a href="/sensor/${s.mac_id}" class="popup-btn"><i class="fa-solid fa-chart-line"></i> Acessar Telemetria</a>
                         `);
 
-                    // --- LÓGICA DA LISTA DE SENSORES NO RODAPÉ ---
                     let badgeClass = isOnline ? 'badge-on' : 'badge-off';
                     let cpuText = s.cpu_usage ? s.cpu_usage + '%' : '--';
 
@@ -221,48 +267,56 @@
                                 <span class="status-badge ${badgeClass}">${statusText}</span>
                             </div>
                             <div class="s-stats"><div><i class="fa-solid fa-microchip"></i> CPU: <strong>${cpuText}</strong></div></div>
-                            <a href="/sensor/${s.mac_id}" class="btn-acesso"><i class="fa-solid fa-magnifying-glass-chart"></i> Painel de Diagnóstico</a>
+                            <a href="/sensor/${s.mac_id}" class="btn-acesso"><i class="fa-solid fa-chart-line"></i> Análise Completa</a>
                         </div>
                     `;
                 });
 
-                // Atualiza os indicadores KPIs no topo
                 document.getElementById('kpi-total').innerText = total;
                 document.getElementById('kpi-on').innerText = online;
                 document.getElementById('kpi-off').innerText = offline;
-                
-                // Preenche a grade lá embaixo
                 document.getElementById('sensor-list').innerHTML = htmlGrid || '<p style="color: var(--text-muted);">Nenhum sensor registrado na rede.</p>';
 
-            } catch (error) { 
-                console.error("Erro na Central:", error); 
-            }
+                // Ativa a sirene e a luz vermelha se tiver offline!
+                checarDefcon(offline);
+
+            } catch (error) { console.error("Erro ao carregar mapa:", error); }
         }
 
+        // 💻 MOTOR 4: TERMINAL HACKER
         async function carregarLogsGlobais() {
-         try {
-             const res = await fetch('/api/v2/logs_globais');
-             const logs = await res.json();
-             let html = '';
-             logs.forEach(l => {
-                 let cor = l.gravidade === 'Crítica' ? 'var(--red)' : 'var(--yellow)';
-                 html += `<div style="padding: 8px; border-bottom: 1px dashed var(--border); display: flex; gap: 15px; font-size: 0.85em; align-items: center;">
-                     <span style="color: var(--text-muted); min-width: 110px;">[${l.hora}]</span>
-                     <span style="color: var(--blue); font-weight: bold; min-width: 150px;">${l.nome_local || 'Sensor Desconhecido'}</span>
-                     <span style="background: rgba(243,139,168,0.1); border: 1px solid ${cor}; color: ${cor}; padding: 3px 8px; border-radius: 4px; font-weight:bold; text-align: center;">${l.tipo_evento}</span>
-                     <span style="color: var(--text-main);">${l.detalhes}</span>
-                 </div>`;
-             });
-             document.getElementById('global-logs').innerHTML = html || '<p style="color: var(--text-muted); padding: 10px;">Nenhum alerta recente registrado nas rotas.</p>';
-         } catch(e) {}
-     }
-     setInterval(carregarLogsGlobais, 5000);
-     carregarLogsGlobais();
-    
+            try {
+                const res = await fetch('/api/v2/logs_globais');
+                const logs = await res.json();
+                const terminal = document.getElementById('terminal-logs');
+                let html = '';
+                
+                logs.forEach(l => {
+                    let cor = l.gravidade === 'Crítica' ? 'var(--red)' : (l.gravidade === 'OK' ? 'var(--green)' : 'var(--yellow)');
+                    let icone = l.gravidade === 'Crítica' ? 'fa-triangle-exclamation' : (l.gravidade === 'OK' ? 'fa-check' : 'fa-bolt');
+                    
+                    html += `
+                        <div style="margin-bottom: 6px; border-bottom: 1px dashed #1e1e2e; padding-bottom: 4px;">
+                            <span style="color: #6c7086;">[${l.hora}]</span> 
+                            <span style="color: var(--blue); font-weight: bold;">[${l.nome_local || 'Desconhecido'}]</span>
+                            <span style="color: ${cor}; font-weight: bold;"><i class="fa-solid ${icone}"></i> ${l.tipo_evento}</span>: 
+                            <span style="color: var(--text-main);">${l.detalhes}</span>
+                        </div>
+                    `;
+                });
+                
+                // Se a div estiver vazia (porque o usuário clicou em limpar), o HTML só recebe novos logs se existirem
+                if (html !== '') {
+                    terminal.innerHTML = html;
+                }
 
-        // Carrega imediatamente e atualiza a cada 5 segundos sem piscar a tela
+            } catch(e) {}
+        }
+
         carregarSensores();
+        carregarLogsGlobais();
         setInterval(carregarSensores, 5000);
+        setInterval(carregarLogsGlobais, 5000);
     </script>
 </body>
 </html>
