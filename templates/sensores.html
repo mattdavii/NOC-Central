@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>NOC - Gestão de Sensores</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-base: #0b0b13; --bg-card: #151521; --bg-input: #232334;
+            --border: #36364a; --text-main: #cdd6f4; --text-muted: #9399b2;
+            --blue: #89b4fa; --green: #a6e3a1; --red: #f38ba8; --yellow: #f9e2af; --purple: #cba6f7;
+        }
+
+        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: var(--bg-base); color: var(--text-main); }
+        .navbar { background: rgba(21, 21, 33, 0.9); padding: 15px 30px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 15px;}
+        .container { padding: 30px; max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 25px; }
+        
+        .card { background: linear-gradient(145deg, var(--bg-card) 0%, #11111b 100%); border: 1px solid var(--border); border-radius: 12px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border-top: 4px solid var(--blue);}
+        .card h3 { margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 15px; color: var(--blue); display: flex; align-items: center; gap: 10px;}
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { text-align: left; padding: 12px; border-bottom: 2px solid var(--border); color: var(--text-muted); font-size: 0.85em; text-transform: uppercase;}
+        td { padding: 15px 12px; border-bottom: 1px solid var(--bg-input); font-size: 0.9em;}
+
+        select { width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); color: var(--text-main); border-radius: 6px; outline: none; transition: 0.2s;}
+        select:focus { border-color: var(--blue); }
+        
+        button.action-btn { cursor: pointer; padding: 10px 15px; border: none; border-radius: 6px; font-weight: bold; background: var(--blue); color: var(--bg-base); transition: 0.2s; white-space: nowrap;}
+        button.action-btn:hover { filter: brightness(1.2); box-shadow: 0 0 10px var(--blue);}
+
+        .mac-text { font-family: 'JetBrains Mono', monospace; font-size: 0.85em; color: var(--text-muted); }
+        .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.75em; font-weight: bold; border: 1px solid;}
+        .b-on { background: rgba(166,227,161,0.1); color: var(--green); border-color: var(--green); }
+        .b-off { background: rgba(243,139,168,0.1); color: var(--red); border-color: var(--red); }
+
+        .alerta-novo { background: rgba(249,226,175,0.1); border-left: 4px solid var(--yellow); }
+        
+
+    </style>
+</head>
+<body>
+
+    <nav class="navbar">
+        <button onclick="window.history.back()" style="background: var(--border); color: var(--text-main); padding: 8px 12px; border:none; border-radius:6px; cursor:pointer;"><i class="fa-solid fa-arrow-left"></i> Voltar</button>
+        <div style="font-size: 1.3em; font-weight: bold; color: var(--blue);"><i class="fa-solid fa-microchip"></i> ALOCAÇÃO DE SENSORES</div>
+    </nav>
+
+    <div class="container">
+        <div class="card">
+            <h3><i class="fa-solid fa-satellite-dish"></i> Sensores na Rede (ZTP - Zero Touch Provisioning)</h3>
+            <table>
+                <thead><tr><th>Sensor / Local</th><th>Endereço MAC</th><th>IP Atual</th><th>Status</th><th>Cliente Dono (Alocação)</th><th>Ação</th></tr></thead>
+                <tbody>
+                    {% for s in sensores %}
+                    <tr class="{% if not s.cliente_id %}alerta-novo{% endif %}">
+                        <td><strong>{{ s.nome_local }}</strong></td>
+                        <td class="mac-text">{{ s.mac_id }}</td>
+                        <td style="color: var(--blue);">{{ s.ip_sensor }}</td>
+                        <td>
+                            {% if s.status == 'online' %}<span class="status-badge b-on">ONLINE</span>
+                            {% else %}<span class="status-badge b-off">OFFLINE</span>{% endif %}
+                        </td>
+                        <td>
+                            <select id="cliente-{{ s.mac_id | replace(':', '') }}">
+                                <option value="null">-- Desvinculado (Sem Dono) --</option>
+                                {% for c in clientes %}
+                                    <option value="{{ c.id }}" {% if s.cliente_id == c.id %}selected{% endif %}>{{ c.nome }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <button class="action-btn" onclick="vincularSensor('{{ s.mac_id }}')"><i class="fa-solid fa-link"></i> Salvar Vínculo</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        async function vincularSensor(mac) {
+            // Remove os dois pontos do MAC para achar o ID correto do select no HTML
+            const selectId = "cliente-" + mac.replace(/:/g, '');
+            const clienteId = document.getElementById(selectId).value;
+            
+            const btn = event.target;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Salvando...';
+            
+            const res = await fetch('/api/v2/alocar_sensor', { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({mac_id: mac, cliente_id: clienteId}) 
+            });
+            
+            const result = await res.json();
+            if(result.status === "OK") {
+                btn.style.background = "var(--green)";
+                btn.innerHTML = '<i class="fa-solid fa-check"></i> Salvo!';
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                alert("Erro ao vincular.");
+                btn.innerHTML = '<i class="fa-solid fa-link"></i> Salvar Vínculo';
+            }
+        }
+    </script>
+</body>
+</html>

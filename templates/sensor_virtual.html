@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>NOC - Uplink Sensor Virtual</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { margin: 0; padding: 20px; font-family: 'JetBrains Mono', monospace; background-color: #05050a; color: #a6e3a1; overflow: hidden;}
+        .terminal { background: rgba(0,20,0,0.5); border: 1px solid #a6e3a1; padding: 20px; border-radius: 8px; box-shadow: 0 0 20px rgba(166,227,161,0.2); height: calc(100vh - 80px); display: flex; flex-direction: column;}
+        .header { display: flex; justify-content: space-between; border-bottom: 1px dashed #a6e3a1; padding-bottom: 10px; margin-bottom: 10px;}
+        .logs { flex-grow: 1; overflow-y: auto; font-size: 0.9em; line-height: 1.5; color: #cdd6f4;}
+        .log-ok { color: #a6e3a1; }
+        .log-warn { color: #f9e2af; }
+        .log-err { color: #f38ba8; }
+        .log-send { color: #89b4fa; }
+        .btn-stop { background: #f38ba8; color: #000; border: none; padding: 8px 15px; font-family: inherit; font-weight: bold; cursor: pointer; border-radius: 4px; text-decoration: none;}
+    </style>
+</head>
+<body>
+
+    <div class="terminal">
+        <div class="header">
+            <div>
+                <i class="fa-solid fa-satellite-dish" style="animation: pulse 2s infinite;"></i> 
+                <strong>UPLINK SENSOR VIRTUAL</strong><br>
+                <small style="color: #9399b2;">Operador: {{ nome_operador }}</small>
+            </div>
+            <div>
+                <a href="/" class="btn-stop"><i class="fa-solid fa-power-off"></i> Desconectar</a>
+            </div>
+        </div>
+        <div class="logs" id="console">
+            <div>[SISTEMA] Iniciando simulação de hardware no navegador...</div>
+        </div>
+    </div>
+
+    <script>
+        const terminal = document.getElementById('console');
+        function log(msg, type="ok") {
+            const time = new Date().toLocaleTimeString();
+            terminal.innerHTML += `<div><span style="color:#9399b2">[${time}]</span> <span class="log-${type}">${msg}</span></div>`;
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        // Gera um MAC Address Falso e Único para essa sessão (Formato DEMO:XX:XX)
+        const mac_virtual = "DM:" + Math.random().toString(16).substr(2, 2) + ":" + Math.random().toString(16).substr(2, 2) + ":" + Math.random().toString(16).substr(2, 2);
+        let myLat = -14.235, myLon = -51.925; // Default Brasil
+        let publicIp = "127.0.0.1";
+
+        let loopId = null; // Variável para guardar o "coração" do sensor
+
+        async function init() {
+            log("Endereço MAC Virtual gerado: " + mac_virtual.toUpperCase(), "warn");
+            
+            try {
+                const res = await fetch('https://api.ipify.org?format=json');
+                const data = await res.json();
+                publicIp = data.ip;
+                log("IP Público identificado: " + publicIp, "ok");
+            } catch(e) { log("Falha ao obter IP Público. Usando modo offline.", "warn"); }
+
+            log("Solicitando coordenadas de satélite (GPS)...", "warn");
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => { myLat = pos.coords.latitude; myLon = pos.coords.longitude; log(`Sinal GPS travado: ${myLat.toFixed(4)}, ${myLon.toFixed(4)}`, "ok"); },
+                    (err) => { log("Permissão de GPS negada. Usando localização padrão.", "err"); }
+                );
+            }
+
+            log("Iniciando uplink com a Central NOC...", "ok");
+            // Salva o ID do loop para podermos "matar" ele depois
+            loopId = setInterval(enviarTelemetria, 2000); 
+        }
+
+        async function enviarTelemetria() {
+            const cpu = Math.floor(Math.random() * (45 - 15 + 1)) + 15;
+            const ram = Math.floor(Math.random() * (70 - 40 + 1)) + 40;
+            const temp = Math.floor(Math.random() * (60 - 45 + 1)) + 45;
+            
+            const pings = {
+                "Google": Math.floor(Math.random() * 20) + 10,
+                "Cloudflare": Math.floor(Math.random() * 15) + 5,
+                "AWS": Math.floor(Math.random() * 50) + 30,
+                "Quad9": Math.floor(Math.random() * 25) + 15
+            };
+
+            const payload = {
+                mac_id: mac_virtual.toUpperCase(),
+                nome_local: "Demo: " + navigator.platform,
+                ip_local: "Simulado",
+                ip_publico: publicIp,
+                ip_gateway: "192.168.1.1",
+                cpu_usage: cpu,
+                ram_usage: ram,
+                temp: temp,
+                status: "online",
+                lat: myLat,
+                lon: myLon,
+                ping_gateway: Math.floor(Math.random() * 5) + 1,
+                ping_global: JSON.stringify(pings)
+            };
+
+            try {
+                const response = await fetch('/api/v2/report_data', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                
+                const res_data = await response.json();
+                log(`Pacote de dados enviado > CPU: ${cpu}% | RAM: ${ram}%`, "send");
+
+                // A MÁGICA DA DEMONSTRAÇÃO (O Teatro!)
+                if (res_data.command && res_data.command !== "none") {
+                    if (res_data.command === "reboot") {
+                        log("⚠️ COMANDO DA CENTRAL: REBOOT INICIADO...", "warn");
+                        clearInterval(loopId); // Para de bater o coração
+                        setTimeout(() => { location.reload(); }, 3000); // Recarrega a página simulando reinício
+                    } 
+                    else if (res_data.command === "shutdown") {
+                        log("🚨 COMANDO DA CENTRAL: SHUTDOWN CRÍTICO!", "err");
+                        log("Desconectando da rede... Encerrando kernel...", "err");
+                        clearInterval(loopId); // Para de bater o coração (morre)
+                        document.body.style.opacity = 0.3; // Escurece a tela pra dar drama
+                    }
+                }
+
+            } catch(e) {
+                log("Falha de conexão com a Central.", "err");
+            }
+        }
+
+        // Inicia
+        setTimeout(init, 1000);
+    </script>
+</body>
+</html>

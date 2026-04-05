@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>NOC Ultimate - {{ sensor.nome_local }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-base: #0b0b13; --bg-card: #151521; --bg-input: #232334;
+            --border: #36364a; --text-main: #cdd6f4; --text-muted: #9399b2;
+            --blue: #89b4fa; --green: #a6e3a1; --red: #f38ba8; --yellow: #f9e2af; --purple: #cba6f7;
+        }
+
+        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: var(--bg-base); color: var(--text-main); }
+        .navbar { background: rgba(21, 21, 33, 0.9); backdrop-filter: blur(10px); padding: 15px 30px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100;}
+        
+        .container { padding: 30px; max-width: 1600px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; }
+        
+        .card { background: linear-gradient(145deg, var(--bg-card) 0%, #11111b 100%); border: 1px solid var(--border); border-radius: 12px; padding: 22px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5);}
+        .card h3 { margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 15px; display: flex; align-items: center; justify-content: space-between; font-size: 1.15em;}
+        
+        .card-hw { border-top: 4px solid var(--blue); }
+        .card-net { border-top: 4px solid var(--green); }
+        .card-speed { border-top: 4px solid var(--purple); }
+        .card-hist-grafico { grid-column: 1 / -1; border-top: 4px solid var(--blue); padding-bottom: 10px;}
+        .card-radar { border-top: 4px solid var(--blue); grid-column: 1 / -1; }
+        .card-global { border-top: 4px solid var(--yellow); grid-column: span 2;}
+        .card-hist { border-top: 4px solid var(--text-muted); grid-column: span 2;}
+        .card-calib { border-top: 4px solid #fab387; }
+
+        .data-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px dashed var(--bg-input); padding-bottom: 8px;}
+        .highlight { font-family: 'JetBrains Mono', monospace; font-size: 2.2em; font-weight: bold; }
+        
+        .status-pill { padding: 5px 12px; border-radius: 6px; font-weight: bold; font-size: 0.75em; letter-spacing: 0.5px; }
+        .pill-ok { background: rgba(166,227,161,0.1); color: var(--green); border: 1px solid var(--green); }
+        .pill-fail { background: rgba(243,139,168,0.1); color: var(--red); border: 1px solid var(--red); animation: blink 1s infinite; box-shadow: 0 0 10px rgba(243,139,168,0.3); }
+        @keyframes blink { 50% { opacity: 0.5; } }
+
+        .progress-bg { background: rgba(0,0,0,0.4); border: 1px solid var(--bg-input); border-radius: 10px; height: 12px; width: 100%; margin-top: 6px; overflow: hidden;}
+        .progress-fill { background: linear-gradient(90deg, var(--blue), #b4befe); height: 100%; width: 0%; transition: 0.5s; box-shadow: 0 0 10px var(--blue); }
+
+        .speed-box { text-align: center; background: rgba(0,0,0,0.3); padding: 18px; border-radius: 8px; width: 45%; border: 1px solid var(--bg-input); box-shadow: inset 0 0 10px rgba(0,0,0,0.5);}
+        .speed-val { font-family: 'JetBrains Mono', monospace; font-size: 2.5em; font-weight: bold; margin-top: 8px; }
+
+        .global-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-top: 10px;}
+        .g-card { background: rgba(0,0,0,0.3); border: 1px solid var(--bg-input); border-radius: 8px; padding: 15px; text-align: center; transition: 0.3s;}
+        .g-card.fail { border-color: var(--red); box-shadow: 0 0 15px rgba(243,139,168,0.2); }
+        .g-card i { font-size: 1.5em; color: var(--text-muted); margin-bottom: 10px; display: block;}
+        .g-card .ms { font-family: 'JetBrains Mono', monospace; font-size: 1.4em; font-weight: bold; margin-top: 5px;}
+
+        .topology-box { display: flex; flex-direction: column; align-items: center; background: rgba(0,0,0,0.2); padding: 30px; border-radius: 8px; border: 1px solid var(--bg-input); overflow-x: auto; min-height: 300px;}
+        .t-card { background: var(--bg-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border); width: 170px; text-align: center; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.4); transition: 0.2s;}
+        .t-card:hover { transform: translateY(-3px); border-color: var(--blue); }
+        .t-card.offline { border-color: var(--red); opacity: 0.8; }
+        .t-ip { font-family: 'JetBrains Mono', monospace; color: var(--green); font-weight: bold; font-size: 1.05em; }
+        .t-mac { font-family: 'JetBrains Mono', monospace; font-size: 0.7em; color: var(--text-muted); margin: 5px 0;}
+        .t-name { font-size: 0.85em; color: var(--blue); font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 6px;}
+        .t-name button { background:none; border:none; color: var(--yellow); cursor:pointer; font-size: 1.1em; padding: 0; transition: 0.2s;}
+        
+        .t-gateway { border-top: 4px solid var(--red); }
+        .t-sensor { border-top: 4px solid var(--purple); }
+        .t-device { border-top: 4px solid var(--blue); }
+        .t-line-v { width: 3px; height: 25px; background: var(--border); }
+        .t-line-h { height: 3px; background: var(--border); position: relative;}
+
+        @keyframes pulseWAN { 0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px var(--blue)); } 50% { transform: scale(1.05); filter: drop-shadow(0 0 20px var(--blue)); } }
+        @keyframes pulseWANError { 0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px var(--red)); } 50% { transform: scale(1.15); filter: drop-shadow(0 0 30px var(--red)); } }
+        .wan-online { color: var(--blue); animation: pulseWAN 3s infinite; }
+        .wan-offline { color: var(--red); animation: pulseWANError 0.7s infinite; }
+
+        input { width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); color: var(--text-main); border-radius: 6px; box-sizing: border-box; outline: none; transition: 0.2s;}
+        input:focus { border-color: var(--blue); }
+        button.action-btn { cursor: pointer; padding: 10px 15px; border: none; border-radius: 6px; font-weight: bold; color: var(--bg-base); transition: 0.2s;}
+        button.action-btn:hover { filter: brightness(1.2); }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <button onclick="window.history.back()" class="action-btn" style="background: var(--border); color: var(--text-main); font-size: 0.9em; padding: 8px 12px;"><i class="fa-solid fa-arrow-left"></i> Voltar</button>
+            <div style="font-size: 1.3em; font-weight: bold; color: var(--blue);"><i class="fa-solid fa-tower-broadcast"></i> NOC MONITORING PRO</div>
+        </div>
+        <div style="font-size: 0.9em; color: var(--text-muted);"><i class="fa-solid fa-wifi"></i> Acesso Local: <strong style="color: var(--blue);" id="access-ip">--</strong>:10000</div>
+    </nav>
+
+    <div class="container">
+        
+        <div class="card card-hw">
+            <h3><span><i class="fa-solid fa-microchip"></i> Telemetria</span> <span id="pill-sensor" class="status-pill pill-ok">SENSOR ON</span></h3>
+            <div class="data-row" style="margin-top:10px;">
+                <span><i class="fa-solid fa-temperature-half" style="color:var(--yellow); width: 20px;"></i> Temperatura:</span> 
+                <strong id="temp-text" style="color:var(--yellow); text-shadow: 0 0 10px rgba(249,226,175,0.3);">-- °C</strong>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--text-muted);">
+                    <span><i class="fa-solid fa-microchip" style="width: 20px;"></i> CPU</span> <strong id="cpu-text" style="color: var(--text-main);">0%</strong>
+                </div>
+                <div class="progress-bg"><div id="cpu-fill" class="progress-fill"></div></div>
+            </div>
+            <div style="margin-bottom: auto;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--text-muted);">
+                    <span><i class="fa-solid fa-memory" style="width: 20px;"></i> RAM</span> <strong id="ram-text" style="color: var(--text-main);">0%</strong>
+                </div>
+                <div class="progress-bg"><div id="ram-fill" class="progress-fill"></div></div>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="action-btn" onclick="enviarComandoEnergia('reboot')" style="background: rgba(249, 226, 175, 0.2); color: var(--yellow); flex: 1; border: 1px solid var(--yellow);"><i class="fa-solid fa-arrows-rotate"></i> Reiniciar</button>
+                <button class="action-btn" onclick="enviarComandoEnergia('shutdown')" style="background: rgba(243, 139, 168, 0.2); color: var(--red); flex: 1; border: 1px solid var(--red);"><i class="fa-solid fa-power-off"></i> Desligar</button>
+            </div>
+        </div>
+
+        <div class="card card-net">
+            <h3><span><i class="fa-solid fa-shield-heart"></i> Integridade</span></h3>
+            <div class="data-row">
+                <span><i class="fa-solid fa-network-wired" style="color:var(--green); width: 20px;"></i> Rede Local:</span> 
+                <span id="status-local" class="status-pill pill-ok">ESTÁVEL</span>
+            </div>
+            <div class="data-row">
+                <span><i class="fa-solid fa-globe" style="color:var(--blue); width: 20px;"></i> Internet (WAN):</span> 
+                <span id="status-wan" class="status-pill pill-ok">ONLINE</span>
+            </div>
+            <div style="margin-top: auto; background: rgba(0,0,0,0.3); padding: 18px; border-radius: 8px; text-align: center; border: 1px solid var(--bg-input);">
+                <div style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Latência Sensor ➔ Gateway</div>
+                <div id="ping-local" class="highlight" style="color: var(--green); text-shadow: 0 0 15px rgba(166,227,161,0.4); margin-top: 5px;">0 ms</div>
+            </div>
+        </div>
+
+        <div class="card card-speed">
+            <h3>
+                <span><i class="fa-solid fa-gauge-high"></i> Performance</span> 
+                <button class="action-btn" onclick="forcarTeste()" id="btn-st" style="background:var(--purple); color:white; display:flex; gap:8px; align-items:center;">
+                    <i class="fa-solid fa-play"></i> Testar Agora
+                </button>
+            </h3>
+            <div style="flex-grow: 1; display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-top: 10px;">
+                <div class="speed-box">
+                    <div style="font-size: 0.75em; color: var(--text-muted); letter-spacing: 1px;">DOWNLOAD</div>
+                    <div id="speed-down" class="speed-val" style="color: var(--green); text-shadow: 0 0 15px rgba(166,227,161,0.4);">0.0</div>
+                </div>
+                <div class="speed-box">
+                    <div style="font-size: 0.75em; color: var(--text-muted); letter-spacing: 1px;">UPLOAD</div>
+                    <div id="speed-up" class="speed-val" style="color: var(--red); text-shadow: 0 0 15px rgba(243,139,168,0.4);">0.0</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card card-hist-grafico">
+            <h3>
+                <span><i class="fa-solid fa-chart-area"></i> Evolução de Banda (Timeline)</span>
+                <button class="action-btn" onclick="carregarGraficos()" style="background: var(--bg-input); color: var(--text-main); font-size: 0.8em;"><i class="fa-solid fa-rotate"></i> Atualizar</button>
+            </h3>
+            <div style="position: relative; height: 300px; width: 100%; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--bg-input); padding: 10px; box-sizing: border-box;">
+                <canvas id="chartVelocidade"></canvas>
+            </div>
+        </div>
+
+        <div class="card card-radar">
+            <h3>
+                <span><i class="fa-solid fa-project-diagram"></i> Topologia Hierárquica de Rede</span>
+                <button class="action-btn" onclick="carregarRadar(this)" style="background: var(--blue); color: var(--bg-base); font-size:0.8em;"><i class="fa-solid fa-rotate"></i> Scan Radar</button>
+            </h3>
+            <div class="topology-box">
+                <div style="text-align: center;">
+                    <i id="wan-icon" class="fa-solid fa-cloud wan-online" style="font-size: 3.2em;"></i>
+                    <div id="wan-text" style="font-size: 0.8em; font-weight: bold; margin-top: 8px; color: var(--blue);">INTERNET / WAN</div>
+                </div>
+                <div class="t-line-v"></div>
+                <div style="display: flex; align-items: center; justify-content: center;">
+                    <div id="diag-gateway"></div>
+                    <div class="t-line-h" style="width: 60px;"></div>
+                    <div id="diag-sensor"></div>
+                </div>
+                <div class="t-line-v"></div>
+                <div class="t-line-h" style="width: 70%; max-width: 800px; display: flex; justify-content: space-between; border-radius: 5px;">
+                    <div class="t-line-v" style="height: 12px; margin-top: 2px;"></div>
+                    <div class="t-line-v" style="height: 12px; margin-top: 2px;"></div>
+                </div>
+                <div id="diag-outros" style="display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; margin-top: 12px;"></div>
+            </div>
+        </div>
+
+        <div class="card card-global">
+            <h3><span><i class="fa-solid fa-earth-americas"></i> Disponibilidade de Serviços</span></h3>
+            <div class="global-grid">
+                <div id="card-google" class="g-card"><i class="fa-brands fa-google"></i> Google <div id="pg-google" class="ms">--</div></div>
+                <div id="card-cf" class="g-card"><i class="fa-solid fa-cloud"></i> Cloudflare <div id="pg-cf" class="ms">--</div></div>
+                <div id="card-aws" class="g-card"><i class="fa-brands fa-aws"></i> AWS Amazon <div id="pg-aws" class="ms">--</div></div>
+                <div id="card-quad9" class="g-card"><i class="fa-solid fa-shield-halved"></i> DNS Quad9 <div id="pg-quad9" class="ms">--</div></div>
+            </div>
+            
+            <div style="position: relative; height: 220px; width: 100%; margin-top: 15px; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--bg-input); padding: 10px; box-sizing: border-box;">
+                <canvas id="chartPing"></canvas>
+            </div>
+        </div>
+
+        <div class="card card-custom">
+            <h3><span><i class="fa-solid fa-crosshairs"></i> Radar de Alvos</span></h3>
+            <div style="display: flex; gap: 5px; margin-bottom: 12px;">
+                <input type="text" id="new-ip" placeholder="IP"><input type="text" id="new-desc" placeholder="Nome">
+                <button class="action-btn" onclick="addIP()" style="background: var(--red); color: white;"><i class="fa-solid fa-plus"></i></button>
+            </div>
+            <div id="lista-custom-ips" style="max-height: 150px; overflow-y: auto;"></div>
+        </div>
+
+        <div class="card card-hist">
+            <h3><span><i class="fa-solid fa-clock-rotate-left"></i> Logs de Segurança</span></h3>
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <input type="date" id="filtro-data" onchange="carregarHistorico()" style="max-width: 160px;">
+                <button class="action-btn" onclick="document.getElementById('filtro-data').value=''; carregarHistorico();" style="background: var(--bg-input); color: var(--text-muted); font-size:0.8em;">Limpar</button>
+            </div>
+            <div id="lista-historico" style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; max-height: 180px; overflow-y: auto; border: 1px solid var(--bg-input);"></div>
+        </div>
+
+        <div class="card card-calib">
+            <h3><span><i class="fa-solid fa-map-location-dot"></i> Calibração GPS</span></h3>
+            <div style="margin-bottom: 8px;"><input type="text" id="edit-nome" value="{{ sensor.nome_local }}"></div>
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <input type="number" id="edit-lat" step="any" value="{{ sensor.lat }}">
+                <input type="number" id="edit-lon" step="any" value="{{ sensor.lon }}">
+            </div>
+            <button class="action-btn" onclick="salvarConfig()" style="background: #fab387; width: 100%;">Sincronizar</button>
+        </div>
+
+    </div>
+
+    <script>
+        const mac_id = "{{ sensor.mac_id }}";
+        let globalGatewayIP = "", globalSensorIP = "";
+
+        // ==========================================
+        // GRÁFICO 1: EVOLUÇÃO DE BANDA
+        // ==========================================
+        let chartVelocidadeInstance = null;
+        async function carregarGraficos() {
+            try {
+                const res = await fetch('/api/v2/graficos/' + mac_id);
+                const dados = await res.json();
+                const labels = dados.map(d => d.hora);
+                const downData = dados.map(d => d.download);
+                const upData = dados.map(d => d.upload);
+                const ctx = document.getElementById('chartVelocidade').getContext('2d');
+
+                if (chartVelocidadeInstance) {
+                    chartVelocidadeInstance.data.labels = labels;
+                    chartVelocidadeInstance.data.datasets[0].data = downData;
+                    chartVelocidadeInstance.data.datasets[1].data = upData;
+                    chartVelocidadeInstance.update();
+                } else {
+                    chartVelocidadeInstance = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                { label: 'Download (Mbps)', data: downData, borderColor: '#a6e3a1', backgroundColor: 'rgba(166, 227, 161, 0.15)', fill: true, tension: 0.4, borderWidth: 2 },
+                                { label: 'Upload (Mbps)', data: upData, borderColor: '#f38ba8', backgroundColor: 'rgba(243, 139, 168, 0.15)', fill: true, tension: 0.4, borderWidth: 2 }
+                            ]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#cdd6f4' } } }, scales: { x: { grid: { color: 'rgba(54, 54, 74, 0.5)' }, ticks: { color: '#9399b2' } }, y: { grid: { color: 'rgba(54, 54, 74, 0.5)' }, ticks: { color: '#9399b2' }, beginAtZero: true } } }
+                    });
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        // ==========================================
+        // GRÁFICO 2: RADAR DE PINGS EM TEMPO REAL
+        // ==========================================
+        let chartPingInstance = null;
+        async function carregarGraficosPing() {
+            try {
+                if (typeof Chart === 'undefined') throw new Error("Chart.js ausente");
+                const res = await fetch('/api/v2/graficos_ping/' + mac_id);
+                if (!res.ok) return;
+                const dados = await res.json();
+
+                const labels = dados.map(d => d.hora);
+                const dGoogle = dados.map(d => d.google);
+                const dCf = dados.map(d => d.cloudflare);
+                const dAws = dados.map(d => d.aws);
+                const dQuad = dados.map(d => d.quad9);
+
+                const canvasBox = document.getElementById('chartPing');
+                if (!canvasBox) return;
+
+                if (chartPingInstance) {
+                    chartPingInstance.data.labels = labels;
+                    chartPingInstance.data.datasets[0].data = dGoogle;
+                    chartPingInstance.data.datasets[1].data = dCf;
+                    chartPingInstance.data.datasets[2].data = dAws;
+                    chartPingInstance.data.datasets[3].data = dQuad;
+                    chartPingInstance.update('none'); 
+                } else {
+                    chartPingInstance = new Chart(canvasBox.getContext('2d'), {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                { label: 'Google', data: dGoogle, borderColor: '#a6e3a1', tension: 0.3, borderWidth: 2, pointRadius: 2 },
+                                { label: 'Cloudflare', data: dCf, borderColor: '#89b4fa', tension: 0.3, borderWidth: 2, pointRadius: 2 },
+                                { label: 'AWS', data: dAws, borderColor: '#f9e2af', tension: 0.3, borderWidth: 2, pointRadius: 2 },
+                                { label: 'Quad9', data: dQuad, borderColor: '#cba6f7', tension: 0.3, borderWidth: 2, pointRadius: 2 }
+                            ]
+                        },
+                        options: {
+                            responsive: true, maintainAspectRatio: false, animation: false,
+                            plugins: { legend: { position: 'bottom', labels: { color: '#cdd6f4', boxWidth: 10, font: { size: 10 } } } },
+                            scales: { x: { display: false }, y: { grid: { color: 'rgba(54, 54, 74, 0.5)' }, ticks: { color: '#9399b2' }, beginAtZero: true } }
+                        }
+                    });
+                }
+            } catch (e) { console.error("Erro no Gráfico de Ping:", e); }
+        }
+
+        // ==========================================
+        // COMANDOS DE ENERGIA (NOVO)
+        // ==========================================
+        async function enviarComandoEnergia(cmd) {
+            const acao = cmd === 'reboot' ? 'REINICIAR' : 'DESLIGAR';
+            if(!confirm(`⚠️ ATENÇÃO: Tem certeza que deseja ${acao} este sensor remotamente? Se for desligado, alguém precisará ligar fisicamente no local.`)) return;
+            
+            await fetch('/api/v2/comando_energia/' + mac_id, { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({comando: cmd}) 
+            });
+            alert(`Ordem de ${acao} enviada! O sensor executará em até 2 segundos.`);
+        }
+
+        // ==========================================
+        // DEMAIS FUNÇÕES DE DADOS E APIS
+        // ==========================================
+        async function buscarDadosAoVivo() {
+            try {
+                const response = await fetch('/api/v2/sensor_data/' + mac_id);
+                const data = await response.json();
+                document.getElementById('cpu-text').innerText = data.cpu_usage + '%';
+                document.getElementById('cpu-fill').style.width = data.cpu_usage + '%';
+                document.getElementById('ram-text').innerText = data.ram_usage + '%';
+                document.getElementById('ram-fill').style.width = data.ram_usage + '%';
+                document.getElementById('temp-text').innerText = data.temp + ' °C';
+                if(data.ip_sensor) { document.getElementById('access-ip').innerText = data.ip_sensor; globalSensorIP = data.ip_sensor; }
+                if(data.ip_gateway) globalGatewayIP = data.ip_gateway;
+
+                const pLocal = data.ping_gateway || 0;
+                const pLocalEl = document.getElementById('ping-local');
+                const sLocal = document.getElementById('status-local');
+                if (pLocalEl) pLocalEl.innerText = pLocal + ' ms';
+                if(pLocal === 0 || pLocal > 50) { if(pLocalEl) pLocalEl.style.color = 'var(--red)'; if(sLocal) { sLocal.innerText = "FALHA"; sLocal.className = "status-pill pill-fail"; } } 
+                else { if(pLocalEl) pLocalEl.style.color = 'var(--green)'; if(sLocal) { sLocal.innerText = "ESTÁVEL"; sLocal.className = "status-pill pill-ok"; } }
+
+                let internetOk = false;
+                if(data.ping_global && data.ping_global.startsWith("{")) {
+                    let pings = JSON.parse(data.ping_global);
+                    const targets = ['google', 'cf', 'aws', 'quad9'], keys = ['Google', 'Cloudflare', 'AWS', 'Quad9'];
+                    keys.forEach((key, i) => {
+                        const val = pings[key], el = document.getElementById('pg-' + targets[i]), card = document.getElementById('card-' + targets[i]);
+                        if(val === 0) { if(el) { el.innerText = "FALHA"; el.style.color = "var(--red)"; } if(card) card.classList.add('fail'); } 
+                        else { if(el) { el.innerText = val + " ms"; el.style.color = "var(--green)"; } if(card) card.classList.remove('fail'); internetOk = true; }
+                    });
+                }
+                const sWan = document.getElementById('status-wan'), wIcon = document.getElementById('wan-icon'), wText = document.getElementById('wan-text');
+                if(!internetOk) { if(sWan) { sWan.innerText = "OFFLINE"; sWan.className = "status-pill pill-fail"; } if(wIcon) wIcon.className = "fa-solid fa-cloud wan-offline"; if(wText) wText.style.color = "var(--red)"; } 
+                else { if(sWan) { sWan.innerText = "ONLINE"; sWan.className = "status-pill pill-ok"; } if(wIcon) wIcon.className = "fa-solid fa-cloud wan-online"; if(wText) wText.style.color = "var(--blue)"; }
+
+                if(!document.getElementById('btn-st').innerHTML.includes('fa-spin')) {
+                    document.getElementById('speed-down').innerText = data.download || '0.0';
+                    document.getElementById('speed-up').innerText = data.upload || '0.0';
+                }
+            } catch (e) {}
+        }
+
+        async function forcarTeste() { 
+            document.getElementById('btn-st').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Testando...'; 
+            document.getElementById('speed-down').innerText = '...'; document.getElementById('speed-up').innerText = '...';
+            await fetch('/api/v2/solicitar_speedtest/' + mac_id, { method: 'POST' }); 
+            setTimeout(() => { document.getElementById('btn-st').innerHTML = '<i class="fa-solid fa-play"></i> Testar Agora'; carregarGraficos(); }, 40000);
+        }
+
+        async function carregarRadar(btn) {
+            if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            try {
+                const res = await fetch('/api/v2/dispositivos/' + mac_id);
+                const dispositivos = await res.json();
+                let gatewayHtml = '', outrosHtml = '';
+                document.getElementById('diag-sensor').innerHTML = `<div class="t-card t-sensor"><div class="t-ip">${globalSensorIP}</div><div class="t-mac">${mac_id}</div><div class="t-name">ESTE SENSOR</div></div>`;
+                dispositivos.forEach(d => {
+                    let nome = d.nome_custom || d.fabricante;
+                    let card = `<div class="t-card ${d.ip === globalGatewayIP ? 't-gateway' : 't-device'}"><div class="t-ip">${d.ip}</div><div class="t-mac">${d.mac}</div><div class="t-name">${nome} <button onclick="renomearDisp('${d.mac}','${d.nome_custom||''}')"><i class="fa-solid fa-pen-to-square"></i></button></div></div>`;
+                    if(d.ip === globalGatewayIP) gatewayHtml = card; else outrosHtml += card;
+                });
+                if(gatewayHtml) document.getElementById('diag-gateway').innerHTML = gatewayHtml;
+                document.getElementById('diag-outros').innerHTML = outrosHtml;
+            } catch(e) {}
+            if(btn) setTimeout(() => btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Scan Radar', 1000);
+        }
+
+        async function renomearDisp(mac, atual) { let n = prompt("Nome para este dispositivo:", atual); if(n) { await fetch('/api/v2/renomear_dispositivo', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mac, nome:n, sensor_mac:mac_id}) }); carregarRadar(); } }
+        async function carregarCustomIPs() {
+            const res = await fetch('/api/v2/ips_customizados/' + mac_id);
+            const ips = await res.json(); let html = '';
+            ips.forEach(item => {
+                let cor = item.latencia === 0 ? 'var(--red)' : 'var(--green)';
+                let latText = item.latencia === 0 ? 'FALHA' : item.latencia + ' ms';
+                html += `<div style="background:var(--bg-input); padding:8px; border-radius:8px; margin-bottom:5px; display:flex; justify-content:space-between; border-left:4px solid ${cor}; font-size:0.9em;">
+                    <div><b style="color:var(--blue);">${item.descricao}</b><br><small style="color:var(--text-muted); font-family:monospace;">${item.ip}</small></div>
+                    <div style="display:flex; align-items:center; gap:10px;"><b style="color:${cor};">${latText}</b>
+                    <button onclick="excluirIP(${item.id})" style="background:none; border:none; color:var(--red); cursor:pointer;"><i class="fa-solid fa-trash"></i></button></div></div>`;
+            });
+            document.getElementById('lista-custom-ips').innerHTML = html || '<div style="text-align:center; padding:15px; color:var(--text-muted);">Nenhum alvo cadastrado.</div>';
+        }
+
+        async function addIP() { const ip = document.getElementById('new-ip').value; const desc = document.getElementById('new-desc').value; if(!ip) return; await fetch('/api/v2/ips_customizados/'+mac_id, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip, descricao:desc}) }); document.getElementById('new-ip').value=''; document.getElementById('new-desc').value=''; carregarCustomIPs(); }
+        async function excluirIP(id) { if(confirm("Remover alvo?")) { await fetch(`/api/v2/ips_customizados/${mac_id}/${id}`, { method: 'DELETE' }); carregarCustomIPs(); } }
+        
+        async function carregarHistorico() {
+            const d = document.getElementById('filtro-data').value;
+            const res = await fetch(`/api/v2/historico/${mac_id}${d ? '?data='+d : ''}`);
+            const logs = await res.json(); let html = '';
+            logs.forEach(l => { let cor = l.gravidade === 'Crítica' ? 'var(--red)' : 'var(--yellow)'; html += `<div style="padding: 8px; border-bottom: 1px dashed var(--border); font-size:0.85em;"><span style="color:var(--text-muted)">[${l.data_hora}]</span> <b style="color:${cor}">${l.tipo_evento}</b>: ${l.detalhes}</div>`; });
+            document.getElementById('lista-historico').innerHTML = html || '<div style="text-align:center; padding:10px; color:var(--text-muted);">Sem logs no período.</div>';
+        }
+
+        async function salvarConfig() { const data = { mac_id, nome: document.getElementById('edit-nome').value, lat: parseFloat(document.getElementById('edit-lat').value), lon: parseFloat(document.getElementById('edit-lon').value) }; await fetch('/api/v2/configurar_sensor', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }); alert("Sincronizado!"); }
+
+        // ==========================================
+        // LOOPS DE ATUALIZAÇÃO (MOTORES)
+        // ==========================================
+        setInterval(buscarDadosAoVivo, 1500); 
+        setInterval(carregarRadar, 25000); 
+        setInterval(carregarCustomIPs, 5000); 
+        setInterval(carregarHistorico, 10000);
+        setInterval(carregarGraficos, 60000); 
+        setInterval(carregarGraficosPing, 2000); 
+        
+        // Chamadas Iniciais
+        buscarDadosAoVivo(); carregarRadar(); carregarCustomIPs(); carregarHistorico(); carregarGraficos(); carregarGraficosPing();
+    </script>
+</body>
+</html>

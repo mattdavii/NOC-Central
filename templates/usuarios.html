@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>NOC - Gestão de Acessos</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-base: #0b0b13; --bg-card: #151521; --bg-input: #232334;
+            --border: #36364a; --text-main: #cdd6f4; --text-muted: #9399b2;
+            --blue: #89b4fa; --green: #a6e3a1; --red: #f38ba8; --yellow: #f9e2af; --purple: #cba6f7;
+            --cyan: #94e2d5; /* Nova cor para o Admin Cliente */
+        }
+
+        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: var(--bg-base); color: var(--text-main); }
+        .navbar { background: rgba(21, 21, 33, 0.9); padding: 15px 30px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 15px;}
+        .container { padding: 30px; max-width: 1400px; margin: 0 auto; display: grid; grid-template-columns: 1fr 2fr; gap: 25px; }
+        
+        .card { background: linear-gradient(145deg, var(--bg-card) 0%, #11111b 100%); border: 1px solid var(--border); border-radius: 12px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);}
+        .card h3 { margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 15px; color: var(--blue); display: flex; align-items: center; gap: 10px;}
+        
+        input, select { width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); color: var(--text-main); border-radius: 6px; box-sizing: border-box; margin-bottom: 15px; outline: none;}
+        input:focus, select:focus { border-color: var(--blue); }
+        label { display: block; font-size: 0.85em; color: var(--text-muted); margin-bottom: 5px; font-weight: bold;}
+        
+        button.action-btn { width: 100%; cursor: pointer; padding: 12px; border: none; border-radius: 6px; font-weight: bold; background: var(--blue); color: var(--bg-base); transition: 0.2s;}
+        button.action-btn:hover { filter: brightness(1.2); }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { text-align: left; padding: 12px; border-bottom: 2px solid var(--border); color: var(--text-muted); font-size: 0.85em; text-transform: uppercase;}
+        td { padding: 15px 12px; border-bottom: 1px solid var(--bg-input); font-size: 0.9em;}
+
+        .role-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.8em; font-weight: bold; border: 1px solid;}
+        .r-admin { background: rgba(243,139,168,0.1); color: var(--red); border-color: var(--red); }
+        .r-master { background: rgba(203,166,247,0.1); color: var(--purple); border-color: var(--purple); }
+        .r-cliente { background: rgba(166,227,161,0.1); color: var(--green); border-color: var(--green); }
+        .r-admin-cli { background: rgba(148,226,213,0.1); color: var(--cyan); border-color: var(--cyan); }
+        .r-op { background: rgba(137,180,250,0.1); color: var(--blue); border-color: var(--blue); }
+        .r-local { background: rgba(249,226,175,0.1); color: var(--yellow); border-color: var(--yellow); }
+
+        .status-badge { padding: 3px 8px; border-radius: 4px; font-size: 0.75em; font-weight: bold; }
+        .status-ativo { background: var(--green); color: var(--bg-base); }
+        .status-inativo { background: var(--red); color: var(--bg-base); }
+        
+        .btn-icon { background:none; border:none; cursor:pointer; font-size:1.1em; transition: 0.2s; padding: 5px;}
+        .btn-icon:hover { transform: scale(1.2); }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar">
+        <button onclick="window.history.back()" style="background: var(--border); color: var(--text-main); padding: 8px 12px; border:none; border-radius:6px; cursor:pointer;"><i class="fa-solid fa-arrow-left"></i> Voltar</button>
+        <div style="font-size: 1.3em; font-weight: bold; color: var(--blue);"><i class="fa-solid fa-users-gear"></i> GESTÃO DE ACESSOS NOC</div>
+    </nav>
+
+    <div class="container">
+        <div class="card" style="border-top: 4px solid var(--blue);">
+            <h3><i class="fa-solid fa-user-plus"></i> Novo Usuário</h3>
+            
+            <label>Nome Completo</label>
+            <input type="text" id="n-nome" placeholder="Ex: Empresa XYZ / João Silva">
+            
+            <label>Login de Acesso</label>
+            <input type="text" id="n-user" placeholder="nome.sobrenome">
+            
+            <label>Senha Provisória</label>
+            <input type="password" id="n-senha" placeholder="••••••••">
+            
+            <label>Nível de Acesso</label>
+            <select id="n-role">
+                {% if role_atual == 'Administrador Master' %}
+                <option value="Administrador Master">Administrador Master</option>
+                <option value="Operador Master">Operador Master</option>
+                <option value="Cliente">Cliente (Dono)</option>
+                {% endif %}
+                <option value="Administrador Cliente">Administrador Cliente</option>
+                <option value="Operador Cliente">Operador Cliente</option>
+                <option value="Local">Local (Visualiza 1 Sensor)</option>
+            </select>
+
+            {% if role_atual == 'Administrador Master' %}
+            <label>Vincular a um Cliente Dono (Opcional)</label>
+            <select id="n-cliente-pai">
+                <option value="null">-- Nenhum (Conta Solta) --</option>
+                {% for c in clientes_pais %}
+                <option value="{{ c.id }}">{{ c.nome }}</option>
+                {% endfor %}
+            </select>
+            {% endif %}
+
+            <button class="action-btn" onclick="criarUser()"><i class="fa-solid fa-check"></i> Cadastrar Usuário</button>
+        </div>
+
+        <div class="card" style="border-top: 4px solid var(--purple);">
+            <h3><i class="fa-solid fa-address-book"></i> Contas Ativas</h3>
+            <table>
+                <thead><tr><th>Usuário</th><th>Login</th><th>Acesso</th><th>Status</th><th>Ações</th></tr></thead>
+                <tbody>
+                    {% for u in usuarios %}
+                    <tr>
+                        <td><strong>{{ u.nome }}</strong></td>
+                        <td style="color: var(--text-muted);">{{ u.usuario }}</td>
+                        <td>
+                            {% if u.role == 'Administrador Master' %}<span class="role-badge r-admin">{{ u.role }}</span>
+                            {% elif u.role == 'Operador Master' %}<span class="role-badge r-master">{{ u.role }}</span>
+                            {% elif u.role == 'Cliente' %}<span class="role-badge r-cliente">{{ u.role }}</span>
+                            {% elif u.role == 'Administrador Cliente' %}<span class="role-badge r-admin-cli">{{ u.role }}</span>
+                            {% elif u.role == 'Operador Cliente' %}<span class="role-badge r-op">{{ u.role }}</span>
+                            {% else %}<span class="role-badge r-local">{{ u.role }}</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if u.ativo == 1 or u.ativo is none %}
+                                <span class="status-badge status-ativo">ATIVO</span>
+                            {% else %}
+                                <span class="status-badge status-inativo">INATIVO</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if u.id != 1 %}
+                            <div style="display: flex; gap: 8px;">
+                                <button class="btn-icon" style="color: var(--blue);" title="Editar Nome/Usuário" onclick="editarInfo('{{ u.id }}', '{{ u.nome }}', '{{ u.usuario }}')"><i class="fa-solid fa-user-pen"></i></button>
+                                <button class="btn-icon" style="color: var(--yellow);" title="Alterar Senha" onclick="alterarSenha('{{ u.id }}')"><i class="fa-solid fa-key"></i></button>
+                                {% if u.ativo == 1 or u.ativo is none %}
+                                <button class="btn-icon" style="color: var(--text-muted);" title="Desativar Usuário" onclick="toggleStatus('{{ u.id }}')"><i class="fa-solid fa-power-off"></i></button>
+                                {% else %}
+                                <button class="btn-icon" style="color: var(--green);" title="Ativar Usuário" onclick="toggleStatus('{{ u.id }}')"><i class="fa-solid fa-power-off"></i></button>
+                                {% endif %}
+                                <button class="btn-icon" style="color: var(--red);" title="Excluir Definitivamente" onclick="deletarUser('{{ u.id }}')"><i class="fa-solid fa-trash"></i></button>
+                            </div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        async function criarUser() {
+            const data = { nome: document.getElementById('n-nome').value, usuario: document.getElementById('n-user').value, senha: document.getElementById('n-senha').value, role: document.getElementById('n-role').value };
+            const clientePaiEl = document.getElementById('n-cliente-pai');
+            if (clientePaiEl) data.cliente_pai = clientePaiEl.value;
+            
+            if(!data.nome || !data.usuario || !data.senha) return alert("Preencha todos os campos!");
+            const res = await fetch('/api/v2/usuarios', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+            const result = await res.json();
+            if(result.status === "OK") window.location.reload(); else alert(result.status);
+        }
+        
+        async function editarInfo(id, nomeAtual, userAtual) {
+            let novoNome = prompt("Editar Nome Completo:", nomeAtual); if (novoNome === null) return;
+            let novoUser = prompt("Editar Login de Acesso:", userAtual); if (novoUser === null) return;
+            if (novoNome.trim() !== '' && novoUser.trim() !== '') {
+                const res = await fetch('/api/v2/usuarios/' + id + '/info', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ nome: novoNome.trim(), usuario: novoUser.trim() }) });
+                const result = await res.json();
+                if(result.status === "OK") window.location.reload(); else alert(result.status);
+            } else alert("Nome e Usuário não podem ficar vazios.");
+        }
+
+        async function toggleStatus(id) { await fetch('/api/v2/usuarios/' + id + '/toggle_status', { method: 'POST' }); window.location.reload(); }
+        
+        async function alterarSenha(id) {
+            let nova = prompt("Digite a nova senha para este usuário:");
+            if(nova && nova.trim() !== '') {
+                await fetch('/api/v2/usuarios/' + id + '/senha', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({senha: nova}) });
+                alert("Senha alterada com sucesso!");
+            }
+        }
+        
+        async function deletarUser(id) {
+            if(confirm("Excluir este usuário DEFINITIVAMENTE?")) { await fetch('/api/v2/usuarios/' + id, { method: 'DELETE' }); window.location.reload(); }
+        }
+    </script>
+</body>
+</html>

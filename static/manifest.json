@@ -1,0 +1,15 @@
+{
+  "name": "NOC Central PRO",
+  "short_name": "NOC",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0b13",
+  "theme_color": "#0b0b13",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2888/2888407.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
