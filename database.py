@@ -1,19 +1,14 @@
 import sqlite3
 import os
-import urlparse # Para Python 2. Se usar Python 3, é 'urllib.parse'
+from urllib.parse import urlparse  # <--- ESTE É O JEITO CERTO NO PYTHON 3
 
-# Detecta se estamos no Render (eles enviam a variável DATABASE_URL)
+# Detecta se estamos no Render
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 def get_db_connection():
-    """Retorna uma conexão com o banco de dados correto (Postgres na nuvem, SQLite local)"""
-    
     if DATABASE_URL:
-        # --- MÁGICA DO POSTGRESQL (NUVEM) ---
         import psycopg2
-        # O Render dá uma URL tipo: postgres://user:password@host:port/dbname
-        # Precisamos parsear isso
-        url = urlparse.urlparse(DATABASE_URL)
+        url = urlparse(DATABASE_URL) # <--- MUDOU AQUI TAMBÉM
         
         conn = psycopg2.connect(
             database=url.path[1:],
@@ -24,10 +19,8 @@ def get_db_connection():
         )
         return conn
     else:
-        # --- MÁGICA DO SQLITE (LOCAL) ---
-        # Se não houver URL, estamos no PC local
         conn = sqlite3.connect('database.db')
-        conn.row_factory = sqlite3.Row # Permite acessar colunas pelo nome localmente
+        conn.row_factory = sqlite3.Row
         return conn
 
 def init_db():
