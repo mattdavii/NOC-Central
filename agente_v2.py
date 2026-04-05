@@ -1,3 +1,5 @@
+import os, sys, time, json, urllib.request, threading, sqlite3, concurrent.futures
+import speedtest # 🚨 TEM QUE ESTAR AQUI NO TOPO AGORA!
 import time, json, platform, subprocess, uuid, os, threading, sqlite3, socket
 import urllib.request
 from datetime import datetime

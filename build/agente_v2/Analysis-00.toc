@@ -1,6 +1,6 @@
 (['E:\\NOC\\agente_v2.py'],
  ['E:\\NOC'],
- [],
+ ['speedtest'],
  [('C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy\\_pyinstaller',
    0),
@@ -1669,9 +1669,9 @@
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\__init__.py',
    'PYMODULE'),
-  ('stringprep',
+  ('_py_abc',
    'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\stringprep.py',
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_py_abc.py',
    'PYMODULE'),
   ('_py_warnings',
    'C:\\Users\\Mateus '
@@ -1681,9 +1681,9 @@
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\tracemalloc.py',
    'PYMODULE'),
-  ('_py_abc',
+  ('stringprep',
    'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_py_abc.py',
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\stringprep.py',
    'PYMODULE'),
   ('psutil',
    'C:\\Users\\Mateus '
@@ -1700,106 +1700,6 @@
   ('psutil._ntuples',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\psutil\\_ntuples.py',
-   'PYMODULE'),
-  ('speedtest',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\speedtest.py',
-   'PYMODULE'),
-  ('optparse',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\optparse.py',
-   'PYMODULE'),
-  ('xml.dom.minidom',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\dom\\minidom.py',
-   'PYMODULE'),
-  ('xml.dom.pulldom',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\dom\\pulldom.py',
-   'PYMODULE'),
-  ('xml.dom.expatbuilder',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\dom\\expatbuilder.py',
-   'PYMODULE'),
-  ('xml.dom.NodeFilter',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\dom\\NodeFilter.py',
-   'PYMODULE'),
-  ('xml.dom.xmlbuilder',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\dom\\xmlbuilder.py',
-   'PYMODULE'),
-  ('xml.dom.minicompat',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\dom\\minicompat.py',
-   'PYMODULE'),
-  ('xml.dom.domreg',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\dom\\domreg.py',
-   'PYMODULE'),
-  ('xml.dom',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\dom\\__init__.py',
-   'PYMODULE'),
-  ('xml.etree.ElementTree',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\etree\\ElementTree.py',
-   'PYMODULE'),
-  ('xml.etree.cElementTree',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\etree\\cElementTree.py',
-   'PYMODULE'),
-  ('xml.etree.ElementInclude',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\etree\\ElementInclude.py',
-   'PYMODULE'),
-  ('xml.etree.ElementPath',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\etree\\ElementPath.py',
-   'PYMODULE'),
-  ('xml.etree',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\etree\\__init__.py',
-   'PYMODULE'),
-  ('timeit',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\timeit.py',
-   'PYMODULE'),
-  ('concurrent.futures',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\__init__.py',
-   'PYMODULE'),
-  ('concurrent.futures.interpreter',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\interpreter.py',
-   'PYMODULE'),
-  ('concurrent.interpreters',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\interpreters\\__init__.py',
-   'PYMODULE'),
-  ('concurrent.interpreters._queues',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\interpreters\\_queues.py',
-   'PYMODULE'),
-  ('concurrent.interpreters._crossinterp',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\interpreters\\_crossinterp.py',
-   'PYMODULE'),
-  ('concurrent.futures.thread',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\thread.py',
-   'PYMODULE'),
-  ('concurrent.futures.process',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\process.py',
-   'PYMODULE'),
-  ('concurrent.futures._base',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\_base.py',
-   'PYMODULE'),
-  ('concurrent',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\__init__.py',
    'PYMODULE'),
   ('PIL.ImageDraw',
    'C:\\Users\\Mateus '
@@ -2785,6 +2685,26 @@
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImageFilter.py',
    'PYMODULE'),
+  ('xml.etree.ElementTree',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\etree\\ElementTree.py',
+   'PYMODULE'),
+  ('xml.etree.cElementTree',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\etree\\cElementTree.py',
+   'PYMODULE'),
+  ('xml.etree.ElementInclude',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\etree\\ElementInclude.py',
+   'PYMODULE'),
+  ('xml.etree.ElementPath',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\etree\\ElementPath.py',
+   'PYMODULE'),
+  ('xml.etree',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\etree\\__init__.py',
+   'PYMODULE'),
   ('PIL._deprecate',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\_deprecate.py',
@@ -3686,25 +3606,101 @@
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_strptime.py',
    'PYMODULE'),
-  ('urllib.request',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\urllib\\request.py',
-   'PYMODULE'),
-  ('ftplib',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\ftplib.py',
-   'PYMODULE'),
-  ('netrc',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\netrc.py',
-   'PYMODULE'),
-  ('http.cookiejar',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\http\\cookiejar.py',
-   'PYMODULE'),
   ('socket',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\socket.py',
+   'PYMODULE'),
+  ('uuid',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\uuid.py',
+   'PYMODULE'),
+  ('subprocess',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\subprocess.py',
+   'PYMODULE'),
+  ('platform',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\platform.py',
+   'PYMODULE'),
+  ('speedtest',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\speedtest.py',
+   'PYMODULE'),
+  ('optparse',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\optparse.py',
+   'PYMODULE'),
+  ('xml.dom.minidom',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\dom\\minidom.py',
+   'PYMODULE'),
+  ('xml.dom.pulldom',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\dom\\pulldom.py',
+   'PYMODULE'),
+  ('xml.dom.expatbuilder',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\dom\\expatbuilder.py',
+   'PYMODULE'),
+  ('xml.dom.NodeFilter',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\dom\\NodeFilter.py',
+   'PYMODULE'),
+  ('xml.dom.xmlbuilder',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\dom\\xmlbuilder.py',
+   'PYMODULE'),
+  ('xml.dom.minicompat',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\dom\\minicompat.py',
+   'PYMODULE'),
+  ('xml.dom.domreg',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\dom\\domreg.py',
+   'PYMODULE'),
+  ('xml.dom',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\dom\\__init__.py',
+   'PYMODULE'),
+  ('timeit',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\timeit.py',
+   'PYMODULE'),
+  ('concurrent.futures',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\__init__.py',
+   'PYMODULE'),
+  ('concurrent.futures.interpreter',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\interpreter.py',
+   'PYMODULE'),
+  ('concurrent.interpreters',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\interpreters\\__init__.py',
+   'PYMODULE'),
+  ('concurrent.interpreters._queues',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\interpreters\\_queues.py',
+   'PYMODULE'),
+  ('concurrent.interpreters._crossinterp',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\interpreters\\_crossinterp.py',
+   'PYMODULE'),
+  ('concurrent.futures.thread',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\thread.py',
+   'PYMODULE'),
+  ('concurrent.futures.process',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\process.py',
+   'PYMODULE'),
+  ('concurrent.futures._base',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\_base.py',
+   'PYMODULE'),
+  ('concurrent',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\__init__.py',
    'PYMODULE'),
   ('sqlite3',
    'C:\\Users\\Mateus '
@@ -3730,17 +3726,21 @@
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_threading_local.py',
    'PYMODULE'),
-  ('uuid',
+  ('urllib.request',
    'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\uuid.py',
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\urllib\\request.py',
    'PYMODULE'),
-  ('subprocess',
+  ('ftplib',
    'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\subprocess.py',
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\ftplib.py',
    'PYMODULE'),
-  ('platform',
+  ('netrc',
    'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\platform.py',
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\netrc.py',
+   'PYMODULE'),
+  ('http.cookiejar',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\http\\cookiejar.py',
    'PYMODULE'),
   ('json',
    'C:\\Users\\Mateus '
@@ -3762,13 +3762,13 @@
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\python314.dll',
    'BINARY'),
-  ('numpy.libs\\msvcp140-a4c2229bdc2a2a630acdc095b4d86008.dll',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy.libs\\msvcp140-a4c2229bdc2a2a630acdc095b4d86008.dll',
-   'BINARY'),
   ('numpy.libs\\libscipy_openblas64_-74a408729250596b0973e69fdd954eea.dll',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy.libs\\libscipy_openblas64_-74a408729250596b0973e69fdd954eea.dll',
+   'BINARY'),
+  ('numpy.libs\\msvcp140-a4c2229bdc2a2a630acdc095b4d86008.dll',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy.libs\\msvcp140-a4c2229bdc2a2a630acdc095b4d86008.dll',
    'BINARY'),
   ('_zstd.pyd',
    'C:\\Users\\Mateus '
@@ -3833,10 +3833,6 @@
   ('psutil\\_psutil_windows.pyd',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\psutil\\_psutil_windows.pyd',
-   'EXTENSION'),
-  ('_elementtree.pyd',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\DLLs\\_elementtree.pyd',
    'EXTENSION'),
   ('numpy\\_core\\_multiarray_tests.cp314-win_amd64.pyd',
    'C:\\Users\\Mateus '
@@ -3930,6 +3926,10 @@
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\_imagingmath.cp314-win_amd64.pyd',
    'EXTENSION'),
+  ('_elementtree.pyd',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\DLLs\\_elementtree.pyd',
+   'EXTENSION'),
   ('cryptography\\hazmat\\bindings\\_rust.pyd',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\bindings\\_rust.pyd',
@@ -3942,10 +3942,6 @@
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\markupsafe\\_speedups.cp314-win_amd64.pyd',
    'EXTENSION'),
-  ('_sqlite3.pyd',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\DLLs\\_sqlite3.pyd',
-   'EXTENSION'),
   ('_uuid.pyd',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\DLLs\\_uuid.pyd',
@@ -3954,46 +3950,10 @@
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\DLLs\\_wmi.pyd',
    'EXTENSION'),
-  ('api-ms-win-crt-string-l1-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-crt-string-l1-1-0.dll',
-   'BINARY'),
-  ('api-ms-win-crt-heap-l1-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-crt-heap-l1-1-0.dll',
-   'BINARY'),
-  ('api-ms-win-crt-time-l1-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-crt-time-l1-1-0.dll',
-   'BINARY'),
-  ('api-ms-win-crt-convert-l1-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-crt-convert-l1-1-0.dll',
-   'BINARY'),
-  ('api-ms-win-crt-runtime-l1-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-crt-runtime-l1-1-0.dll',
-   'BINARY'),
-  ('api-ms-win-crt-stdio-l1-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-crt-stdio-l1-1-0.dll',
-   'BINARY'),
-  ('api-ms-win-crt-math-l1-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-crt-math-l1-1-0.dll',
-   'BINARY'),
-  ('api-ms-win-crt-conio-l1-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-crt-conio-l1-1-0.dll',
-   'BINARY'),
-  ('api-ms-win-crt-environment-l1-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-crt-environment-l1-1-0.dll',
-   'BINARY'),
-  ('VCRUNTIME140.dll',
+  ('_sqlite3.pyd',
    'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\VCRUNTIME140.dll',
-   'BINARY'),
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\DLLs\\_sqlite3.pyd',
+   'EXTENSION'),
   ('api-ms-win-crt-filesystem-l1-1-0.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
    'Toolkit\\api-ms-win-crt-filesystem-l1-1-0.dll',
@@ -4002,21 +3962,61 @@
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
    'Toolkit\\api-ms-win-crt-process-l1-1-0.dll',
    'BINARY'),
+  ('api-ms-win-crt-conio-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-crt-conio-l1-1-0.dll',
+   'BINARY'),
   ('api-ms-win-crt-locale-l1-1-0.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
    'Toolkit\\api-ms-win-crt-locale-l1-1-0.dll',
+   'BINARY'),
+  ('api-ms-win-crt-time-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-crt-time-l1-1-0.dll',
+   'BINARY'),
+  ('api-ms-win-crt-stdio-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-crt-stdio-l1-1-0.dll',
+   'BINARY'),
+  ('api-ms-win-crt-heap-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-crt-heap-l1-1-0.dll',
+   'BINARY'),
+  ('api-ms-win-crt-string-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-crt-string-l1-1-0.dll',
+   'BINARY'),
+  ('api-ms-win-crt-runtime-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-crt-runtime-l1-1-0.dll',
+   'BINARY'),
+  ('VCRUNTIME140.dll',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\VCRUNTIME140.dll',
+   'BINARY'),
+  ('api-ms-win-crt-convert-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-crt-convert-l1-1-0.dll',
+   'BINARY'),
+  ('api-ms-win-crt-environment-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-crt-environment-l1-1-0.dll',
+   'BINARY'),
+  ('api-ms-win-crt-math-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-crt-math-l1-1-0.dll',
    'BINARY'),
   ('api-ms-win-crt-utility-l1-1-0.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
    'Toolkit\\api-ms-win-crt-utility-l1-1-0.dll',
    'BINARY'),
-  ('VCRUNTIME140_1.dll',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\VCRUNTIME140_1.dll',
-   'BINARY'),
   ('api-ms-win-crt-private-l1-1-0.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
    'Toolkit\\api-ms-win-crt-private-l1-1-0.dll',
+   'BINARY'),
+  ('VCRUNTIME140_1.dll',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\VCRUNTIME140_1.dll',
    'BINARY'),
   ('libcrypto-3.dll',
    'C:\\Users\\Mateus '
@@ -4046,77 +4046,41 @@
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
    'Toolkit\\ucrtbase.dll',
    'BINARY'),
-  ('api-ms-win-core-util-l1-1-0.dll',
+  ('api-ms-win-core-rtlsupport-l1-1-0.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-util-l1-1-0.dll',
+   'Toolkit\\api-ms-win-core-rtlsupport-l1-1-0.dll',
    'BINARY'),
-  ('api-ms-win-core-file-l1-1-0.dll',
+  ('api-ms-win-core-file-l1-2-0.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-file-l1-1-0.dll',
-   'BINARY'),
-  ('api-ms-win-core-processthreads-l1-1-1.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-processthreads-l1-1-1.dll',
-   'BINARY'),
-  ('api-ms-win-core-datetime-l1-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-datetime-l1-1-0.dll',
-   'BINARY'),
-  ('api-ms-win-core-file-l2-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-file-l2-1-0.dll',
-   'BINARY'),
-  ('api-ms-win-core-interlocked-l1-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-interlocked-l1-1-0.dll',
+   'Toolkit\\api-ms-win-core-file-l1-2-0.dll',
    'BINARY'),
   ('api-ms-win-core-errorhandling-l1-1-0.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
    'Toolkit\\api-ms-win-core-errorhandling-l1-1-0.dll',
    'BINARY'),
-  ('api-ms-win-core-localization-l1-2-0.dll',
+  ('api-ms-win-core-synch-l1-1-0.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-localization-l1-2-0.dll',
-   'BINARY'),
-  ('api-ms-win-core-processthreads-l1-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-processthreads-l1-1-0.dll',
+   'Toolkit\\api-ms-win-core-synch-l1-1-0.dll',
    'BINARY'),
   ('api-ms-win-core-sysinfo-l1-1-0.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
    'Toolkit\\api-ms-win-core-sysinfo-l1-1-0.dll',
    'BINARY'),
-  ('api-ms-win-core-rtlsupport-l1-1-0.dll',
+  ('api-ms-win-core-profile-l1-1-0.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-rtlsupport-l1-1-0.dll',
-   'BINARY'),
-  ('api-ms-win-core-memory-l1-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-memory-l1-1-0.dll',
-   'BINARY'),
-  ('api-ms-win-core-string-l1-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-string-l1-1-0.dll',
+   'Toolkit\\api-ms-win-core-profile-l1-1-0.dll',
    'BINARY'),
   ('api-ms-win-core-console-l1-1-0.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
    'Toolkit\\api-ms-win-core-console-l1-1-0.dll',
    'BINARY'),
-  ('api-ms-win-core-synch-l1-1-0.dll',
+  ('api-ms-win-core-datetime-l1-1-0.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-synch-l1-1-0.dll',
+   'Toolkit\\api-ms-win-core-datetime-l1-1-0.dll',
    'BINARY'),
-  ('api-ms-win-core-libraryloader-l1-1-0.dll',
+  ('api-ms-win-core-localization-l1-2-0.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-libraryloader-l1-1-0.dll',
-   'BINARY'),
-  ('api-ms-win-core-heap-l1-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-heap-l1-1-0.dll',
-   'BINARY'),
-  ('api-ms-win-core-file-l1-2-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-file-l1-2-0.dll',
+   'Toolkit\\api-ms-win-core-localization-l1-2-0.dll',
    'BINARY'),
   ('api-ms-win-core-timezone-l1-1-0.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
@@ -4126,55 +4090,99 @@
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
    'Toolkit\\api-ms-win-core-processenvironment-l1-1-0.dll',
    'BINARY'),
-  ('api-ms-win-core-handle-l1-1-0.dll',
+  ('api-ms-win-core-processthreads-l1-1-1.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-handle-l1-1-0.dll',
+   'Toolkit\\api-ms-win-core-processthreads-l1-1-1.dll',
+   'BINARY'),
+  ('api-ms-win-core-file-l2-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-core-file-l2-1-0.dll',
    'BINARY'),
   ('api-ms-win-core-debug-l1-1-0.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
    'Toolkit\\api-ms-win-core-debug-l1-1-0.dll',
    'BINARY'),
+  ('api-ms-win-core-string-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-core-string-l1-1-0.dll',
+   'BINARY'),
+  ('api-ms-win-core-interlocked-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-core-interlocked-l1-1-0.dll',
+   'BINARY'),
+  ('api-ms-win-core-util-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-core-util-l1-1-0.dll',
+   'BINARY'),
+  ('api-ms-win-core-memory-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-core-memory-l1-1-0.dll',
+   'BINARY'),
+  ('api-ms-win-core-processthreads-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-core-processthreads-l1-1-0.dll',
+   'BINARY'),
+  ('api-ms-win-core-handle-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-core-handle-l1-1-0.dll',
+   'BINARY'),
+  ('api-ms-win-core-libraryloader-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-core-libraryloader-l1-1-0.dll',
+   'BINARY'),
+  ('api-ms-win-core-heap-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-core-heap-l1-1-0.dll',
+   'BINARY'),
+  ('api-ms-win-core-file-l1-1-0.dll',
+   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
+   'Toolkit\\api-ms-win-core-file-l1-1-0.dll',
+   'BINARY'),
   ('api-ms-win-core-namedpipe-l1-1-0.dll',
    'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
    'Toolkit\\api-ms-win-core-namedpipe-l1-1-0.dll',
-   'BINARY'),
-  ('api-ms-win-core-profile-l1-1-0.dll',
-   'C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance '
-   'Toolkit\\api-ms-win-core-profile-l1-1-0.dll',
    'BINARY')],
  [],
  [],
- [('cryptography-46.0.5.dist-info\\INSTALLER',
+ [('cryptography-46.0.5.dist-info\\RECORD',
    'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography-46.0.5.dist-info\\INSTALLER',
-   'DATA'),
-  ('cryptography-46.0.5.dist-info\\licenses\\LICENSE.APACHE',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography-46.0.5.dist-info\\licenses\\LICENSE.APACHE',
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography-46.0.5.dist-info\\RECORD',
    'DATA'),
   ('cryptography-46.0.5.dist-info\\METADATA',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography-46.0.5.dist-info\\METADATA',
    'DATA'),
-  ('cryptography-46.0.5.dist-info\\RECORD',
+  ('cryptography-46.0.5.dist-info\\licenses\\LICENSE.BSD',
    'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography-46.0.5.dist-info\\RECORD',
-   'DATA'),
-  ('cryptography-46.0.5.dist-info\\WHEEL',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography-46.0.5.dist-info\\WHEEL',
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography-46.0.5.dist-info\\licenses\\LICENSE.BSD',
    'DATA'),
   ('cryptography-46.0.5.dist-info\\licenses\\LICENSE',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography-46.0.5.dist-info\\licenses\\LICENSE',
    'DATA'),
-  ('cryptography-46.0.5.dist-info\\licenses\\LICENSE.BSD',
+  ('cryptography-46.0.5.dist-info\\licenses\\LICENSE.APACHE',
    'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography-46.0.5.dist-info\\licenses\\LICENSE.BSD',
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography-46.0.5.dist-info\\licenses\\LICENSE.APACHE',
+   'DATA'),
+  ('cryptography-46.0.5.dist-info\\WHEEL',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography-46.0.5.dist-info\\WHEEL',
+   'DATA'),
+  ('cryptography-46.0.5.dist-info\\INSTALLER',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography-46.0.5.dist-info\\INSTALLER',
    'DATA'),
   ('setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\licenses\\LICENSE',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\licenses\\LICENSE',
+   'DATA'),
+  ('setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\METADATA',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\METADATA',
+   'DATA'),
+  ('setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\top_level.txt',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\top_level.txt',
    'DATA'),
   ('setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\RECORD',
    'C:\\Users\\Mateus '
@@ -4184,243 +4192,295 @@
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\WHEEL',
    'DATA'),
-  ('setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\METADATA',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\METADATA',
-   'DATA'),
-  ('setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\INSTALLER',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\INSTALLER',
-   'DATA'),
   ('setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\REQUESTED',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\REQUESTED',
    'DATA'),
-  ('setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\top_level.txt',
+  ('setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\INSTALLER',
    'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\top_level.txt',
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\setuptools\\_vendor\\importlib_metadata-8.7.1.dist-info\\INSTALLER',
    'DATA'),
   ('setuptools\\_vendor\\jaraco\\text\\Lorem ipsum.txt',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\setuptools\\_vendor\\jaraco\\text\\Lorem '
    'ipsum.txt',
    'DATA'),
-  ('markupsafe-3.0.3.dist-info\\licenses\\LICENSE.txt',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\markupsafe-3.0.3.dist-info\\licenses\\LICENSE.txt',
-   'DATA'),
-  ('werkzeug-3.1.6.dist-info\\licenses\\LICENSE.txt',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\werkzeug-3.1.6.dist-info\\licenses\\LICENSE.txt',
-   'DATA'),
-  ('click-8.3.1.dist-info\\RECORD',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\click-8.3.1.dist-info\\RECORD',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\DELVEWHEEL',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\DELVEWHEEL',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\licenses\\numpy\\fft\\pocketfft\\LICENSE.md',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\fft\\pocketfft\\LICENSE.md',
-   'DATA'),
-  ('flask-3.1.3.dist-info\\RECORD',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\flask-3.1.3.dist-info\\RECORD',
-   'DATA'),
-  ('markupsafe-3.0.3.dist-info\\INSTALLER',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\markupsafe-3.0.3.dist-info\\INSTALLER',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\highway\\LICENSE',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\highway\\LICENSE',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\METADATA',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\METADATA',
-   'DATA'),
-  ('werkzeug-3.1.6.dist-info\\WHEEL',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\werkzeug-3.1.6.dist-info\\WHEEL',
-   'DATA'),
-  ('flask-3.1.3.dist-info\\entry_points.txt',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\flask-3.1.3.dist-info\\entry_points.txt',
-   'DATA'),
-  ('flask-3.1.3.dist-info\\licenses\\LICENSE.txt',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\flask-3.1.3.dist-info\\licenses\\LICENSE.txt',
-   'DATA'),
-  ('markupsafe-3.0.3.dist-info\\top_level.txt',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\markupsafe-3.0.3.dist-info\\top_level.txt',
-   'DATA'),
-  ('click-8.3.1.dist-info\\licenses\\LICENSE.txt',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\click-8.3.1.dist-info\\licenses\\LICENSE.txt',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\sfc64\\LICENSE.md',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\sfc64\\LICENSE.md',
-   'DATA'),
-  ('flask-3.1.3.dist-info\\WHEEL',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\flask-3.1.3.dist-info\\WHEEL',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\mt19937\\LICENSE.md',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\mt19937\\LICENSE.md',
-   'DATA'),
-  ('flask-3.1.3.dist-info\\REQUESTED',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\flask-3.1.3.dist-info\\REQUESTED',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\licenses\\LICENSE.txt',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\LICENSE.txt',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\licenses\\numpy\\random\\LICENSE.md',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\random\\LICENSE.md',
-   'DATA'),
-  ('itsdangerous-2.2.0.dist-info\\METADATA',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\itsdangerous-2.2.0.dist-info\\METADATA',
-   'DATA'),
-  ('markupsafe-3.0.3.dist-info\\RECORD',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\markupsafe-3.0.3.dist-info\\RECORD',
-   'DATA'),
-  ('itsdangerous-2.2.0.dist-info\\INSTALLER',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\itsdangerous-2.2.0.dist-info\\INSTALLER',
-   'DATA'),
-  ('itsdangerous-2.2.0.dist-info\\RECORD',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\itsdangerous-2.2.0.dist-info\\RECORD',
-   'DATA'),
-  ('markupsafe-3.0.3.dist-info\\WHEEL',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\markupsafe-3.0.3.dist-info\\WHEEL',
-   'DATA'),
   ('werkzeug-3.1.6.dist-info\\RECORD',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\werkzeug-3.1.6.dist-info\\RECORD',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\RECORD',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\RECORD',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\common\\pythoncapi-compat\\COPYING',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\common\\pythoncapi-compat\\COPYING',
-   'DATA'),
-  ('itsdangerous-2.2.0.dist-info\\WHEEL',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\itsdangerous-2.2.0.dist-info\\WHEEL',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\philox\\LICENSE.md',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\philox\\LICENSE.md',
-   'DATA'),
-  ('itsdangerous-2.2.0.dist-info\\LICENSE.txt',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\itsdangerous-2.2.0.dist-info\\LICENSE.txt',
    'DATA'),
   ('numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\multiarray\\dragon4_LICENSE.txt',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\multiarray\\dragon4_LICENSE.txt',
    'DATA'),
-  ('flask-3.1.3.dist-info\\INSTALLER',
+  ('flask-3.1.3.dist-info\\WHEEL',
    'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\flask-3.1.3.dist-info\\INSTALLER',
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\flask-3.1.3.dist-info\\WHEEL',
    'DATA'),
-  ('werkzeug-3.1.6.dist-info\\METADATA',
+  ('werkzeug-3.1.6.dist-info\\licenses\\LICENSE.txt',
    'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\werkzeug-3.1.6.dist-info\\METADATA',
-   'DATA'),
-  ('click-8.3.1.dist-info\\WHEEL',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\click-8.3.1.dist-info\\WHEEL',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\include\\numpy\\libdivide\\LICENSE.txt',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\include\\numpy\\libdivide\\LICENSE.txt',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\distributions\\LICENSE.md',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\distributions\\LICENSE.md',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\licenses\\numpy\\linalg\\lapack_lite\\LICENSE.txt',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\linalg\\lapack_lite\\LICENSE.txt',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\npysort\\x86-simd-sort\\LICENSE.md',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\npysort\\x86-simd-sort\\LICENSE.md',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\licenses\\numpy\\ma\\LICENSE',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\ma\\LICENSE',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\entry_points.txt',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\entry_points.txt',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\WHEEL',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\WHEEL',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\pcg64\\LICENSE.md',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\pcg64\\LICENSE.md',
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\werkzeug-3.1.6.dist-info\\licenses\\LICENSE.txt',
    'DATA'),
   ('click-8.3.1.dist-info\\INSTALLER',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\click-8.3.1.dist-info\\INSTALLER',
    'DATA'),
+  ('numpy-2.4.2.dist-info\\WHEEL',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\WHEEL',
+   'DATA'),
+  ('flask-3.1.3.dist-info\\INSTALLER',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\flask-3.1.3.dist-info\\INSTALLER',
+   'DATA'),
+  ('flask-3.1.3.dist-info\\RECORD',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\flask-3.1.3.dist-info\\RECORD',
+   'DATA'),
+  ('numpy-2.4.2.dist-info\\entry_points.txt',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\entry_points.txt',
+   'DATA'),
+  ('itsdangerous-2.2.0.dist-info\\LICENSE.txt',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\itsdangerous-2.2.0.dist-info\\LICENSE.txt',
+   'DATA'),
+  ('flask-3.1.3.dist-info\\entry_points.txt',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\flask-3.1.3.dist-info\\entry_points.txt',
+   'DATA'),
+  ('markupsafe-3.0.3.dist-info\\top_level.txt',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\markupsafe-3.0.3.dist-info\\top_level.txt',
+   'DATA'),
+  ('numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\sfc64\\LICENSE.md',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\sfc64\\LICENSE.md',
+   'DATA'),
+  ('flask-3.1.3.dist-info\\REQUESTED',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\flask-3.1.3.dist-info\\REQUESTED',
+   'DATA'),
+  ('itsdangerous-2.2.0.dist-info\\RECORD',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\itsdangerous-2.2.0.dist-info\\RECORD',
+   'DATA'),
+  ('markupsafe-3.0.3.dist-info\\RECORD',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\markupsafe-3.0.3.dist-info\\RECORD',
+   'DATA'),
+  ('numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\highway\\LICENSE',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\highway\\LICENSE',
+   'DATA'),
+  ('itsdangerous-2.2.0.dist-info\\WHEEL',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\itsdangerous-2.2.0.dist-info\\WHEEL',
+   'DATA'),
+  ('markupsafe-3.0.3.dist-info\\WHEEL',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\markupsafe-3.0.3.dist-info\\WHEEL',
+   'DATA'),
+  ('numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\common\\pythoncapi-compat\\COPYING',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\common\\pythoncapi-compat\\COPYING',
+   'DATA'),
   ('numpy-2.4.2.dist-info\\INSTALLER',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\INSTALLER',
-   'DATA'),
-  ('numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\umath\\svml\\LICENSE',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\umath\\svml\\LICENSE',
-   'DATA'),
-  ('markupsafe-3.0.3.dist-info\\METADATA',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\markupsafe-3.0.3.dist-info\\METADATA',
    'DATA'),
   ('flask-3.1.3.dist-info\\METADATA',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\flask-3.1.3.dist-info\\METADATA',
    'DATA'),
-  ('werkzeug-3.1.6.dist-info\\INSTALLER',
+  ('numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\distributions\\LICENSE.md',
    'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\werkzeug-3.1.6.dist-info\\INSTALLER',
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\distributions\\LICENSE.md',
+   'DATA'),
+  ('itsdangerous-2.2.0.dist-info\\METADATA',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\itsdangerous-2.2.0.dist-info\\METADATA',
+   'DATA'),
+  ('werkzeug-3.1.6.dist-info\\METADATA',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\werkzeug-3.1.6.dist-info\\METADATA',
+   'DATA'),
+  ('numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\include\\numpy\\libdivide\\LICENSE.txt',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\include\\numpy\\libdivide\\LICENSE.txt',
+   'DATA'),
+  ('numpy-2.4.2.dist-info\\DELVEWHEEL',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\DELVEWHEEL',
+   'DATA'),
+  ('click-8.3.1.dist-info\\licenses\\LICENSE.txt',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\click-8.3.1.dist-info\\licenses\\LICENSE.txt',
+   'DATA'),
+  ('numpy-2.4.2.dist-info\\licenses\\numpy\\ma\\LICENSE',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\ma\\LICENSE',
+   'DATA'),
+  ('itsdangerous-2.2.0.dist-info\\INSTALLER',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\itsdangerous-2.2.0.dist-info\\INSTALLER',
    'DATA'),
   ('numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\splitmix64\\LICENSE.md',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\splitmix64\\LICENSE.md',
    'DATA'),
+  ('numpy-2.4.2.dist-info\\RECORD',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\RECORD',
+   'DATA'),
+  ('numpy-2.4.2.dist-info\\licenses\\numpy\\random\\LICENSE.md',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\random\\LICENSE.md',
+   'DATA'),
+  ('click-8.3.1.dist-info\\RECORD',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\click-8.3.1.dist-info\\RECORD',
+   'DATA'),
+  ('click-8.3.1.dist-info\\WHEEL',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\click-8.3.1.dist-info\\WHEEL',
+   'DATA'),
+  ('numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\npysort\\x86-simd-sort\\LICENSE.md',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\npysort\\x86-simd-sort\\LICENSE.md',
+   'DATA'),
+  ('numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\philox\\LICENSE.md',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\philox\\LICENSE.md',
+   'DATA'),
+  ('werkzeug-3.1.6.dist-info\\INSTALLER',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\werkzeug-3.1.6.dist-info\\INSTALLER',
+   'DATA'),
   ('click-8.3.1.dist-info\\METADATA',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\click-8.3.1.dist-info\\METADATA',
    'DATA'),
+  ('numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\umath\\svml\\LICENSE',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\_core\\src\\umath\\svml\\LICENSE',
+   'DATA'),
+  ('numpy-2.4.2.dist-info\\licenses\\numpy\\linalg\\lapack_lite\\LICENSE.txt',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\linalg\\lapack_lite\\LICENSE.txt',
+   'DATA'),
+  ('numpy-2.4.2.dist-info\\METADATA',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\METADATA',
+   'DATA'),
+  ('numpy-2.4.2.dist-info\\licenses\\LICENSE.txt',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\LICENSE.txt',
+   'DATA'),
+  ('numpy-2.4.2.dist-info\\licenses\\numpy\\fft\\pocketfft\\LICENSE.md',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\fft\\pocketfft\\LICENSE.md',
+   'DATA'),
+  ('markupsafe-3.0.3.dist-info\\METADATA',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\markupsafe-3.0.3.dist-info\\METADATA',
+   'DATA'),
+  ('markupsafe-3.0.3.dist-info\\licenses\\LICENSE.txt',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\markupsafe-3.0.3.dist-info\\licenses\\LICENSE.txt',
+   'DATA'),
+  ('numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\pcg64\\LICENSE.md',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\pcg64\\LICENSE.md',
+   'DATA'),
+  ('markupsafe-3.0.3.dist-info\\INSTALLER',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\markupsafe-3.0.3.dist-info\\INSTALLER',
+   'DATA'),
+  ('numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\mt19937\\LICENSE.md',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\numpy-2.4.2.dist-info\\licenses\\numpy\\random\\src\\mt19937\\LICENSE.md',
+   'DATA'),
+  ('werkzeug-3.1.6.dist-info\\WHEEL',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\werkzeug-3.1.6.dist-info\\WHEEL',
+   'DATA'),
+  ('flask-3.1.3.dist-info\\licenses\\LICENSE.txt',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\flask-3.1.3.dist-info\\licenses\\LICENSE.txt',
+   'DATA'),
   ('base_library.zip', 'E:\\NOC\\build\\agente_v2\\base_library.zip', 'DATA')],
- [('stat',
+ [('heapq',
    'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\stat.py',
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\heapq.py',
    'PYMODULE'),
-  ('collections',
+  ('copyreg',
    'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\collections\\__init__.py',
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\copyreg.py',
+   'PYMODULE'),
+  ('linecache',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\linecache.py',
+   'PYMODULE'),
+  ('_collections_abc',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_collections_abc.py',
    'PYMODULE'),
   ('enum',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\enum.py',
+   'PYMODULE'),
+  ('reprlib',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\reprlib.py',
+   'PYMODULE'),
+  ('traceback',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\traceback.py',
+   'PYMODULE'),
+  ('sre_constants',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\sre_constants.py',
+   'PYMODULE'),
+  ('io',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\io.py',
+   'PYMODULE'),
+  ('sre_parse',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\sre_parse.py',
+   'PYMODULE'),
+  ('posixpath',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\posixpath.py',
+   'PYMODULE'),
+  ('types',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\types.py',
+   'PYMODULE'),
+  ('keyword',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\keyword.py',
+   'PYMODULE'),
+  ('ntpath',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\ntpath.py',
+   'PYMODULE'),
+  ('abc',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\abc.py',
+   'PYMODULE'),
+  ('stat',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\stat.py',
+   'PYMODULE'),
+  ('sre_compile',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\sre_compile.py',
+   'PYMODULE'),
+  ('warnings',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\warnings.py',
    'PYMODULE'),
   ('encodings.zlib_codec',
    'C:\\Users\\Mateus '
@@ -4914,57 +4974,33 @@
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\encodings\\__init__.py',
    'PYMODULE'),
-  ('reprlib',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\reprlib.py',
-   'PYMODULE'),
-  ('sre_constants',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\sre_constants.py',
-   'PYMODULE'),
-  ('warnings',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\warnings.py',
-   'PYMODULE'),
-  ('sre_compile',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\sre_compile.py',
-   'PYMODULE'),
-  ('sre_parse',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\sre_parse.py',
-   'PYMODULE'),
   ('operator',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\operator.py',
    'PYMODULE'),
-  ('types',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\types.py',
-   'PYMODULE'),
-  ('codecs',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\codecs.py',
-   'PYMODULE'),
-  ('_collections_abc',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_collections_abc.py',
-   'PYMODULE'),
-  ('keyword',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\keyword.py',
-   'PYMODULE'),
-  ('copyreg',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\copyreg.py',
-   'PYMODULE'),
-  ('linecache',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\linecache.py',
-   'PYMODULE'),
   ('locale',
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\locale.py',
+   'PYMODULE'),
+  ('functools',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\functools.py',
+   'PYMODULE'),
+  ('weakref',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\weakref.py',
+   'PYMODULE'),
+  ('genericpath',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\genericpath.py',
+   'PYMODULE'),
+  ('_weakrefset',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_weakrefset.py',
+   'PYMODULE'),
+  ('collections',
+   'C:\\Users\\Mateus '
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\collections\\__init__.py',
    'PYMODULE'),
   ('re._parser',
    'C:\\Users\\Mateus '
@@ -4986,45 +5022,9 @@
    'C:\\Users\\Mateus '
    'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\re\\__init__.py',
    'PYMODULE'),
-  ('_weakrefset',
+  ('codecs',
    'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_weakrefset.py',
-   'PYMODULE'),
-  ('functools',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\functools.py',
-   'PYMODULE'),
-  ('ntpath',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\ntpath.py',
-   'PYMODULE'),
-  ('posixpath',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\posixpath.py',
-   'PYMODULE'),
-  ('io',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\io.py',
-   'PYMODULE'),
-  ('weakref',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\weakref.py',
-   'PYMODULE'),
-  ('genericpath',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\genericpath.py',
-   'PYMODULE'),
-  ('traceback',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\traceback.py',
-   'PYMODULE'),
-  ('heapq',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\heapq.py',
-   'PYMODULE'),
-  ('abc',
-   'C:\\Users\\Mateus '
-   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\abc.py',
+   'Costa\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\codecs.py',
    'PYMODULE'),
   ('os',
    'C:\\Users\\Mateus '
