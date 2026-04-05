@@ -101,8 +101,12 @@ def logout():
 # ==========================================
 @app.route('/')
 def index():
-    if 'user_id' not in session: return redirect(url_for('login'))
-    return render_template('index.html', nome=session['user_nome'])
+    # Agora ele procura a chave correta que o login gerou
+    if 'usuario' not in session: 
+        return redirect(url_for('login'))
+    
+    # Passa o nome correto para o HTML mostrar na tela
+    return render_template('index.html', nome=session['usuario'])
 
 @app.route('/sensor/<mac_id>')
 def painel_sensor(mac_id):
