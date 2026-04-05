@@ -173,7 +173,7 @@ def report_data():
         # --- 📊 HISTÓRICO DE PINGS A CADA 2 SEGUNDOS ---
         try: 
             conn.execute('''CREATE TABLE IF NOT EXISTS historico_pings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, sensor_mac TEXT, 
+                id SERIAL PRIMARY KEY, sensor_mac TEXT, 
                 google INTEGER, cloudflare INTEGER, aws INTEGER, quad9 INTEGER, 
                 data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )''')
@@ -406,7 +406,7 @@ def reportar_velocidade():
     # Mágica: Cria a tabela de histórico silenciosamente se não existir
     try: 
         conn.execute('''CREATE TABLE IF NOT EXISTS historico_telemetria (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, sensor_mac TEXT, 
+            id SERIAL PRIMARY KEY, sensor_mac TEXT, 
             download REAL, upload REAL, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
     except: pass
