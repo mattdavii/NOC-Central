@@ -12,6 +12,7 @@ try:
     import psutil
 except ImportError:
     psutil = None
+import sys
 
 # ==========================================
 # ⚙️ CONFIGURAÇÃO DO AGENTE
@@ -208,6 +209,25 @@ def loop_telemetria():
                     threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
                 elif comando == "run_traceroute": 
                     threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
+                elif comando == "update_agent":
+                    try:
+                        print("🔄 Baixando novo código-fonte da Nuvem...")
+                        # 🚨 COLOQUE AQUI O SEU LINK RAW DO GITHUB
+                        url_codigo = "https://raw.githubusercontent.com/mattdavii/NOC-Central/refs/heads/main/agente_v2.py"
+                        
+                        req_update = urllib.request.Request(url_codigo)
+                        with urllib.request.urlopen(req_update, timeout=15) as resp:
+                            novo_codigo = resp.read()
+                            
+                        # O Agente apaga o próprio arquivo e escreve o novo por cima
+                        with open(__file__, 'wb') as f:
+                            f.write(novo_codigo)
+                            
+                        print("✅ Código atualizado com sucesso! Reiniciando agente para aplicar funções...")
+                        # O Agente se suicida e nasce de novo rodando o código fresco
+                        os.execv(sys.executable, ['python', __file__])
+                    except Exception as e:
+                        print(f"❌ Erro na Atualização OTA: {e}")
                     
         except Exception as e: 
             print(f"❌ Erro Telemetria: {e}")

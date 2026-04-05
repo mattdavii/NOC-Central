@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request, render_template, session, redirect, u
 from werkzeug.security import check_password_hash, generate_password_hash
 import database
 
+
 app = Flask(__name__)
 app.secret_key = 'chave_super_secreta_noc_md' 
 
@@ -43,6 +44,7 @@ except Exception as e:
 # Variável em memória para controlar os pedidos de Speedtest manuais
 SPEEDTEST_REQUESTS = set()
 TRACEROUTE_REQUESTS = set()
+UPDATE_REQUESTS = set()
 # Fila de comandos de energia para os sensores
 PENDING_COMMANDS = {}
 
@@ -204,6 +206,9 @@ def report_data():
         elif 'TRACEROUTE_REQUESTS' in globals() and mac in TRACEROUTE_REQUESTS:
             TRACEROUTE_REQUESTS.remove(mac)
             comando = "run_traceroute"
+        elif 'UPDATE_REQUESTS' in globals() and mac in UPDATE_REQUESTS:
+            UPDATE_REQUESTS.remove(mac)
+            comando = "update_agent"
 
         return jsonify({"status": "OK", "command": comando})
 
@@ -230,7 +235,7 @@ def obter_graficos_ping(mac_id):
     """ Busca os últimos 30 pings para o gráfico de disponibilidade """
     conn = database.get_db()
     try:
-        registros = conn.execute("SELECT google, cloudflare, aws, quad9, to_char(data_hora, 'HH24:MI:SS') as hora FROM historico_pings WHERE sensor_mac = ? ORDER BY id DESC LIMIT 30", (mac_id,)).fetchall()
+        registros = conn.execute("SELECT google, cloudflare, aws, quad9, to_char(data_hora - INTERVAL '3 hours', 'HH24:MI:SS') as hora FROM historico_pings WHERE sensor_mac = ? ORDER BY id DESC LIMIT 30", (mac_id,)).fetchall()
     except:
         registros = []
     conn.close()
@@ -472,7 +477,7 @@ def obter_graficos(mac_id):
     conn = database.get_db()
     try:
         # Pega as últimas 15 medições e extrai apenas a Hora e o Minuto
-        registros = conn.execute("SELECT download, upload, to_char(data_hora, 'HH24:MI') as hora FROM historico_telemetria WHERE sensor_mac = ? ORDER BY id DESC LIMIT 15", (mac_id,)).fetchall()
+        registros = conn.execute("SELECT download, upload, to_char(data_hora - INTERVAL '3 hours', 'HH24:MI') as hora FROM historico_telemetria WHERE sensor_mac = ? ORDER BY id DESC LIMIT 15", (mac_id,)).fetchall()
     except:
         registros = []
     conn.close()
@@ -539,7 +544,7 @@ def historico_alertas(mac_id):
         )''')
     except: pass
 
-    query = "SELECT * FROM logs_ia WHERE sensor_mac = ?"
+    query = "SELECT id, sensor_mac, tipo_evento, gravidade, detalhes, to_char(data_hora - INTERVAL '3 hours', 'DD/MM/YYYY HH24:MI:SS') as data_hora FROM logs_ia WHERE sensor_mac = ?"
     params = [mac_id]
     
     if data_filtro:
@@ -818,7 +823,7 @@ def logs_globais():
 
     try:
         logs = conn.execute('''
-            SELECT l.tipo_evento, l.gravidade, l.detalhes, to_char(l.data_hora, 'DD/MM HH24:MI:SS') as hora, s.nome_local 
+            SSELECT l.tipo_evento, l.gravidade, l.detalhes, to_char(l.data_hora - INTERVAL '3 hours', 'DD/MM HH24:MI:SS') as hora, s.nome_local 
             FROM logs_ia l 
             LEFT JOIN sensores s ON l.sensor_mac = s.mac_id 
             ORDER BY l.id DESC LIMIT 50
@@ -828,6 +833,11 @@ def logs_globais():
         
     conn.close()
     return jsonify([dict(l) for l in logs])
+
+@app.route('/api/v2/solicitar_update/<mac_id>', methods=['POST'])
+def solicitar_update(mac_id):
+    UPDATE_REQUESTS.add(mac_id)
+    return jsonify({"status": "OK"})
 
 if __name__ == '__main__':
     # O host='0.0.0.0' permite que o site seja acessado pelo IP da rede local

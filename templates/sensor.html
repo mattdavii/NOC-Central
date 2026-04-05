@@ -228,6 +228,8 @@
                 <input type="number" id="edit-lat" step="any" value="{{ sensor.lat or '-14.235' }}">
                 <input type="number" id="edit-lon" step="any" value="{{ sensor.lon or '-51.925' }}">
             </div>
+            <hr style="border: 0.5px solid var(--border); margin: 15px 0;">
+            <button class="action-btn" onclick="forcarUpdate()" style="background: var(--blue); color: var(--bg-base); width: 100%;"><i class="fa-solid fa-cloud-arrow-down"></i> Atualizar Código do Agente (OTA)</button>
             <button class="action-btn" onclick="salvarConfig()" style="background: #fab387; width: 100%;">Sincronizar</button>
         </div>
 
@@ -543,6 +545,13 @@
 
         async function salvarConfig() { const data = { mac_id, nome: document.getElementById('edit-nome').value, lat: parseFloat(document.getElementById('edit-lat').value), lon: parseFloat(document.getElementById('edit-lon').value) }; await fetch('/api/v2/configurar_sensor', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }); alert("Sincronizado!"); }
 
+        async function forcarUpdate() {
+            if(confirm("⚠️ Deseja forçar a atualização remota deste Agente? Ele fará o download da última versão do seu GitHub e reiniciará sozinho.")) {
+                await fetch('/api/v2/solicitar_update/' + mac_id, { method: 'POST' });
+                alert("Ordem de atualização enviada! O Agente será atualizado no próximo batimento.");
+            }
+        }
+        
         // ==========================================
         // LOOPS DE ATUALIZAÇÃO (MOTORES)
         // ==========================================
