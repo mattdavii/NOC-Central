@@ -55,35 +55,48 @@ def login():
     
     erro = None
     if request.method == 'POST':
-        # Pega os dados do HTML
-        usuario_digitado = request.form.get('usuario')
-        senha_digitada = request.form.get('senha')
+        # .strip() arranca qualquer espaço invisível que venha do navegador
+        usuario_digitado = request.form.get('usuario', '').strip()
+        senha_digitada = request.form.get('senha', '').strip()
         
-        # RASTREADOR PARA O RENDER (Vai aparecer no LOG)
-        print(f"TENTATIVA DE LOGIN -> User: '{usuario_digitado}' | Pass: '{senha_digitada}'")
+        print(f"TENTATIVA: User='{usuario_digitado}' | Pass='{senha_digitada}'")
         
         try:
-            conn = database.get_db()
-            user = conn.execute("SELECT * FROM clientes WHERE usuario = ?", (usuario_digitado,)).fetchone()
-            
-            if not user and usuario_digitado == 'admin' and senha_digitada == 'admin123':
-                conn.execute("INSERT INTO clientes (usuario, senha, role) VALUES ('admin', 'admin123', 'Administrador Master')")
+            # 🚨 CHAVE MESTRA E AUTO-CORREÇÃO DO BANCO 🚨
+            if usuario_digitado == 'admin' and senha_digitada == 'admin123':
+                conn = database.get_db()
+                user = conn.execute("SELECT * FROM clientes WHERE usuario = 'admin'").fetchone()
+                
+                if not user:
+                    # Se não existia, cria do jeito certo
+                    conn.execute("INSERT INTO clientes (usuario, senha, role) VALUES ('admin', 'admin123', 'Administrador Master')")
+                else:
+                    # Se existia e estava bugado, força a senha a voltar a ser admin123
+                    conn.execute("UPDATE clientes SET senha = 'admin123' WHERE usuario = 'admin'")
+                
                 conn.commit()
+                conn.close()
+                
+                # Libera a entrada!
                 session['logged_in'] = True
                 session['usuario'] = 'admin'
                 session['role'] = 'Administrador Master'
-                print("SUCESSO: Admin criado e liberado!")
-                return redirect(url_for('index')) # Redirecionamento correto
+                print("ACESSO MASTER LIBERADO COM SUCESSO!")
+                return redirect(url_for('index'))
+
+            # Fluxo normal para outros usuários que você criar no futuro
+            conn = database.get_db()
+            user = conn.execute("SELECT * FROM clientes WHERE usuario = ?", (usuario_digitado,)).fetchone()
             
-            elif user and user['senha'] == senha_digitada:
+            # str().strip() garante que a senha do banco também não tenha espaços acidentais
+            if user and str(user['senha']).strip() == senha_digitada:
                 session['logged_in'] = True
                 session['usuario'] = user['usuario']
                 session['role'] = user['role']
-                print("SUCESSO: Login autorizado!")
-                return redirect(url_for('index')) # Redirecionamento correto
+                print("ACESSO NORMAL LIBERADO!")
+                return redirect(url_for('index'))
             else:
                 erro = "Usuário ou senha incorretos!"
-                print("FALHA: Senha não bateu ou usuário não existe no banco.")
                 
         except Exception as e:
             erro = f"Erro no banco de dados: {e}"
