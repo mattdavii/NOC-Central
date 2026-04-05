@@ -452,11 +452,11 @@ def reportar_velocidade():
         mac = data.get('mac_id')
         conn = database.get_db()
         
-        # 🚨 IMPORTANTE: PostgreSQL usa %s em vez de ?
-        conn.execute("UPDATE sensores SET download = %s, upload = %s WHERE mac_id = %s", 
+        # 🚨 VOLTANDO PARA O PADRÃO SQLITE (?)
+        conn.execute("UPDATE sensores SET download = ?, upload = ? WHERE mac_id = ?", 
                      (data['down'], data['up'], mac))
         
-        conn.execute("INSERT INTO historico_telemetria (sensor_mac, download, upload) VALUES (%s, %s, %s)", 
+        conn.execute("INSERT INTO historico_telemetria (sensor_mac, download, upload) VALUES (?, ?, ?)", 
                      (mac, data['down'], data['up']))
         
         conn.commit()

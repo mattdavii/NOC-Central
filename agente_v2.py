@@ -107,22 +107,30 @@ def log_local_event(tipo, detalhes, gravidade="Alerta"):
 
 def executar_speedtest(mac, url_central):
     try:
-        print("⏳ Iniciando medição de velocidade automática (15 min)...")
-        # Força o uso de SSL/TLS para evitar erros de 'Internal Server Error'
-        st = speedtest.Speedtest(secure=True) 
+        print("⏳ [SPEEDTEST] 1. Iniciando medição... (Pode levar até 40 segundos)")
+        import speedtest
+        
+        print("⏳ [SPEEDTEST] 2. Procurando o melhor servidor...")
+        st = speedtest.Speedtest() # Removi o secure=True para evitar bloqueios SSL
         st.get_best_server()
+        
+        print("⏳ [SPEEDTEST] 3. Testando Download...")
         d = st.download() / 1_000_000
+        
+        print("⏳ [SPEEDTEST] 4. Testando Upload...")
         u = st.upload() / 1_000_000
         
+        print(f"⏳ [SPEEDTEST] 5. Enviando para a Nuvem (Down: {round(d, 2)} | Up: {round(u, 2)})")
         payload = {"mac_id": mac, "down": round(d, 2), "up": round(u, 2)}
         url_speed = url_central.replace('report_data', 'reportar_velocidade')
-        req = urllib.request.Request(url_speed, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
         
-        with urllib.request.urlopen(req, timeout=40) as resp:
-            print(f"✅ [SPEEDTEST] Enviado: Down {round(d, 2)} Mbps | Up {round(u, 2)} Mbps")
+        req = urllib.request.Request(url_speed, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+        urllib.request.urlopen(req, timeout=15)
+        
+        print("✅ [SPEEDTEST] Concluído e salvo no gráfico!")
             
     except Exception as e:
-        print(f"❌ Erro no Speedtest: {e}")
+        print(f"❌ [SPEEDTEST] Erro fatal durante o teste: {e}")
 
 # ==========================================
 # 📡 MOTOR 1: ENVIO E COLETA (BACKGROUND)
