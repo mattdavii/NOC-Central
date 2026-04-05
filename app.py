@@ -9,10 +9,14 @@ app.secret_key = 'chave_super_secreta_noc_md'
 database.init_db()
 
 # Patch: Promove o usuário 'admin' antigo para 'Administrador Master'
-conn = database.get_db()
-conn.execute("UPDATE clientes SET role = 'Administrador Master' WHERE usuario = 'admin'")
-conn.commit()
-conn.close()
+try:
+    conn = database.get_db()
+    cursor = conn.cursor() # O PostgreSQL exige o Cursor!
+    cursor.execute("UPDATE clientes SET role = 'Administrador Master' WHERE usuario = 'admin'")
+    conn.commit()
+    cursor.close()
+except Exception as e:
+    print(f"Aviso ao iniciar banco: {e}")
 
 # Variável em memória para controlar os pedidos de Speedtest manuais
 SPEEDTEST_REQUESTS = set()
