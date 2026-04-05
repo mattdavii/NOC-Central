@@ -224,6 +224,14 @@
             <div id="lista-historico" style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; max-height: 180px; overflow-y: auto; border: 1px solid var(--bg-input);"></div>
         </div>
 
+        <div class="card" style="grid-column: 1 / -1; border-top: 4px solid var(--purple);">
+         <h3>
+             <span><i class="fa-solid fa-route"></i> Análise de Rota Wan (Traceroute)</span>
+             <button class="action-btn" onclick="forcarTraceroute()" id="btn-trace" style="background:var(--purple); color:white; font-size: 0.8em;"><i class="fa-solid fa-play"></i> Rastrear Rota</button>
+         </h3>
+         <pre id="trace-result" style="background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px; border: 1px solid var(--bg-input); color: var(--green); font-family: 'JetBrains Mono', monospace; font-size: 0.85em; overflow-x: auto; min-height: 100px;">Nenhum teste de rota executado recentemente.</pre>
+     </div>
+
         <div class="card card-calib">
             <h3><span><i class="fa-solid fa-map-location-dot"></i> Calibração GPS</span></h3>
             <div style="margin-bottom: 8px;"><input type="text" id="edit-nome" value="{{ sensor.nome_local }}"></div>
@@ -356,6 +364,8 @@
                     badge.className = "status-pill pill-fail";
                 }
                 
+                if(data.ultima_rota) document.getElementById('trace-result').innerText = data.ultima_rota;
+
                 document.getElementById('cpu-text').innerText = data.cpu_usage + '%';
                 document.getElementById('cpu-fill').style.width = data.cpu_usage + '%';
                 document.getElementById('ram-text').innerText = data.ram_usage + '%';
@@ -463,6 +473,13 @@
             logs.forEach(l => { let cor = l.gravidade === 'Crítica' ? 'var(--red)' : 'var(--yellow)'; html += `<div style="padding: 8px; border-bottom: 1px dashed var(--border); font-size:0.85em;"><span style="color:var(--text-muted)">[${l.data_hora}]</span> <b style="color:${cor}">${l.tipo_evento}</b>: ${l.detalhes}</div>`; });
             document.getElementById('lista-historico').innerHTML = html || '<div style="text-align:center; padding:10px; color:var(--text-muted);">Sem logs no período.</div>';
         }
+
+        async function forcarTraceroute() {
+         document.getElementById('btn-trace').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Rastreado...';
+         document.getElementById('trace-result').innerText = 'Executando salto a salto pelo Windows... (pode levar até 40 segundos)';
+         await fetch('/api/v2/solicitar_traceroute/' + mac_id, { method: 'POST' });
+         setTimeout(() => { document.getElementById('btn-trace').innerHTML = '<i class="fa-solid fa-play"></i> Rastrear Rota'; buscarDadosAoVivo(); }, 40000);
+     }
 
         async function salvarConfig() { const data = { mac_id, nome: document.getElementById('edit-nome').value, lat: parseFloat(document.getElementById('edit-lat').value), lon: parseFloat(document.getElementById('edit-lon').value) }; await fetch('/api/v2/configurar_sensor', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }); alert("Sincronizado!"); }
 

@@ -120,6 +120,12 @@
         <div class="map-wrapper">
             <div id="mapa"></div>
         </div>
+        <div class="card" style="border-top: 4px solid var(--yellow); margin-top: -5px;">
+         <div class="section-title" style="border:none; margin:0; padding-bottom: 10px;"><i class="fa-solid fa-list-check"></i> Central de Alertas e Eventos Globais</div>
+         <div id="global-logs" style="max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; border: 1px solid var(--bg-input);">
+             <p style="color: var(--text-muted); padding: 10px;">Aguardando eventos...</p>
+         </div>
+     </div>
 
         <div>
             <div class="section-title"><i class="fa-solid fa-server"></i> Sensores Implantados</div>
@@ -232,6 +238,27 @@
                 console.error("Erro na Central:", error); 
             }
         }
+
+        async function carregarLogsGlobais() {
+         try {
+             const res = await fetch('/api/v2/logs_globais');
+             const logs = await res.json();
+             let html = '';
+             logs.forEach(l => {
+                 let cor = l.gravidade === 'Crítica' ? 'var(--red)' : 'var(--yellow)';
+                 html += `<div style="padding: 8px; border-bottom: 1px dashed var(--border); display: flex; gap: 15px; font-size: 0.85em; align-items: center;">
+                     <span style="color: var(--text-muted); min-width: 110px;">[${l.hora}]</span>
+                     <span style="color: var(--blue); font-weight: bold; min-width: 150px;">${l.nome_local || 'Sensor Desconhecido'}</span>
+                     <span style="background: rgba(243,139,168,0.1); border: 1px solid ${cor}; color: ${cor}; padding: 3px 8px; border-radius: 4px; font-weight:bold; text-align: center;">${l.tipo_evento}</span>
+                     <span style="color: var(--text-main);">${l.detalhes}</span>
+                 </div>`;
+             });
+             document.getElementById('global-logs').innerHTML = html || '<p style="color: var(--text-muted); padding: 10px;">Nenhum alerta recente registrado nas rotas.</p>';
+         } catch(e) {}
+     }
+     setInterval(carregarLogsGlobais, 5000);
+     carregarLogsGlobais();
+    
 
         // Carrega imediatamente e atualiza a cada 5 segundos sem piscar a tela
         carregarSensores();

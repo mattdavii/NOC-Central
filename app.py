@@ -42,6 +42,7 @@ except Exception as e:
 
 # Variável em memória para controlar os pedidos de Speedtest manuais
 SPEEDTEST_REQUESTS = set()
+TRACEROUTE_REQUESTS = set()
 # Fila de comandos de energia para os sensores
 PENDING_COMMANDS = {}
 
@@ -147,6 +148,8 @@ def report_data():
         except: pass
         try: conn.execute("ALTER TABLE sensores ADD COLUMN ip_gateway TEXT")
         except: pass
+        try: conn.execute("ALTER TABLE sensores ADD COLUMN ultima_rota TEXT")
+        except: pass
 
         # Mágica de Banco de Dados: Garante colunas
         colunas = ['lat', 'lon', 'ping_global', 'ping_gateway', 'ip_gateway']
@@ -203,6 +206,9 @@ def report_data():
         if mac in SPEEDTEST_REQUESTS:
             SPEEDTEST_REQUESTS.remove(mac)
             return jsonify({"status": "OK", "command": "run_speedtest"})
+        if mac in TRACEROUTE_REQUESTS:
+            TRACEROUTE_REQUESTS.remove(mac)
+            return jsonify({"status": "OK", "command": "run_traceroute"})
         
         return jsonify({"status": "OK", "command": "none"})
         
@@ -774,6 +780,32 @@ def deletar_sensor(mac_id):
     conn.commit()
     conn.close()
     return jsonify({"status": "OK"})
+
+@app.route('/api/v2/solicitar_traceroute/<mac_id>', methods=['POST'])
+def solicitar_traceroute(mac_id):
+    TRACEROUTE_REQUESTS.add(mac_id)
+    return jsonify({"status": "OK"})
+
+@app.route('/api/v2/reportar_rota', methods=['POST'])
+def reportar_rota():
+    data = request.json
+    conn = database.get_db()
+    conn.execute("UPDATE sensores SET ultima_rota = ? WHERE mac_id = ?", (data['rota'], data['mac_id']))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "OK"})
+
+@app.route('/api/v2/logs_globais')
+def logs_globais():
+    conn = database.get_db()
+    logs = conn.execute('''
+        SELECT l.tipo_evento, l.gravidade, l.detalhes, to_char(l.data_hora, 'DD/MM HH24:MI:SS') as hora, s.nome_local 
+        FROM logs_ia l 
+        LEFT JOIN sensores s ON l.sensor_mac = s.mac_id 
+        ORDER BY l.id DESC LIMIT 50
+    ''').fetchall()
+    conn.close()
+    return jsonify([dict(l) for l in logs])
 
 if __name__ == '__main__':
     # O host='0.0.0.0' permite que o site seja acessado pelo IP da rede local
