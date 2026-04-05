@@ -278,18 +278,22 @@ def atualizar_dispositivos():
     sensor_mac = data.get('mac_id')
     conn = database.get_db()
     
-    # Cria uma tabela auxiliar invisível de "Memória Fotográfica" de MACs (Sem precisar resetar o banco!)
-    try: conn.execute("CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)")
-    except: pass
-    try: conn.execute("ALTER TABLE dispositivos ADD COLUMN nome_custom TEXT")
+    # 🚨 MÁGICA: Cria a tabela de dispositivos na nuvem se não existir
+    try:
+        conn.execute('''CREATE TABLE IF NOT EXISTS dispositivos (
+            id SERIAL PRIMARY KEY, sensor_mac TEXT, ip TEXT, 
+            mac TEXT, fabricante TEXT, nome_custom TEXT
+        )''')
     except: pass
     
-    # Lê a memória fotográfica para lembrar o nome de todo mundo pelo MAC
+    try: conn.execute("CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)")
+    except: pass
+    
     nomes_salvos = {row['mac']: row['nome'] for row in conn.execute("SELECT mac, nome FROM nomes_conhecidos").fetchall()}
 
     conn.execute("DELETE FROM dispositivos WHERE sensor_mac = ?", (sensor_mac,))
     for disp in data.get('lista', []):
-        nome = nomes_salvos.get(disp['mac']) # Puxa da memória pelo MAC, mesmo se o IP mudou
+        nome = nomes_salvos.get(disp['mac']) 
         conn.execute("INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, nome_custom) VALUES (?, ?, ?, ?, ?)",
                        (sensor_mac, disp['ip'], disp['mac'], disp['fabricante'], nome))
     conn.commit()
@@ -317,6 +321,15 @@ def renomear_dispositivo():
 def alertas_ia():
     data = request.json
     conn = database.get_db()
+    
+    # 🚨 MÁGICA: Cria a tabela de logs na nuvem se não existir
+    try:
+        conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (
+            id SERIAL PRIMARY KEY, sensor_mac TEXT, tipo_evento TEXT, 
+            gravidade TEXT, detalhes TEXT, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+    except: pass
+    
     for alerta in data.get('alertas', []):
         conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, ?, ?, ?)",
                      (data['mac_id'], alerta['tipo'], alerta['gravidade'], alerta['detalhes']))
@@ -438,6 +451,15 @@ def obter_graficos(mac_id):
 @app.route('/api/v2/ips_customizados/<mac_id>', methods=['GET', 'POST'])
 def gerenciar_ips(mac_id):
     conn = database.get_db()
+    
+    # 🚨 MÁGICA: Cria a tabela do Radar de Alvos Customizados se não existir
+    try:
+        conn.execute('''CREATE TABLE IF NOT EXISTS ips_custom (
+            id SERIAL PRIMARY KEY, sensor_mac TEXT, ip TEXT, 
+            descricao TEXT, latencia INTEGER DEFAULT 0
+        )''')
+    except: pass
+
     if request.method == 'POST':
         data = request.json
         conn.execute("INSERT INTO ips_custom (sensor_mac, ip, descricao) VALUES (?, ?, ?)", 
