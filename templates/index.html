@@ -148,13 +148,10 @@
             maxZoom: 18
         }).addTo(map);
 
-        // Ícones customizados para o mapa
-        const iconOnline = L.divIcon({ className: 'custom-icon', html: '<i class="fa-solid fa-location-dot" style="color: var(--green); font-size: 24px; filter: drop-shadow(0 0 5px var(--green));"></i>', iconSize: [24, 24], iconAnchor: [12, 24] });
-        const iconOffline = L.divIcon({ className: 'custom-icon', html: '<i class="fa-solid fa-location-dot" style="color: var(--red); font-size: 24px; filter: drop-shadow(0 0 5px var(--red));"></i>', iconSize: [24, 24], iconAnchor: [12, 24] });
+        // Camada isolada para os pinos para facilitar a atualização
+        let layerSensores = L.layerGroup().addTo(map);
 
-        let marcadores = [];
-
-       async function carregarSensores() {
+        async function carregarSensores() {
             try {
                 const response = await fetch('/api/v2/mapa_sensores');
                 const data = await response.json();
@@ -162,10 +159,11 @@
 
                 let htmlGrid = '';
                 let total = sensores.length;
-                let online = 0; let offline = 0;
+                let online = 0; 
+                let offline = 0;
 
-                marcadores.forEach(m => map.removeLayer(m));
-                marcadores = [];
+                // Limpa os pinos do mapa antes de desenhar os novos
+                layerSensores.clearLayers();
 
                 sensores.forEach(s => {
                     // Blindagem contra valores nulos
@@ -174,20 +172,36 @@
                     if (isOnline) online++; else offline++;
                     let statusText = isOnline ? 'ONLINE' : 'OFFLINE';
 
-                    if (s.lat && s.lon) {
-                        let icone = isOnline ? iconOnline : iconOffline;
-                        let badgeClassPopup = isOnline ? 'popup-on' : 'popup-off';
-                        
-                        let marcador = L.marker([s.lat, s.lon], {icon: icone}).addTo(map)
-                            .bindPopup(`
-                                <h4><i class="fa-solid fa-server"></i> ${s.nome_local || 'Desconhecido'}</h4>
-                                <div style="margin-bottom: 8px; font-size: 0.9em;">Status: <span class="popup-status ${badgeClassPopup}">${statusText}</span></div>
-                                <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.75em; color: var(--text-muted);">MAC: ${s.mac_id}</div>
-                                <a href="/sensor/${s.mac_id}" class="popup-btn"><i class="fa-solid fa-magnifying-glass-chart"></i> Acessar Painel</a>
-                            `);
-                        marcadores.push(marcador);
-                    }
+                    // --- LÓGICA DO PINO NEON NO MAPA ---
+                    let lat = parseFloat(s.lat);
+                    let lon = parseFloat(s.lon);
+                    
+                    // Se não tiver coordenada, usa o centro do Brasil por padrão
+                    if (isNaN(lat)) lat = -14.235;
+                    if (isNaN(lon)) lon = -51.925;
 
+                    let corBase = isOnline ? '#a6e3a1' : '#f38ba8'; // Verde ou Vermelho
+                    let sombra = isOnline ? '0 0 15px #a6e3a1' : '0 0 20px #f38ba8';
+                    let badgeClassPopup = isOnline ? 'popup-on' : 'popup-off';
+
+                    // Cria o ícone com a div invisível do Leaflet e desenha o círculo dentro
+                    let customIcon = L.divIcon({
+                        className: '', // Vazio para remover o fundo branco padrão do Leaflet
+                        html: `<div style="background-color: ${corBase}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid #11111b; box-shadow: ${sombra};"></div>`,
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8] // Puxa o pino exatamente pelo centro
+                    });
+
+                    // Adiciona o marcador à camada de sensores
+                    L.marker([lat, lon], {icon: customIcon}).addTo(layerSensores)
+                        .bindPopup(`
+                            <h4><i class="fa-solid fa-server"></i> ${s.nome_local || 'Desconhecido'}</h4>
+                            <div style="margin-bottom: 8px; font-size: 0.9em;">Status: <span class="popup-status ${badgeClassPopup}">${statusText}</span></div>
+                            <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.75em; color: var(--text-muted);">MAC: ${s.mac_id}</div>
+                            <a href="/sensor/${s.mac_id}" class="popup-btn"><i class="fa-solid fa-magnifying-glass-chart"></i> Acessar Painel</a>
+                        `);
+
+                    // --- LÓGICA DA LISTA DE SENSORES NO RODAPÉ ---
                     let badgeClass = isOnline ? 'badge-on' : 'badge-off';
                     let cpuText = s.cpu_usage ? s.cpu_usage + '%' : '--';
 
@@ -206,15 +220,20 @@
                     `;
                 });
 
+                // Atualiza os indicadores KPIs no topo
                 document.getElementById('kpi-total').innerText = total;
                 document.getElementById('kpi-on').innerText = online;
                 document.getElementById('kpi-off').innerText = offline;
+                
+                // Preenche a grade lá embaixo
                 document.getElementById('sensor-list').innerHTML = htmlGrid || '<p style="color: var(--text-muted);">Nenhum sensor registrado na rede.</p>';
 
-            } catch (error) { console.error("Erro na Central:", error); }
+            } catch (error) { 
+                console.error("Erro na Central:", error); 
+            }
         }
 
-        // Carrega imediatamente e atualiza a cada 5 segundos
+        // Carrega imediatamente e atualiza a cada 5 segundos sem piscar a tela
         carregarSensores();
         setInterval(carregarSensores, 5000);
     </script>

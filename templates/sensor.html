@@ -81,7 +81,10 @@
     <nav class="navbar">
         <div style="display: flex; align-items: center; gap: 15px;">
             <button onclick="window.history.back()" class="action-btn" style="background: var(--border); color: var(--text-main); font-size: 0.9em; padding: 8px 12px;"><i class="fa-solid fa-arrow-left"></i> Voltar</button>
-            <div style="font-size: 1.3em; font-weight: bold; color: var(--blue);"><i class="fa-solid fa-tower-broadcast"></i> NOC MONITORING PRO</div>
+            <div style="font-size: 1.3em; font-weight: bold; color: var(--blue); display: flex; align-items: center;">
+                <i class="fa-solid fa-server" style="margin-right: 10px;"></i> {{ sensor.nome_local }}
+                <span style="font-size: 0.6em; color: var(--text-muted); margin-left: 12px; font-weight: normal; font-family: 'JetBrains Mono', monospace; border-left: 1px solid var(--border); padding-left: 12px;">MAC: {{ sensor.mac_id }}</span>
+            </div>
         </div>
         <div style="font-size: 0.9em; color: var(--text-muted);"><i class="fa-solid fa-wifi"></i> Acesso Local: <strong style="color: var(--blue);" id="access-ip">--</strong>:10000</div>
     </nav>
