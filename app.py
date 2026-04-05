@@ -194,7 +194,11 @@ def report_data():
         if comando_pendente:
             del PENDING_COMMANDS[mac] # Limpa da fila após entregar
             return jsonify({"status": "OK", "command": comando_pendente})
-            
+            # Avisa o agente para rodar o Speedtest
+        if mac in SPEEDTEST_REQUESTS:
+            SPEEDTEST_REQUESTS.remove(mac)
+            return jsonify({"status": "OK", "command": "run_speedtest"})
+        
         return jsonify({"status": "OK", "command": "none"})
         
     except Exception as e:
@@ -219,7 +223,7 @@ def obter_graficos_ping(mac_id):
     """ Busca os últimos 30 pings para o gráfico de disponibilidade """
     conn = database.get_db()
     try:
-        registros = conn.execute("SELECT google, cloudflare, aws, quad9, strftime('%H:%M:%S', data_hora) as hora FROM historico_pings WHERE sensor_mac = ? ORDER BY id DESC LIMIT 30", (mac_id,)).fetchall()
+        registros = conn.execute("SELECT google, cloudflare, aws, quad9, to_char(data_hora, 'HH24:MI:SS') as hora FROM historico_pings WHERE sensor_mac = ? ORDER BY id DESC LIMIT 30", (mac_id,)).fetchall()
     except:
         registros = []
     conn.close()
@@ -438,7 +442,7 @@ def obter_graficos(mac_id):
     conn = database.get_db()
     try:
         # Pega as últimas 15 medições e extrai apenas a Hora e o Minuto
-        registros = conn.execute("SELECT download, upload, strftime('%H:%M', data_hora) as hora FROM historico_telemetria WHERE sensor_mac = ? ORDER BY id DESC LIMIT 15", (mac_id,)).fetchall()
+        registros = conn.execute("SELECT download, upload, to_char(data_hora, 'HH24:MI') as hora FROM historico_telemetria WHERE sensor_mac = ? ORDER BY id DESC LIMIT 15", (mac_id,)).fetchall()
     except:
         registros = []
     conn.close()

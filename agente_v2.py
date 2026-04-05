@@ -4,6 +4,9 @@ from datetime import datetime
 from flask import Flask, request, Response, render_template_string, jsonify
 import pystray
 from PIL import Image, ImageDraw
+import concurrent.futures
+try: import speedtest
+except: pass
 
 # ==========================================
 # ⚙️ CONFIGURAÇÃO DO AGENTE
@@ -96,6 +99,21 @@ def log_local_event(tipo, detalhes, gravidade="Alerta"):
         conn.close()
     except: pass
 
+def executar_speedtest(mac, url_central):
+    try:
+        print("⏳ Central solicitou Speedtest! Testando... (Leva uns 20s)")
+        st = speedtest.Speedtest()
+        st.get_best_server()
+        d = st.download() / 1_000_000
+        u = st.upload() / 1_000_000
+        payload = {"mac_id": mac, "down": round(d, 2), "up": round(u, 2)}
+
+        url_speed = url_central.replace('report_data', 'reportar_velocidade')
+        req = urllib.request.Request(url_speed, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+        urllib.request.urlopen(req, timeout=10)
+        print(f"✅ Speedtest Enviado: Down {round(d, 2)} Mbps | Up {round(u, 2)} Mbps")
+    except Exception as e: print(f"❌ Erro no Speedtest: {e}")
+
 # ==========================================
 # 📡 MOTOR 1: ENVIO E COLETA (BACKGROUND)
 # ==========================================
@@ -109,7 +127,13 @@ def loop_telemetria():
         try: import psutil; cpu = psutil.cpu_percent(interval=0.1); ram = psutil.virtual_memory().percent
         except: cpu = 10.0; ram = 10.0
 
-        pings = {"Google": ping("8.8.8.8"), "Cloudflare": ping("1.1.1.1"), "AWS": ping("aws.amazon.com"), "Quad9": ping("9.9.9.9")}
+        # Dispara os 4 pings ao MESMO TEMPO (Muito mais rápido)
+        hosts_ping = {"Google": "8.8.8.8", "Cloudflare": "1.1.1.1", "AWS": "aws.amazon.com", "Quad9": "9.9.9.9"}
+        pings = {}
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = {executor.submit(ping, ip): name for name, ip in hosts_ping.items()}
+            for future in concurrent.futures.as_completed(futures):
+                pings[futures[future]] = future.result()
         meu_ip, gateway_ip = get_network_info()
         ping_gw = ping(gateway_ip) if gateway_ip != "Desconhecido" else 0
         
@@ -150,8 +174,14 @@ def loop_telemetria():
             req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
             with urllib.request.urlopen(req, timeout=5) as response:
                 print("✅ [TELEMETRIA] Dados básicos sincronizados!")
+                
+                # A variável comando nasce e já é checada aqui dentro com segurança
                 comando = json.loads(response.read().decode('utf-8')).get("command")
-                if comando == "reboot": os.system("shutdown /r /t 0" if os_name == "Windows" else "sudo reboot")
+                if comando == "reboot": 
+                    os.system("shutdown /r /t 0" if os_name == "Windows" else "sudo reboot")
+                elif comando == "run_speedtest": 
+                    threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
+                    
         except Exception as e: 
             print(f"❌ Erro Telemetria: {e}")
 
