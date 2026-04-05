@@ -224,6 +224,27 @@
             <div id="lista-historico" style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; max-height: 180px; overflow-y: auto; border: 1px solid var(--bg-input);"></div>
         </div>
 
+        <div class="card card-calib">
+            <h3><span><i class="fa-solid fa-map-location-dot"></i> Calibração GPS</span></h3>
+            <div style="margin-bottom: 8px;"><input type="text" id="edit-nome" value="{{ sensor.nome_local }}"></div>
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <input type="number" id="edit-lat" step="any" value="{{ sensor.lat or '-14.235' }}">
+                <input type="number" id="edit-lon" step="any" value="{{ sensor.lon or '-51.925' }}">
+            </div>
+            <button class="action-btn" onclick="salvarConfig()" style="background: #fab387; width: 100%;">Sincronizar</button>
+        </div>
+
+        <div class="card" style="grid-column: 1 / -1; border-top: 4px solid var(--purple);">
+            <h3>
+                <span><i class="fa-solid fa-route"></i> Análise de Rota Wan (Traceroute)</span>
+                <button class="action-btn" onclick="forcarTraceroute()" id="btn-trace" style="background:var(--purple); color:white; font-size: 0.8em;"><i class="fa-solid fa-play"></i> Rastrear Rota</button>
+            </h3>
+            <pre id="trace-result" style="background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px; border: 1px solid var(--bg-input); color: var(--green); font-family: 'JetBrains Mono', monospace; font-size: 0.85em; overflow-x: auto; min-height: 100px; white-space: pre-wrap;">Nenhum teste de rota executado recentemente.</pre>
+        </div>
+
+    </div> 
+
+
         <div class="card" style="grid-column: 1 / -1; border-top: 4px solid var(--purple);">
          <h3>
              <span><i class="fa-solid fa-route"></i> Análise de Rota Wan (Traceroute)</span>

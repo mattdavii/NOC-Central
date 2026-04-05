@@ -791,6 +791,13 @@ def solicitar_traceroute(mac_id):
 def reportar_rota():
     data = request.json
     conn = database.get_db()
+    
+    # 🚨 O SEGREDO: Cria a gaveta e SALVA antes de tentar colocar algo dentro!
+    try: 
+        conn.execute("ALTER TABLE sensores ADD COLUMN ultima_rota TEXT")
+        conn.commit()
+    except: pass
+    
     conn.execute("UPDATE sensores SET ultima_rota = ? WHERE mac_id = ?", (data['rota'], data['mac_id']))
     conn.commit()
     conn.close()
