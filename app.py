@@ -287,22 +287,37 @@ def atualizar_dispositivos():
     sensor_mac = data.get('mac_id')
     conn = database.get_db()
     
-    # 🚨 MÁGICA: Cria a tabela de dispositivos na nuvem se não existir
+    # 1. Puxa o IP do Gateway que o Sensor reportou na telemetria
+    sensor_data = conn.execute("SELECT ip_gateway FROM sensores WHERE mac_id = ?", (sensor_mac,)).fetchone()
+    ip_gw = sensor_data['ip_gateway'] if sensor_data else None
+
+    # 2. Criação de tabelas seguras
     try:
         conn.execute('''CREATE TABLE IF NOT EXISTS dispositivos (
             id SERIAL PRIMARY KEY, sensor_mac TEXT, ip TEXT, 
             mac TEXT, fabricante TEXT, nome_custom TEXT
         )''')
+        conn.commit()
     except: pass
     
-    try: conn.execute("CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)")
+    try: 
+        conn.execute("CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)")
+        conn.commit()
     except: pass
     
     nomes_salvos = {row['mac']: row['nome'] for row in conn.execute("SELECT mac, nome FROM nomes_conhecidos").fetchall()}
 
     conn.execute("DELETE FROM dispositivos WHERE sensor_mac = ?", (sensor_mac,))
     for disp in data.get('lista', []):
-        nome = nomes_salvos.get(disp['mac']) 
+        nome = nomes_salvos.get(disp['mac'])
+        
+        # 🚨 AUTO-IDENTIFICAÇÃO INTELIGENTE DO GATEWAY
+        if not nome:
+            if disp['ip'] == ip_gw:
+                nome = "Gateway / Roteador"
+            else:
+                nome = "Desconhecido"
+                
         conn.execute("INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, nome_custom) VALUES (?, ?, ?, ?, ?)",
                        (sensor_mac, disp['ip'], disp['mac'], disp['fabricante'], nome))
     conn.commit()
@@ -386,8 +401,16 @@ def api_mapa_sensores():
 @app.route('/api/v2/sensor_data/<mac_id>', methods=['GET'])
 def get_sensor_data(mac_id):
     conn = database.get_db()
+    
+    # 🚨 O CEIFEIRO: Verifica o relógio ANTES de mandar os dados para a tela
+    try:
+        conn.execute("UPDATE sensores SET status = 'offline' WHERE last_seen < NOW() - INTERVAL '15 seconds'")
+        conn.commit()
+    except: pass
+
     sensor = conn.execute("SELECT * FROM sensores WHERE mac_id = ?", (mac_id,)).fetchone()
     conn.close()
+    
     if sensor: return jsonify(dict(sensor))
     return jsonify({"error": "Sensor não encontrado"}), 404
 
@@ -550,7 +573,12 @@ def gerenciar_usuarios():
     
     conn = database.get_db()
     
-    # 🚨 CORREÇÃO DO ERRO 500: Adiciona e COMITA as colunas
+    # 🚨 CORREÇÃO DO ERRO 500: Cria a coluna 'nome' que estava faltando!
+    try: 
+        conn.execute("ALTER TABLE clientes ADD COLUMN nome TEXT")
+        conn.execute("UPDATE clientes SET nome = usuario WHERE nome IS NULL")
+        conn.commit()
+    except: pass
     try: 
         conn.execute("ALTER TABLE clientes ADD COLUMN cliente_pai_id INTEGER")
         conn.commit()
@@ -564,8 +592,7 @@ def gerenciar_usuarios():
         usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id FROM clientes ORDER BY id DESC").fetchall()
         clientes_pais = conn.execute("SELECT id, nome FROM clientes WHERE role = 'Cliente'").fetchall()
     else:
-        if session['role'] == 'Cliente':
-            tenant_id = session['user_id']
+        if session['role'] == 'Cliente': tenant_id = session['user_id']
         else: 
             user_info = conn.execute("SELECT cliente_pai_id FROM clientes WHERE id = ?", (session['user_id'],)).fetchone()
             tenant_id = user_info['cliente_pai_id']
@@ -660,13 +687,17 @@ def gerenciar_sensores():
     
     conn = database.get_db()
     
-    # 🚨 O CEIFEIRO NA TELA DE GESTÃO (15 segundos)
+    # CEIFEIRO: 15 segundos
     try:
         conn.execute("UPDATE sensores SET status = 'offline' WHERE last_seen < NOW() - INTERVAL '15 seconds'")
         conn.commit()
     except: pass
     
-    # 🚨 CORREÇÃO DO ERRO 500: Adiciona e COMITA as colunas
+    # CORREÇÃO DO ERRO 500
+    try: 
+        conn.execute("ALTER TABLE clientes ADD COLUMN nome TEXT")
+        conn.commit() 
+    except: pass
     try: 
         conn.execute("ALTER TABLE sensores ADD COLUMN cliente_id INTEGER")
         conn.commit() 

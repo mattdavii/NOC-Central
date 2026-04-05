@@ -89,7 +89,13 @@
     <div class="container">
         
         <div class="card card-hw">
-            <h3><span><i class="fa-solid fa-microchip"></i> Telemetria</span> <span id="pill-sensor" class="status-pill pill-ok">SENSOR ON</span></h3>
+            <h3>
+                <span><i class="fa-solid fa-microchip"></i> Telemetria</span> 
+                <span id="badge-status" class="status-pill {% if sensor.status == 'online' %}pill-ok{% else %}pill-fail{% endif %}">
+                    {% if sensor.status == 'online' %}SENSOR ON{% else %}SENSOR OFF{% endif %}
+                </span>
+            </h3>
+            
             <div class="data-row" style="margin-top:10px;">
                 <span><i class="fa-solid fa-temperature-half" style="color:var(--yellow); width: 20px;"></i> Temperatura:</span> 
                 <strong id="temp-text" style="color:var(--yellow); text-shadow: 0 0 10px rgba(249,226,175,0.3);">-- °C</strong>
@@ -219,8 +225,8 @@
             <h3><span><i class="fa-solid fa-map-location-dot"></i> Calibração GPS</span></h3>
             <div style="margin-bottom: 8px;"><input type="text" id="edit-nome" value="{{ sensor.nome_local }}"></div>
             <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                <input type="number" id="edit-lat" step="any" value="{{ sensor.lat }}">
-                <input type="number" id="edit-lon" step="any" value="{{ sensor.lon }}">
+                <input type="number" id="edit-lat" step="any" value="{{ sensor.lat or '-14.235' }}">
+                <input type="number" id="edit-lon" step="any" value="{{ sensor.lon or '-51.925' }}">
             </div>
             <button class="action-btn" onclick="salvarConfig()" style="background: #fab387; width: 100%;">Sincronizar</button>
         </div>
@@ -315,7 +321,7 @@
         }
 
         // ==========================================
-        // COMANDOS DE ENERGIA (NOVO)
+        // COMANDOS DE ENERGIA
         // ==========================================
         async function enviarComandoEnergia(cmd) {
             const acao = cmd === 'reboot' ? 'REINICIAR' : 'DESLIGAR';
@@ -330,17 +336,29 @@
         }
 
         // ==========================================
-        // DEMAIS FUNÇÕES DE DADOS E APIS
+        // MOTOR PRINCIPAL DE TELEMETRIA
         // ==========================================
         async function buscarDadosAoVivo() {
             try {
                 const response = await fetch('/api/v2/sensor_data/' + mac_id);
                 const data = await response.json();
+                
+                // --- ATUALIZAÇÃO DO BADGE DE STATUS (O CEIFEIRO NA TELA) ---
+                const badge = document.getElementById('badge-status');
+                if(data.status === 'online') {
+                    badge.innerText = "SENSOR ON";
+                    badge.className = "status-pill pill-ok";
+                } else {
+                    badge.innerText = "SENSOR OFF";
+                    badge.className = "status-pill pill-fail";
+                }
+                
                 document.getElementById('cpu-text').innerText = data.cpu_usage + '%';
                 document.getElementById('cpu-fill').style.width = data.cpu_usage + '%';
                 document.getElementById('ram-text').innerText = data.ram_usage + '%';
                 document.getElementById('ram-fill').style.width = data.ram_usage + '%';
                 document.getElementById('temp-text').innerText = data.temp + ' °C';
+                
                 if(data.ip_sensor) { document.getElementById('access-ip').innerText = data.ip_sensor; globalSensorIP = data.ip_sensor; }
                 if(data.ip_gateway) globalGatewayIP = data.ip_gateway;
 
@@ -348,22 +366,42 @@
                 const pLocalEl = document.getElementById('ping-local');
                 const sLocal = document.getElementById('status-local');
                 if (pLocalEl) pLocalEl.innerText = pLocal + ' ms';
-                if(pLocal === 0 || pLocal > 50) { if(pLocalEl) pLocalEl.style.color = 'var(--red)'; if(sLocal) { sLocal.innerText = "FALHA"; sLocal.className = "status-pill pill-fail"; } } 
-                else { if(pLocalEl) pLocalEl.style.color = 'var(--green)'; if(sLocal) { sLocal.innerText = "ESTÁVEL"; sLocal.className = "status-pill pill-ok"; } }
+                
+                if(pLocal === 0 || pLocal > 50) { 
+                    if(pLocalEl) pLocalEl.style.color = 'var(--red)'; 
+                    if(sLocal) { sLocal.innerText = "FALHA"; sLocal.className = "status-pill pill-fail"; } 
+                } else { 
+                    if(pLocalEl) pLocalEl.style.color = 'var(--green)'; 
+                    if(sLocal) { sLocal.innerText = "ESTÁVEL"; sLocal.className = "status-pill pill-ok"; } 
+                }
 
                 let internetOk = false;
-                if(data.ping_global && data.ping_global.startsWith("{")) {
+                if(data.ping_global && typeof data.ping_global === 'string' && data.ping_global.startsWith("{")) {
                     let pings = JSON.parse(data.ping_global);
                     const targets = ['google', 'cf', 'aws', 'quad9'], keys = ['Google', 'Cloudflare', 'AWS', 'Quad9'];
                     keys.forEach((key, i) => {
                         const val = pings[key], el = document.getElementById('pg-' + targets[i]), card = document.getElementById('card-' + targets[i]);
-                        if(val === 0) { if(el) { el.innerText = "FALHA"; el.style.color = "var(--red)"; } if(card) card.classList.add('fail'); } 
-                        else { if(el) { el.innerText = val + " ms"; el.style.color = "var(--green)"; } if(card) card.classList.remove('fail'); internetOk = true; }
+                        if(val === 0) { 
+                            if(el) { el.innerText = "FALHA"; el.style.color = "var(--red)"; } 
+                            if(card) card.classList.add('fail'); 
+                        } else { 
+                            if(el) { el.innerText = val + " ms"; el.style.color = "var(--green)"; } 
+                            if(card) card.classList.remove('fail'); 
+                            internetOk = true; 
+                        }
                     });
                 }
+                
                 const sWan = document.getElementById('status-wan'), wIcon = document.getElementById('wan-icon'), wText = document.getElementById('wan-text');
-                if(!internetOk) { if(sWan) { sWan.innerText = "OFFLINE"; sWan.className = "status-pill pill-fail"; } if(wIcon) wIcon.className = "fa-solid fa-cloud wan-offline"; if(wText) wText.style.color = "var(--red)"; } 
-                else { if(sWan) { sWan.innerText = "ONLINE"; sWan.className = "status-pill pill-ok"; } if(wIcon) wIcon.className = "fa-solid fa-cloud wan-online"; if(wText) wText.style.color = "var(--blue)"; }
+                if(!internetOk) { 
+                    if(sWan) { sWan.innerText = "OFFLINE"; sWan.className = "status-pill pill-fail"; } 
+                    if(wIcon) wIcon.className = "fa-solid fa-cloud wan-offline"; 
+                    if(wText) wText.style.color = "var(--red)"; 
+                } else { 
+                    if(sWan) { sWan.innerText = "ONLINE"; sWan.className = "status-pill pill-ok"; } 
+                    if(wIcon) wIcon.className = "fa-solid fa-cloud wan-online"; 
+                    if(wText) wText.style.color = "var(--blue)"; 
+                }
 
                 if(!document.getElementById('btn-st').innerHTML.includes('fa-spin')) {
                     document.getElementById('speed-down').innerText = data.download || '0.0';
