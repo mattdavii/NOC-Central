@@ -139,6 +139,11 @@ def ack_alerta():
     conn = database.get_db()
     
     # 1. Marca todos os sensores caídos como "Reconhecidos"
+    try:
+        conn.execute("ALTER TABLE sensores ADD COLUMN alerta_reconhecido INTEGER DEFAULT 1")
+        conn.commit()
+    except: pass
+    
     conn.execute("UPDATE sensores SET alerta_reconhecido = 1 WHERE status = 'offline'")
     
     # 2. Salva no Log Global quem foi o operador que assumiu a bucha!
@@ -211,9 +216,14 @@ def report_data():
             conn.commit() # 🚨 CHECKPOINT: SALVA O SENSOR NA HORA!
         else:
             # 4. CADASTRO DE NOVO SENSOR
+            try:
+                conn.execute("ALTER TABLE sensores ADD COLUMN alerta_reconhecido INTEGER DEFAULT 1")
+                conn.commit()
+            except: pass
+            
             conn.execute('''INSERT INTO sensores 
-                (mac_id, nome_local, ip_sensor, cpu_usage, ram_usage, temp, status, lat, lon, ping_gateway, ping_global, ip_gateway, last_seen) 
-                VALUES (?, 'Novo Sensor', ?, ?, ?, ?, 'online', -14.235, -51.925, ?, ?, ?, CURRENT_TIMESTAMP)''', 
+                (mac_id, nome_local, ip_sensor, cpu_usage, ram_usage, temp, status, lat, lon, ping_gateway, ping_global, ip_gateway, last_seen, alerta_reconhecido) 
+                VALUES (?, 'Novo Sensor', ?, ?, ?, ?, 'online', -14.235, -51.925, ?, ?, ?, CURRENT_TIMESTAMP, 1)''', 
                 (mac, ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
                  data.get('temp'), data.get('ping_gateway'), 
                  data.get('ping_global'), data.get('ip_gateway')))
@@ -240,13 +250,16 @@ def report_data():
 
         # 6. DESPACHO DE COMANDOS
         comando = "none"
-        if 'SPEEDTEST_REQUESTS' in globals() and mac in SPEEDTEST_REQUESTS:
+        if mac in SPEEDTEST_REQUESTS:
             SPEEDTEST_REQUESTS.remove(mac)
             comando = "run_speedtest"
-        elif 'TRACEROUTE_REQUESTS' in globals() and mac in TRACEROUTE_REQUESTS:
+        elif mac in TRACEROUTE_REQUESTS:
             TRACEROUTE_REQUESTS.remove(mac)
             comando = "run_traceroute"
-        elif 'PENDING_COMMANDS' in globals() and mac in PENDING_COMMANDS:
+        elif mac in UPDATE_REQUESTS:
+            UPDATE_REQUESTS.remove(mac)
+            comando = "update_agent"
+        elif mac in PENDING_COMMANDS:
             comando = PENDING_COMMANDS.pop(mac)
 
         return jsonify({"status": "OK", "command": comando})
@@ -270,11 +283,18 @@ def enviar_comando_remoto(mac_id):
     data = request.json
     comando = data.get('comando')
     
-    # Enfileira o comando no dicionário global que já criamos antes
+    # Enfileira o comando no dicionário global
     PENDING_COMMANDS[mac_id] = comando
     
     # Registra no log de auditoria
     conn = database.get_db()
+    try:
+        conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (
+            id SERIAL PRIMARY KEY, sensor_mac TEXT, tipo_evento TEXT, 
+            gravidade TEXT, detalhes TEXT, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+    except: pass
+    
     conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Comando Remoto', 'Aviso', ?)", (mac_id, f"Operador {session['usuario']} enviou o comando: {comando}"))
     conn.commit()
     conn.close()
@@ -526,12 +546,15 @@ def reportar_velocidade():
 @app.route('/api/v2/graficos/<mac_id>')
 def obter_graficos(mac_id):
     conn = database.get_db()
-    registros = conn.execute("""
-        SELECT download, upload, to_char(data_hora - INTERVAL '3 hours', 'HH24:MI') as hora 
-        FROM historico_telemetria 
-        WHERE sensor_mac = ? 
-        ORDER BY id DESC LIMIT 15
-    """, (mac_id,)).fetchall()
+    try:
+        registros = conn.execute("""
+            SELECT download, upload, to_char(data_hora - INTERVAL '3 hours', 'HH24:MI') as hora 
+            FROM historico_telemetria 
+            WHERE sensor_mac = ? 
+            ORDER BY id DESC LIMIT 15
+        """, (mac_id,)).fetchall()
+    except:
+        registros = []
     conn.close()
     return jsonify([dict(r) for r in registros][::-1])
 
@@ -863,7 +886,7 @@ def logs_globais():
     except: pass
 
     try:
-        # 🚨 CORRIGIDO: SSELECT alterado para SELECT
+        # 🛡️ Blindagem: Se o LEFT JOIN quebrar, ele puxa apenas o MAC sem o Nome_Local
         logs = conn.execute('''
             SELECT l.tipo_evento, l.gravidade, l.detalhes, to_char(l.data_hora - INTERVAL '3 hours', 'DD/MM HH24:MI:SS') as hora, s.nome_local 
             FROM logs_ia l 
@@ -871,7 +894,10 @@ def logs_globais():
             ORDER BY l.id DESC LIMIT 50
         ''').fetchall()
     except:
-        logs = []
+        try:
+             logs = conn.execute("SELECT tipo_evento, gravidade, detalhes, to_char(data_hora - INTERVAL '3 hours', 'DD/MM HH24:MI:SS') as hora, sensor_mac as nome_local FROM logs_ia ORDER BY id DESC LIMIT 50").fetchall()
+        except:
+             logs = []
         
     conn.close()
     return jsonify([dict(l) for l in logs])
