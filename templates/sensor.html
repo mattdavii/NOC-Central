@@ -152,14 +152,15 @@
                     <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--text-muted);">
                         <span><i class="fa-solid fa-memory" style="width: 20px;"></i> RAM</span> <strong id="ram-text" style="color: var(--text-main);">0%</strong>
                     </div>
+                    <div class="progress-bg"><div id="ram-fill" class="progress-fill"></div></div>
+                </div>
                     <div style="margin-bottom: auto; margin-top: 15px;">
                     <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--text-muted);">
                         <span><i class="fa-solid fa-hard-drive" style="width: 20px;"></i> Disco (C:)</span> <strong id="disk-text" style="color: var(--text-main);">0%</strong>
                     </div>
                     <div class="progress-bg"><div id="disk-fill" class="progress-fill" style="background: linear-gradient(90deg, #cba6f7, #f5c2e7); box-shadow: 0 0 10px #cba6f7;"></div></div>
                 </div>
-                    <div class="progress-bg"><div id="ram-fill" class="progress-fill"></div></div>
-                </div>
+                    
                 <div style="display: flex; gap: 10px; margin-top: 20px;">
                     <button class="action-btn" onclick="enviarComandoEnergia('reboot')" style="background: rgba(249, 226, 175, 0.2); color: var(--yellow); flex: 1; border: 1px solid var(--yellow);"><i class="fa-solid fa-arrows-rotate"></i> Reiniciar Local</button>
                     <button class="action-btn" onclick="enviarComandoEnergia('shutdown')" style="background: rgba(243, 139, 168, 0.2); color: var(--red); flex: 1; border: 1px solid var(--red);"><i class="fa-solid fa-power-off"></i> Desligar</button>
@@ -548,7 +549,7 @@
                 if(document.getElementById('net-down-live')) document.getElementById('net-down-live').innerText = (data.net_down || 0).toFixed(1);
                 if(document.getElementById('net-up-live')) document.getElementById('net-up-live').innerText = (data.net_up || 0).toFixed(1);
                 if(document.getElementById('portas-abertas')) document.getElementById('portas-abertas').innerText = data.portas || 'Nenhuma (Seguro)';
-                
+
                 if(data.ip_sensor) { document.getElementById('access-ip').innerText = data.ip_sensor; globalSensorIP = data.ip_sensor; }
                 if(data.ip_gateway) globalGatewayIP = data.ip_gateway;
 
