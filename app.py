@@ -1,19 +1,16 @@
 from flask import Flask, jsonify, request, render_template, session, redirect, url_for, flash, send_from_directory
 from werkzeug.security import check_password_hash, generate_password_hash
-import database
-from flask import Flask, jsonify, request, render_template, session, redirect, url_for, flash, send_from_directory
-from werkzeug.security import check_password_hash, generate_password_hash
 from flask_socketio import SocketIO  # ⚡ NOVO: Importando WebSockets
+import database
 
 app = Flask(__name__)
 app.secret_key = 'chave_super_secreta_noc_md' 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet') # ⚡ NOVO: Ligando o túnel
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent') # ⚡ NOVO: Ligando o túnel
 
 # =========================================================
 # SETUP INICIAL: Cria as tabelas e o usuário Admin na Nuvem
 # =========================================================
 try:
-    import database
     database.init_db() # Garante que as tabelas sejam criadas
     
     conn = database.get_db()
@@ -56,9 +53,6 @@ PENDING_COMMANDS = {}
 # ==========================================
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    from flask import request, session, redirect, url_for, render_template
-    import database
-    
     erro = None
     if request.method == 'POST':
         usuario_digitado = request.form.get('usuario', '').strip()
@@ -105,7 +99,6 @@ def login():
                     senha_valida = True
                 else:
                     try:
-                        from werkzeug.security import check_password_hash
                         if check_password_hash(senha_banco, senha_digitada):
                             senha_valida = True
                     except: pass
@@ -252,19 +245,6 @@ def report_data():
         conn.close()
 
         # 6. DESPACHO DE COMANDOS
-        comando = "none"
-        if mac in SPEEDTEST_REQUESTS:
-            SPEEDTEST_REQUESTS.remove(mac)
-            comando = "run_speedtest"
-        elif mac in TRACEROUTE_REQUESTS:
-            TRACEROUTE_REQUESTS.remove(mac)
-            comando = "run_traceroute"
-        elif mac in UPDATE_REQUESTS:
-            UPDATE_REQUESTS.remove(mac)
-            comando = "update_agent"
-        elif mac in PENDING_COMMANDS:
-            comando = PENDING_COMMANDS.pop(mac)
-            # 6. DESPACHO DE COMANDOS
         comando = "none"
         if mac in SPEEDTEST_REQUESTS:
             SPEEDTEST_REQUESTS.remove(mac)
@@ -923,9 +903,9 @@ def logs_globais():
         ''').fetchall()
     except:
         try:
-             logs = conn.execute("SELECT tipo_evento, gravidade, detalhes, to_char(data_hora - INTERVAL '3 hours', 'DD/MM HH24:MI:SS') as hora, sensor_mac as nome_local FROM logs_ia ORDER BY id DESC LIMIT 50").fetchall()
+            logs = conn.execute("SELECT tipo_evento, gravidade, detalhes, to_char(data_hora - INTERVAL '3 hours', 'DD/MM HH24:MI:SS') as hora, sensor_mac as nome_local FROM logs_ia ORDER BY id DESC LIMIT 50").fetchall()
         except:
-             logs = []
+            logs = []
         
     conn.close()
     return jsonify([dict(l) for l in logs])
@@ -936,4 +916,4 @@ def solicitar_update(mac_id):
     return jsonify({"status": "OK"})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=10000, debug=True) # ⚡ NOVO: Liga com WebSockets
