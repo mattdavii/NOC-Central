@@ -418,51 +418,52 @@ def api_mapa_sensores():
     
     conn = database.get_db()
     
-    # 🚨 O CEIFEIRO INTELIGENTE: Atualizado para o Sistema de Acknowledge
+    # 1. Garante as colunas novas sem quebrar a transação
     try:
-        # Garante que a coluna existe
         conn.execute("ALTER TABLE sensores ADD COLUMN alerta_reconhecido INTEGER DEFAULT 1")
         conn.commit()
     except: pass
-
-    try:
-        # Pega quem caiu e ainda estava online
-        caidos = conn.execute("SELECT mac_id FROM sensores WHERE status = 'online' AND last_seen < NOW() - INTERVAL '15 seconds'").fetchall()
-        for c in caidos:
-            conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder à Central (Offline)')", (c['mac_id'],))
-        
-        # Agora o ceifeiro derruba e marca alerta_reconhecido = 0 (Alarme tocando!)
-        conn.execute("UPDATE sensores SET status = 'offline', alerta_reconhecido = 0 WHERE status = 'online' AND last_seen < NOW() - INTERVAL '15 seconds'")
-        conn.commit()
-    except: pass
-    
     try: 
         conn.execute("ALTER TABLE sensores ADD COLUMN cliente_id INTEGER")
         conn.commit()
     except: pass
 
-    # 🚨 JOIN INTELIGENTE: Puxa o nome do cliente associado ao sensor!
-    if role in ['Administrador Master', 'Operador Master']:
-        sensores = conn.execute("""
-            SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, c.nome as cliente_nome 
-            FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id
-        """).fetchall()
-    elif role == 'Cliente':
-        sensores = conn.execute("""
-            SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, c.nome as cliente_nome 
-            FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id 
-            WHERE s.cliente_id = ?
-        """, (user_id,)).fetchall()
-    else:
-        user_info = conn.execute("SELECT cliente_pai_id FROM clientes WHERE id = ?", (user_id,)).fetchone()
-        if user_info and user_info['cliente_pai_id']:
+    # 2. O Ceifeiro Inteligente com Acknowledge
+    try:
+        caidos = conn.execute("SELECT mac_id FROM sensores WHERE status = 'online' AND last_seen < NOW() - INTERVAL '15 seconds'").fetchall()
+        for c in caidos:
+            conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder à Central (Offline)')", (c['mac_id'],))
+        
+        conn.execute("UPDATE sensores SET status = 'offline', alerta_reconhecido = 0 WHERE status = 'online' AND last_seen < NOW() - INTERVAL '15 seconds'")
+        conn.commit()
+    except: pass
+
+    # 3. A Busca Blindada (Com o alerta_reconhecido)
+    try:
+        if role in ['Administrador Master', 'Operador Master']:
             sensores = conn.execute("""
-                SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, c.nome as cliente_nome 
+                SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, c.nome as cliente_nome, s.alerta_reconhecido 
+                FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id
+            """).fetchall()
+        elif role == 'Cliente':
+            sensores = conn.execute("""
+                SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, c.nome as cliente_nome, s.alerta_reconhecido 
                 FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id 
                 WHERE s.cliente_id = ?
-            """, (user_info['cliente_pai_id'],)).fetchall()
+            """, (user_id,)).fetchall()
         else:
-            sensores = []
+            user_info = conn.execute("SELECT cliente_pai_id FROM clientes WHERE id = ?", (user_id,)).fetchone()
+            if user_info and user_info['cliente_pai_id']:
+                sensores = conn.execute("""
+                    SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, c.nome as cliente_nome, s.alerta_reconhecido 
+                    FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id 
+                    WHERE s.cliente_id = ?
+                """, (user_info['cliente_pai_id'],)).fetchall()
+            else:
+                sensores = []
+    except Exception as e:
+        print(f"Erro na busca de sensores: {e}")
+        sensores = []
 
     conn.close()
     return jsonify({"sensores": [dict(s) for s in sensores]})

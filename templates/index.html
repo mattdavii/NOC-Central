@@ -230,12 +230,19 @@
                 const sensores = data.sensores || [];
 
                 let htmlSidebar = '';
-                let total = sensores.length, online = 0, offline = 0;
+                // Adicionamos a variável nao_reconhecidos
+                let total = sensores.length, online = 0, offline = 0, nao_reconhecidos = 0; 
                 layerSensores.clearLayers();
 
                 sensores.forEach(s => {
                     let isOnline = (s.status || '').toLowerCase() === 'online';
-                    if (isOnline) online++; else offline++;
+                    if (isOnline) {
+                        online++; 
+                    } else {
+                        offline++;
+                        // Conta os alarmes que ainda estão tocando
+                        if (s.alerta_reconhecido === 0) nao_reconhecidos++; 
+                    }
                     let statusText = isOnline ? 'ONLINE' : 'OFFLINE';
 
                     let lat = parseFloat(s.lat) || -14.235;
@@ -264,13 +271,19 @@
                     `;
                 });
 
-                document.getElementById('kpi-total').innerText = total; document.getElementById('kpi-on').innerText = online; document.getElementById('kpi-off').innerText = offline;
+                document.getElementById('kpi-total').innerText = total; 
+                document.getElementById('kpi-on').innerText = online; 
+                document.getElementById('kpi-off').innerText = offline;
                 document.getElementById('sensor-list').innerHTML = htmlSidebar || '<p style="text-align:center; color:var(--text-muted);">Nenhum sensor encontrado.</p>';
-                
-                filtrarSensores(); // Reaplica o filtro após carregar
-                checarDefcon(offline);
 
-            } catch (error) {}
+                filtrarSensores(); // Reaplica o filtro após carregar
+                checarDefcon(nao_reconhecidos);
+
+            // Mostra ou esconde o Botão ESTOU CIENTE na Navbar
+                const btnAck = document.getElementById('btn-ack');
+                if(btnAck) btnAck.style.display = (nao_reconhecidos > 0) ? 'block' : 'none';
+
+            } catch (error) { console.error("Erro na API de Sensores: ", error) }
         }
 
         // Nova função para chamar a API
@@ -296,7 +309,7 @@
                 
                 // Mostra ou esconde o botão ACK
                 document.getElementById('btn-ack').style.display = (nao_reconhecidos > 0) ? 'block' : 'none';
-                
+
         // Terminal
         async function carregarLogsGlobais() {
             try {
