@@ -210,11 +210,15 @@ def loop_telemetria():
         espera_remota = 3
 
         try:
+            print(f"⏳ [TELEMETRIA] Coletando dados da máquina e enviando para {URL_CENTRAL}...")
+            
             req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
             with urllib.request.urlopen(req, timeout=5) as response:
                 res_data = json.loads(response.read().decode('utf-8'))
                 comando = res_data.get("command")
                 espera_remota = res_data.get("intervalo", 3) 
+                
+                print("✅ [TELEMETRIA] Dados sincronizados com sucesso na Central!")
 
                 if comando == "reboot": 
                     os.system("shutdown /r /t 0" if os_name == "Windows" else "sudo reboot")
@@ -223,23 +227,24 @@ def loop_telemetria():
                 elif comando == "run_traceroute": 
                     threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
                 
-                # 🦾 NOVOS COMANDOS DE REMEDIAÇÃO!
                 elif comando == "flush_dns":
                     os.system("ipconfig /flushdns" if os_name == "Windows" else "sudo systemd-resolve --flush-caches")
                     log_local_event("Remediação", "Cache de DNS limpo via Central.", "OK")
                 
                 elif comando == "top_processos":
-                    # O Agente lê o próprio PC e manda um alerta para a Central ler!
-                    try:
-                        import psutil
-                        procs = sorted(psutil.process_iter(['name', 'cpu_percent']), key=lambda p: p.info['cpu_percent'], reverse=True)[:5]
-                        lista_procs = " | ".join([f"{p.info['name']} ({p.info['cpu_percent']}%)" for p in procs])
-                        url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
-                        alerta = [{"tipo": "Diagnóstico (Top 5 Processos)", "gravidade": "Aviso", "detalhes": lista_procs}]
-                        req = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": alerta}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
-                        urllib.request.urlopen(req, timeout=5)
-                    except: pass
-        except: espera_remota = 5
+                    if psutil: 
+                        try:
+                            procs = sorted(psutil.process_iter(['name', 'cpu_percent']), key=lambda p: p.info['cpu_percent'], reverse=True)[:5]
+                            lista_procs = " | ".join([f"{p.info['name']} ({p.info['cpu_percent']}%)" for p in procs])
+                            url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
+                            alerta = [{"tipo": "Diagnóstico (Top 5 Processos)", "gravidade": "Aviso", "detalhes": lista_procs}]
+                            req = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": alerta}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+                            urllib.request.urlopen(req, timeout=5)
+                        except: pass
+                        
+        except Exception as e: 
+            print(f"❌ ERRO AO ENVIAR PARA A NUVEM: {e}")
+            espera_remota = 5
 
         time.sleep(espera_remota)
 

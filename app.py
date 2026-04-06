@@ -182,7 +182,7 @@ def report_data():
         
         conn = database.get_db()
         
-        # 1. AUTO-CURA DO BANCO (Garante que todas as gavetas existem antes de começar)
+        # 1. AUTO-CURA DO BANCO
         for col in ["last_seen TIMESTAMP", "ip_gateway TEXT", "ultima_rota TEXT", "download REAL", "upload REAL"]:
             try:
                 conn.execute(f"ALTER TABLE sensores ADD COLUMN {col}")
@@ -192,7 +192,7 @@ def report_data():
         sensor = conn.execute("SELECT * FROM sensores WHERE mac_id = ?", (mac,)).fetchone()
         
         if sensor:
-            # 2. GERAÇÃO DE LOGS (Se o sensor estava offline e voltou)
+            # 2. LOGS DE VOLTA
             if sensor.get('status') == 'offline':
                 try:
                     conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Conexão Restaurada', 'Aviso', 'O sensor restabeleceu a comunicação com a rede')", (mac,))
@@ -208,6 +208,7 @@ def report_data():
                 (ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
                  data.get('temp'), data.get('ping_gateway'), 
                  data.get('ping_global'), data.get('ip_gateway'), mac))
+            conn.commit() # 🚨 CHECKPOINT: SALVA O SENSOR NA HORA!
         else:
             # 4. CADASTRO DE NOVO SENSOR
             conn.execute('''INSERT INTO sensores 
@@ -216,8 +217,9 @@ def report_data():
                 (mac, ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
                  data.get('temp'), data.get('ping_gateway'), 
                  data.get('ping_global'), data.get('ip_gateway')))
+            conn.commit() # 🚨 CHECKPOINT: SALVA O SENSOR NA HORA!
 
-        # 5. HISTÓRICO DE PINGS (Gráficos)
+        # 5. HISTÓRICO DE PINGS
         try:
             conn.execute('''CREATE TABLE IF NOT EXISTS historico_pings (
                 id SERIAL PRIMARY KEY, sensor_mac TEXT, 
@@ -225,17 +227,18 @@ def report_data():
                 data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )''')
             conn.commit()
+            
             if data.get('ping_global'):
                 import json
                 pings = json.loads(data['ping_global'])
                 conn.execute("INSERT INTO historico_pings (sensor_mac, google, cloudflare, aws, quad9) VALUES (?, ?, ?, ?, ?)",
                              (mac, pings.get('Google'), pings.get('Cloudflare'), pings.get('AWS'), pings.get('Quad9')))
+                conn.commit()
         except: pass
 
-        conn.commit()
         conn.close()
 
-        # 6. DESPACHO DE COMANDOS (Traceroute, Speedtest, Flush DNS, etc)
+        # 6. DESPACHO DE COMANDOS
         comando = "none"
         if 'SPEEDTEST_REQUESTS' in globals() and mac in SPEEDTEST_REQUESTS:
             SPEEDTEST_REQUESTS.remove(mac)
@@ -243,8 +246,8 @@ def report_data():
         elif 'TRACEROUTE_REQUESTS' in globals() and mac in TRACEROUTE_REQUESTS:
             TRACEROUTE_REQUESTS.remove(mac)
             comando = "run_traceroute"
-        elif mac in PENDING_COMMANDS:
-            comando = PENDING_COMMANDS.pop(mac) # Tira da fila e envia!
+        elif 'PENDING_COMMANDS' in globals() and mac in PENDING_COMMANDS:
+            comando = PENDING_COMMANDS.pop(mac)
 
         return jsonify({"status": "OK", "command": comando})
 
