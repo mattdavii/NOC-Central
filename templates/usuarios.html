@@ -144,10 +144,10 @@
                         {% endif %}
                     </td>
                     <td>
-                        <button class="btn-action" onclick="abrirModalEditar({ u,id }, '{{ u.nome }}', '{{ u.usuario }}', '{{ u.role }}', '{{ u.logo_url }}')" title="Editar Info"><i class="fa-solid fa-pen"></i></button>
-                        <button class="btn-action" onclick="mudarSenha({ u,id })" title="Mudar Senha"><i class="fa-solid fa-key"></i></button>
-                        <button class="btn-action power" onclick="toggleStatus({ u,id })" title="Ativar / Desativar"><i class="fa-solid fa-power-off"></i></button>
-                        <button class="btn-action delete" onclick="deletarUsuario({ u,id })" title="Excluir Definitivamente"><i class="fa-solid fa-trash-can"></i></button>
+                        <button class="btn-action" onclick="abrirModalEditar({{ u.id }}, '{{ u.nome }}', '{{ u.usuario }}', '{{ u.role }}', '{{ u.logo_url }}')" title="Editar Info"><i class="fa-solid fa-pen"></i></button>
+                        <button class="btn-action" onclick="mudarSenha({{ u.id }})" title="Mudar Senha"><i class="fa-solid fa-key"></i></button>
+                        <button class="btn-action power" onclick="toggleStatus({{ u.id }})" title="Ativar / Desativar"><i class="fa-solid fa-power-off"></i></button>
+                        <button class="btn-action delete" onclick="deletarUsuario({{ u.id }})" title="Excluir Definitivamente"><i class="fa-solid fa-trash-can"></i></button>
                     </td>
                 </tr>
                 {% endfor %}
