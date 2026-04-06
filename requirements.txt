@@ -3,5 +3,5 @@ psutil
 gunicorn
 psycopg2-binary
 Flask-SocketIO==5.3.6
-gevent==24.2.1
+gevent==24.10.1
 gevent-websocket==0.10.1
