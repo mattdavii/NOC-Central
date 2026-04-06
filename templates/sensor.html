@@ -335,6 +335,7 @@
         </div>
 
     </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.1/socket.io.min.js"></script> ```
 
     <script>
         const mac_id = "{{ sensor.mac_id }}";
@@ -668,15 +669,25 @@
         // ==========================================
         // LOOPS DE ATUALIZAÇÃO (MOTORES)
         // ==========================================
-        setInterval(buscarDadosAoVivo, 1500); 
+        
+        // Esses mais lentos pode deixar no setInterval pra não sobrecarregar
         setInterval(carregarRadar, 25000); 
-        setInterval(carregarCustomIPs, 5000); 
+        setInterval(carregarCustomIPs, 10000); 
         setInterval(carregarHistorico, 10000);
         setInterval(carregarGraficos, 60000); 
-        setInterval(carregarGraficosPing, 2000); 
         
         // Chamadas Iniciais
         buscarDadosAoVivo(); carregarRadar(); carregarCustomIPs(); carregarHistorico(); carregarGraficos(); carregarGraficosPing();
+
+        // ⚡ A MÁGICA DOS WEBSOCKETS
+        const socket = io();
+        socket.on('atualizacao_global', function(msg) {
+            // Atualiza IMEDIATAMENTE só se o dado for do sensor que eu estou olhando
+            if (msg.mac_id === mac_id) {
+                buscarDadosAoVivo();
+                carregarGraficosPing();
+            }
+        });
     </script>
 </body>
 </html>

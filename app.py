@@ -1,9 +1,13 @@
 from flask import Flask, jsonify, request, render_template, session, redirect, url_for, flash, send_from_directory
 from werkzeug.security import check_password_hash, generate_password_hash
 import database
+from flask import Flask, jsonify, request, render_template, session, redirect, url_for, flash, send_from_directory
+from werkzeug.security import check_password_hash, generate_password_hash
+from flask_socketio import SocketIO  # ⚡ NOVO: Importando WebSockets
 
 app = Flask(__name__)
 app.secret_key = 'chave_super_secreta_noc_md' 
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet') # ⚡ NOVO: Ligando o túnel
 
 # =========================================================
 # SETUP INICIAL: Cria as tabelas e o usuário Admin na Nuvem
@@ -260,6 +264,22 @@ def report_data():
             comando = "update_agent"
         elif mac in PENDING_COMMANDS:
             comando = PENDING_COMMANDS.pop(mac)
+            # 6. DESPACHO DE COMANDOS
+        comando = "none"
+        if mac in SPEEDTEST_REQUESTS:
+            SPEEDTEST_REQUESTS.remove(mac)
+            comando = "run_speedtest"
+        elif mac in TRACEROUTE_REQUESTS:
+            TRACEROUTE_REQUESTS.remove(mac)
+            comando = "run_traceroute"
+        elif mac in UPDATE_REQUESTS:
+            UPDATE_REQUESTS.remove(mac)
+            comando = "update_agent"
+        elif mac in PENDING_COMMANDS:
+            comando = PENDING_COMMANDS.pop(mac)
+
+        # ⚡ NOVO: Grita no túnel WebSocket para todos os painéis abertos atualizarem!
+        socketio.emit('atualizacao_global', {'mac_id': mac})
 
         return jsonify({"status": "OK", "command": comando})
 
