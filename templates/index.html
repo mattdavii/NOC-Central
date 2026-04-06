@@ -131,7 +131,7 @@
         <div style="display: flex; gap: 20px; align-items: center;">
             {% if session.role == 'Administrador Master' %}
                 <a href="/sensores" class="btn-logout" style="color: var(--yellow);"><i class="fa-solid fa-satellite-dish"></i> Gestão de Sensores</a>
-                <a href="/usuarios" class="btn-logout" style="color: var(--blue);"><i class="fa-solid fa-users-gear"></i> Gestão de Clientes</a>
+                <a href="/usuarios" class="btn-logout" style="color: var(--blue);"><i class="fa-solid fa-users-gear"></i> Gestão de Usuários</a>
             {% endif %}
             <span style="color: var(--text-muted); font-size: 0.9em; margin-left: 10px; padding-left: 15px; border-left: 1px solid var(--border);">Operador: <strong style="color: var(--text-main);">{{ session.usuario }}</strong></span>
             <a href="/logout" class="btn-logout"><i class="fa-solid fa-right-from-bracket"></i> Sair</a>
