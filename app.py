@@ -418,15 +418,16 @@ def api_mapa_sensores():
     
     conn = database.get_db()
     
-    # 1. AUTO-CURA (Tenta criar as colunas sem quebrar se der erro)
+    # 🛡️ 1. BLINDAGEM MÁXIMA (Força a existência de todas as colunas usadas no JOIN)
     try: conn.execute("ALTER TABLE sensores ADD COLUMN alerta_reconhecido INTEGER DEFAULT 1"); conn.commit()
     except: pass
     try: conn.execute("ALTER TABLE sensores ADD COLUMN cliente_id INTEGER"); conn.commit()
     except: pass
+    try: conn.execute("ALTER TABLE clientes ADD COLUMN nome TEXT"); conn.commit()
+    except: pass
 
-    # 2. O CEIFEIRO INTELIGENTE 
+    # 2. O CEIFEIRO INTELIGENTE
     try:
-        # Deixei o ceifeiro inteligente para rodar tanto no seu PC (SQLite) quanto no Render (Postgres)
         import os
         is_postgres = bool(os.environ.get('DATABASE_URL'))
         condicao_tempo = "last_seen < NOW() - INTERVAL '15 seconds'" if is_postgres else "last_seen < datetime('now', '-15 seconds', 'localtime')"
@@ -440,20 +441,27 @@ def api_mapa_sensores():
     except Exception as e:
         print(f"Aviso no Ceifeiro: {e}")
 
-    # 3. A BUSCA BLINDADA (Usa s.* para não quebrar se faltar coluna)
+    # 3. A BUSCA ABSOLUTA
     try:
+        # Pede os dados exatos para evitar conflitos no Join
+        query_base = """
+            SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, s.alerta_reconhecido, c.nome as cliente_nome 
+            FROM sensores s 
+            LEFT JOIN clientes c ON s.cliente_id = c.id
+        """
+        
         if role in ['Administrador Master', 'Operador Master']:
-            sensores = conn.execute("SELECT s.*, c.nome as cliente_nome FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id").fetchall()
+            sensores = conn.execute(query_base).fetchall()
         elif role == 'Cliente':
-            sensores = conn.execute("SELECT s.*, c.nome as cliente_nome FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id WHERE s.cliente_id = ?", (user_id,)).fetchall()
+            sensores = conn.execute(query_base + " WHERE s.cliente_id = ?", (user_id,)).fetchall()
         else:
             user_info = conn.execute("SELECT cliente_pai_id FROM clientes WHERE id = ?", (user_id,)).fetchone()
             if user_info and user_info['cliente_pai_id']:
-                sensores = conn.execute("SELECT s.*, c.nome as cliente_nome FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id WHERE s.cliente_id = ?", (user_info['cliente_pai_id'],)).fetchall()
+                sensores = conn.execute(query_base + " WHERE s.cliente_id = ?", (user_info['cliente_pai_id'],)).fetchall()
             else:
                 sensores = []
     except Exception as e:
-        print(f"Erro Crítico na Busca: {e}")
+        print(f"Erro Crítico na Busca do Mapa: {e}")
         sensores = []
 
     conn.close()
