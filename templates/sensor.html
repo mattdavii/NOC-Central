@@ -120,6 +120,29 @@
             </div>
         </div>
 
+        <div class="card" style="margin-top: 20px; border-top: 4px solid var(--purple);">
+        <h3><i class="fa-solid fa-gamepad"></i> Ações de Remediação Remota</h3>
+        <p style="font-size: 0.85em; color: var(--text-muted); margin-bottom: 15px;">Envie comandos diretamente para a máquina host. O Agente executará silenciosamente.</p>
+        
+        <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+            <button onclick="dispararComandoRemoto('top_processos')" style="background: rgba(137,180,250,0.1); color: var(--blue); border: 1px solid var(--blue); padding: 10px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s;">
+                <i class="fa-solid fa-list-ol"></i> Top 5 Processos (CPU)
+            </button>
+
+            <button onclick="dispararComandoRemoto('flush_dns')" style="background: rgba(249,226,175,0.1); color: var(--yellow); border: 1px solid var(--yellow); padding: 10px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s;">
+                <i class="fa-solid fa-broom"></i> Limpar Cache DNS
+            </button>
+
+            <button onclick="solicitarSpeedtest()" style="background: rgba(166,227,161,0.1); color: var(--green); border: 1px solid var(--green); padding: 10px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s;">
+                <i class="fa-solid fa-gauge-high"></i> Forçar Speedtest
+            </button>
+
+            <button onclick="dispararComandoRemoto('reboot')" style="background: rgba(243,139,168,0.1); color: var(--red); border: 1px solid var(--red); padding: 10px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; margin-left: auto;">
+                <i class="fa-solid fa-power-off"></i> Reiniciar Máquina Host
+            </button>
+        </div>
+    </div>
+
         <div class="card card-net">
             <h3><span><i class="fa-solid fa-shield-heart"></i> Integridade</span></h3>
             <div class="data-row">
@@ -564,6 +587,33 @@
         
         // Chamadas Iniciais
         buscarDadosAoVivo(); carregarRadar(); carregarCustomIPs(); carregarHistorico(); carregarGraficos(); carregarGraficosPing();
+
+        // Função do Braço Longo
+        async function dispararComandoRemoto(comando) {
+            let confirmacao = true;
+            if (comando === 'reboot') {
+                confirmacao = confirm("CUIDADO: Isso vai reiniciar fisicamente o computador do cliente. Tem certeza?");
+            }
+
+            if (confirmacao) {
+                try {
+                    // Pega o MAC ID do sensor atual (ajuste se a variável Jinja do seu template for diferente)
+                    const macId = "{{ sensor.mac_id }}"; 
+                    
+                    const res = await fetch(`/api/v2/enviar_comando/${macId}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ comando: comando })
+                    });
+                    
+                    const data = await res.json();
+                    alert(data.status || "Comando enviado para a fila do Agente!");
+                } catch (error) {
+                    alert("Erro ao comunicar com a Central.");
+                }
+            }
+        }
+        
     </script>
 </body>
 </html>
