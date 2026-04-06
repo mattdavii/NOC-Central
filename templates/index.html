@@ -133,6 +133,7 @@
                 <a href="/sensores" class="btn-logout" style="color: var(--yellow);"><i class="fa-solid fa-satellite-dish"></i> Gestão de Sensores</a>
                 <a href="/usuarios" class="btn-logout" style="color: var(--blue);"><i class="fa-solid fa-users-gear"></i> Gestão de Usuários</a>
             {% endif %}
+            <button id="btn-ack" onclick="reconhecerAlertas()" style="display: none; background: var(--red); color: white; border: none; padding: 8px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-right: 20px; box-shadow: 0 0 15px var(--red); animation: blink 1s infinite;"><i class="fa-solid fa-triangle-exclamation"></i> ESTOU CIENTE</button>
             <span style="color: var(--text-muted); font-size: 0.9em; margin-left: 10px; padding-left: 15px; border-left: 1px solid var(--border);">Operador: <strong style="color: var(--text-main);">{{ session.usuario }}</strong></span>
             <a href="/logout" class="btn-logout"><i class="fa-solid fa-right-from-bracket"></i> Sair</a>
         </div>
@@ -272,6 +273,30 @@
             } catch (error) {}
         }
 
+        // Nova função para chamar a API
+        async function reconhecerAlertas() {
+            await fetch('/api/v2/ack_alerta', { method: 'POST' });
+            carregarSensores(); // Recarrega a tela
+        }
+
+        // DENTRO da sua função carregarSensores(), mude a contagem:
+        // ... (código existente)
+                let nao_reconhecidos = 0; // NOVA VARIÁVEL
+                sensores.forEach(s => {
+                    let isOnline = (s.status || '').toLowerCase() === 'online';
+                    if (isOnline) online++; else {
+                        offline++;
+                        if (s.alerta_reconhecido === 0) nao_reconhecidos++; // Conta os alarmes tocando
+                    }
+                    // ... (resto do loop)
+                });
+                
+                // Mude a chamada do Defcon para usar os "nao_reconhecidos"
+                checarDefcon(nao_reconhecidos);
+                
+                // Mostra ou esconde o botão ACK
+                document.getElementById('btn-ack').style.display = (nao_reconhecidos > 0) ? 'block' : 'none';
+                
         // Terminal
         async function carregarLogsGlobais() {
             try {

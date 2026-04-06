@@ -222,9 +222,23 @@ def loop_telemetria():
                     threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
                 elif comando == "run_traceroute": 
                     threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
-                elif comando == "update_agent":
-                    # Mantenha seu código OTA aqui
-                    pass
+                
+                # 🦾 NOVOS COMANDOS DE REMEDIAÇÃO!
+                elif comando == "flush_dns":
+                    os.system("ipconfig /flushdns" if os_name == "Windows" else "sudo systemd-resolve --flush-caches")
+                    log_local_event("Remediação", "Cache de DNS limpo via Central.", "OK")
+                
+                elif comando == "top_processos":
+                    # O Agente lê o próprio PC e manda um alerta para a Central ler!
+                    try:
+                        import psutil
+                        procs = sorted(psutil.process_iter(['name', 'cpu_percent']), key=lambda p: p.info['cpu_percent'], reverse=True)[:5]
+                        lista_procs = " | ".join([f"{p.info['name']} ({p.info['cpu_percent']}%)" for p in procs])
+                        url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
+                        alerta = [{"tipo": "Diagnóstico (Top 5 Processos)", "gravidade": "Aviso", "detalhes": lista_procs}]
+                        req = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": alerta}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+                        urllib.request.urlopen(req, timeout=5)
+                    except: pass
         except: espera_remota = 5
 
         time.sleep(espera_remota)

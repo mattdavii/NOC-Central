@@ -133,6 +133,22 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+@app.route('/api/v2/ack_alerta', methods=['POST'])
+def ack_alerta():
+    if 'usuario' not in session: return jsonify({"error": "Acesso Negado"}), 403
+    conn = database.get_db()
+    
+    # 1. Marca todos os sensores caídos como "Reconhecidos"
+    conn.execute("UPDATE sensores SET alerta_reconhecido = 1 WHERE status = 'offline'")
+    
+    # 2. Salva no Log Global quem foi o operador que assumiu a bucha!
+    detalhe = f"O operador {session['usuario']} silenciou o alarme e assumiu a ocorrência."
+    conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES ('SISTEMA', 'Acknowledge (Ciente)', 'Aviso', ?)", (detalhe,))
+    
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "OK"})
+
 # ==========================================
 # 🗺️ ROTAS DO PAINEL (Frontend UI)
 # ==========================================
@@ -219,7 +235,7 @@ def report_data():
         conn.commit()
         conn.close()
 
-        # 6. DESPACHO DE COMANDOS (Traceroute e Speedtest)
+        # 6. DESPACHO DE COMANDOS (Traceroute, Speedtest, Flush DNS, etc)
         comando = "none"
         if 'SPEEDTEST_REQUESTS' in globals() and mac in SPEEDTEST_REQUESTS:
             SPEEDTEST_REQUESTS.remove(mac)
@@ -227,9 +243,8 @@ def report_data():
         elif 'TRACEROUTE_REQUESTS' in globals() and mac in TRACEROUTE_REQUESTS:
             TRACEROUTE_REQUESTS.remove(mac)
             comando = "run_traceroute"
-        elif 'UPDATE_REQUESTS' in globals() and mac in UPDATE_REQUESTS:
-            UPDATE_REQUESTS.remove(mac)
-            comando = "update_agent"
+        elif mac in PENDING_COMMANDS:
+            comando = PENDING_COMMANDS.pop(mac) # Tira da fila e envia!
 
         return jsonify({"status": "OK", "command": comando})
 
@@ -245,6 +260,23 @@ def enviar_comando_energia(mac_id):
     data = request.json
     PENDING_COMMANDS[mac_id] = data.get('comando')
     return jsonify({"status": "Comando enfileirado"})
+
+@app.route('/api/v2/enviar_comando/<mac_id>', methods=['POST'])
+def enviar_comando_remoto(mac_id):
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
+    data = request.json
+    comando = data.get('comando')
+    
+    # Enfileira o comando no dicionário global que já criamos antes
+    PENDING_COMMANDS[mac_id] = comando
+    
+    # Registra no log de auditoria
+    conn = database.get_db()
+    conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Comando Remoto', 'Aviso', ?)", (mac_id, f"Operador {session['usuario']} enviou o comando: {comando}"))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"status": "Comando enfileirado e aguardando o Agente buscar."})
 
 # ==========================================
 # 📊 ROTA DO GRÁFICO DE PINGS
@@ -386,12 +418,21 @@ def api_mapa_sensores():
     
     conn = database.get_db()
     
+    # 🚨 O CEIFEIRO INTELIGENTE: Atualizado para o Sistema de Acknowledge
     try:
+        # Garante que a coluna existe
+        conn.execute("ALTER TABLE sensores ADD COLUMN alerta_reconhecido INTEGER DEFAULT 1")
+        conn.commit()
+    except: pass
+
+    try:
+        # Pega quem caiu e ainda estava online
         caidos = conn.execute("SELECT mac_id FROM sensores WHERE status = 'online' AND last_seen < NOW() - INTERVAL '15 seconds'").fetchall()
         for c in caidos:
             conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder à Central (Offline)')", (c['mac_id'],))
         
-        conn.execute("UPDATE sensores SET status = 'offline' WHERE last_seen < NOW() - INTERVAL '15 seconds'")
+        # Agora o ceifeiro derruba e marca alerta_reconhecido = 0 (Alarme tocando!)
+        conn.execute("UPDATE sensores SET status = 'offline', alerta_reconhecido = 0 WHERE status = 'online' AND last_seen < NOW() - INTERVAL '15 seconds'")
         conn.commit()
     except: pass
     
