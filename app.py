@@ -188,7 +188,7 @@ def report_data():
         conn = database.get_db()
         
         # 1. AUTO-CURA DO BANCO (Incluindo o alerta_reconhecido)
-        for col in ["last_seen TIMESTAMP", "ip_gateway TEXT", "ultima_rota TEXT", "download REAL", "upload REAL", "alerta_reconhecido INTEGER DEFAULT 1"]:
+        for col in ["last_seen TIMESTAMP", "ip_gateway TEXT", "ultima_rota TEXT", "download REAL", "upload REAL", "alerta_reconhecido INTEGER DEFAULT 1", "disco REAL", "net_up REAL", "net_down REAL", "portas TEXT"]:
             try:
                 conn.execute(f"ALTER TABLE sensores ADD COLUMN {col}")
                 conn.commit()
@@ -209,11 +209,14 @@ def report_data():
             conn.execute('''UPDATE sensores SET 
                 ip_sensor = ?, cpu_usage = ?, ram_usage = ?, temp = ?, 
                 status = 'online', ping_gateway = ?, ping_global = ?,
-                ip_gateway = ?, last_seen = CURRENT_TIMESTAMP
+                ip_gateway = ?, last_seen = CURRENT_TIMESTAMP,
+                disco = ?, net_up = ?, net_down = ?, portas = ?
                 WHERE mac_id = ?''', 
                 (ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
                  data.get('temp'), data.get('ping_gateway'), 
-                 data.get('ping_global'), data.get('ip_gateway'), mac))
+                 data.get('ping_global'), data.get('ip_gateway'),
+                 data.get('disco'), data.get('net_up'), data.get('net_down'), data.get('portas'), 
+                 mac))
             conn.commit()
         else:
             # 4. CADASTRO DE NOVO SENSOR
@@ -438,7 +441,6 @@ def api_mapa_sensores():
     
     conn = database.get_db()
     
-    # 🛡️ 1. BLINDAGEM MÁXIMA (Força a existência de todas as colunas usadas no JOIN)
     try: conn.execute("ALTER TABLE sensores ADD COLUMN alerta_reconhecido INTEGER DEFAULT 1"); conn.commit()
     except: pass
     try: conn.execute("ALTER TABLE sensores ADD COLUMN cliente_id INTEGER"); conn.commit()
@@ -446,7 +448,6 @@ def api_mapa_sensores():
     try: conn.execute("ALTER TABLE clientes ADD COLUMN nome TEXT"); conn.commit()
     except: pass
 
-    # 2. O CEIFEIRO INTELIGENTE
     try:
         import os
         is_postgres = bool(os.environ.get('DATABASE_URL'))
@@ -461,9 +462,7 @@ def api_mapa_sensores():
     except Exception as e:
         print(f"Aviso no Ceifeiro: {e}")
 
-    # 3. A BUSCA ABSOLUTA
     try:
-        # Pede os dados exatos para evitar conflitos no Join
         query_base = """
             SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, s.alerta_reconhecido, c.nome as cliente_nome 
             FROM sensores s 
@@ -480,12 +479,24 @@ def api_mapa_sensores():
                 sensores = conn.execute(query_base + " WHERE s.cliente_id = ?", (user_info['cliente_pai_id'],)).fetchall()
             else:
                 sensores = []
+                
+        conn.close()
+        return jsonify({"sensores": [dict(s) for s in sensores]})
+        
     except Exception as e:
-        print(f"Erro Crítico na Busca do Mapa: {e}")
-        sensores = []
+        # 🚨 A MÁGICA AQUI: O banco vai confessar o crime para o HTML!
+        conn.close()
+        return jsonify({"error_sql": str(e), "sensores": []})
 
-    conn.close()
-    return jsonify({"sensores": [dict(s) for s in sensores]})
+# 🏥 ROTA DE DIAGNÓSTICO SECRETA
+@app.route('/debug')
+def debug_db():
+    conn = database.get_db()
+    try:
+        sensores = conn.execute("SELECT * FROM sensores").fetchall()
+        return jsonify({"SISTEMA_VIVO": True, "sensores_no_banco": [dict(s) for s in sensores]})
+    except Exception as e:
+        return jsonify({"SISTEMA_VIVO": False, "erro_fatal": str(e)})
 
 @app.route('/api/v2/sensor_data/<mac_id>', methods=['GET'])
 def get_sensor_data(mac_id):

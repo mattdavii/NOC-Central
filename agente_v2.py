@@ -158,8 +158,12 @@ def loop_telemetria():
     global dados_sensores
     mac = get_mac()
     os_name = platform.system()
-    estado_anterior = {"wan": True, "gw": True}
     ultima_medicao_speedtest = 0 
+    
+    # Variáveis para o velocímetro de rede em tempo real
+    if psutil:
+        last_net = psutil.net_io_counters()
+        last_net_time = time.time()
     
     while True:
         agora = time.time()
@@ -167,8 +171,35 @@ def loop_telemetria():
             threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
             ultima_medicao_speedtest = agora
 
-        cpu = psutil.cpu_percent(interval=1) if psutil else 0.0
+        # Leitura Básica
+        cpu = psutil.cpu_percent(interval=None) if psutil else 0.0
         ram = psutil.virtual_memory().percent if psutil else 0.0
+        disco = psutil.disk_usage('/').percent if psutil else 0.0 # 💽 NOVO: Leitura de Disco
+
+        # 🛜 NOVO: Velocímetro de Tráfego em Tempo Real (Mbps)
+        net_up = 0.0
+        net_down = 0.0
+        if psutil:
+            current_net = psutil.net_io_counters()
+            time_diff = agora - last_net_time if (agora - last_net_time) > 0 else 1
+            # (Bytes atuais - Bytes antigos) * 8 para bits / 1.000.000 para Megabits
+            net_up = round(((current_net.bytes_sent - last_net.bytes_sent) * 8 / 1_000_000) / time_diff, 2)
+            net_down = round(((current_net.bytes_recv - last_net.bytes_recv) * 8 / 1_000_000) / time_diff, 2)
+            last_net = current_net
+            last_net_time = agora
+
+        # 🚪 NOVO: Scan Rápido de Portas Críticas (Web, DB, RDP)
+        portas_alvo = {80: "HTTP", 443: "HTTPS", 3306: "MySQL", 5432: "Postgres", 3389: "RDP"}
+        portas_abertas = []
+        for porta, servico in portas_alvo.items():
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(0.1)
+                if sock.connect_ex(('127.0.0.1', porta)) == 0:
+                    portas_abertas.append(f"{porta} ({servico})")
+                sock.close()
+            except: pass
+        str_portas = ", ".join(portas_abertas) if portas_abertas else "Nenhuma (Seguro)"
 
         hosts_ping = {"Google": "8.8.8.8", "Cloudflare": "1.1.1.1", "AWS": "aws.amazon.com", "Quad9": "9.9.9.9"}
         pings = {}
@@ -180,48 +211,22 @@ def loop_telemetria():
         meu_ip, gateway_ip = get_network_info()
         ping_gw = ping(gateway_ip) if gateway_ip != "Desconhecido" else 0
         
-        # Leitura e Atualização do Banco Local (Restauração da Lógica!)
-        try:
-            conn = sqlite3.connect('sensor_local.db')
-            alvos = conn.execute("SELECT id, ip, descricao FROM alvos_locais").fetchall()
-            logs_db = conn.execute("SELECT tipo, detalhes, gravidade, strftime('%H:%M:%S', data_hora) FROM logs_locais ORDER BY id DESC LIMIT 15").fetchall()
-            nomes_db = {row[0]: row[1] for row in conn.execute("SELECT mac, nome FROM nomes_topologia").fetchall()}
-            conn.close()
-            
-            resultados_alvos = [{"id": a[0], "ip": a[1], "descricao": a[2], "latencia": ping(a[1])} for a in alvos]
-            logs_formatados = [{"tipo": l[0], "detalhes": l[1], "gravidade": l[2], "hora": l[3]} for l in logs_db]
-            
-            topologia_bruta = get_topologia_arp(meu_ip)
-            for t in topologia_bruta:
-                if t["mac"] in nomes_db: t["nome"] = nomes_db[t["mac"]]
-
-            dados_sensores["cpu"] = cpu
-            dados_sensores["ram"] = ram
-            dados_sensores["meu_ip"] = meu_ip
-            dados_sensores["gateway_ip"] = gateway_ip
-            dados_sensores["ping_gateway"] = ping_gw
-            dados_sensores["pings"] = pings
-            dados_sensores["custom_ips"] = resultados_alvos
-            dados_sensores["topologia"] = topologia_bruta
-            dados_sensores["logs"] = logs_formatados
-        except: pass
-
-        payload = {"mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", "ip_local": meu_ip, "ip_gateway": gateway_ip, "cpu_usage": cpu, "ram_usage": ram, "temp": 40, "ping_gateway": ping_gw, "ping_global": json.dumps(pings)}
+        # O Payload ganha os 4 novos poderes
+        payload = {
+            "mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", 
+            "ip_local": meu_ip, "ip_gateway": gateway_ip, 
+            "cpu_usage": cpu, "ram_usage": ram, "disco": disco, "temp": 40, 
+            "ping_gateway": ping_gw, "ping_global": json.dumps(pings),
+            "net_up": net_up, "net_down": net_down, "portas": str_portas
+        }
+        
         espera_remota = 3
 
         try:
-            print(f"⏳ [TELEMETRIA] Coletando dados da máquina e enviando para {URL_CENTRAL}...")
-            
             req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
             with urllib.request.urlopen(req, timeout=5) as response:
                 res_data = json.loads(response.read().decode('utf-8'))
                 
-                # 🛑 NOVO DETETOR DE MENTIRAS AQUI!
-                if res_data.get("status") == "error":
-                    print(f"❌ A CENTRAL RECUSOU OS DADOS! Motivo: {res_data.get('erro_backend')}")
-                else:
-                    print("✅ [TELEMETRIA] Dados sincronizados com sucesso na Central!")
-
                 comando = res_data.get("command")
                 espera_remota = res_data.get("intervalo", 3) 
 
@@ -231,24 +236,23 @@ def loop_telemetria():
                     threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
                 elif comando == "run_traceroute": 
                     threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
-                
                 elif comando == "flush_dns":
                     os.system("ipconfig /flushdns" if os_name == "Windows" else "sudo systemd-resolve --flush-caches")
-                    log_local_event("Remediação", "Cache de DNS limpo via Central.", "OK")
-                
                 elif comando == "top_processos":
                     if psutil: 
                         try:
-                            procs = sorted(psutil.process_iter(['name', 'cpu_percent']), key=lambda p: p.info['cpu_percent'], reverse=True)[:5]
-                            lista_procs = " | ".join([f"{p.info['name']} ({p.info['cpu_percent']}%)" for p in procs])
+                            for p in psutil.process_iter(['cpu_percent']): pass
+                            num_cores = psutil.cpu_count() or 1
+                            procs = sorted(psutil.process_iter(['name', 'cpu_percent']), key=lambda p: p.info.get('cpu_percent') or 0, reverse=True)[:5]
+                            lista_procs = " | ".join([f"{p.info['name']} ({round((p.info.get('cpu_percent') or 0) / num_cores, 1)}%)" for p in procs])
+                            
                             url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
-                            alerta = [{"tipo": "Diagnóstico (Top 5 Processos)", "gravidade": "Aviso", "detalhes": lista_procs}]
-                            req = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": alerta}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+                            req = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Diagnóstico", "gravidade": "Aviso", "detalhes": lista_procs}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
                             urllib.request.urlopen(req, timeout=5)
                         except: pass
                         
         except Exception as e: 
-            print(f"❌ ERRO AO ENVIAR PARA A NUVEM: {e}")
+            print(f"❌ ERRO: {e}")
             espera_remota = 5
 
         time.sleep(espera_remota)
