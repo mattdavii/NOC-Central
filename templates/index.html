@@ -57,8 +57,8 @@
             border-radius: 12px; 
             padding: 15px; 
             height: 350px; 
-            min-height: 350px; /* 🚨 PROÍBE de ficar menor que 350px */
-            flex-shrink: 0; /* 🚨 IMPEDE o Flexbox do terminal de esmagar o mapa */
+            min-height: 350px; 
+            flex-shrink: 0; 
             position: relative; 
             z-index: 1;
         }
@@ -73,7 +73,7 @@
             flex-grow: 1; 
             display: flex; 
             flex-direction: column;
-            min-height: 250px; /* Garante que o terminal também tenha um tamanho mínimo */
+            min-height: 250px; 
         }
         .terminal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 10px; font-weight: bold; font-size: 1em; color: var(--yellow); }
         .terminal-box { background: #09090e; padding: 15px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.85em; flex-grow: 1; overflow-y: auto; border: 1px inset #2a2a35; box-shadow: inset 0 0 15px rgba(0,0,0,0.8); }
@@ -219,7 +219,7 @@
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap', maxZoom: 18 }).addTo(map);
         let layerSensores = L.layerGroup().addTo(map);
         
-        // 🚨 ACORDA O MAPA: Garante que os blocos não fiquem cinzas no novo layout
+        // 🚨 ACORDA O MAPA
         setTimeout(() => { map.invalidateSize(); }, 500);
 
         // Sensores
@@ -227,6 +227,16 @@
             try {
                 const response = await fetch('/api/v2/mapa_sensores');
                 const data = await response.json();
+
+                // 🚨 O DETETOR DE MENTIRAS NA TELA (RAIO-X DO BANCO DE DADOS)
+                if (data.error_sql) {
+                    document.getElementById('sensor-list').innerHTML = `
+                        <div style="background: rgba(243,139,168,0.2); border: 2px solid var(--red); color: var(--text-main); padding: 15px; margin: 15px; border-radius: 8px; font-family: 'JetBrains Mono'; font-size: 0.8em;">
+                            <b style="color: var(--red);">❌ ERRO SQL NA BUSCA:</b><br><br>${data.error_sql}
+                        </div>`;
+                    return; 
+                }
+
                 const sensores = data.sensores || [];
 
                 let htmlSidebar = '';
@@ -290,29 +300,11 @@
             }
         }
 
-        // Nova função para chamar a API
+        // Função de Acknowledge (Estou Ciente)
         async function reconhecerAlertas() {
             await fetch('/api/v2/ack_alerta', { method: 'POST' });
-            carregarSensores(); // Recarrega a tela
+            carregarSensores(); 
         }
-
-        // DENTRO da sua função carregarSensores(), mude a contagem:
-        // ... (código existente)
-                let nao_reconhecidos = 0; // NOVA VARIÁVEL
-                sensores.forEach(s => {
-                    let isOnline = (s.status || '').toLowerCase() === 'online';
-                    if (isOnline) online++; else {
-                        offline++;
-                        if (s.alerta_reconhecido === 0) nao_reconhecidos++; // Conta os alarmes tocando
-                    }
-                    // ... (resto do loop)
-                });
-                
-                // Mude a chamada do Defcon para usar os "nao_reconhecidos"
-                checarDefcon(nao_reconhecidos);
-                
-                // Mostra ou esconde o botão ACK
-                document.getElementById('btn-ack').style.display = (nao_reconhecidos > 0) ? 'block' : 'none';
 
         // Terminal
         async function carregarLogsGlobais() {
