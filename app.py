@@ -418,51 +418,42 @@ def api_mapa_sensores():
     
     conn = database.get_db()
     
-    # 1. Garante as colunas novas sem quebrar a transação
-    try:
-        conn.execute("ALTER TABLE sensores ADD COLUMN alerta_reconhecido INTEGER DEFAULT 1")
-        conn.commit()
+    # 1. AUTO-CURA (Tenta criar as colunas sem quebrar se der erro)
+    try: conn.execute("ALTER TABLE sensores ADD COLUMN alerta_reconhecido INTEGER DEFAULT 1"); conn.commit()
     except: pass
-    try: 
-        conn.execute("ALTER TABLE sensores ADD COLUMN cliente_id INTEGER")
-        conn.commit()
+    try: conn.execute("ALTER TABLE sensores ADD COLUMN cliente_id INTEGER"); conn.commit()
     except: pass
 
-    # 2. O Ceifeiro Inteligente com Acknowledge
+    # 2. O CEIFEIRO INTELIGENTE 
     try:
-        caidos = conn.execute("SELECT mac_id FROM sensores WHERE status = 'online' AND last_seen < NOW() - INTERVAL '15 seconds'").fetchall()
+        # Deixei o ceifeiro inteligente para rodar tanto no seu PC (SQLite) quanto no Render (Postgres)
+        import os
+        is_postgres = bool(os.environ.get('DATABASE_URL'))
+        condicao_tempo = "last_seen < NOW() - INTERVAL '15 seconds'" if is_postgres else "last_seen < datetime('now', '-15 seconds', 'localtime')"
+        
+        caidos = conn.execute(f"SELECT mac_id FROM sensores WHERE status = 'online' AND {condicao_tempo}").fetchall()
         for c in caidos:
             conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder à Central (Offline)')", (c['mac_id'],))
         
-        conn.execute("UPDATE sensores SET status = 'offline', alerta_reconhecido = 0 WHERE status = 'online' AND last_seen < NOW() - INTERVAL '15 seconds'")
+        conn.execute(f"UPDATE sensores SET status = 'offline', alerta_reconhecido = 0 WHERE status = 'online' AND {condicao_tempo}")
         conn.commit()
-    except: pass
+    except Exception as e:
+        print(f"Aviso no Ceifeiro: {e}")
 
-    # 3. A Busca Blindada (Com o alerta_reconhecido)
+    # 3. A BUSCA BLINDADA (Usa s.* para não quebrar se faltar coluna)
     try:
         if role in ['Administrador Master', 'Operador Master']:
-            sensores = conn.execute("""
-                SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, c.nome as cliente_nome, s.alerta_reconhecido 
-                FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id
-            """).fetchall()
+            sensores = conn.execute("SELECT s.*, c.nome as cliente_nome FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id").fetchall()
         elif role == 'Cliente':
-            sensores = conn.execute("""
-                SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, c.nome as cliente_nome, s.alerta_reconhecido 
-                FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id 
-                WHERE s.cliente_id = ?
-            """, (user_id,)).fetchall()
+            sensores = conn.execute("SELECT s.*, c.nome as cliente_nome FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id WHERE s.cliente_id = ?", (user_id,)).fetchall()
         else:
             user_info = conn.execute("SELECT cliente_pai_id FROM clientes WHERE id = ?", (user_id,)).fetchone()
             if user_info and user_info['cliente_pai_id']:
-                sensores = conn.execute("""
-                    SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, c.nome as cliente_nome, s.alerta_reconhecido 
-                    FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id 
-                    WHERE s.cliente_id = ?
-                """, (user_info['cliente_pai_id'],)).fetchall()
+                sensores = conn.execute("SELECT s.*, c.nome as cliente_nome FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id WHERE s.cliente_id = ?", (user_info['cliente_pai_id'],)).fetchall()
             else:
                 sensores = []
     except Exception as e:
-        print(f"Erro na busca de sensores: {e}")
+        print(f"Erro Crítico na Busca: {e}")
         sensores = []
 
     conn.close()

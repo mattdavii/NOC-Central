@@ -230,8 +230,7 @@
                 const sensores = data.sensores || [];
 
                 let htmlSidebar = '';
-                // Adicionamos a variável nao_reconhecidos
-                let total = sensores.length, online = 0, offline = 0, nao_reconhecidos = 0; 
+                let total = sensores.length, online = 0, offline = 0, nao_reconhecidos = 0;
                 layerSensores.clearLayers();
 
                 sensores.forEach(s => {
@@ -240,7 +239,6 @@
                         online++; 
                     } else {
                         offline++;
-                        // Conta os alarmes que ainda estão tocando
                         if (s.alerta_reconhecido === 0) nao_reconhecidos++; 
                     }
                     let statusText = isOnline ? 'ONLINE' : 'OFFLINE';
@@ -252,7 +250,7 @@
                     let customIcon = L.divIcon({ className: '', html: `<div style="background-color: ${corBase}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #11111b; box-shadow: 0 0 10px ${corBase};"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
                     L.marker([lat, lon], {icon: customIcon}).addTo(layerSensores).bindPopup(`<h4>${s.nome_local || 'Desconhecido'}</h4><div style="font-size: 0.8em; margin-bottom:10px;">Status: <b style="color:${corBase}">${statusText}</b></div><a href="/sensor/${s.mac_id}" style="color:var(--blue);">Ver Sensor</a>`);
 
-                    let clienteNome = s.cliente_nome || 'Cliente Padrão'; // Esperando o back-end mandar
+                    let clienteNome = s.cliente_nome || 'Cliente Padrão';
                     let termoBusca = `${s.nome_local} ${s.mac_id} ${clienteNome}`;
 
                     htmlSidebar += `
@@ -275,15 +273,21 @@
                 document.getElementById('kpi-on').innerText = online; 
                 document.getElementById('kpi-off').innerText = offline;
                 document.getElementById('sensor-list').innerHTML = htmlSidebar || '<p style="text-align:center; color:var(--text-muted);">Nenhum sensor encontrado.</p>';
-
-                filtrarSensores(); // Reaplica o filtro após carregar
+                
+                filtrarSensores(); 
+                
+                // Ativa a sirene somente se houver sensor offline não reconhecido
                 checarDefcon(nao_reconhecidos);
-
-            // Mostra ou esconde o Botão ESTOU CIENTE na Navbar
+                
+                // Exibe o botão de "Estou Ciente" na barra superior
                 const btnAck = document.getElementById('btn-ack');
-                if(btnAck) btnAck.style.display = (nao_reconhecidos > 0) ? 'block' : 'none';
+                if (btnAck) {
+                    btnAck.style.display = (nao_reconhecidos > 0) ? 'block' : 'none';
+                }
 
-            } catch (error) { console.error("Erro na API de Sensores: ", error) }
+            } catch (error) { 
+                console.error("Erro na API de Sensores: ", error);
+            }
         }
 
         // Nova função para chamar a API
