@@ -187,8 +187,8 @@ def report_data():
         
         conn = database.get_db()
         
-        # 1. AUTO-CURA DO BANCO
-        for col in ["last_seen TIMESTAMP", "ip_gateway TEXT", "ultima_rota TEXT", "download REAL", "upload REAL"]:
+        # 1. AUTO-CURA DO BANCO (Incluindo o alerta_reconhecido)
+        for col in ["last_seen TIMESTAMP", "ip_gateway TEXT", "ultima_rota TEXT", "download REAL", "upload REAL", "alerta_reconhecido INTEGER DEFAULT 1"]:
             try:
                 conn.execute(f"ALTER TABLE sensores ADD COLUMN {col}")
                 conn.commit()
@@ -197,8 +197,9 @@ def report_data():
         sensor = conn.execute("SELECT * FROM sensores WHERE mac_id = ?", (mac,)).fetchone()
         
         if sensor:
+            sensor_dict = dict(sensor) # 🛡️ BLINDAGEM: Evita crash de sqlite3.Row
             # 2. LOGS DE VOLTA
-            if sensor.get('status') == 'offline':
+            if sensor_dict.get('status') == 'offline':
                 try:
                     conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Conexão Restaurada', 'Aviso', 'O sensor restabeleceu a comunicação com a rede')", (mac,))
                     conn.commit()
@@ -213,21 +214,16 @@ def report_data():
                 (ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
                  data.get('temp'), data.get('ping_gateway'), 
                  data.get('ping_global'), data.get('ip_gateway'), mac))
-            conn.commit() # 🚨 CHECKPOINT: SALVA O SENSOR NA HORA!
+            conn.commit()
         else:
             # 4. CADASTRO DE NOVO SENSOR
-            try:
-                conn.execute("ALTER TABLE sensores ADD COLUMN alerta_reconhecido INTEGER DEFAULT 1")
-                conn.commit()
-            except: pass
-            
             conn.execute('''INSERT INTO sensores 
                 (mac_id, nome_local, ip_sensor, cpu_usage, ram_usage, temp, status, lat, lon, ping_gateway, ping_global, ip_gateway, last_seen, alerta_reconhecido) 
                 VALUES (?, 'Novo Sensor', ?, ?, ?, ?, 'online', -14.235, -51.925, ?, ?, ?, CURRENT_TIMESTAMP, 1)''', 
                 (mac, ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
                  data.get('temp'), data.get('ping_gateway'), 
                  data.get('ping_global'), data.get('ip_gateway')))
-            conn.commit() # 🚨 CHECKPOINT: SALVA O SENSOR NA HORA!
+            conn.commit()
 
         # 5. HISTÓRICO DE PINGS
         try:
@@ -266,7 +262,8 @@ def report_data():
 
     except Exception as e:
         print(f"Erro Crítico na Telemetria: {e}")
-        return jsonify({"status": "error", "command": "none"}), 200
+        # 🚨 AGORA A CENTRAL CONFESSA O CRIME PRO AGENTE!
+        return jsonify({"status": "error", "command": "none", "erro_backend": str(e)}), 200
         
 @app.route('/api/v2/comando_energia/<mac_id>', methods=['POST'])
 def enviar_comando_energia(mac_id):

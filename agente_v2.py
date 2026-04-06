@@ -215,10 +215,15 @@ def loop_telemetria():
             req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
             with urllib.request.urlopen(req, timeout=5) as response:
                 res_data = json.loads(response.read().decode('utf-8'))
+                
+                # 🛑 NOVO DETETOR DE MENTIRAS AQUI!
+                if res_data.get("status") == "error":
+                    print(f"❌ A CENTRAL RECUSOU OS DADOS! Motivo: {res_data.get('erro_backend')}")
+                else:
+                    print("✅ [TELEMETRIA] Dados sincronizados com sucesso na Central!")
+
                 comando = res_data.get("command")
                 espera_remota = res_data.get("intervalo", 3) 
-                
-                print("✅ [TELEMETRIA] Dados sincronizados com sucesso na Central!")
 
                 if comando == "reboot": 
                     os.system("shutdown /r /t 0" if os_name == "Windows" else "sudo reboot")
