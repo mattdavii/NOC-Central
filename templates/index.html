@@ -3,9 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <title>NOC Central - Dashboard Operacional</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="[https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap](https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap)" rel="stylesheet">
+    <link rel="stylesheet" href="[https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css](https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css)">
+    
+    <link rel="stylesheet" href="[https://unpkg.com/leaflet@1.9.4/dist/leaflet.css](https://unpkg.com/leaflet@1.9.4/dist/leaflet.css)" />
+    <link rel="stylesheet" href="[https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css](https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css)" />
+    <link rel="stylesheet" href="[https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css](https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css)" />
+    
     <style>
         /* 🚨 ALARME DEFCON 1 🚨 */
         .alerta-vermelho { animation: piscar-fundo 1.5s infinite; }
@@ -23,13 +27,13 @@
 
         body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: var(--bg-base); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden;}
         
-        .navbar { background: rgba(21, 21, 33, 0.9); backdrop-filter: blur(10px); padding: 10px 30px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; z-index: 1000; flex-shrink: 0;}
+        .navbar { background: rgba(21, 21, 33, 0.9); backdrop-filter: blur(10px); padding: 10px 30px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; z-index: 1000; flex-shrink: 0; transition: 0.3s;}
         .navbar-brand { font-size: 1.4em; font-weight: bold; color: var(--blue); display: flex; align-items: center; gap: 15px; text-shadow: 0 0 10px rgba(137,180,250,0.3);}
         
         /* 🔲 NOVO LAYOUT: GRID COM SIDEBAR */
-        .main-layout { display: grid; grid-template-columns: 1fr 380px; gap: 20px; padding: 20px; flex-grow: 1; overflow: hidden; }
+        .main-layout { display: grid; grid-template-columns: 1fr 380px; gap: 20px; padding: 20px; flex-grow: 1; overflow: hidden; transition: 0.3s;}
         .content-area { display: flex; flex-direction: column; gap: 20px; overflow-y: auto; padding-right: 10px;}
-        .sidebar-area { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; box-shadow: -5px 0 20px rgba(0,0,0,0.3);}
+        .sidebar-area { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; box-shadow: -5px 0 20px rgba(0,0,0,0.3); transition: 0.3s;}
 
         /* 🌍 BACKBONE E RELÓGIOS */
         .top-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
@@ -61,6 +65,7 @@
             flex-shrink: 0; 
             position: relative; 
             z-index: 1;
+            transition: 0.3s;
         }
         #mapa { width: 100%; height: 100%; border-radius: 8px; background-color: var(--bg-input); }
         
@@ -74,6 +79,7 @@
             display: flex; 
             flex-direction: column;
             min-height: 250px; 
+            transition: 0.3s;
         }
         .terminal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 10px; font-weight: bold; font-size: 1em; color: var(--yellow); }
         .terminal-box { background: #09090e; padding: 15px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.85em; flex-grow: 1; overflow-y: auto; border: 1px inset #2a2a35; box-shadow: inset 0 0 15px rgba(0,0,0,0.8); }
@@ -116,14 +122,14 @@
 </head>
 <body>
 
-    <audio id="alarme-critico" src="https://assets.mixkit.co/active_storage/sfx/991/991-preview.mp3" preload="auto"></audio>
+    <audio id="alarme-critico" src="[https://assets.mixkit.co/active_storage/sfx/991/991-preview.mp3](https://assets.mixkit.co/active_storage/sfx/991/991-preview.mp3)" preload="auto"></audio>
     
     <nav class="navbar">
         <div class="navbar-brand">
             {% if session.logo_cliente %}
                 <img src="{{ session.logo_cliente }}" alt="Logo Cliente" style="height: 35px; border-radius: 4px; border: 1px solid var(--border); object-fit: contain;">
             {% else %}
-                <img src="https://raw.githubusercontent.com/mattdavii/NOC-Central/main/logos/logo_md.png" alt="Sua Empresa" style="height: 35px; border-radius: 4px; object-fit: contain;">
+                <img src="[https://raw.githubusercontent.com/mattdavii/NOC-Central/main/logos/logo_md.png](https://raw.githubusercontent.com/mattdavii/NOC-Central/main/logos/logo_md.png)" alt="Sua Empresa" style="height: 35px; border-radius: 4px; object-fit: contain;">
             {% endif %}
             <span>NOC CENTRAL</span>
         </div>
@@ -134,6 +140,9 @@
                 <a href="/usuarios" class="btn-logout" style="color: var(--blue);"><i class="fa-solid fa-users-gear"></i> Gestão de Usuários</a>
             {% endif %}
             <button id="btn-ack" onclick="reconhecerAlertas()" style="display: none; background: var(--red); color: white; border: none; padding: 8px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-right: 20px; box-shadow: 0 0 15px var(--red); animation: blink 1s infinite;"><i class="fa-solid fa-triangle-exclamation"></i> ESTOU CIENTE</button>
+            
+            <button onclick="toggleTelao()" style="background: rgba(203, 166, 247, 0.2); color: var(--purple); border: 1px solid var(--purple); padding: 8px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s;"><i class="fa-solid fa-tv"></i> Telão</button>
+            
             <span style="color: var(--text-muted); font-size: 0.9em; margin-left: 10px; padding-left: 15px; border-left: 1px solid var(--border);">Operador: <strong style="color: var(--text-main);">{{ session.usuario }}</strong></span>
             <a href="/logout" class="btn-logout"><i class="fa-solid fa-right-from-bracket"></i> Sair</a>
         </div>
@@ -162,7 +171,7 @@
                 <div class="kpi-card kpi-offline"><i class="fa-solid fa-triangle-exclamation kpi-icon"></i><div class="kpi-dados"><h4>Falhas Críticas</h4><span id="kpi-off">0</span></div></div>
             </div>
 
-            <div class="map-wrapper"><div id="mapa"></div></div>
+            <div class="map-wrapper" id="container-mapa"><div id="mapa"></div></div>
             
             <div class="terminal-wrapper">
                 <div class="terminal-header"><span><i class="fa-solid fa-terminal"></i> Eventos Globais</span><button onclick="document.getElementById('terminal-logs').innerHTML='';" style="background:var(--bg-input); border:1px solid var(--border); color:var(--text-main); border-radius:4px; cursor:pointer; padding:4px 10px;"><i class="fa-solid fa-eraser"></i> Limpar</button></div>
@@ -174,6 +183,12 @@
             <div class="sidebar-header">
                 <div class="sidebar-title"><i class="fa-solid fa-network-wired"></i> Radar de Sensores</div>
                 <input type="text" id="filtro-pesquisa" class="search-box" placeholder="Filtrar por Cliente ou Sensor..." onkeyup="filtrarSensores()">
+                
+                <select id="filtro-status" class="search-box" style="margin-top: 10px; cursor: pointer;" onchange="carregarSensores()">
+                    <option value="todos">Todos os Sensores</option>
+                    <option value="online">✅ Apenas ONLINE</option>
+                    <option value="offline">❌ Apenas OFFLINE (Incidentes)</option>
+                </select>
             </div>
             
             <div class="sensor-list-container" id="sensor-list">
@@ -182,9 +197,12 @@
         </div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="[https://unpkg.com/leaflet@1.9.4/dist/leaflet.js](https://unpkg.com/leaflet@1.9.4/dist/leaflet.js)"></script>
+    <script src="[https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js](https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js)"></script>
+    <script src="[https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.1/socket.io.min.js](https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.1/socket.io.min.js)"></script>
+
     <script>
-        // 🔍 FUNÇÃO DE FILTRO DA SIDEBAR
+        // 🔍 FUNÇÃO DE FILTRO DA SIDEBAR (Texto)
         function filtrarSensores() {
             let termo = document.getElementById('filtro-pesquisa').value.toLowerCase();
             let cards = document.querySelectorAll('.sensor-card');
@@ -216,10 +234,16 @@
 
         // Mapa
         const map = L.map('mapa').setView([-14.235, -51.925], 4); 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap', maxZoom: 18 }).addTo(map);
-        let layerSensores = L.layerGroup().addTo(map);
+        L.tileLayer('https://{s}[.basemaps.cartocdn.com/dark_all/](https://.basemaps.cartocdn.com/dark_all/){z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap', maxZoom: 18 }).addTo(map);
         
-        // 🚨 ACORDA O MAPA
+        // 🗺️ Camada Inteligente de Agrupamento (Cluster)
+        let layerSensores = L.markerClusterGroup({
+            maxClusterRadius: 50,
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false,
+            zoomToBoundsOnClick: true
+        }).addTo(map);
+        
         setTimeout(() => { map.invalidateSize(); }, 500);
 
         // Sensores
@@ -228,7 +252,6 @@
                 const response = await fetch('/api/v2/mapa_sensores');
                 const data = await response.json();
 
-                // 🚨 O DETETOR DE MENTIRAS NA TELA (RAIO-X DO BANCO DE DADOS)
                 if (data.error_sql) {
                     document.getElementById('sensor-list').innerHTML = `
                         <div style="background: rgba(243,139,168,0.2); border: 2px solid var(--red); color: var(--text-main); padding: 15px; margin: 15px; border-radius: 8px; font-family: 'JetBrains Mono'; font-size: 0.8em;">
@@ -238,6 +261,7 @@
                 }
 
                 const sensores = data.sensores || [];
+                const statusFiltro = document.getElementById('filtro-status').value; // 🎯 Lê a combobox de Status
 
                 let htmlSidebar = '';
                 let total = sensores.length, online = 0, offline = 0, nao_reconhecidos = 0;
@@ -245,14 +269,20 @@
 
                 sensores.forEach(s => {
                     let isOnline = (s.status || '').toLowerCase() === 'online';
+                    
+                    // Estatísticas Globais
                     if (isOnline) {
                         online++; 
                     } else {
                         offline++;
                         if (s.alerta_reconhecido === 0) nao_reconhecidos++; 
                     }
-                    let statusText = isOnline ? 'ONLINE' : 'OFFLINE';
 
+                    // 🛑 REGRA DO FILTRO
+                    if (statusFiltro === 'online' && !isOnline) return;
+                    if (statusFiltro === 'offline' && isOnline) return;
+
+                    let statusText = isOnline ? 'ONLINE' : 'OFFLINE';
                     let lat = parseFloat(s.lat) || -14.235;
                     let lon = parseFloat(s.lon) || -51.925;
                     let corBase = isOnline ? '#a6e3a1' : '#f38ba8'; 
@@ -282,14 +312,11 @@
                 document.getElementById('kpi-total').innerText = total; 
                 document.getElementById('kpi-on').innerText = online; 
                 document.getElementById('kpi-off').innerText = offline;
-                document.getElementById('sensor-list').innerHTML = htmlSidebar || '<p style="text-align:center; color:var(--text-muted);">Nenhum sensor encontrado.</p>';
+                document.getElementById('sensor-list').innerHTML = htmlSidebar || '<p style="text-align:center; color:var(--text-muted); margin-top:30px;">Nenhum sensor atende ao filtro atual.</p>';
                 
                 filtrarSensores(); 
-                
-                // Ativa a sirene somente se houver sensor offline não reconhecido
                 checarDefcon(nao_reconhecidos);
                 
-                // Exibe o botão de "Estou Ciente" na barra superior
                 const btnAck = document.getElementById('btn-ack');
                 if (btnAck) {
                     btnAck.style.display = (nao_reconhecidos > 0) ? 'block' : 'none';
@@ -300,13 +327,11 @@
             }
         }
 
-        // Função de Acknowledge (Estou Ciente)
         async function reconhecerAlertas() {
             await fetch('/api/v2/ack_alerta', { method: 'POST' });
             carregarSensores(); 
         }
 
-        // Terminal
         async function carregarLogsGlobais() {
             try {
                 const res = await fetch('/api/v2/logs_globais');
@@ -321,25 +346,47 @@
             } catch(e) {}
         }
 
+        // 📺 MODO TELÃO (NOC KIOSK)
+        function toggleTelao() {
+            const painel = document.documentElement;
+            if (!document.fullscreenElement) {
+                painel.requestFullscreen();
+                document.querySelector('.navbar').style.display = 'none';
+                document.querySelector('.sidebar-area').style.display = 'none';
+                document.querySelector('.main-layout').style.gridTemplateColumns = '1fr';
+                document.getElementById('container-mapa').style.height = '500px'; // Aumenta o mapa no telão
+                setTimeout(() => map.invalidateSize(), 500); 
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Detecta quando o usuário sai do telão apertando "ESC"
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                document.querySelector('.navbar').style.display = 'flex';
+                document.querySelector('.sidebar-area').style.display = 'flex';
+                document.querySelector('.main-layout').style.gridTemplateColumns = '1fr 380px';
+                document.getElementById('container-mapa').style.height = '350px'; // Volta o mapa ao normal
+                setTimeout(() => map.invalidateSize(), 500);
+            }
+        });
+
         carregarSensores(); 
         carregarLogsGlobais();
 
-        // ⚡ A MÁGICA DOS WEBSOCKETS (Substitui os setInterval)
-        const socket = io(); // Conecta no túnel
+        // ⚡ A MÁGICA DOS WEBSOCKETS
+        const socket = io(); 
         
         socket.on('atualizacao_global', function(msg) {
-            // Quando o servidor gritar, a tela atualiza na mesma fração de segundo!
             carregarSensores();
             carregarLogsGlobais();
         });
         
-        // Se a conexão com o servidor cair e voltar, ele recarrega a tela sozinho
         socket.on('connect', function() {
             console.log("Conectado à Central via WebSockets! ⚡");
-            document.getElementById('terminal-logs').innerHTML += '<div style="color: var(--green);">[WEBSOCKET] Túnel de Tempo Real estabelecido.</div>';
+            document.getElementById('terminal-logs').innerHTML = '<div style="color: var(--green); margin-bottom: 10px;">[WEBSOCKET] Túnel de Tempo Real estabelecido.</div>' + document.getElementById('terminal-logs').innerHTML;
         });
     </script>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.1/socket.io.min.js"></script> ```
 </body>
 </html>
