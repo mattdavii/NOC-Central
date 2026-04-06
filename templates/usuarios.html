@@ -75,6 +75,7 @@
                 <label>Nível de Permissão</label>
                 <select id="role" onchange="toggleCamposDinamicos()">
                     <option value="Cliente">Cliente Dono (White-Label)</option>
+                    <option value="Administrador Cliente">Administrador Cliente (Gerente)</option>
                     <option value="Operador">Operador (Vinculado)</option>
                     <option value="Operador Master">Operador Master</option>
                     <option value="Administrador Master">Administrador Master</option>
@@ -92,7 +93,7 @@
             </div>
 
             <div class="input-group" id="div_pai" style="grid-column: span 2; display: none;">
-                <label>Vincular a Cliente Pai (Obrigatório para Operadores)</label>
+                <label>Vincular a Cliente Pai</label>
                 <select id="cliente_pai">
                     <option value="null">Nenhum (Acesso Global)</option>
                     {% for c in clientes_pais %}
@@ -193,7 +194,7 @@
                 divLogo.style.display = 'flex'; // Mostra Logo
                 divLogo.style.flexDirection = 'column';
                 divPai.style.display = 'none';  // Esconde Vínculo
-            } else if (role.includes('Operador')) {
+            } else if (role.includes('Operador') || role === 'Administrador Cliente') {
                 divLogo.style.display = 'none'; // Esconde Logo
                 divPai.style.display = 'flex';  // Mostra Vínculo
                 divPai.style.flexDirection = 'column';
@@ -247,7 +248,7 @@
             document.getElementById('edit_usuario').value = usuario;
             document.getElementById('edit_logo_url').value = logo_url !== 'None' ? logo_url : '';
             
-            // Só exibe o campo de editar logo se ele for Cliente
+            // Só exibe o campo de editar logo se ele for Cliente Dono
             if (role === 'Cliente') {
                 document.getElementById('edit_div_logo').style.display = 'flex';
                 document.getElementById('edit_div_logo').style.flexDirection = 'column';
