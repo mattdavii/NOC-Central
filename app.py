@@ -45,6 +45,7 @@ except Exception as e:
 SPEEDTEST_REQUESTS = set()
 TRACEROUTE_REQUESTS = set()
 UPDATE_REQUESTS = set()
+AUTO_SPEEDTEST_DONE = set()
 # Fila de comandos de energia para os sensores
 PENDING_COMMANDS = {}
 
@@ -195,6 +196,24 @@ def report_data():
         
         if sensor:
             sensor_dict = dict(sensor) # 🛡️ BLINDAGEM: Evita crash de sqlite3.Row
+            # 1.1. Auto-cura adicional para Manutenção
+        try:
+            conn.execute("ALTER TABLE sensores ADD COLUMN em_manutencao INTEGER DEFAULT 0")
+            conn.commit()
+        except: pass
+
+        # --- Lógica do Speedtest Automático (Passo 4) ---
+        from datetime import datetime
+        agora_hora = datetime.now().hour
+        hoje_id = datetime.now().strftime('%Y-%m-%d')
+        
+        # Se for entre 03:00 e 04:00 da manhã e o sensor ainda não testou hoje
+        if agora_hora == 3 and f"{mac}_{hoje_id}" not in AUTO_SPEEDTEST_DONE:
+            SPEEDTEST_REQUESTS.add(mac)
+            AUTO_SPEEDTEST_DONE.add(f"{mac}_{hoje_id}")
+            # Limpa cache de dias anteriores para não pesar a memória
+            if len(AUTO_SPEEDTEST_DONE) > 500: AUTO_SPEEDTEST_DONE.clear()
+
             # 2. LOGS DE VOLTA
             if sensor_dict.get('status') == 'offline':
                 try:
@@ -453,11 +472,13 @@ def api_mapa_sensores():
         is_postgres = bool(os.environ.get('DATABASE_URL'))
         condicao_tempo = "last_seen < NOW() - INTERVAL '15 seconds'" if is_postgres else "last_seen < datetime('now', '-15 seconds', 'localtime')"
         
-        caidos = conn.execute(f"SELECT mac_id FROM sensores WHERE status = 'online' AND {condicao_tempo}").fetchall()
+        # Se o sensor estiver em manutenção, ele não gera log de queda crítica
+        caidos = conn.execute(f"SELECT mac_id FROM sensores WHERE status = 'online' AND em_manutencao = 0 AND {condicao_tempo}").fetchall()
         for c in caidos:
-            conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder à Central (Offline)')", (c['mac_id'],))
+            conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder.')", (c['mac_id'],))
         
-        conn.execute(f"UPDATE sensores SET status = 'offline', alerta_reconhecido = 0 WHERE status = 'online' AND {condicao_tempo}")
+        # Sensores em manutenção não ficam "Offline" (Vermelho), ficam em "Manutenção" (Amarelo)
+        conn.execute(f"UPDATE sensores SET status = 'offline', alerta_reconhecido = 0 WHERE status = 'online' AND em_manutencao = 0 AND {condicao_tempo}")
         conn.commit()
     except Exception as e:
         print(f"Aviso no Ceifeiro: {e}")
@@ -914,6 +935,21 @@ def logs_globais():
 def solicitar_update(mac_id):
     UPDATE_REQUESTS.add(mac_id)
     return jsonify({"status": "OK"})
+
+@app.route('/api/v2/toggle_manutencao/<mac_id>', methods=['POST'])
+def toggle_manutencao(mac_id):
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
+    conn = database.get_db()
+    sensor = conn.execute("SELECT em_manutencao FROM sensores WHERE mac_id = ?", (mac_id,)).fetchone()
+    novo_estado = 1 if sensor['em_manutencao'] == 0 else 0
+    conn.execute("UPDATE sensores SET em_manutencao = ?, status = 'online' WHERE mac_id = ?", (novo_estado, mac_id))
+    
+    msg = "SENSOR EM MANUTENÇÃO" if novo_estado == 1 else "MANUTENÇÃO ENCERRADA"
+    conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Setup', 'Aviso', ?)", (mac_id, f"Operador {session['usuario']} alterou para: {msg}"))
+    
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "OK", "novo_estado": novo_estado})
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=10000, debug=True) # ⚡ NOVO: Liga com WebSockets

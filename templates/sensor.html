@@ -134,9 +134,12 @@
             <div class="card card-hw">
                 <h3>
                     <span><i class="fa-solid fa-microchip"></i> Telemetria</span> 
-                    <span id="badge-status" class="status-pill {% if sensor.status == 'online' %}pill-ok{% else %}pill-fail{% endif %}">
-                        {% if sensor.status == 'online' %}SENSOR ON{% else %}SENSOR OFF{% endif %}
-                    </span>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <button onclick="alternarManutencao()" id="btn-manutencao" style="background: none; border: 1px solid var(--yellow); color: var(--yellow); padding: 4px 8px; border-radius: 4px; font-size: 0.7em; cursor: pointer; font-weight: bold;">
+                            <i class="fa-solid fa-hammer"></i> MANUTENÇÃO
+                        </button>
+                        <span id="badge-status" class="status-pill">--</span>
+                    </div>
                 </h3>
                 <div class="data-row" style="margin-top:10px;">
                     <span><i class="fa-solid fa-temperature-half" style="color:var(--yellow); width: 20px;"></i> Temperatura:</span> 
@@ -688,6 +691,26 @@
                 carregarGraficosPing();
             }
         });
+
+        async function alternarManutencao() {
+            const res = await fetch(`/api/v2/toggle_manutencao/${mac_id}`, { method: 'POST' });
+            if (res.ok) buscarDadosAoVivo();
+        }
+
+        // Atualize a função buscarDadosAoVivo() para pintar o botão
+        // Dentro do try da buscarDadosAoVivo:
+        if (data.em_manutencao === 1) {
+            document.getElementById('btn-manutencao').style.background = 'var(--yellow)';
+            document.getElementById('btn-manutencao').style.color = 'var(--bg-base)';
+            document.getElementById('badge-status').innerText = "MANUTENÇÃO";
+            document.getElementById('badge-status').className = "status-pill pill-ok"; // Fica verde/amarelo
+            document.getElementById('badge-status').style.borderColor = 'var(--yellow)';
+            document.getElementById('badge-status').style.color = 'var(--yellow)';
+        } else {
+            document.getElementById('btn-manutencao').style.background = 'none';
+            document.getElementById('btn-manutencao').style.color = 'var(--yellow)';
+        }
+        
     </script>
 </body>
 </html>

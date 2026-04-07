@@ -78,7 +78,7 @@
                 <a href="/usuarios" class="btn-logout" style="color: var(--blue);"><i class="fa-solid fa-users-gear"></i> Gestão de Usuários</a>
             {% endif %}
             <button id="btn-ack" onclick="reconhecerAlertas()" style="display: none; background: var(--red); color: white; border: none; padding: 8px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-right: 20px; box-shadow: 0 0 15px var(--red); animation: blink 1s infinite;"><i class="fa-solid fa-triangle-exclamation"></i> ESTOU CIENTE</button>
-            <button onclick="toggleTelao()" style="background: rgba(203, 166, 247, 0.2); color: var(--purple); border: 1px solid var(--purple); padding: 8px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s;"><i class="fa-solid fa-tv"></i> Telão</button>
+            <button onclick="toggleTelao()" style="background: rgba(203, 166, 247, 0.2); color: var(--purple); border: 1px solid var(--purple); padding: 8px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s;"><i class="fa-solid fa-tv"></i> Tela Cheia</button>
             <span style="color: var(--text-muted); font-size: 0.9em; margin-left: 10px; padding-left: 15px; border-left: 1px solid var(--border);">Operador: <strong style="color: var(--text-main);">{{ session.usuario }}</strong></span>
             <a href="/logout" class="btn-logout"><i class="fa-solid fa-right-from-bracket"></i> Sair</a>
         </div>
@@ -192,26 +192,52 @@
 
                 sensores.forEach(s => {
                     let isOnline = (s.status || '').toLowerCase() === 'online';
-                    if (isOnline) online++; else { offline++; if (s.alerta_reconhecido === 0) nao_reconhecidos++; }
+                    let emManutencao = s.em_manutencao === 1; // 🛠️ Lendo o novo campo
 
+                    // Contagem para os KPIs do topo
+                    if (isOnline) {
+                        online++; 
+                    } else {
+                        if (!emManutencao) { // Só conta offline crítico se não estiver em manutenção
+                            offline++;
+                            if (s.alerta_reconhecido === 0) nao_reconhecidos++; 
+                        }
+                    }
+
+                    // 🛑 REGRA DO FILTRO
                     if (statusFiltro === 'online' && !isOnline) return;
                     if (statusFiltro === 'offline' && isOnline) return;
 
+                    // 🎨 DEFINE CORES E TEXTOS (Apenas UM 'let' aqui)
+                    let corBase = isOnline ? '#a6e3a1' : '#f38ba8'; // Verde ou Vermelho
                     let statusText = isOnline ? 'ONLINE' : 'OFFLINE';
-                    let lat = parseFloat(s.lat) || -14.235; let lon = parseFloat(s.lon) || -51.925;
-                    let corBase = isOnline ? '#a6e3a1' : '#f38ba8'; 
+                    let badgeClass = isOnline ? 'badge-on' : 'badge-off';
+                    let badgeStyle = '';
+
+                    // Se estiver em manutenção, sobrescreve para Amarelo
+                    if (emManutencao) {
+                        corBase = '#f9e2af';
+                        statusText = 'MANUTENÇÃO';
+                        badgeClass = '';
+                        badgeStyle = 'background: rgba(249,226,175,0.1); color: var(--yellow); border: 1px solid var(--yellow);';
+                    }
+
+                    let lat = parseFloat(s.lat) || -14.235; 
+                    let lon = parseFloat(s.lon) || -51.925;
                     
+                    // 🗺️ Ícone do Mapa
                     let customIcon = L.divIcon({ className: '', html: `<div style="background-color: ${corBase}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #11111b; box-shadow: 0 0 10px ${corBase};"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
                     L.marker([lat, lon], {icon: customIcon}).addTo(layerSensores).bindPopup(`<h4>${s.nome_local || 'Desconhecido'}</h4><div style="font-size: 0.8em; margin-bottom:10px;">Status: <b style="color:${corBase}">${statusText}</b></div><a href="/sensor/${s.mac_id}" style="color:var(--blue);">Ver Sensor</a>`);
 
                     let clienteNome = s.cliente_nome || 'Cliente Padrão';
                     let termoBusca = `${s.nome_local} ${s.mac_id} ${clienteNome}`;
 
+                    // 📋 Card da Barra Lateral
                     htmlSidebar += `
                         <div class="sensor-card" data-busca="${termoBusca}">
                             <div class="s-header">
                                 <div><div class="s-title">${s.nome_local || 'Sensor'}</div><div class="s-mac">${s.mac_id}</div><div class="s-cliente"><i class="fa-solid fa-building"></i> ${clienteNome}</div></div>
-                                <span class="status-badge ${isOnline ? 'badge-on' : 'badge-off'}">${statusText}</span>
+                                <span class="status-badge ${badgeClass}" style="${badgeStyle}">${statusText}</span>
                             </div>
                             <div class="s-stats"><div><i class="fa-solid fa-microchip"></i> CPU: <strong>${s.cpu_usage || 0}%</strong></div></div>
                             <a href="/sensor/${s.mac_id}" class="btn-acesso"><i class="fa-solid fa-chart-line"></i> Acessar Telemetria</a>
