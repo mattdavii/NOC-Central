@@ -178,7 +178,7 @@ def painel_sensor(mac_id):
 
 @app.route('/api/v2/report_data', methods=['POST'])
 def report_data():
-    global AUTO_SPEEDTEST_DONE # 👈 O SEGREDO É COLOCAR AQUI NO TOPO!
+    global AUTO_SPEEDTEST_DONE # 👈 SEGREDO BLINDADO AQUI
     try:
         data = request.json
         mac = data.get('mac_id')
@@ -206,6 +206,9 @@ def report_data():
             from datetime import datetime
             agora_hora = datetime.now().hour
             hoje_id = datetime.now().strftime('%Y-%m-%d')
+            
+            if 'AUTO_SPEEDTEST_DONE' not in globals():
+                AUTO_SPEEDTEST_DONE = set()
                 
             if agora_hora == 3 and f"{mac}_{hoje_id}" not in AUTO_SPEEDTEST_DONE:
                 SPEEDTEST_REQUESTS.add(mac)
@@ -218,29 +221,6 @@ def report_data():
         
         if sensor:
             sensor_dict = dict(sensor) # 🛡️ BLINDAGEM: Evita crash de sqlite3.Row
-            # 1.1. Auto-cura adicional para Manutenção
-        try:
-            conn.execute("ALTER TABLE sensores ADD COLUMN em_manutencao INTEGER DEFAULT 0")
-            conn.commit()
-        except: pass
-
-        # --- Lógica do Speedtest Automático BLINDADA ---
-        try:
-            from datetime import datetime
-            agora_hora = datetime.now().hour
-            hoje_id = datetime.now().strftime('%Y-%m-%d')
-            
-            # Se a variável global não existir, cria ela agora
-            global AUTO_SPEEDTEST_DONE
-            if 'AUTO_SPEEDTEST_DONE' not in globals():
-                AUTO_SPEEDTEST_DONE = set()
-                
-            if agora_hora == 3 and f"{mac}_{hoje_id}" not in AUTO_SPEEDTEST_DONE:
-                SPEEDTEST_REQUESTS.add(mac)
-                AUTO_SPEEDTEST_DONE.add(f"{mac}_{hoje_id}")
-                if len(AUTO_SPEEDTEST_DONE) > 500: AUTO_SPEEDTEST_DONE.clear()
-        except Exception as e:
-            print(f"Erro no agendador de speedtest: {e}")
 
             # 2. LOGS DE VOLTA
             if sensor_dict.get('status') == 'offline':
@@ -265,8 +245,8 @@ def report_data():
         else:
             # 4. CADASTRO DE NOVO SENSOR
             conn.execute('''INSERT INTO sensores 
-                (mac_id, nome_local, ip_sensor, cpu_usage, ram_usage, temp, status, lat, lon, ping_gateway, ping_global, ip_gateway, last_seen, alerta_reconhecido) 
-                VALUES (?, 'Novo Sensor', ?, ?, ?, ?, 'online', -14.235, -51.925, ?, ?, ?, CURRENT_TIMESTAMP, 1)''', 
+                (mac_id, nome_local, ip_sensor, cpu_usage, ram_usage, temp, status, lat, lon, ping_gateway, ping_global, ip_gateway, last_seen, alerta_reconhecido, em_manutencao) 
+                VALUES (?, 'Novo Sensor', ?, ?, ?, ?, 'online', -14.235, -51.925, ?, ?, ?, CURRENT_TIMESTAMP, 1, 0)''', 
                 (mac, ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
                  data.get('temp'), data.get('ping_gateway'), 
                  data.get('ping_global'), data.get('ip_gateway')))
@@ -513,7 +493,7 @@ def api_mapa_sensores():
 
     try:
         query_base = """
-            SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, s.alerta_reconhecido, c.nome as cliente_nome 
+            SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, s.alerta_reconhecido, s.em_manutencao, c.nome as cliente_nome 
             FROM sensores s 
             LEFT JOIN clientes c ON s.cliente_id = c.id
         """
