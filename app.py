@@ -202,17 +202,23 @@ def report_data():
             conn.commit()
         except: pass
 
-        # --- Lógica do Speedtest Automático (Passo 4) ---
-        from datetime import datetime
-        agora_hora = datetime.now().hour
-        hoje_id = datetime.now().strftime('%Y-%m-%d')
-        
-        # Se for entre 03:00 e 04:00 da manhã e o sensor ainda não testou hoje
-        if agora_hora == 3 and f"{mac}_{hoje_id}" not in AUTO_SPEEDTEST_DONE:
-            SPEEDTEST_REQUESTS.add(mac)
-            AUTO_SPEEDTEST_DONE.add(f"{mac}_{hoje_id}")
-            # Limpa cache de dias anteriores para não pesar a memória
-            if len(AUTO_SPEEDTEST_DONE) > 500: AUTO_SPEEDTEST_DONE.clear()
+        # --- Lógica do Speedtest Automático BLINDADA ---
+        try:
+            from datetime import datetime
+            agora_hora = datetime.now().hour
+            hoje_id = datetime.now().strftime('%Y-%m-%d')
+            
+            # Se a variável global não existir, cria ela agora
+            global AUTO_SPEEDTEST_DONE
+            if 'AUTO_SPEEDTEST_DONE' not in globals():
+                AUTO_SPEEDTEST_DONE = set()
+                
+            if agora_hora == 3 and f"{mac}_{hoje_id}" not in AUTO_SPEEDTEST_DONE:
+                SPEEDTEST_REQUESTS.add(mac)
+                AUTO_SPEEDTEST_DONE.add(f"{mac}_{hoje_id}")
+                if len(AUTO_SPEEDTEST_DONE) > 500: AUTO_SPEEDTEST_DONE.clear()
+        except Exception as e:
+            print(f"Erro no agendador de speedtest: {e}")
 
             # 2. LOGS DE VOLTA
             if sensor_dict.get('status') == 'offline':
@@ -523,7 +529,12 @@ def debug_db():
 def get_sensor_data(mac_id):
     conn = database.get_db()
     try:
-        conn.execute("UPDATE sensores SET status = 'offline' WHERE last_seen < NOW() - INTERVAL '15 seconds'")
+        import os
+        is_postgres = bool(os.environ.get('DATABASE_URL'))
+        condicao_tempo = "last_seen < NOW() - INTERVAL '15 seconds'" if is_postgres else "last_seen < datetime('now', '-15 seconds', 'localtime')"
+        
+        # 🛑 Agora ele respeita a manutenção (em_manutencao = 0) antes de matar!
+        conn.execute(f"UPDATE sensores SET status = 'offline' WHERE em_manutencao = 0 AND {condicao_tempo}")
         conn.commit()
     except: pass
 

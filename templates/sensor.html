@@ -532,12 +532,33 @@
                 const data = await response.json();
                 
                 const badge = document.getElementById('badge-status');
+                
+                // 1. Lida com o Status Básico
                 if(data.status === 'online') {
                     badge.innerText = "SENSOR ON";
                     badge.className = "status-pill pill-ok";
                 } else {
                     badge.innerText = "SENSOR OFF";
                     badge.className = "status-pill pill-fail";
+                }
+
+                // 2. SOBRESCREVE AS CORES SE ESTIVER EM MANUTENÇÃO (Snooze)
+                if (data.em_manutencao === 1) {
+                    document.getElementById('btn-manutencao').style.background = 'var(--yellow)';
+                    document.getElementById('btn-manutencao').style.color = 'var(--bg-base)';
+                    
+                    badge.innerText = "MANUTENÇÃO";
+                    badge.className = "status-pill pill-ok"; // Usa a base do verde pra não piscar vermelho
+                    badge.style.borderColor = 'var(--yellow)';
+                    badge.style.color = 'var(--yellow)';
+                    badge.style.backgroundColor = 'rgba(249, 226, 175, 0.1)';
+                } else {
+                    // Volta ao normal
+                    document.getElementById('btn-manutencao').style.background = 'none';
+                    document.getElementById('btn-manutencao').style.color = 'var(--yellow)';
+                    badge.style.borderColor = '';
+                    badge.style.color = '';
+                    badge.style.backgroundColor = '';
                 }
                 
                 document.getElementById('cpu-text').innerText = data.cpu_usage + '%';
@@ -710,7 +731,7 @@
             document.getElementById('btn-manutencao').style.background = 'none';
             document.getElementById('btn-manutencao').style.color = 'var(--yellow)';
         }
-        
+
     </script>
 </body>
 </html>
