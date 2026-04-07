@@ -531,34 +531,40 @@
                 const response = await fetch('/api/v2/sensor_data/' + mac_id);
                 const data = await response.json();
                 
+                // Atualização dos Badges
                 const badge = document.getElementById('badge-status');
-                
-                // 1. Lida com o Status Básico
-                if(data.status === 'online') {
-                    badge.innerText = "SENSOR ON";
-                    badge.className = "status-pill pill-ok";
-                } else {
-                    badge.innerText = "SENSOR OFF";
-                    badge.className = "status-pill pill-fail";
-                }
+                const btnManutencao = document.getElementById('btn-manutencao');
 
-                // 2. SOBRESCREVE AS CORES SE ESTIVER EM MANUTENÇÃO (Snooze)
+                // 1. SOBRESCREVE SE ESTIVER EM MANUTENÇÃO (Snooze)
                 if (data.em_manutencao === 1) {
-                    document.getElementById('btn-manutencao').style.background = 'var(--yellow)';
-                    document.getElementById('btn-manutencao').style.color = 'var(--bg-base)';
-                    
+                    if (btnManutencao) {
+                        btnManutencao.style.background = 'var(--yellow)';
+                        btnManutencao.style.color = 'var(--bg-base)';
+                    }
                     badge.innerText = "MANUTENÇÃO";
-                    badge.className = "status-pill pill-ok"; // Usa a base do verde pra não piscar vermelho
+                    badge.className = "status-pill pill-ok"; // Base verde para não piscar
                     badge.style.borderColor = 'var(--yellow)';
                     badge.style.color = 'var(--yellow)';
                     badge.style.backgroundColor = 'rgba(249, 226, 175, 0.1)';
+                
+                // 2. STATUS NORMAL
                 } else {
-                    // Volta ao normal
-                    document.getElementById('btn-manutencao').style.background = 'none';
-                    document.getElementById('btn-manutencao').style.color = 'var(--yellow)';
+                    if (btnManutencao) {
+                        btnManutencao.style.background = 'none';
+                        btnManutencao.style.color = 'var(--yellow)';
+                    }
+                    // Remove as cores forçadas do modo manutenção
                     badge.style.borderColor = '';
                     badge.style.color = '';
                     badge.style.backgroundColor = '';
+
+                    if(data.status === 'online') {
+                        badge.innerText = "SENSOR ON";
+                        badge.className = "status-pill pill-ok";
+                    } else {
+                        badge.innerText = "SENSOR OFF";
+                        badge.className = "status-pill pill-fail";
+                    }
                 }
                 
                 document.getElementById('cpu-text').innerText = data.cpu_usage + '%';

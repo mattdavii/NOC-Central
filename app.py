@@ -185,13 +185,37 @@ def report_data():
         
         conn = database.get_db()
         
-        # 1. AUTO-CURA DO BANCO (Incluindo o alerta_reconhecido)
-        for col in ["last_seen TIMESTAMP", "ip_gateway TEXT", "ultima_rota TEXT", "download REAL", "upload REAL", "alerta_reconhecido INTEGER DEFAULT 1", "disco REAL", "net_up REAL", "net_down REAL", "portas TEXT"]:
+        # 1. AUTO-CURA BLINDADA PARA POSTGRESQL (A Mágica do Rollback)
+        colunas = [
+            "last_seen TIMESTAMP", "ip_gateway TEXT", "ultima_rota TEXT", 
+            "download REAL", "upload REAL", "alerta_reconhecido INTEGER DEFAULT 1", 
+            "disco REAL", "net_up REAL", "net_down REAL", "portas TEXT", 
+            "em_manutencao INTEGER DEFAULT 0"
+        ]
+        
+        for col in colunas:
             try:
                 conn.execute(f"ALTER TABLE sensores ADD COLUMN {col}")
                 conn.commit()
-            except: pass
+            except:
+                conn.rollback() # 🛡️ ISSO AQUI DESTRAVA O BANCO SE A COLUNA JÁ EXISTIR!
         
+        # --- Lógica do Speedtest Automático ---
+        try:
+            from datetime import datetime
+            agora_hora = datetime.now().hour
+            hoje_id = datetime.now().strftime('%Y-%m-%d')
+            
+            global AUTO_SPEEDTEST_DONE
+            if 'AUTO_SPEEDTEST_DONE' not in globals():
+                AUTO_SPEEDTEST_DONE = set()
+                
+            if agora_hora == 3 and f"{mac}_{hoje_id}" not in AUTO_SPEEDTEST_DONE:
+                SPEEDTEST_REQUESTS.add(mac)
+                AUTO_SPEEDTEST_DONE.add(f"{mac}_{hoje_id}")
+                if len(AUTO_SPEEDTEST_DONE) > 500: AUTO_SPEEDTEST_DONE.clear()
+        except: pass
+
         sensor = conn.execute("SELECT * FROM sensores WHERE mac_id = ?", (mac,)).fetchone()
         
         if sensor:
