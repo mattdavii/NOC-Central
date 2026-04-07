@@ -45,9 +45,9 @@ except Exception as e:
 SPEEDTEST_REQUESTS = set()
 TRACEROUTE_REQUESTS = set()
 UPDATE_REQUESTS = set()
-AUTO_SPEEDTEST_DONE = set()
 # Fila de comandos de energia para os sensores
 PENDING_COMMANDS = {}
+AUTO_SPEEDTEST_DONE = set()
 
 # ==========================================
 # 🔐 SISTEMA DE LOGIN E SESSÃO (BLINDADO)
@@ -178,6 +178,7 @@ def painel_sensor(mac_id):
 
 @app.route('/api/v2/report_data', methods=['POST'])
 def report_data():
+    global AUTO_SPEEDTEST_DONE # 👈 O SEGREDO É COLOCAR AQUI NO TOPO!
     try:
         data = request.json
         mac = data.get('mac_id')
@@ -198,23 +199,20 @@ def report_data():
                 conn.execute(f"ALTER TABLE sensores ADD COLUMN {col}")
                 conn.commit()
             except:
-                conn.rollback() # 🛡️ ISSO AQUI DESTRAVA O BANCO SE A COLUNA JÁ EXISTIR!
+                conn.rollback() # 🛡️ Destrava o banco
         
         # --- Lógica do Speedtest Automático ---
         try:
             from datetime import datetime
             agora_hora = datetime.now().hour
             hoje_id = datetime.now().strftime('%Y-%m-%d')
-            
-            global AUTO_SPEEDTEST_DONE
-            if 'AUTO_SPEEDTEST_DONE' not in globals():
-                AUTO_SPEEDTEST_DONE = set()
                 
             if agora_hora == 3 and f"{mac}_{hoje_id}" not in AUTO_SPEEDTEST_DONE:
                 SPEEDTEST_REQUESTS.add(mac)
                 AUTO_SPEEDTEST_DONE.add(f"{mac}_{hoje_id}")
                 if len(AUTO_SPEEDTEST_DONE) > 500: AUTO_SPEEDTEST_DONE.clear()
-        except: pass
+        except Exception as e: 
+            print(f"Erro agendamento: {e}")
 
         sensor = conn.execute("SELECT * FROM sensores WHERE mac_id = ?", (mac,)).fetchone()
         

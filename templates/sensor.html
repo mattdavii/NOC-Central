@@ -23,7 +23,7 @@
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 25px;
-            margin-bottom: 25px; /* Espaço para o próximo bloco */
+            margin-bottom: 25px; 
         }
         
         /* BLOCOS GERAIS DO SISTEMA */
@@ -35,7 +35,7 @@
             display: flex; 
             flex-direction: column; 
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            margin: 0; /* Remove margens que quebram o Grid */
+            margin: 0; 
             justify-content: space-between; 
         }
         .card h3 { margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 15px; display: flex; align-items: center; justify-content: space-between; font-size: 1.15em;}
@@ -69,17 +69,8 @@
         .speed-val { font-family: 'JetBrains Mono', monospace; font-size: 2.5em; font-weight: bold; margin-top: 8px; }
 
         /* 🎮 GRID DOS BOTÕES DE REMEDIAÇÃO */
-        .botoes-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 15px;
-            margin-top: 15px;
-        }
-        .btn-acao {
-            display: flex; align-items: center; justify-content: center; gap: 10px;
-            padding: 15px; border-radius: 8px; font-weight: bold; cursor: pointer;
-            transition: 0.3s; font-size: 0.9em; text-transform: uppercase;
-        }
+        .botoes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-top: 15px; }
+        .btn-acao { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 15px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 0.9em; text-transform: uppercase; }
         .btn-acao:hover { box-shadow: 0 0 15px inset; filter: brightness(1.2); }
 
         .global-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-top: 10px;}
@@ -128,9 +119,7 @@
     </nav>
 
     <div class="container">
-        
         <div class="painel-grid">
-            
             <div class="card card-hw">
                 <h3>
                     <span><i class="fa-solid fa-microchip"></i> Telemetria</span> 
@@ -216,7 +205,9 @@
                 </div>
             </div>
             
-        </div> <div class="painel-grid" style="grid-template-columns: 1fr;">
+        </div> 
+        
+        <div class="painel-grid" style="grid-template-columns: 1fr;">
             <div class="card card-full" style="border-top: 4px solid var(--purple);">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
                     <h3 style="margin: 0; color: var(--purple); border: none; padding: 0;"><i class="fa-solid fa-gamepad"></i> Ações de Remediação Remota</h3>
@@ -338,15 +329,13 @@
         </div>
 
     </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.1/socket.io.min.js"></script> ```
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.1/socket.io.min.js"></script>
 
     <script>
         const mac_id = "{{ sensor.mac_id }}";
         let globalGatewayIP = "", globalSensorIP = "";
 
-        // ==========================================
-        // GRÁFICO 1: EVOLUÇÃO DE BANDA
-        // ==========================================
         let chartVelocidadeInstance = null;
         async function carregarGraficos() {
             try {
@@ -378,9 +367,6 @@
             } catch (e) { console.error(e); }
         }
 
-        // ==========================================
-        // GRÁFICO 2: RADAR DE PINGS EM TEMPO REAL
-        // ==========================================
         let chartPingInstance = null;
         async function carregarGraficosPing() {
             try {
@@ -427,9 +413,6 @@
             } catch (e) { console.error("Erro no Gráfico de Ping:", e); }
         }
 
-        // ==========================================
-        // COMANDOS DE ENERGIA E BRAÇO LONGO
-        // ==========================================
         async function enviarComandoEnergia(cmd) {
             const acao = cmd === 'reboot' ? 'REINICIAR' : 'DESLIGAR';
             if(!confirm(`⚠️ ATENÇÃO: Tem certeza que deseja ${acao} este sensor remotamente? Se for desligado, alguém precisará ligar fisicamente no local.`)) return;
@@ -455,9 +438,6 @@
             }
         }
 
-        // ==========================================
-        // TRADUTOR VISUAL DE TRACEROUTE
-        // ==========================================
         function desenharTraceroute(rawText) {
             if (!rawText || rawText.includes("Nenhum teste") || rawText.includes("Executando salto")) {
                 return `<div style="text-align:center; color: var(--text-muted); padding: 20px; font-style: italic;">${rawText || "Sem dados."}</div>`;
@@ -523,37 +503,29 @@
             setTimeout(() => { document.getElementById('btn-trace').innerHTML = '<i class="fa-solid fa-play"></i> Rastrear Rota'; buscarDadosAoVivo(); }, 40000);
         }
 
-        // ==========================================
-        // MOTOR PRINCIPAL DE TELEMETRIA
-        // ==========================================
         async function buscarDadosAoVivo() {
             try {
                 const response = await fetch('/api/v2/sensor_data/' + mac_id);
                 const data = await response.json();
                 
-                // Atualização dos Badges
                 const badge = document.getElementById('badge-status');
                 const btnManutencao = document.getElementById('btn-manutencao');
 
-                // 1. SOBRESCREVE SE ESTIVER EM MANUTENÇÃO (Snooze)
                 if (data.em_manutencao === 1) {
                     if (btnManutencao) {
                         btnManutencao.style.background = 'var(--yellow)';
                         btnManutencao.style.color = 'var(--bg-base)';
                     }
                     badge.innerText = "MANUTENÇÃO";
-                    badge.className = "status-pill pill-ok"; // Base verde para não piscar
+                    badge.className = "status-pill pill-ok"; 
                     badge.style.borderColor = 'var(--yellow)';
                     badge.style.color = 'var(--yellow)';
                     badge.style.backgroundColor = 'rgba(249, 226, 175, 0.1)';
-                
-                // 2. STATUS NORMAL
                 } else {
                     if (btnManutencao) {
                         btnManutencao.style.background = 'none';
                         btnManutencao.style.color = 'var(--yellow)';
                     }
-                    // Remove as cores forçadas do modo manutenção
                     badge.style.borderColor = '';
                     badge.style.color = '';
                     badge.style.backgroundColor = '';
@@ -572,11 +544,10 @@
                 document.getElementById('ram-text').innerText = data.ram_usage + '%';
                 document.getElementById('ram-fill').style.width = data.ram_usage + '%';
                 document.getElementById('temp-text').innerText = data.temp + ' °C';
-                // Preenche o Disco
+                
                 document.getElementById('disk-text').innerText = (data.disco || 0) + '%';
                 document.getElementById('disk-fill').style.width = (data.disco || 0) + '%';
                 
-                // Preenche o Tráfego em Tempo Real e Portas
                 if(document.getElementById('net-down-live')) document.getElementById('net-down-live').innerText = (data.net_down || 0).toFixed(1);
                 if(document.getElementById('net-up-live')) document.getElementById('net-up-live').innerText = (data.net_up || 0).toFixed(1);
                 if(document.getElementById('portas-abertas')) document.getElementById('portas-abertas').innerText = data.portas || 'Nenhuma (Seguro)';
@@ -696,47 +667,25 @@
             }
         }
         
-        // ==========================================
-        // LOOPS DE ATUALIZAÇÃO (MOTORES)
-        // ==========================================
-        
-        // Esses mais lentos pode deixar no setInterval pra não sobrecarregar
-        setInterval(carregarRadar, 25000); 
-        setInterval(carregarCustomIPs, 10000); 
-        setInterval(carregarHistorico, 10000);
-        setInterval(carregarGraficos, 60000); 
-        
-        // Chamadas Iniciais
-        buscarDadosAoVivo(); carregarRadar(); carregarCustomIPs(); carregarHistorico(); carregarGraficos(); carregarGraficosPing();
-
-        // ⚡ A MÁGICA DOS WEBSOCKETS
-        const socket = io();
-        socket.on('atualizacao_global', function(msg) {
-            // Atualiza IMEDIATAMENTE só se o dado for do sensor que eu estou olhando
-            if (msg.mac_id === mac_id) {
-                buscarDadosAoVivo();
-                carregarGraficosPing();
-            }
-        });
-
         async function alternarManutencao() {
             const res = await fetch(`/api/v2/toggle_manutencao/${mac_id}`, { method: 'POST' });
             if (res.ok) buscarDadosAoVivo();
         }
 
-        // Atualize a função buscarDadosAoVivo() para pintar o botão
-        // Dentro do try da buscarDadosAoVivo:
-        if (data.em_manutencao === 1) {
-            document.getElementById('btn-manutencao').style.background = 'var(--yellow)';
-            document.getElementById('btn-manutencao').style.color = 'var(--bg-base)';
-            document.getElementById('badge-status').innerText = "MANUTENÇÃO";
-            document.getElementById('badge-status').className = "status-pill pill-ok"; // Fica verde/amarelo
-            document.getElementById('badge-status').style.borderColor = 'var(--yellow)';
-            document.getElementById('badge-status').style.color = 'var(--yellow)';
-        } else {
-            document.getElementById('btn-manutencao').style.background = 'none';
-            document.getElementById('btn-manutencao').style.color = 'var(--yellow)';
-        }
+        setInterval(carregarRadar, 25000); 
+        setInterval(carregarCustomIPs, 10000); 
+        setInterval(carregarHistorico, 10000);
+        setInterval(carregarGraficos, 60000); 
+        
+        buscarDadosAoVivo(); carregarRadar(); carregarCustomIPs(); carregarHistorico(); carregarGraficos(); carregarGraficosPing();
+
+        const socket = io();
+        socket.on('atualizacao_global', function(msg) {
+            if (msg.mac_id === mac_id) {
+                buscarDadosAoVivo();
+                carregarGraficosPing();
+            }
+        });
 
     </script>
 </body>
