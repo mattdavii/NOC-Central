@@ -25,6 +25,10 @@ except ImportError: psutil = None
 URL_CENTRAL = "https://noc-central.onrender.com/api/v2/report_data" 
 PORTA_LOCAL = 10000
 
+# Constantes de Blindagem para o PyInstaller .EXE invisível
+IS_WIN = platform.system().lower() == 'windows'
+C_FLAGS = subprocess.CREATE_NO_WINDOW if IS_WIN else 0
+
 app = Flask(__name__)
 
 dados_sensores = {
@@ -48,28 +52,30 @@ def get_network_info():
     except: pass
 
     try:
-        if platform.system().lower() == 'windows':
-            saida = subprocess.check_output("route print 0.0.0.0", shell=True, universal_newlines=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        if IS_WIN:
+            # 🛡️ Blindagem PyInstaller: stdin=subprocess.DEVNULL
+            saida = subprocess.check_output("route print 0.0.0.0", shell=True, universal_newlines=True, creationflags=C_FLAGS, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             for linha in saida.split('\n'):
                 partes = linha.split()
                 if len(partes) >= 3 and partes[0] == '0.0.0.0':
                     gateway = partes[2]
                     break
         else:
-            saida = subprocess.check_output("ip route | grep default", shell=True, universal_newlines=True)
+            saida = subprocess.check_output("ip route | grep default", shell=True, universal_newlines=True, stdin=subprocess.DEVNULL)
             gateway = saida.split()[2]
     except: pass
     return meu_ip, gateway
 
 def ping_silencioso(ip):
-    param = '-n' if platform.system().lower() == 'windows' else '-c'
-    try: subprocess.call(['ping', param, '1', '-w', '500', ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == 'Windows' else 0)
+    param = '-n' if IS_WIN else '-c'
+    try: 
+        # 🛡️ Blindagem Extrema: Desvia todas as saídas
+        subprocess.call(['ping', param, '1', '-w', '500', ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, creationflags=C_FLAGS)
     except: pass
 
 def varredura_profunda_arp(ip_gateway):
     try:
         base_ip = ".".join(ip_gateway.split('.')[:-1])
-        print(f"🔍 [RADAR] Iniciando varredura profunda na rede {base_ip}.X...")
         threads = []
         for i in range(1, 255):
             ip_alvo = f"{base_ip}.{i}"
@@ -77,17 +83,17 @@ def varredura_profunda_arp(ip_gateway):
             threads.append(t)
             t.start()
         for t in threads: t.join()
-        print("✅ [RADAR] Varredura concluída. Tabela ARP populada com sucesso!")
-    except Exception as e: print(f"⚠️ Erro na varredura profunda: {e}")
+    except: pass
 
 def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
     if forcar_varredura and gateway_ip != "Desconhecido":
-        varredura_profunda_arp(gateway_ip) # ⚡ ACORDA A REDE AQUI!
+        varredura_profunda_arp(gateway_ip) 
 
     dispositivos = []
     prefixo_rede = '.'.join(meu_ip.split('.')[:-1]) + '.'
     try:
-        saida = subprocess.check_output("arp -a", shell=True, universal_newlines=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == 'Windows' else 0)
+        # 🛡️ Blindagem PyInstaller: stdin=subprocess.DEVNULL
+        saida = subprocess.check_output("arp -a", shell=True, universal_newlines=True, creationflags=C_FLAGS, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for linha in saida.split('\n'):
             partes = linha.split()
             if len(partes) >= 2 and '.' in partes[0] and ('-' in partes[1] or ':' in partes[1]):
@@ -99,10 +105,11 @@ def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
     return dispositivos
 
 def ping(host):
-    param = '-n' if platform.system().lower() == 'windows' else '-c'
+    param = '-n' if IS_WIN else '-c'
     comando = ['ping', param, '1', host]
     try:
-        saida = subprocess.check_output(comando, stderr=subprocess.STDOUT, universal_newlines=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == 'Windows' else 0)
+        # 🛡️ Blindagem PyInstaller
+        saida = subprocess.check_output(comando, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, universal_newlines=True, creationflags=C_FLAGS)
         if '<1ms' in saida: return 1
         if 'time=' in saida or 'tempo=' in saida:
             for palavra in saida.split():
@@ -165,10 +172,10 @@ def executar_speedtest(mac, url_central):
     except: pass
 
 def executar_traceroute(mac, url_central):
-    os_name = platform.system() 
     try:
-        cmd = ['tracert', '-d', '-h', '15', '8.8.8.8'] if os_name == "Windows" else ['traceroute', '-m', '15', '-n', '8.8.8.8']
-        resultado = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=40, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == 'Windows' else 0).decode('cp850' if os_name == "Windows" else 'utf-8', errors='ignore')
+        cmd = ['tracert', '-d', '-h', '15', '8.8.8.8'] if IS_WIN else ['traceroute', '-m', '15', '-n', '8.8.8.8']
+        # 🛡️ Blindagem PyInstaller
+        resultado = subprocess.check_output(cmd, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, timeout=40, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
         payload = {"mac_id": mac, "rota": resultado}
         url_trace = url_central.replace('report_data', 'reportar_rota')
         req = urllib.request.Request(url_trace, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
@@ -180,114 +187,122 @@ def executar_traceroute(mac, url_central):
 # ==========================================
 def loop_telemetria():
     global dados_sensores
-    mac = get_mac()
-    os_name = platform.system()
-    ultima_medicao_speedtest = 0 
-    ultima_varredura = 0 # ⏱️ NOVO: Timer da Topologia
     
-    if psutil:
-        last_net = psutil.net_io_counters()
-        last_net_time = time.time()
-    
-    while True:
-        agora = time.time()
+    try:
+        mac = get_mac()
+        os_name = platform.system()
+        ultima_medicao_speedtest = 0 
+        ultima_varredura = 0 
         
-        if agora - ultima_medicao_speedtest > 900:
-            threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
-            ultima_medicao_speedtest = agora
-
-        cpu = psutil.cpu_percent(interval=None) if psutil else 0.0
-        ram = psutil.virtual_memory().percent if psutil else 0.0
-        disco = psutil.disk_usage('/').percent if psutil else 0.0 
-
-        net_up = 0.0
-        net_down = 0.0
         if psutil:
-            current_net = psutil.net_io_counters()
-            time_diff = agora - last_net_time if (agora - last_net_time) > 0 else 1
-            net_up = round(((current_net.bytes_sent - last_net.bytes_sent) * 8 / 1_000_000) / time_diff, 2)
-            net_down = round(((current_net.bytes_recv - last_net.bytes_recv) * 8 / 1_000_000) / time_diff, 2)
-            last_net = current_net
-            last_net_time = agora
-
-        portas_alvo = {80: "HTTP", 443: "HTTPS", 3306: "MySQL", 5432: "Postgres", 3389: "RDP"}
-        portas_abertas = []
-        for porta, servico in portas_alvo.items():
-            try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(0.1)
-                if sock.connect_ex(('127.0.0.1', porta)) == 0: portas_abertas.append(f"{porta} ({servico})")
-                sock.close()
-            except: pass
-        str_portas = ", ".join(portas_abertas) if portas_abertas else "Nenhuma (Seguro)"
-
-        hosts_ping = {"Google": "8.8.8.8", "Cloudflare": "1.1.1.1", "AWS": "aws.amazon.com", "Quad9": "9.9.9.9"}
-        pings = {}
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = {executor.submit(ping, ip): name for name, ip in hosts_ping.items()}
-            for future in concurrent.futures.as_completed(futures): pings[futures[future]] = future.result()
-
-        meu_ip, gateway_ip = get_network_info()
-        ping_gw = ping(gateway_ip) if gateway_ip != "Desconhecido" else 0
+            last_net = psutil.net_io_counters()
+            last_net_time = time.time()
         
-        # ⚡ TOPOLOGIA: Varre a rede profundamente a cada 5 minutos
-        forcar_varredura = (agora - ultima_varredura > 300)
-        dispositivos = get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=forcar_varredura)
-        if forcar_varredura: ultima_varredura = agora
-
-        dados_sensores = {
-            "cpu": cpu, "ram": ram, "meu_ip": meu_ip, "gateway_ip": gateway_ip, 
-            "ping_gateway": ping_gw, "pings": pings, "topologia": dispositivos, "logs": [], "custom_ips": [] # Logs e IPs custom são lidos localmente na interface
-        }
-
-        payload = {
-            "mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", 
-            "ip_local": meu_ip, "ip_gateway": gateway_ip, 
-            "cpu_usage": cpu, "ram_usage": ram, "disco": disco, "temp": 40, 
-            "ping_gateway": ping_gw, "ping_global": json.dumps(pings),
-            "net_up": net_up, "net_down": net_down, "portas": str_portas
-        }
-        
-        espera_remota = 3
-
-        try:
-            req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
-            with urllib.request.urlopen(req, timeout=5) as response:
-                res_data = json.loads(response.read().decode('utf-8'))
-                
-                comando = res_data.get("command")
-                espera_remota = res_data.get("intervalo", 3) 
-
-                if comando == "reboot": os.system("shutdown /r /t 0" if os_name == "Windows" else "sudo reboot")
-                elif comando == "run_speedtest": threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
-                elif comando == "run_traceroute": threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
-                elif comando == "flush_dns": os.system("ipconfig /flushdns" if os_name == "Windows" else "sudo systemd-resolve --flush-caches")
-                elif comando == "top_processos":
-                    if psutil: 
-                        try:
-                            for p in psutil.process_iter(['cpu_percent']): pass
-                            num_cores = psutil.cpu_count() or 1
-                            procs = sorted(psutil.process_iter(['name', 'cpu_percent']), key=lambda p: p.info.get('cpu_percent') or 0, reverse=True)[:5]
-                            lista_procs = " | ".join([f"{p.info['name']} ({round((p.info.get('cpu_percent') or 0) / num_cores, 1)}%)" for p in procs])
-                            
-                            url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
-                            req = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Diagnóstico", "gravidade": "Aviso", "detalhes": lista_procs}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
-                            urllib.request.urlopen(req, timeout=5)
-                        except: pass
+        while True:
+            agora = time.time()
             
-            # Atualiza Topologia na Central a cada varredura (5 min)
-            if forcar_varredura:
-                try:
-                    url_topo = URL_CENTRAL.replace('report_data', 'atualizar_dispositivos')
-                    req_topo = urllib.request.Request(url_topo, data=json.dumps({"mac_id": mac, "lista": dispositivos}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
-                    urllib.request.urlopen(req_topo, timeout=5)
-                except: pass
-                        
-        except Exception as e: 
-            print(f"❌ ERRO: {e}")
-            espera_remota = 5
+            if agora - ultima_medicao_speedtest > 900:
+                threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
+                ultima_medicao_speedtest = agora
 
-        time.sleep(espera_remota)
+            cpu = psutil.cpu_percent(interval=None) if psutil else 0.0
+            ram = psutil.virtual_memory().percent if psutil else 0.0
+            disco = psutil.disk_usage('/').percent if psutil else 0.0 
+
+            net_up = 0.0
+            net_down = 0.0
+            if psutil:
+                current_net = psutil.net_io_counters()
+                time_diff = agora - last_net_time if (agora - last_net_time) > 0 else 1
+                net_up = round(((current_net.bytes_sent - last_net.bytes_sent) * 8 / 1_000_000) / time_diff, 2)
+                net_down = round(((current_net.bytes_recv - last_net.bytes_recv) * 8 / 1_000_000) / time_diff, 2)
+                last_net = current_net
+                last_net_time = agora
+
+            portas_alvo = {80: "HTTP", 443: "HTTPS", 3306: "MySQL", 5432: "Postgres", 3389: "RDP"}
+            portas_abertas = []
+            for porta, servico in portas_alvo.items():
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(0.1)
+                    if sock.connect_ex(('127.0.0.1', porta)) == 0: portas_abertas.append(f"{porta} ({servico})")
+                    sock.close()
+                except: pass
+            str_portas = ", ".join(portas_abertas) if portas_abertas else "Nenhuma (Seguro)"
+
+            hosts_ping = {"Google": "8.8.8.8", "Cloudflare": "1.1.1.1", "AWS": "aws.amazon.com", "Quad9": "9.9.9.9"}
+            pings = {}
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = {executor.submit(ping, ip): name for name, ip in hosts_ping.items()}
+                for future in concurrent.futures.as_completed(futures): pings[futures[future]] = future.result()
+
+            meu_ip, gateway_ip = get_network_info()
+            ping_gw = ping(gateway_ip) if gateway_ip != "Desconhecido" else 0
+            
+            forcar_varredura = (agora - ultima_varredura > 300)
+            dispositivos = get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=forcar_varredura)
+            if forcar_varredura: ultima_varredura = agora
+
+            dados_sensores = {
+                "cpu": cpu, "ram": ram, "meu_ip": meu_ip, "gateway_ip": gateway_ip, 
+                "ping_gateway": ping_gw, "pings": pings, "topologia": dispositivos, "logs": [], "custom_ips": [] 
+            }
+
+            payload = {
+                "mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", 
+                "ip_local": meu_ip, "ip_gateway": gateway_ip, 
+                "cpu_usage": cpu, "ram_usage": ram, "disco": disco, "temp": 40, 
+                "ping_gateway": ping_gw, "ping_global": json.dumps(pings),
+                "net_up": net_up, "net_down": net_down, "portas": str_portas
+            }
+            
+            espera_remota = 3
+
+            try:
+                req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    res_data = json.loads(response.read().decode('utf-8'))
+                    
+                    comando = res_data.get("command")
+                    espera_remota = res_data.get("intervalo", 3) 
+
+                    if comando == "reboot": 
+                        subprocess.call("shutdown /r /t 0" if IS_WIN else "sudo reboot", shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
+                    elif comando == "run_speedtest": threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
+                    elif comando == "run_traceroute": threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
+                    elif comando == "flush_dns": 
+                        subprocess.call("ipconfig /flushdns" if IS_WIN else "sudo systemd-resolve --flush-caches", shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
+                    elif comando == "top_processos":
+                        if psutil: 
+                            try:
+                                for p in psutil.process_iter(['cpu_percent']): pass
+                                num_cores = psutil.cpu_count() or 1
+                                procs = sorted(psutil.process_iter(['name', 'cpu_percent']), key=lambda p: p.info.get('cpu_percent') or 0, reverse=True)[:5]
+                                lista_procs = " | ".join([f"{p.info['name']} ({round((p.info.get('cpu_percent') or 0) / num_cores, 1)}%)" for p in procs])
+                                
+                                url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
+                                req = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Diagnóstico", "gravidade": "Aviso", "detalhes": lista_procs}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+                                urllib.request.urlopen(req, timeout=5)
+                            except: pass
+                
+                if forcar_varredura:
+                    try:
+                        url_topo = URL_CENTRAL.replace('report_data', 'atualizar_dispositivos')
+                        req_topo = urllib.request.Request(url_topo, data=json.dumps({"mac_id": mac, "lista": dispositivos}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+                        urllib.request.urlopen(req_topo, timeout=5)
+                    except: pass
+                            
+            except Exception as e: 
+                espera_remota = 5
+
+            time.sleep(espera_remota)
+            
+    except Exception as fatal_e:
+        # Se a thread morrer, salva o erro para investigar
+        try:
+            with open("erro_telemetria.txt", "w") as f:
+                f.write(str(fatal_e))
+        except: pass
 
 # ==========================================
 # 🖥️ MOTOR 2: PAINEL WEB LOCAL (FOREGROUND)
@@ -298,7 +313,6 @@ def check_auth(username, password): return username == 'Admin' and password == '
 def api_local_data():
     conn = sqlite3.connect('sensor_local.db')
     
-    # Busca nomes salvos para enriquecer a topologia local
     nomes_salvos = {row[0]: row[1] for row in conn.execute("SELECT mac, nome FROM nomes_topologia").fetchall()}
     topologia_rica = []
     for d in dados_sensores['topologia']:
@@ -542,18 +556,10 @@ def run_tray():
 # ==========================================
 if __name__ == "__main__":
     try:
-        # 1. Cria/Reconecta o Banco de Dados
         init_local_db()
-
-        # 2. Liga o Servidor Local (Thread Isolada)
         threading.Thread(target=lambda: app.run(host='0.0.0.0', port=PORTA_LOCAL, debug=False, use_reloader=False), daemon=True).start()
-
-        # 3. Liga o Loop de Telemetria (Thread Isolada)
         threading.Thread(target=loop_telemetria, daemon=True).start()
-
-        # 4. Liga o Ícone do Pystray (DEVE RODA NA THREAD PRINCIPAL)
         run_tray() 
-        
     except Exception as e:
         import traceback
         caminho_erro = os.path.join(os.path.dirname(os.path.abspath(__file__)), "erro_fatal_agente.txt")
