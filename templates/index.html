@@ -230,18 +230,43 @@
                     let customIcon = L.divIcon({ className: '', html: `<div style="background-color: ${corBase}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #11111b; box-shadow: 0 0 10px ${corBase};"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
                     L.marker([lat, lon], {icon: customIcon}).addTo(layerSensores).bindPopup(`<h4>${s.nome_local || 'Desconhecido'}</h4><div style="font-size: 0.8em; margin-bottom:10px;">Status: <b style="color:${corBase}">${statusText}</b></div><a href="/sensor/${s.mac_id}" style="color:var(--blue);">Ver Sensor</a>`);
 
+                    // ==========================================
+                    // 🟢 A MÁGICA FOI INSERIDA AQUI NESSA PARTE:
+                    // ==========================================
                     let clienteNome = s.cliente_nome || 'Cliente Padrão';
                     let termoBusca = `${s.nome_local} ${s.mac_id} ${clienteNome}`;
+
+                    // Valores padronizados
+                    let cpuVal = s.cpu_usage || 0;
+                    let ramVal = s.ram_usage || 0;
+                    let downVal = (s.net_down || 0).toFixed(1);
+                    let upVal = (s.net_up || 0).toFixed(1);
 
                     htmlSidebar += `
                         <div class="sensor-card" data-busca="${termoBusca}">
                             <div class="s-header">
-                                <div><div class="s-title">${s.nome_local || 'Sensor'}</div><div class="s-mac">${s.mac_id}</div><div class="s-cliente"><i class="fa-solid fa-building"></i> ${clienteNome}</div></div>
+                                <div>
+                                    <div class="s-title">${s.nome_local || 'Sensor'}</div>
+                                    <div class="s-mac">${s.mac_id}</div>
+                                    <div class="s-cliente"><i class="fa-solid fa-building"></i> ${clienteNome}</div>
+                                </div>
                                 <span class="status-badge ${badgeClass}" style="${badgeStyle}">${statusText}</span>
                             </div>
-                            <div class="s-stats"><div><i class="fa-solid fa-microchip"></i> CPU: <strong>${s.cpu_usage || 0}%</strong></div></div>
+                            
+                            <div class="s-stats" style="flex-direction: column; gap: 8px; margin-bottom: 15px;">
+                                <div style="display: flex; gap: 15px;">
+                                    <div style="flex: 1;"><i class="fa-solid fa-microchip"></i> CPU: <strong>${cpuVal}%</strong></div>
+                                    <div style="flex: 1;"><i class="fa-solid fa-memory"></i> RAM: <strong>${ramVal}%</strong></div>
+                                </div>
+                                <div style="display: flex; gap: 15px;">
+                                    <div style="flex: 1;"><i class="fa-solid fa-arrow-down" style="color:var(--green)"></i> <strong>${downVal}</strong> Mb</div>
+                                    <div style="flex: 1;"><i class="fa-solid fa-arrow-up" style="color:var(--red)"></i> <strong>${upVal}</strong> Mb</div>
+                                </div>
+                            </div>
+                            
                             <a href="/sensor/${s.mac_id}" class="btn-acesso"><i class="fa-solid fa-chart-line"></i> Acessar Telemetria</a>
                         </div>`;
+                    // ==========================================
                 });
 
                 document.getElementById('kpi-total').innerText = total; document.getElementById('kpi-on').innerText = online; document.getElementById('kpi-off').innerText = offline;

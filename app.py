@@ -371,7 +371,7 @@ def api_mapa_sensores():
 
     try:
         # ⚡ A MÁGICA: Adicionamos o "s.ping_global" nesta linha abaixo!
-        query_base = "SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, s.alerta_reconhecido, s.em_manutencao, s.ping_global, c.nome as cliente_nome FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id"
+        query_base = "SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, s.ram_usage, s.net_down, s.net_up, s.alerta_reconhecido, s.em_manutencao, s.ping_global, c.nome as cliente_nome FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id"
         
         if role in ['Administrador Master', 'Operador Master']: sensores = conn.execute(query_base).fetchall()
         elif role == 'Cliente': sensores = conn.execute(query_base + " WHERE s.cliente_id = ?", (user_id,)).fetchall()
