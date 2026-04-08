@@ -16,6 +16,14 @@ import pystray
 from PIL import Image, ImageDraw
 import speedtest 
 
+# 🛡️ BALA DE PRATA: Corrige o bug de SSL do PyInstaller com HTTPS
+import ssl
+try:
+    _create_unverified_https_context = ssl._create_unverified_context
+except AttributeError: pass
+else:
+    ssl._create_default_https_context = _create_unverified_https_context
+
 try: import psutil
 except ImportError: psutil = None
 
@@ -53,7 +61,6 @@ def get_network_info():
 
     try:
         if IS_WIN:
-            # 🛡️ Blindagem PyInstaller: stdin=subprocess.DEVNULL
             saida = subprocess.check_output("route print 0.0.0.0", shell=True, universal_newlines=True, creationflags=C_FLAGS, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             for linha in saida.split('\n'):
                 partes = linha.split()
@@ -68,9 +75,7 @@ def get_network_info():
 
 def ping_silencioso(ip):
     param = '-n' if IS_WIN else '-c'
-    try: 
-        # 🛡️ Blindagem Extrema: Desvia todas as saídas
-        subprocess.call(['ping', param, '1', '-w', '500', ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, creationflags=C_FLAGS)
+    try: subprocess.call(['ping', param, '1', '-w', '500', ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, creationflags=C_FLAGS)
     except: pass
 
 def varredura_profunda_arp(ip_gateway):
@@ -92,7 +97,6 @@ def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
     dispositivos = []
     prefixo_rede = '.'.join(meu_ip.split('.')[:-1]) + '.'
     try:
-        # 🛡️ Blindagem PyInstaller: stdin=subprocess.DEVNULL
         saida = subprocess.check_output("arp -a", shell=True, universal_newlines=True, creationflags=C_FLAGS, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for linha in saida.split('\n'):
             partes = linha.split()
@@ -108,7 +112,6 @@ def ping(host):
     param = '-n' if IS_WIN else '-c'
     comando = ['ping', param, '1', host]
     try:
-        # 🛡️ Blindagem PyInstaller
         saida = subprocess.check_output(comando, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, universal_newlines=True, creationflags=C_FLAGS)
         if '<1ms' in saida: return 1
         if 'time=' in saida or 'tempo=' in saida:
@@ -174,7 +177,6 @@ def executar_speedtest(mac, url_central):
 def executar_traceroute(mac, url_central):
     try:
         cmd = ['tracert', '-d', '-h', '15', '8.8.8.8'] if IS_WIN else ['traceroute', '-m', '15', '-n', '8.8.8.8']
-        # 🛡️ Blindagem PyInstaller
         resultado = subprocess.check_output(cmd, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, timeout=40, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
         payload = {"mac_id": mac, "rota": resultado}
         url_trace = url_central.replace('report_data', 'reportar_rota')
@@ -294,13 +296,15 @@ def loop_telemetria():
                             
             except Exception as e: 
                 espera_remota = 5
+                # 📦 CAIXA PRETA: Se falhar a conexão, anota o motivo para podermos debugar!
+                with open("erro_telemetria.txt", "w") as f:
+                    f.write(f"[{datetime.now()}] Falha de Conexão: {str(e)}\n")
 
             time.sleep(espera_remota)
             
     except Exception as fatal_e:
-        # Se a thread morrer, salva o erro para investigar
         try:
-            with open("erro_telemetria.txt", "w") as f:
+            with open("erro_fatal.txt", "w") as f:
                 f.write(str(fatal_e))
         except: pass
 
@@ -312,7 +316,6 @@ def check_auth(username, password): return username == 'Admin' and password == '
 @app.route('/api/local_data')
 def api_local_data():
     conn = sqlite3.connect('sensor_local.db')
-    
     nomes_salvos = {row[0]: row[1] for row in conn.execute("SELECT mac, nome FROM nomes_topologia").fetchall()}
     topologia_rica = []
     for d in dados_sensores['topologia']:
@@ -367,39 +370,49 @@ def index():
 
     HTML_CYBERPUNK = """
     <!DOCTYPE html>
-    <html lang="pt-BR"><head><meta charset="UTF-8"><title>Acesso Local - NOC Sensor</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        :root { --bg-base: #0b0b13; --bg-card: #151521; --bg-input: #232334; --border: #36364a; --text-main: #cdd6f4; --text-muted: #9399b2; --blue: #89b4fa; --green: #a6e3a1; --red: #f38ba8; --yellow: #f9e2af; --purple: #cba6f7; }
-        body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-base); color: var(--text-main); }
-        .navbar { background: rgba(21,21,33,0.9); padding: 15px 30px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-        .container { padding: 30px; max-width: 1600px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; }
-        .card { background: linear-gradient(145deg, var(--bg-card) 0%, #11111b 100%); border: 1px solid var(--border); border-radius: 12px; padding: 22px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5);}
-        .card h3 { margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 15px; display: flex; justify-content: space-between; color: var(--text-main);}
-        .card-hw { border-top: 4px solid var(--blue); } .card-net { border-top: 4px solid var(--green); } .card-speed { border-top: 4px solid var(--purple); }
-        .card-radar { border-top: 4px solid var(--blue); grid-column: 1 / -1; } .card-global { border-top: 4px solid var(--yellow); grid-column: span 2;}
-        .card-custom { border-top: 4px solid var(--red); } .card-hist { border-top: 4px solid var(--text-muted); grid-column: span 2;}
-        .data-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px dashed var(--bg-input); padding-bottom: 8px;}
-        .highlight { font-family: 'JetBrains Mono', monospace; font-size: 2.2em; font-weight: bold; }
-        .progress-bg { background: rgba(0,0,0,0.4); border: 1px solid var(--bg-input); border-radius: 10px; height: 12px; width: 100%; margin-top: 6px; overflow: hidden;}
-        .progress-fill { background: linear-gradient(90deg, var(--blue), #b4befe); height: 100%; width: 0%; transition: 0.5s; box-shadow: 0 0 10px var(--blue); }
-        .global-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-top: 10px;}
-        .g-card { background: rgba(0,0,0,0.3); border: 1px solid var(--bg-input); border-radius: 8px; padding: 15px; text-align: center; }
-        .ms { font-family: 'JetBrains Mono', monospace; font-size: 1.4em; font-weight: bold; margin-top: 5px; color: var(--green);}
-        .pill-ok { background: rgba(166,227,161,0.1); color: var(--green); border: 1px solid var(--green); padding: 5px 12px; border-radius: 6px; font-size: 0.75em; font-weight: bold;}
-        .pill-fail { background: rgba(243,139,168,0.1); color: var(--red); border: 1px solid var(--red); padding: 5px 12px; border-radius: 6px; font-size: 0.75em; font-weight: bold;}
-        input { width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); color: var(--text-main); border-radius: 6px; box-sizing: border-box; outline: none;}
-        button.action-btn { cursor: pointer; padding: 10px 15px; border: none; border-radius: 6px; font-weight: bold; color: var(--bg-base); background: var(--red);}
-        .topology-box { display: flex; flex-direction: column; align-items: center; background: rgba(0,0,0,0.2); padding: 30px; border-radius: 8px; border: 1px solid var(--bg-input); overflow-x: auto;}
-        .t-card { background: var(--bg-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border); width: 170px; text-align: center; position: relative; border-top: 4px solid var(--blue);}
-        .t-gateway { border-top: 4px solid var(--red); } .t-sensor { border-top: 4px solid var(--purple); }
-        .t-ip { font-family: 'JetBrains Mono', monospace; color: var(--green); font-weight: bold; }
-        .t-mac { font-size: 0.7em; color: var(--text-muted); margin: 5px 0;}
-        .t-name { font-size: 0.85em; color: var(--blue); font-weight: bold; }
-        .t-line-v { width: 3px; height: 25px; background: var(--border); } .t-line-h { height: 3px; background: var(--border); }
-    </style></head>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <title>Acesso Local - NOC Sensor</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <style>
+            :root { --bg-base: #0b0b13; --bg-card: #151521; --bg-input: #232334; --border: #36364a; --text-main: #cdd6f4; --text-muted: #9399b2; --blue: #89b4fa; --green: #a6e3a1; --red: #f38ba8; --yellow: #f9e2af; --purple: #cba6f7; }
+            body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-base); color: var(--text-main); }
+            .navbar { background: rgba(21,21,33,0.9); padding: 15px 30px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+            .container { padding: 30px; max-width: 1600px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; }
+            .card { background: linear-gradient(145deg, var(--bg-card) 0%, #11111b 100%); border: 1px solid var(--border); border-radius: 12px; padding: 22px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5);}
+            .card h3 { margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 15px; display: flex; justify-content: space-between; color: var(--text-main);}
+            .card-hw { border-top: 4px solid var(--blue); } 
+            .card-net { border-top: 4px solid var(--green); } 
+            .card-speed { border-top: 4px solid var(--purple); }
+            .card-radar { border-top: 4px solid var(--blue); grid-column: 1 / -1; } 
+            .card-global { border-top: 4px solid var(--yellow); grid-column: span 2;}
+            .card-custom { border-top: 4px solid var(--red); } 
+            .card-hist { border-top: 4px solid var(--text-muted); grid-column: span 2;}
+            .data-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px dashed var(--bg-input); padding-bottom: 8px;}
+            .highlight { font-family: 'JetBrains Mono', monospace; font-size: 2.2em; font-weight: bold; }
+            .progress-bg { background: rgba(0,0,0,0.4); border: 1px solid var(--bg-input); border-radius: 10px; height: 12px; width: 100%; margin-top: 6px; overflow: hidden;}
+            .progress-fill { background: linear-gradient(90deg, var(--blue), #b4befe); height: 100%; width: 0%; transition: 0.5s; box-shadow: 0 0 10px var(--blue); }
+            .global-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-top: 10px;}
+            .g-card { background: rgba(0,0,0,0.3); border: 1px solid var(--bg-input); border-radius: 8px; padding: 15px; text-align: center; }
+            .ms { font-family: 'JetBrains Mono', monospace; font-size: 1.4em; font-weight: bold; margin-top: 5px; color: var(--green);}
+            .pill-ok { background: rgba(166,227,161,0.1); color: var(--green); border: 1px solid var(--green); padding: 5px 12px; border-radius: 6px; font-size: 0.75em; font-weight: bold;}
+            .pill-fail { background: rgba(243,139,168,0.1); color: var(--red); border: 1px solid var(--red); padding: 5px 12px; border-radius: 6px; font-size: 0.75em; font-weight: bold;}
+            input { width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); color: var(--text-main); border-radius: 6px; box-sizing: border-box; outline: none;}
+            button.action-btn { cursor: pointer; padding: 10px 15px; border: none; border-radius: 6px; font-weight: bold; color: var(--bg-base); background: var(--red);}
+            .topology-box { display: flex; flex-direction: column; align-items: center; background: rgba(0,0,0,0.2); padding: 30px; border-radius: 8px; border: 1px solid var(--bg-input); overflow-x: auto;}
+            .t-card { background: var(--bg-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border); width: 170px; text-align: center; position: relative; border-top: 4px solid var(--blue);}
+            .t-gateway { border-top: 4px solid var(--red); } 
+            .t-sensor { border-top: 4px solid var(--purple); }
+            .t-ip { font-family: 'JetBrains Mono', monospace; color: var(--green); font-weight: bold; }
+            .t-mac { font-size: 0.7em; color: var(--text-muted); margin: 5px 0;}
+            .t-name { font-size: 0.85em; color: var(--blue); font-weight: bold; }
+            .t-line-v { width: 3px; height: 25px; background: var(--border); } 
+            .t-line-h { height: 3px; background: var(--border); }
+        </style>
+    </head>
     <body>
         <nav class="navbar">
             <div style="font-size: 1.3em; font-weight: bold; color: var(--blue);"><i class="fa-solid fa-tower-broadcast"></i> NOC SENSOR LOCAL</div>
@@ -528,7 +541,8 @@ def index():
             }
             setInterval(atualizarLocal, 2000); atualizarLocal();
         </script>
-    </body></html>
+    </body>
+    </html>
     """
     return render_template_string(HTML_CYBERPUNK)
 
@@ -561,8 +575,4 @@ if __name__ == "__main__":
         threading.Thread(target=loop_telemetria, daemon=True).start()
         run_tray() 
     except Exception as e:
-        import traceback
-        caminho_erro = os.path.join(os.path.dirname(os.path.abspath(__file__)), "erro_fatal_agente.txt")
-        with open(caminho_erro, "w", encoding="utf-8") as f:
-            f.write("O AGENTE MORREU. MOTIVO:\n\n")
-            f.write(traceback.format_exc())
+        pass
