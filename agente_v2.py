@@ -1,5 +1,7 @@
 import sys
 import os
+import threading
+import subprocess
 
 # 🛡️ TRUQUE ANTI-CRASH DO PYINSTALLER (--noconsole)
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")
@@ -7,7 +9,7 @@ if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 if sys.stdin is None:  sys.stdin = open(os.devnull, "r")
 
 # 📦 IMPORTS LIMPOS E ORGANIZADOS
-import time, json, platform, subprocess, uuid, threading, sqlite3, socket, urllib.request, concurrent.futures
+import time, json, platform, uuid, sqlite3, socket, urllib.request, concurrent.futures
 from datetime import datetime
 from flask import Flask, request, Response, render_template_string, jsonify
 import pystray
@@ -59,7 +61,29 @@ def get_network_info():
     except: pass
     return meu_ip, gateway
 
-def get_topologia_arp(meu_ip):
+def ping_silencioso(ip):
+    param = '-n' if platform.system().lower() == 'windows' else '-c'
+    try: subprocess.call(['ping', param, '1', '-w', '500', ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == 'Windows' else 0)
+    except: pass
+
+def varredura_profunda_arp(ip_gateway):
+    try:
+        base_ip = ".".join(ip_gateway.split('.')[:-1])
+        print(f"🔍 [RADAR] Iniciando varredura profunda na rede {base_ip}.X...")
+        threads = []
+        for i in range(1, 255):
+            ip_alvo = f"{base_ip}.{i}"
+            t = threading.Thread(target=ping_silencioso, args=(ip_alvo,))
+            threads.append(t)
+            t.start()
+        for t in threads: t.join()
+        print("✅ [RADAR] Varredura concluída. Tabela ARP populada com sucesso!")
+    except Exception as e: print(f"⚠️ Erro na varredura profunda: {e}")
+
+def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
+    if forcar_varredura and gateway_ip != "Desconhecido":
+        varredura_profunda_arp(gateway_ip) # ⚡ ACORDA A REDE AQUI!
+
     dispositivos = []
     prefixo_rede = '.'.join(meu_ip.split('.')[:-1]) + '.'
     try:
@@ -70,7 +94,7 @@ def get_topologia_arp(meu_ip):
                 ip = partes[0]
                 mac = partes[1].replace('-', ':').upper()
                 if ip.startswith(prefixo_rede) and not ip.endswith(".255"):
-                    dispositivos.append({"ip": ip, "mac": mac, "nome": "Dispositivo Genérico"})
+                    dispositivos.append({"ip": ip, "mac": mac, "nome": "Desconhecido", "fabricante": "Desconhecido"})
     except: pass
     return dispositivos
 
@@ -144,7 +168,7 @@ def executar_traceroute(mac, url_central):
     os_name = platform.system() 
     try:
         cmd = ['tracert', '-d', '-h', '15', '8.8.8.8'] if os_name == "Windows" else ['traceroute', '-m', '15', '-n', '8.8.8.8']
-        resultado = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=40).decode('cp850' if os_name == "Windows" else 'utf-8', errors='ignore')
+        resultado = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=40, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == 'Windows' else 0).decode('cp850' if os_name == "Windows" else 'utf-8', errors='ignore')
         payload = {"mac_id": mac, "rota": resultado}
         url_trace = url_central.replace('report_data', 'reportar_rota')
         req = urllib.request.Request(url_trace, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
@@ -159,44 +183,40 @@ def loop_telemetria():
     mac = get_mac()
     os_name = platform.system()
     ultima_medicao_speedtest = 0 
+    ultima_varredura = 0 # ⏱️ NOVO: Timer da Topologia
     
-    # Variáveis para o velocímetro de rede em tempo real
     if psutil:
         last_net = psutil.net_io_counters()
         last_net_time = time.time()
     
     while True:
         agora = time.time()
+        
         if agora - ultima_medicao_speedtest > 900:
             threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
             ultima_medicao_speedtest = agora
 
-        # Leitura Básica
         cpu = psutil.cpu_percent(interval=None) if psutil else 0.0
         ram = psutil.virtual_memory().percent if psutil else 0.0
-        disco = psutil.disk_usage('/').percent if psutil else 0.0 # 💽 NOVO: Leitura de Disco
+        disco = psutil.disk_usage('/').percent if psutil else 0.0 
 
-        # 🛜 NOVO: Velocímetro de Tráfego em Tempo Real (Mbps)
         net_up = 0.0
         net_down = 0.0
         if psutil:
             current_net = psutil.net_io_counters()
             time_diff = agora - last_net_time if (agora - last_net_time) > 0 else 1
-            # (Bytes atuais - Bytes antigos) * 8 para bits / 1.000.000 para Megabits
             net_up = round(((current_net.bytes_sent - last_net.bytes_sent) * 8 / 1_000_000) / time_diff, 2)
             net_down = round(((current_net.bytes_recv - last_net.bytes_recv) * 8 / 1_000_000) / time_diff, 2)
             last_net = current_net
             last_net_time = agora
 
-        # 🚪 NOVO: Scan Rápido de Portas Críticas (Web, DB, RDP)
         portas_alvo = {80: "HTTP", 443: "HTTPS", 3306: "MySQL", 5432: "Postgres", 3389: "RDP"}
         portas_abertas = []
         for porta, servico in portas_alvo.items():
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(0.1)
-                if sock.connect_ex(('127.0.0.1', porta)) == 0:
-                    portas_abertas.append(f"{porta} ({servico})")
+                if sock.connect_ex(('127.0.0.1', porta)) == 0: portas_abertas.append(f"{porta} ({servico})")
                 sock.close()
             except: pass
         str_portas = ", ".join(portas_abertas) if portas_abertas else "Nenhuma (Seguro)"
@@ -205,13 +225,21 @@ def loop_telemetria():
         pings = {}
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = {executor.submit(ping, ip): name for name, ip in hosts_ping.items()}
-            for future in concurrent.futures.as_completed(futures):
-                pings[futures[future]] = future.result()
+            for future in concurrent.futures.as_completed(futures): pings[futures[future]] = future.result()
 
         meu_ip, gateway_ip = get_network_info()
         ping_gw = ping(gateway_ip) if gateway_ip != "Desconhecido" else 0
         
-        # O Payload ganha os 4 novos poderes
+        # ⚡ TOPOLOGIA: Varre a rede profundamente a cada 5 minutos
+        forcar_varredura = (agora - ultima_varredura > 300)
+        dispositivos = get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=forcar_varredura)
+        if forcar_varredura: ultima_varredura = agora
+
+        dados_sensores = {
+            "cpu": cpu, "ram": ram, "meu_ip": meu_ip, "gateway_ip": gateway_ip, 
+            "ping_gateway": ping_gw, "pings": pings, "topologia": dispositivos, "logs": [], "custom_ips": [] # Logs e IPs custom são lidos localmente na interface
+        }
+
         payload = {
             "mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", 
             "ip_local": meu_ip, "ip_gateway": gateway_ip, 
@@ -230,14 +258,10 @@ def loop_telemetria():
                 comando = res_data.get("command")
                 espera_remota = res_data.get("intervalo", 3) 
 
-                if comando == "reboot": 
-                    os.system("shutdown /r /t 0" if os_name == "Windows" else "sudo reboot")
-                elif comando == "run_speedtest": 
-                    threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
-                elif comando == "run_traceroute": 
-                    threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
-                elif comando == "flush_dns":
-                    os.system("ipconfig /flushdns" if os_name == "Windows" else "sudo systemd-resolve --flush-caches")
+                if comando == "reboot": os.system("shutdown /r /t 0" if os_name == "Windows" else "sudo reboot")
+                elif comando == "run_speedtest": threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
+                elif comando == "run_traceroute": threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
+                elif comando == "flush_dns": os.system("ipconfig /flushdns" if os_name == "Windows" else "sudo systemd-resolve --flush-caches")
                 elif comando == "top_processos":
                     if psutil: 
                         try:
@@ -250,6 +274,14 @@ def loop_telemetria():
                             req = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Diagnóstico", "gravidade": "Aviso", "detalhes": lista_procs}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
                             urllib.request.urlopen(req, timeout=5)
                         except: pass
+            
+            # Atualiza Topologia na Central a cada varredura (5 min)
+            if forcar_varredura:
+                try:
+                    url_topo = URL_CENTRAL.replace('report_data', 'atualizar_dispositivos')
+                    req_topo = urllib.request.Request(url_topo, data=json.dumps({"mac_id": mac, "lista": dispositivos}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+                    urllib.request.urlopen(req_topo, timeout=5)
+                except: pass
                         
         except Exception as e: 
             print(f"❌ ERRO: {e}")
@@ -264,7 +296,28 @@ def check_auth(username, password): return username == 'Admin' and password == '
 
 @app.route('/api/local_data')
 def api_local_data():
-    return jsonify({**dados_sensores, "mac": get_mac(), "hora": datetime.now().strftime('%H:%M:%S')})
+    conn = sqlite3.connect('sensor_local.db')
+    
+    # Busca nomes salvos para enriquecer a topologia local
+    nomes_salvos = {row[0]: row[1] for row in conn.execute("SELECT mac, nome FROM nomes_topologia").fetchall()}
+    topologia_rica = []
+    for d in dados_sensores['topologia']:
+        d_rico = dict(d)
+        if d_rico['mac'] in nomes_salvos: d_rico['nome'] = nomes_salvos[d_rico['mac']]
+        topologia_rica.append(d_rico)
+        
+    alvos = [{"id": r[0], "ip": r[1], "descricao": r[2], "latencia": ping(r[1])} for r in conn.execute("SELECT * FROM alvos_locais ORDER BY id DESC").fetchall()]
+    logs = [{"tipo": r[0], "detalhes": r[1], "gravidade": r[2], "hora": r[3]} for r in conn.execute("SELECT tipo, detalhes, gravidade, time(data_hora, 'localtime') FROM logs_locais ORDER BY id DESC LIMIT 20").fetchall()]
+    conn.close()
+    
+    dados_export = dict(dados_sensores)
+    dados_export['topologia'] = topologia_rica
+    dados_export['custom_ips'] = alvos
+    dados_export['logs'] = logs
+    dados_export['mac'] = get_mac()
+    dados_export['hora'] = datetime.now().strftime('%H:%M:%S')
+    
+    return jsonify(dados_export)
 
 @app.route('/api/alvos', methods=['POST'])
 def add_alvo():
