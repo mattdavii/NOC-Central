@@ -45,6 +45,9 @@ dados_sensores = {
     "custom_ips": [], "topologia": [], "logs": []
 }
 
+# ⚡ NOVO: Cache de Alvos Locais (Watchdog)
+cache_alvos = {}
+
 def get_mac():
     mac = uuid.getnode()
     return ':'.join(("%012X" % mac)[i:i+2] for i in range(0, 12, 2))
@@ -296,9 +299,10 @@ def loop_telemetria():
                             
             except Exception as e: 
                 espera_remota = 5
-                # 📦 CAIXA PRETA: Se falhar a conexão, anota o motivo para podermos debugar!
-                with open("erro_telemetria.txt", "w") as f:
-                    f.write(f"[{datetime.now()}] Falha de Conexão: {str(e)}\n")
+                try:
+                    with open("erro_telemetria.txt", "w") as f:
+                        f.write(f"[{datetime.now()}] Falha de Conexão: {str(e)}\n")
+                except: pass
 
             time.sleep(espera_remota)
             
@@ -307,6 +311,35 @@ def loop_telemetria():
             with open("erro_fatal.txt", "w") as f:
                 f.write(str(fatal_e))
         except: pass
+
+# ==========================================
+# ⚡ MOTOR 4: WATCHDOG LOCAL (NOVO)
+# ==========================================
+def loop_watchdog_local():
+    """ Motor independente que pinga os alvos a cada 5 segundos """
+    global cache_alvos
+    while True:
+        try:
+            conn = sqlite3.connect('sensor_local.db')
+            alvos = conn.execute("SELECT ip, descricao FROM alvos_locais").fetchall()
+            conn.close()
+
+            for ip, desc in alvos:
+                latencia = ping(ip)
+                ta_online = latencia > 0
+
+                estado_anterior = cache_alvos.get(ip, {}).get('online', True)
+
+                if ta_online and not estado_anterior:
+                    log_local_event("Alvo Restaurado", f"O alvo {desc} ({ip}) voltou a responder.", "OK")
+                elif not ta_online and estado_anterior:
+                    log_local_event("Queda de Alvo Local", f"O alvo {desc} ({ip}) parou de responder!", "Crítica")
+
+                cache_alvos[ip] = {'online': ta_online, 'latencia': latencia}
+
+        except Exception as e:
+            pass
+        time.sleep(5) 
 
 # ==========================================
 # 🖥️ MOTOR 2: PAINEL WEB LOCAL (FOREGROUND)
@@ -323,7 +356,8 @@ def api_local_data():
         if d_rico['mac'] in nomes_salvos: d_rico['nome'] = nomes_salvos[d_rico['mac']]
         topologia_rica.append(d_rico)
         
-    alvos = [{"id": r[0], "ip": r[1], "descricao": r[2], "latencia": ping(r[1])} for r in conn.execute("SELECT * FROM alvos_locais ORDER BY id DESC").fetchall()]
+    # ⚡ AGORA LÊ OS ALVOS RAPIDINHO DO CACHE
+    alvos = [{"id": r[0], "ip": r[1], "descricao": r[2], "latencia": cache_alvos.get(r[1], {}).get('latencia', 0)} for r in conn.execute("SELECT * FROM alvos_locais ORDER BY id DESC").fetchall()]
     logs = [{"tipo": r[0], "detalhes": r[1], "gravidade": r[2], "hora": r[3]} for r in conn.execute("SELECT tipo, detalhes, gravidade, time(data_hora, 'localtime') FROM logs_locais ORDER BY id DESC LIMIT 20").fetchall()]
     conn.close()
     
@@ -490,6 +524,15 @@ def index():
             async function addIP() { const ip = document.getElementById('new-ip').value; const desc = document.getElementById('new-desc').value; if(!ip) return; await fetch('/api/alvos', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip, descricao:desc}) }); document.getElementById('new-ip').value=''; document.getElementById('new-desc').value=''; }
             async function excluirIP(id) { if(confirm("Remover alvo local?")) { await fetch('/api/alvos/' + id, { method: 'DELETE' }); } }
             async function renomearTopo(mac, atual) { let n = prompt("Novo nome para este dispositivo na topologia:", atual); if(n) { await fetch('/api/topologia/nome', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mac, nome:n}) }); } }
+            
+            // ⚡ BOTÃO DE ADICIONAR AO WATCHDOG DIRETAMENTE DO MAPA
+            async function monitorarIP(ip, nome) {
+                if(confirm(`Deseja adicionar ${nome} (${ip}) ao Watchdog de 5 segundos?`)) {
+                    await fetch('/api/alvos', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip: ip, descricao: nome}) });
+                    atualizarLocal();
+                }
+            }
+
             async function atualizarLocal() {
                 try {
                     const res = await fetch('/api/local_data'); const data = await res.json();
@@ -520,7 +563,8 @@ def index():
                     let oHtml = '';
                     data.topologia.forEach(t => {
                         if(t.ip === data.gateway_ip || t.ip === data.meu_ip) return;
-                        oHtml += `<div class="t-card"><div class="t-ip">${t.ip}</div><div class="t-mac">${t.mac}</div><div class="t-name">${t.nome} <button onclick="renomearTopo('${t.mac}','${t.nome}')" style="background:none; border:none; color:var(--yellow); cursor:pointer;"><i class="fa-solid fa-pen-to-square"></i></button></div></div>`;
+                        // ⚡ INSERÇÃO DO BOTÃO "OLHO" NA TOPOLOGIA
+                        oHtml += `<div class="t-card"><div class="t-ip">${t.ip}</div><div class="t-mac">${t.mac}</div><div class="t-name">${t.nome} <button onclick="renomearTopo('${t.mac}','${t.nome}')" style="background:none; border:none; color:var(--yellow); cursor:pointer;" title="Renomear"><i class="fa-solid fa-pen-to-square"></i></button> <button onclick="monitorarIP('${t.ip}', '${t.nome}')" style="background:none; border:none; color:var(--blue); cursor:pointer;" title="Adicionar ao Watchdog"><i class="fa-solid fa-eye"></i></button></div></div>`;
                     });
                     document.getElementById('diag-gateway').innerHTML = gHtml; document.getElementById('diag-outros').innerHTML = oHtml;
 
@@ -573,6 +617,8 @@ if __name__ == "__main__":
         init_local_db()
         threading.Thread(target=lambda: app.run(host='0.0.0.0', port=PORTA_LOCAL, debug=False, use_reloader=False), daemon=True).start()
         threading.Thread(target=loop_telemetria, daemon=True).start()
+        # ⚡ LIGA O NOVO MOTOR DE WATCHDOG INDEPENDENTE
+        threading.Thread(target=loop_watchdog_local, daemon=True).start()
         run_tray() 
     except Exception as e:
         pass

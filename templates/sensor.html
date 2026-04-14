@@ -622,7 +622,7 @@
                 document.getElementById('diag-sensor').innerHTML = `<div class="t-card t-sensor"><div class="t-ip">${globalSensorIP}</div><div class="t-mac">${mac_id}</div><div class="t-name">ESTE SENSOR</div></div>`;
                 dispositivos.forEach(d => {
                     let nome = d.nome_custom || d.fabricante;
-                    let card = `<div class="t-card ${d.ip === globalGatewayIP ? 't-gateway' : 't-device'}"><div class="t-ip">${d.ip}</div><div class="t-mac">${d.mac}</div><div class="t-name">${nome} <button onclick="renomearDisp('${d.mac}','${d.nome_custom||''}')"><i class="fa-solid fa-pen-to-square"></i></button></div></div>`;
+                    let card = `<div class="t-card ${d.ip === globalGatewayIP ? 't-gateway' : 't-device'}"><div class="t-ip">${d.ip}</div><div class="t-mac">${d.mac}</div><div class="t-name">${nome} <button onclick="renomearDisp('${d.mac}','${d.nome_custom||''}')" title="Renomear"><i class="fa-solid fa-pen-to-square"></i></button> <button onclick="monitorarIP('${d.ip}', '${nome}')" style="color: var(--blue); margin-left: 5px;" title="Adicionar ao Watchdog"><i class="fa-solid fa-eye"></i></button></div></div>`;
                     if(d.ip === globalGatewayIP) gatewayHtml = card; else outrosHtml += card;
                 });
                 if(gatewayHtml) document.getElementById('diag-gateway').innerHTML = gatewayHtml;
@@ -650,6 +650,14 @@
         async function addIP() { const ip = document.getElementById('new-ip').value; const desc = document.getElementById('new-desc').value; if(!ip) return; await fetch('/api/v2/ips_customizados/'+mac_id, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip, descricao:desc}) }); document.getElementById('new-ip').value=''; document.getElementById('new-desc').value=''; carregarCustomIPs(); }
         async function excluirIP(id) { if(confirm("Remover alvo?")) { await fetch(`/api/v2/ips_customizados/${mac_id}/${id}`, { method: 'DELETE' }); carregarCustomIPs(); } }
         
+        // ⚡ BOTÃO DE ADICIONAR AO WATCHDOG DIRETAMENTE DO MAPA NA NUVEM
+        async function monitorarIP(ip, nome) {
+            if(confirm(`Deseja adicionar ${nome} (${ip}) ao Radar de Alvos Locais (Watchdog)?`)) {
+                await fetch('/api/v2/ips_customizados/'+mac_id, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip: ip, descricao: nome}) });
+                carregarCustomIPs();
+            }
+        }
+
         async function carregarHistorico() {
             const d = document.getElementById('filtro-data').value;
             const res = await fetch(`/api/v2/historico/${mac_id}${d ? '?data='+d : ''}`);
