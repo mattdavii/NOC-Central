@@ -330,11 +330,36 @@ def atualizar_dispositivos():
 def renomear_dispositivo():
     data = request.json
     conn = database.get_db()
-    try: conn.execute("CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)")
+    
+    try: 
+        conn.execute("CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)")
+        conn.commit()
     except: pass
-    conn.execute("INSERT OR REPLACE INTO nomes_conhecidos (mac, nome) VALUES (?, ?)", (data['mac'], data['nome']))
-    conn.execute("UPDATE dispositivos SET nome_custom = ? WHERE mac = ? AND sensor_mac = ?", (data['nome'], data['mac'], data['sensor_mac']))
-    conn.commit()
+
+    # SQL Universal: Verifica se existe, depois Atualiza ou Insere (Funciona em Postgres e SQLite)
+    try:
+        existe = conn.execute("SELECT mac FROM nomes_conhecidos WHERE mac = ?", (data['mac'],)).fetchone()
+        if existe:
+            conn.execute("UPDATE nomes_conhecidos SET nome = ? WHERE mac = ?", (data['nome'], data['mac']))
+        else:
+            conn.execute("INSERT INTO nomes_conhecidos (mac, nome) VALUES (?, ?)", (data['mac'], data['nome']))
+            
+        conn.execute("UPDATE dispositivos SET nome_custom = ? WHERE mac = ? AND sensor_mac = ?", (data['nome'], data['mac'], data['sensor_mac']))
+        conn.commit()
+    except:
+        # Fallback de Segurança caso o PostgreSQL exija '%s'
+        try:
+            existe = conn.execute("SELECT mac FROM nomes_conhecidos WHERE mac = %s", (data['mac'],)).fetchone()
+            if existe:
+                conn.execute("UPDATE nomes_conhecidos SET nome = %s WHERE mac = %s", (data['nome'], data['mac']))
+            else:
+                conn.execute("INSERT INTO nomes_conhecidos (mac, nome) VALUES (%s, %s)", (data['mac'], data['nome']))
+                
+            conn.execute("UPDATE dispositivos SET nome_custom = %s WHERE mac = %s AND sensor_mac = %s", (data['nome'], data['mac'], data['sensor_mac']))
+            conn.commit()
+        except Exception as e:
+            print(f"Erro Crítico ao Renomear: {e}")
+            
     conn.close()
     return jsonify({"status": "OK"})
 
