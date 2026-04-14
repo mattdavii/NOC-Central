@@ -282,14 +282,14 @@
                 </div>
             </div>
 
-            <div class="card card-custom">
-                <h3><span><i class="fa-solid fa-crosshairs"></i> Radar de Alvos Locais (Pings)</span></h3>
-                <div style="display: flex; gap: 5px; margin-bottom: 12px;">
+            <div class="card card-custom" style="justify-content: flex-start;">
+                <h3 style="margin-bottom: 15px;"><span><i class="fa-solid fa-crosshairs"></i> Radar de Alvos Locais (Pings)</span></h3>
+                <div style="display: flex; gap: 5px; margin-bottom: 15px;">
                     <input type="text" id="new-ip" placeholder="IP (Ex: 192.168.0.10)">
                     <input type="text" id="new-desc" placeholder="Câmera 01">
                     <button class="action-btn" onclick="addIP()" style="background: var(--red); color: white;"><i class="fa-solid fa-plus"></i></button>
                 </div>
-                <div id="lista-custom-ips" style="max-height: 250px; overflow-y: auto;"></div>
+                <div id="lista-custom-ips" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
             </div>
         </div>
 

@@ -2,6 +2,7 @@ import sys
 import os
 import threading
 import subprocess
+import re # ⚡ NOVO: Importado para leitura bruta do Ping
 
 # 🛡️ TRUQUE ANTI-CRASH DO PYINSTALLER (--noconsole)
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")
@@ -111,16 +112,25 @@ def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
     except: pass
     return dispositivos
 
+# ⚡ FUNÇÃO DE PING BLINDADA COM REGEX PARA ARRANCAR OS MS DO CMD
 def ping(host):
     param = '-n' if IS_WIN else '-c'
     comando = ['ping', param, '1', host]
     try:
-        saida = subprocess.check_output(comando, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, universal_newlines=True, creationflags=C_FLAGS)
+        # Usa codificação bruta do sistema para evitar falhas de leitura
+        saida = subprocess.check_output(comando, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
+        
+        # Filtra hosts caídos
+        if 'unreachable' in saida.lower() or 'inacessível' in saida.lower(): return 0
         if '<1ms' in saida: return 1
-        if 'time=' in saida or 'tempo=' in saida:
-            for palavra in saida.split():
-                if palavra.startswith('time=') or palavra.startswith('tempo='):
-                    return int(float(palavra.split('=')[1].replace('ms', '')))
+        
+        # Busca brutalmente "tempo=15" ou "time=15"
+        match = re.search(r'(?:time|tempo)[=<](\d+)', saida.lower())
+        if match: return int(match.group(1))
+        
+        # Se o aparelho está vivo mas não deu tempo, salva com 1ms
+        if 'ttl=' in saida.lower(): return 1
+        
         return 0
     except: return 0
 
@@ -299,47 +309,73 @@ def loop_telemetria():
                             
             except Exception as e: 
                 espera_remota = 5
-                try:
-                    with open("erro_telemetria.txt", "w") as f:
-                        f.write(f"[{datetime.now()}] Falha de Conexão: {str(e)}\n")
-                except: pass
 
             time.sleep(espera_remota)
             
-    except Exception as fatal_e:
-        try:
-            with open("erro_fatal.txt", "w") as f:
-                f.write(str(fatal_e))
-        except: pass
+    except Exception as fatal_e: pass
 
 # ==========================================
-# ⚡ MOTOR 4: WATCHDOG LOCAL (NOVO)
+# ⚡ MOTOR 4: WATCHDOG LOCAL E NUVEM 
 # ==========================================
 def loop_watchdog_local():
-    """ Motor independente que pinga os alvos a cada 5 segundos """
+    """ Vigia os alvos locais E os alvos cadastrados na Central """
     global cache_alvos
+    mac = get_mac()
+    url_get = URL_CENTRAL.replace('report_data', f'ips_customizados/{mac}')
+    url_report = URL_CENTRAL.replace('report_data', 'reportar_latencia_custom')
+    url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
+
     while True:
         try:
+            # 1. Puxa a lista da Nuvem
+            try:
+                req = urllib.request.Request(url_get, method='GET')
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    alvos_nuvem = json.loads(response.read().decode('utf-8'))
+            except: alvos_nuvem = []
+
+            # 2. Puxa a lista Local (SQLite)
             conn = sqlite3.connect('sensor_local.db')
-            alvos = conn.execute("SELECT ip, descricao FROM alvos_locais").fetchall()
+            alvos_locais = conn.execute("SELECT id, ip, descricao FROM alvos_locais").fetchall()
             conn.close()
 
-            for ip, desc in alvos:
+            # 3. Pinga e avisa a Nuvem
+            for alvo in alvos_nuvem:
+                ip = alvo['ip']
+                desc = alvo['descricao']
                 latencia = ping(ip)
                 ta_online = latencia > 0
 
+                # Envia Ping pra Nuvem
+                try:
+                    payload = {"id": alvo['id'], "latencia": latencia}
+                    req_lat = urllib.request.Request(url_report, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+                    urllib.request.urlopen(req_lat, timeout=5)
+                except: pass
+
+                # Sistema de Alertas
                 estado_anterior = cache_alvos.get(ip, {}).get('online', True)
-
                 if ta_online and not estado_anterior:
-                    log_local_event("Alvo Restaurado", f"O alvo {desc} ({ip}) voltou a responder.", "OK")
+                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Alvo Restaurado", "gravidade": "OK", "detalhes": f"{desc} ({ip}) voltou a responder ({latencia}ms)."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                    except: pass
                 elif not ta_online and estado_anterior:
-                    log_local_event("Queda de Alvo Local", f"O alvo {desc} ({ip}) parou de responder!", "Crítica")
-
+                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Queda de Alvo", "gravidade": "Crítica", "detalhes": f"{desc} ({ip}) parou de responder!"}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                    except: pass
+                
                 cache_alvos[ip] = {'online': ta_online, 'latencia': latencia}
 
-        except Exception as e:
-            pass
-        time.sleep(5) 
+            # 4. Pinga os locais (apenas para painel local)
+            for id_alvo, ip, desc in alvos_locais:
+                if ip not in [a['ip'] for a in alvos_nuvem]: # Evita ping duplo
+                    latencia = ping(ip)
+                    ta_online = latencia > 0
+                    estado_anterior = cache_alvos.get(ip, {}).get('online', True)
+                    if ta_online and not estado_anterior: log_local_event("Alvo Restaurado", f"{desc} ({ip}) voltou a responder.", "OK")
+                    elif not ta_online and estado_anterior: log_local_event("Queda de Alvo Local", f"{desc} ({ip}) parou de responder!", "Crítica")
+                    cache_alvos[ip] = {'online': ta_online, 'latencia': latencia}
+
+        except Exception as e: pass
+        time.sleep(5)
 
 # ==========================================
 # 🖥️ MOTOR 2: PAINEL WEB LOCAL (FOREGROUND)
@@ -356,7 +392,7 @@ def api_local_data():
         if d_rico['mac'] in nomes_salvos: d_rico['nome'] = nomes_salvos[d_rico['mac']]
         topologia_rica.append(d_rico)
         
-    # ⚡ AGORA LÊ OS ALVOS RAPIDINHO DO CACHE
+    # ⚡ O painel local agora lê o Cache na velocidade da luz
     alvos = [{"id": r[0], "ip": r[1], "descricao": r[2], "latencia": cache_alvos.get(r[1], {}).get('latencia', 0)} for r in conn.execute("SELECT * FROM alvos_locais ORDER BY id DESC").fetchall()]
     logs = [{"tipo": r[0], "detalhes": r[1], "gravidade": r[2], "hora": r[3]} for r in conn.execute("SELECT tipo, detalhes, gravidade, time(data_hora, 'localtime') FROM logs_locais ORDER BY id DESC LIMIT 20").fetchall()]
     conn.close()
@@ -525,7 +561,6 @@ def index():
             async function excluirIP(id) { if(confirm("Remover alvo local?")) { await fetch('/api/alvos/' + id, { method: 'DELETE' }); } }
             async function renomearTopo(mac, atual) { let n = prompt("Novo nome para este dispositivo na topologia:", atual); if(n) { await fetch('/api/topologia/nome', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mac, nome:n}) }); } }
             
-            // ⚡ BOTÃO DE ADICIONAR AO WATCHDOG DIRETAMENTE DO MAPA
             async function monitorarIP(ip, nome) {
                 if(confirm(`Deseja adicionar ${nome} (${ip}) ao Watchdog de 5 segundos?`)) {
                     await fetch('/api/alvos', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip: ip, descricao: nome}) });
@@ -563,7 +598,6 @@ def index():
                     let oHtml = '';
                     data.topologia.forEach(t => {
                         if(t.ip === data.gateway_ip || t.ip === data.meu_ip) return;
-                        // ⚡ INSERÇÃO DO BOTÃO "OLHO" NA TOPOLOGIA
                         oHtml += `<div class="t-card"><div class="t-ip">${t.ip}</div><div class="t-mac">${t.mac}</div><div class="t-name">${t.nome} <button onclick="renomearTopo('${t.mac}','${t.nome}')" style="background:none; border:none; color:var(--yellow); cursor:pointer;" title="Renomear"><i class="fa-solid fa-pen-to-square"></i></button> <button onclick="monitorarIP('${t.ip}', '${t.nome}')" style="background:none; border:none; color:var(--blue); cursor:pointer;" title="Adicionar ao Watchdog"><i class="fa-solid fa-eye"></i></button></div></div>`;
                     });
                     document.getElementById('diag-gateway').innerHTML = gHtml; document.getElementById('diag-outros').innerHTML = oHtml;
