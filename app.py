@@ -706,5 +706,38 @@ def toggle_manutencao(mac_id):
     conn.close()
     return jsonify({"status": "OK", "novo_estado": novo_estado})
 
+# ==========================================
+# 🔌 ROTAS DE MONITORAMENTO DE ENERGIA
+# ==========================================
+@app.route('/api/v2/ips_energia/<mac_id>', methods=['GET', 'POST'])
+def gerenciar_ips_energia(mac_id):
+    conn = database.get_db()
+    try: conn.execute('''CREATE TABLE IF NOT EXISTS ips_energia (id SERIAL PRIMARY KEY, sensor_mac TEXT, ip TEXT, descricao TEXT, latencia INTEGER DEFAULT 0)''')
+    except: pass
+    if request.method == 'POST':
+        data = request.json
+        conn.execute("INSERT INTO ips_energia (sensor_mac, ip, descricao) VALUES (?, ?, ?)", (mac_id, data['ip'], data['descricao']))
+        conn.commit()
+    ips = conn.execute("SELECT * FROM ips_energia WHERE sensor_mac = ? ORDER BY id DESC", (mac_id,)).fetchall()
+    conn.close()
+    return jsonify([dict(i) for i in ips])
+
+@app.route('/api/v2/ips_energia/<mac_id>/<int:id_ip>', methods=['DELETE'])
+def del_ips_energia(mac_id, id_ip):
+    conn = database.get_db()
+    conn.execute("DELETE FROM ips_energia WHERE id = ?", (id_ip,))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "OK"})
+
+@app.route('/api/v2/reportar_latencia_energia', methods=['POST'])
+def reportar_latencia_energia():
+    data = request.json
+    conn = database.get_db()
+    conn.execute("UPDATE ips_energia SET latencia = ? WHERE id = ?", (data['latencia'], data['id']))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "OK"})
+
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=10000, debug=True)

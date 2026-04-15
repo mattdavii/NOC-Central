@@ -2,7 +2,7 @@ import sys
 import os
 import threading
 import subprocess
-import re # ⚡ NOVO: Importado para leitura bruta do Ping
+import re 
 
 # 🛡️ TRUQUE ANTI-CRASH DO PYINSTALLER (--noconsole)
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")
@@ -34,7 +34,6 @@ except ImportError: psutil = None
 URL_CENTRAL = "https://noc-central.onrender.com/api/v2/report_data" 
 PORTA_LOCAL = 10000
 
-# Constantes de Blindagem para o PyInstaller .EXE invisível
 IS_WIN = platform.system().lower() == 'windows'
 C_FLAGS = subprocess.CREATE_NO_WINDOW if IS_WIN else 0
 
@@ -46,7 +45,6 @@ dados_sensores = {
     "custom_ips": [], "topologia": [], "logs": []
 }
 
-# ⚡ NOVO: Cache de Alvos Locais (Watchdog)
 cache_alvos = {}
 
 def get_mac():
@@ -112,36 +110,28 @@ def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
     except: pass
     return dispositivos
 
-# ⚡ FUNÇÃO DE PING BLINDADA COM REGEX PARA ARRANCAR OS MS DO CMD
 def ping(host):
     param = '-n' if IS_WIN else '-c'
     comando = ['ping', param, '1', host]
     try:
-        # Usa codificação bruta do sistema para evitar falhas de leitura
         saida = subprocess.check_output(comando, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
-        
-        # Filtra hosts caídos
         if 'unreachable' in saida.lower() or 'inacessível' in saida.lower(): return 0
         if '<1ms' in saida: return 1
-        
-        # Busca brutalmente "tempo=15" ou "time=15"
         match = re.search(r'(?:time|tempo)[=<](\d+)', saida.lower())
         if match: return int(match.group(1))
-        
-        # Se o aparelho está vivo mas não deu tempo, salva com 1ms
         if 'ttl=' in saida.lower(): return 1
-        
         return 0
     except: return 0
 
 # ==========================================
-# 🧠 BANCO DE DADOS LOCAL (EDGE COMPUTING)
+# 🧠 BANCO DE DADOS LOCAL
 # ==========================================
 def init_local_db():
     conn = sqlite3.connect('sensor_local.db')
     conn.execute('''CREATE TABLE IF NOT EXISTS alvos_locais (id INTEGER PRIMARY KEY, ip TEXT, descricao TEXT)''')
     conn.execute('''CREATE TABLE IF NOT EXISTS logs_locais (id INTEGER PRIMARY KEY, tipo TEXT, detalhes TEXT, gravidade TEXT, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     conn.execute('''CREATE TABLE IF NOT EXISTS nomes_topologia (mac TEXT PRIMARY KEY, nome TEXT)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS alvos_energia (id INTEGER PRIMARY KEY, ip TEXT, descricao TEXT)''')
     conn.commit()
     conn.close()
 
@@ -309,6 +299,10 @@ def loop_telemetria():
                             
             except Exception as e: 
                 espera_remota = 5
+                try:
+                    with open("erro_telemetria.txt", "w") as f:
+                        f.write(f"[{datetime.now()}] Falha de Conexão: {str(e)}\n")
+                except: pass
 
             time.sleep(espera_remota)
             
@@ -318,42 +312,44 @@ def loop_telemetria():
 # ⚡ MOTOR 4: WATCHDOG LOCAL E NUVEM 
 # ==========================================
 def loop_watchdog_local():
-    """ Vigia os alvos locais E os alvos cadastrados na Central """
+    """ Vigia os alvos de rede E de energia """
     global cache_alvos
     mac = get_mac()
     url_get = URL_CENTRAL.replace('report_data', f'ips_customizados/{mac}')
     url_report = URL_CENTRAL.replace('report_data', 'reportar_latencia_custom')
+    
+    url_get_energia = URL_CENTRAL.replace('report_data', f'ips_energia/{mac}')
+    url_report_energia = URL_CENTRAL.replace('report_data', 'reportar_latencia_energia')
+    
     url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
 
     while True:
         try:
-            # 1. Puxa a lista da Nuvem
+            # 1. Puxa listas da Nuvem
             try:
                 req = urllib.request.Request(url_get, method='GET')
                 with urllib.request.urlopen(req, timeout=5) as response:
                     alvos_nuvem = json.loads(response.read().decode('utf-8'))
             except: alvos_nuvem = []
 
+            try:
+                req_e = urllib.request.Request(url_get_energia, method='GET')
+                with urllib.request.urlopen(req_e, timeout=5) as response:
+                    alvos_energia = json.loads(response.read().decode('utf-8'))
+            except: alvos_energia = []
+
             # 2. Puxa a lista Local (SQLite)
             conn = sqlite3.connect('sensor_local.db')
             alvos_locais = conn.execute("SELECT id, ip, descricao FROM alvos_locais").fetchall()
+            alvos_energia_locais = conn.execute("SELECT id, ip, descricao FROM alvos_energia").fetchall()
             conn.close()
 
-            # 3. Pinga e avisa a Nuvem
+            # PING REDE (NUVEM)
             for alvo in alvos_nuvem:
-                ip = alvo['ip']
-                desc = alvo['descricao']
-                latencia = ping(ip)
-                ta_online = latencia > 0
-
-                # Envia Ping pra Nuvem
-                try:
-                    payload = {"id": alvo['id'], "latencia": latencia}
-                    req_lat = urllib.request.Request(url_report, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
-                    urllib.request.urlopen(req_lat, timeout=5)
+                ip = alvo['ip']; desc = alvo['descricao']; latencia = ping(ip); ta_online = latencia > 0
+                try: urllib.request.urlopen(urllib.request.Request(url_report, data=json.dumps({"id": alvo['id'], "latencia": latencia}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
                 except: pass
-
-                # Sistema de Alertas
+                
                 estado_anterior = cache_alvos.get(ip, {}).get('online', True)
                 if ta_online and not estado_anterior:
                     try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Alvo Restaurado", "gravidade": "OK", "detalhes": f"{desc} ({ip}) voltou a responder ({latencia}ms)."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
@@ -361,18 +357,40 @@ def loop_watchdog_local():
                 elif not ta_online and estado_anterior:
                     try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Queda de Alvo", "gravidade": "Crítica", "detalhes": f"{desc} ({ip}) parou de responder!"}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
                     except: pass
-                
                 cache_alvos[ip] = {'online': ta_online, 'latencia': latencia}
 
-            # 4. Pinga os locais (apenas para painel local)
+            # PING ENERGIA (NUVEM)
+            for alvo in alvos_energia:
+                ip = alvo['ip']; desc = alvo['descricao']; latencia = ping(ip); ta_online = latencia > 0
+                try: urllib.request.urlopen(urllib.request.Request(url_report_energia, data=json.dumps({"id": alvo['id'], "latencia": latencia}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                except: pass
+                
+                estado_anterior = cache_alvos.get('ENERGIA_'+ip, {}).get('online', True)
+                if ta_online and not estado_anterior:
+                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Energia Restaurada", "gravidade": "OK", "detalhes": f"Energia detectada em {desc} ({ip})."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                    except: pass
+                elif not ta_online and estado_anterior:
+                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Queda de Energia", "gravidade": "Crítica", "detalhes": f"FALTA DE ENERGIA ELÉTRICA em {desc} ({ip})!"}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                    except: pass
+                cache_alvos['ENERGIA_'+ip] = {'online': ta_online, 'latencia': latencia}
+
+            # PING LOCAIS NORMAIS (se nao existir na nuvem)
             for id_alvo, ip, desc in alvos_locais:
-                if ip not in [a['ip'] for a in alvos_nuvem]: # Evita ping duplo
-                    latencia = ping(ip)
-                    ta_online = latencia > 0
+                if ip not in [a['ip'] for a in alvos_nuvem]: 
+                    latencia = ping(ip); ta_online = latencia > 0
                     estado_anterior = cache_alvos.get(ip, {}).get('online', True)
                     if ta_online and not estado_anterior: log_local_event("Alvo Restaurado", f"{desc} ({ip}) voltou a responder.", "OK")
                     elif not ta_online and estado_anterior: log_local_event("Queda de Alvo Local", f"{desc} ({ip}) parou de responder!", "Crítica")
                     cache_alvos[ip] = {'online': ta_online, 'latencia': latencia}
+                    
+            # PING LOCAIS ENERGIA (se nao existir na nuvem)
+            for id_alvo, ip, desc in alvos_energia_locais:
+                if ip not in [a['ip'] for a in alvos_energia]: 
+                    latencia = ping(ip); ta_online = latencia > 0
+                    estado_anterior = cache_alvos.get('ENERGIA_'+ip, {}).get('online', True)
+                    if ta_online and not estado_anterior: log_local_event("Energia Restaurada", f"A rede de energia em {desc} foi reestabelecida.", "OK")
+                    elif not ta_online and estado_anterior: log_local_event("Queda de Energia", f"Falta de energia em {desc} ({ip})!", "Crítica")
+                    cache_alvos['ENERGIA_'+ip] = {'online': ta_online, 'latencia': latencia}
 
         except Exception as e: pass
         time.sleep(5)
@@ -392,14 +410,15 @@ def api_local_data():
         if d_rico['mac'] in nomes_salvos: d_rico['nome'] = nomes_salvos[d_rico['mac']]
         topologia_rica.append(d_rico)
         
-    # ⚡ O painel local agora lê o Cache na velocidade da luz
     alvos = [{"id": r[0], "ip": r[1], "descricao": r[2], "latencia": cache_alvos.get(r[1], {}).get('latencia', 0)} for r in conn.execute("SELECT * FROM alvos_locais ORDER BY id DESC").fetchall()]
+    alvos_energia = [{"id": r[0], "ip": r[1], "descricao": r[2], "latencia": cache_alvos.get('ENERGIA_'+r[1], {}).get('latencia', 0)} for r in conn.execute("SELECT * FROM alvos_energia ORDER BY id DESC").fetchall()]
     logs = [{"tipo": r[0], "detalhes": r[1], "gravidade": r[2], "hora": r[3]} for r in conn.execute("SELECT tipo, detalhes, gravidade, time(data_hora, 'localtime') FROM logs_locais ORDER BY id DESC LIMIT 20").fetchall()]
     conn.close()
     
     dados_export = dict(dados_sensores)
     dados_export['topologia'] = topologia_rica
     dados_export['custom_ips'] = alvos
+    dados_export['energia_ips'] = alvos_energia
     dados_export['logs'] = logs
     dados_export['mac'] = get_mac()
     dados_export['hora'] = datetime.now().strftime('%H:%M:%S')
@@ -419,6 +438,23 @@ def add_alvo():
 def del_alvo(id_alvo):
     conn = sqlite3.connect('sensor_local.db')
     conn.execute("DELETE FROM alvos_locais WHERE id = ?", (id_alvo,))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "OK"})
+
+@app.route('/api/energia', methods=['POST'])
+def add_energia():
+    data = request.json
+    conn = sqlite3.connect('sensor_local.db')
+    conn.execute("INSERT INTO alvos_energia (ip, descricao) VALUES (?, ?)", (data['ip'], data['descricao']))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "OK"})
+
+@app.route('/api/energia/<int:id_alvo>', methods=['DELETE'])
+def del_energia(id_alvo):
+    conn = sqlite3.connect('sensor_local.db')
+    conn.execute("DELETE FROM alvos_energia WHERE id = ?", (id_alvo,))
     conn.commit()
     conn.close()
     return jsonify({"status": "OK"})
@@ -452,15 +488,17 @@ def index():
             body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-base); color: var(--text-main); }
             .navbar { background: rgba(21,21,33,0.9); padding: 15px 30px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
             .container { padding: 30px; max-width: 1600px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; }
+            .painel-grid-duo { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; grid-column: span 3; }
             .card { background: linear-gradient(145deg, var(--bg-card) 0%, #11111b 100%); border: 1px solid var(--border); border-radius: 12px; padding: 22px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5);}
             .card h3 { margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 15px; display: flex; justify-content: space-between; color: var(--text-main);}
             .card-hw { border-top: 4px solid var(--blue); } 
             .card-net { border-top: 4px solid var(--green); } 
             .card-speed { border-top: 4px solid var(--purple); }
             .card-radar { border-top: 4px solid var(--blue); grid-column: 1 / -1; } 
-            .card-global { border-top: 4px solid var(--yellow); grid-column: span 2;}
-            .card-custom { border-top: 4px solid var(--red); } 
-            .card-hist { border-top: 4px solid var(--text-muted); grid-column: span 2;}
+            .card-global { border-top: 4px solid var(--yellow); grid-column: span 3;}
+            .card-custom { border-top: 4px solid var(--red); justify-content: flex-start; } 
+            .card-energia { border-top: 4px solid #fab387; justify-content: flex-start; } 
+            .card-hist { border-top: 4px solid var(--text-muted); grid-column: span 3;}
             .data-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px dashed var(--bg-input); padding-bottom: 8px;}
             .highlight { font-family: 'JetBrains Mono', monospace; font-size: 2.2em; font-weight: bold; }
             .progress-bg { background: rgba(0,0,0,0.4); border: 1px solid var(--bg-input); border-radius: 10px; height: 12px; width: 100%; margin-top: 6px; overflow: hidden;}
@@ -471,7 +509,7 @@ def index():
             .pill-ok { background: rgba(166,227,161,0.1); color: var(--green); border: 1px solid var(--green); padding: 5px 12px; border-radius: 6px; font-size: 0.75em; font-weight: bold;}
             .pill-fail { background: rgba(243,139,168,0.1); color: var(--red); border: 1px solid var(--red); padding: 5px 12px; border-radius: 6px; font-size: 0.75em; font-weight: bold;}
             input { width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); color: var(--text-main); border-radius: 6px; box-sizing: border-box; outline: none;}
-            button.action-btn { cursor: pointer; padding: 10px 15px; border: none; border-radius: 6px; font-weight: bold; color: var(--bg-base); background: var(--red);}
+            button.action-btn { cursor: pointer; padding: 10px 15px; border: none; border-radius: 6px; font-weight: bold; color: var(--bg-base); transition: 0.2s;}
             .topology-box { display: flex; flex-direction: column; align-items: center; background: rgba(0,0,0,0.2); padding: 30px; border-radius: 8px; border: 1px solid var(--bg-input); overflow-x: auto;}
             .t-card { background: var(--bg-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border); width: 170px; text-align: center; position: relative; border-top: 4px solid var(--blue);}
             .t-gateway { border-top: 4px solid var(--red); } 
@@ -543,10 +581,26 @@ def index():
                 <div style="height: 220px; width: 100%; margin-top: 15px; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--bg-input); padding: 10px; box-sizing: border-box;"><canvas id="chartPing"></canvas></div>
             </div>
 
-            <div class="card card-custom">
-                <h3><span><i class="fa-solid fa-crosshairs"></i> Radar de Alvos Locais</span></h3>
-                <div style="display: flex; gap: 5px; margin-bottom: 12px;"><input type="text" id="new-ip" placeholder="IP do Servidor/Câmera"><input type="text" id="new-desc" placeholder="Nome do Alvo"><button class="action-btn" onclick="addIP()"><i class="fa-solid fa-plus"></i></button></div>
-                <div id="lista-custom-ips" style="max-height: 180px; overflow-y: auto;"></div>
+            <div class="painel-grid-duo">
+                <div class="card card-custom">
+                    <h3 style="margin-bottom: 15px;"><span><i class="fa-solid fa-crosshairs"></i> Radar de Alvos Locais (Pings)</span></h3>
+                    <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+                        <input type="text" id="new-ip" placeholder="IP (Ex: 192.168.0.10)">
+                        <input type="text" id="new-desc" placeholder="Câmera 01">
+                        <button class="action-btn" onclick="addIP()" style="background: var(--red); color: white;"><i class="fa-solid fa-plus"></i></button>
+                    </div>
+                    <div id="lista-custom-ips" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
+                </div>
+
+                <div class="card card-energia">
+                    <h3 style="margin-bottom: 15px; color: #fab387;"><span><i class="fa-solid fa-plug-circle-bolt"></i> Monitoramento de Energia</span></h3>
+                    <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+                        <input type="text" id="new-ip-energia" placeholder="IP na Tomada (Fora do Nobreak)">
+                        <input type="text" id="new-desc-energia" placeholder="Roteador da Recepção">
+                        <button class="action-btn" onclick="addEnergia()" style="background: #fab387; color: var(--bg-base);"><i class="fa-solid fa-plus"></i></button>
+                    </div>
+                    <div id="lista-energia-ips" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
+                </div>
             </div>
             
             <div class="card card-hist">
@@ -559,6 +613,10 @@ def index():
             let chartPingInstance = null; let historicoHoras = [], dGoogle = [], dCf = [], dAws = [], dQuad = [];
             async function addIP() { const ip = document.getElementById('new-ip').value; const desc = document.getElementById('new-desc').value; if(!ip) return; await fetch('/api/alvos', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip, descricao:desc}) }); document.getElementById('new-ip').value=''; document.getElementById('new-desc').value=''; }
             async function excluirIP(id) { if(confirm("Remover alvo local?")) { await fetch('/api/alvos/' + id, { method: 'DELETE' }); } }
+            
+            async function addEnergia() { const ip = document.getElementById('new-ip-energia').value; const desc = document.getElementById('new-desc-energia').value; if(!ip) return; await fetch('/api/energia', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip, descricao:desc}) }); document.getElementById('new-ip-energia').value=''; document.getElementById('new-desc-energia').value=''; }
+            async function excluirEnergia(id) { if(confirm("Parar monitoramento de energia?")) { await fetch('/api/energia/' + id, { method: 'DELETE' }); } }
+
             async function renomearTopo(mac, atual) { let n = prompt("Novo nome para este dispositivo na topologia:", atual); if(n) { await fetch('/api/topologia/nome', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mac, nome:n}) }); } }
             
             async function monitorarIP(ip, nome) {
@@ -588,11 +646,26 @@ def index():
                     let htmlAlvos = '';
                     data.custom_ips.forEach(item => {
                         let cor = item.latencia === 0 ? 'var(--red)' : 'var(--green)'; let latText = item.latencia === 0 ? 'FALHA' : item.latencia + ' ms';
-                        htmlAlvos += `<div style="background:var(--bg-input); padding:8px; border-radius:8px; margin-bottom:5px; display:flex; justify-content:space-between; border-left:4px solid ${cor}; font-size:0.9em;">
-                            <div><b style="color:var(--blue);">${item.descricao}</b><br><small style="color:var(--text-muted);">${item.ip}</small></div>
-                            <div style="display:flex; align-items:center; gap:10px;"><b style="color:${cor};">${latText}</b><button onclick="excluirIP(${item.id})" style="background:none; border:none; color:var(--red); cursor:pointer;"><i class="fa-solid fa-trash"></i></button></div></div>`;
+                        htmlAlvos += `<div style="background:var(--bg-input); padding:8px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; border-left:4px solid ${cor};">
+                            <div><b style="color:var(--blue); font-size:1.1em;">${item.descricao}</b><br><small style="color:var(--text-muted); font-family:monospace;">${item.ip}</small></div>
+                            <div style="display:flex; align-items:center; gap:12px;"><b style="color:${cor};">${latText}</b><button onclick="excluirIP(${item.id})" style="background:none; border:none; color:var(--text-muted); cursor:pointer;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-muted)'"><i class="fa-solid fa-trash"></i></button></div></div>`;
                     });
                     document.getElementById('lista-custom-ips').innerHTML = htmlAlvos || '<div style="text-align:center; padding:15px; color:var(--text-muted);">Nenhum alvo.</div>';
+
+                    let htmlEnergia = '';
+                    data.energia_ips.forEach(item => {
+                        let isOnline = item.latencia > 0;
+                        let cor = isOnline ? 'var(--green)' : 'var(--red)';
+                        let statusText = isOnline ? 'COM ENERGIA' : 'SEM ENERGIA';
+                        let icone = isOnline ? 'fa-plug-circle-check' : 'fa-plug-circle-xmark';
+                        htmlEnergia += `<div style="background:var(--bg-input); padding:10px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; border-left:4px solid ${cor};">
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <i class="fa-solid ${icone}" style="color:${cor}; font-size:1.5em;"></i>
+                                <div><b style="color:var(--text-main); font-size:1.1em;">${item.descricao}</b><br><small style="color:var(--text-muted); font-family:monospace;">${item.ip}</small></div>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:15px;"><b style="color:${cor}; font-size:0.9em;">${statusText}</b><button onclick="excluirEnergia(${item.id})" style="background:none; border:none; color:var(--text-muted); cursor:pointer;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-muted)'"><i class="fa-solid fa-trash"></i></button></div></div>`;
+                    });
+                    document.getElementById('lista-energia-ips').innerHTML = htmlEnergia || '<div style="text-align:center; padding:15px; color:var(--text-muted);">Nenhum ponto monitorado.</div>';
 
                     let gHtml = `<div class="t-card t-gateway"><div class="t-ip">${data.gateway_ip}</div><div class="t-mac">ROTEADOR</div><div class="t-name">GATEWAY PADRÃO</div></div>`;
                     let oHtml = '';
@@ -635,7 +708,7 @@ def create_image():
 
 def on_quit(icon, item):
     icon.stop()
-    os._exit(0) # Força o desligamento absoluto de todas as Threads
+    os._exit(0)
 
 def run_tray():
     image = create_image()
@@ -643,16 +716,11 @@ def run_tray():
     icon = pystray.Icon("NOC Sensor", image, "NOC Sensor (Ativo)", menu)
     icon.run()
 
-# ==========================================
-# 🚀 IGNIÇÃO (MULTI-THREADING OBRIGATÓRIO)
-# ==========================================
 if __name__ == "__main__":
     try:
         init_local_db()
         threading.Thread(target=lambda: app.run(host='0.0.0.0', port=PORTA_LOCAL, debug=False, use_reloader=False), daemon=True).start()
         threading.Thread(target=loop_telemetria, daemon=True).start()
-        # ⚡ LIGA O NOVO MOTOR DE WATCHDOG INDEPENDENTE
         threading.Thread(target=loop_watchdog_local, daemon=True).start()
         run_tray() 
-    except Exception as e:
-        pass
+    except Exception as e: pass

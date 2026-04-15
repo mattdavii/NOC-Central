@@ -18,38 +18,23 @@
         
         .container { padding: 30px; max-width: 1600px; margin: 0 auto; display: block !important; }
         
-        /* 🔲 GRID DO PAINEL DE CONTROLE (ALINHAMENTO PERFEITO) */
-        .painel-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 25px;
-            margin-bottom: 25px; 
-        }
+        .painel-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; margin-bottom: 25px; }
+        .painel-grid-duo { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; margin-bottom: 25px; }
         
-        /* BLOCOS GERAIS DO SISTEMA */
-        .card { 
-            background: linear-gradient(145deg, var(--bg-card) 0%, #11111b 100%); 
-            border: 1px solid var(--border); 
-            border-radius: 12px; 
-            padding: 22px; 
-            display: flex; 
-            flex-direction: column; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            margin: 0; 
-            justify-content: space-between; 
-        }
+        .card { background: linear-gradient(145deg, var(--bg-card) 0%, #11111b 100%); border: 1px solid var(--border); border-radius: 12px; padding: 22px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin: 0; justify-content: space-between; }
         .card h3 { margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 15px; display: flex; align-items: center; justify-content: space-between; font-size: 1.15em;}
         
         .card-full { grid-column: 1 / -1; }
         .card-half { grid-column: span 2; }
         
-        /* BORDAS COLORIDAS */
         .card-hw { border-top: 4px solid var(--blue); }
         .card-net { border-top: 4px solid var(--green); }
         .card-speed { border-top: 4px solid var(--purple); }
         .card-hist-grafico { border-top: 4px solid var(--blue); padding-bottom: 10px;}
         .card-radar { border-top: 4px solid var(--blue); }
         .card-global { border-top: 4px solid var(--yellow); }
+        .card-custom { border-top: 4px solid var(--red); justify-content: flex-start; }
+        .card-energia { border-top: 4px solid #fab387; justify-content: flex-start; }
         .card-hist { border-top: 4px solid var(--text-muted); }
         .card-calib { border-top: 4px solid #fab387; }
         .card-trace { border-top: 4px solid var(--purple); }
@@ -68,7 +53,6 @@
         .speed-box { text-align: center; background: rgba(0,0,0,0.3); padding: 18px; border-radius: 8px; width: 45%; border: 1px solid var(--bg-input); box-shadow: inset 0 0 10px rgba(0,0,0,0.5);}
         .speed-val { font-family: 'JetBrains Mono', monospace; font-size: 2.5em; font-weight: bold; margin-top: 8px; }
 
-        /* 🎮 GRID DOS BOTÕES DE REMEDIAÇÃO */
         .botoes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-top: 15px; }
         .btn-acao { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 15px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 0.9em; text-transform: uppercase; }
         .btn-acao:hover { box-shadow: 0 0 15px inset; filter: brightness(1.2); }
@@ -268,8 +252,8 @@
             </div>
         </div>
 
-        <div class="painel-grid">
-            <div class="card card-global card-half">
+        <div class="painel-grid" style="grid-template-columns: 1fr;">
+            <div class="card card-global card-full">
                 <h3><span><i class="fa-solid fa-earth-americas"></i> Disponibilidade de Serviços Globais</span></h3>
                 <div class="global-grid">
                     <div id="card-google" class="g-card"><i class="fa-brands fa-google"></i> Google <div id="pg-google" class="ms">--</div></div>
@@ -281,8 +265,10 @@
                     <canvas id="chartPing"></canvas>
                 </div>
             </div>
+        </div>
 
-            <div class="card card-custom" style="justify-content: flex-start;">
+        <div class="painel-grid-duo">
+            <div class="card card-custom">
                 <h3 style="margin-bottom: 15px;"><span><i class="fa-solid fa-crosshairs"></i> Radar de Alvos Locais (Pings)</span></h3>
                 <div style="display: flex; gap: 5px; margin-bottom: 15px;">
                     <input type="text" id="new-ip" placeholder="IP (Ex: 192.168.0.10)">
@@ -290,6 +276,16 @@
                     <button class="action-btn" onclick="addIP()" style="background: var(--red); color: white;"><i class="fa-solid fa-plus"></i></button>
                 </div>
                 <div id="lista-custom-ips" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
+            </div>
+
+            <div class="card card-energia">
+                <h3 style="margin-bottom: 15px; color: #fab387;"><span><i class="fa-solid fa-plug-circle-bolt"></i> Monitoramento de Energia</span></h3>
+                <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+                    <input type="text" id="new-ip-energia" placeholder="IP (Fora do Nobreak)">
+                    <input type="text" id="new-desc-energia" placeholder="Roteador da Recepção">
+                    <button class="action-btn" onclick="addEnergia()" style="background: #fab387; color: var(--bg-base);"><i class="fa-solid fa-plus"></i></button>
+                </div>
+                <div id="lista-energia-ips" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
             </div>
         </div>
 
@@ -622,7 +618,7 @@
                 document.getElementById('diag-sensor').innerHTML = `<div class="t-card t-sensor"><div class="t-ip">${globalSensorIP}</div><div class="t-mac">${mac_id}</div><div class="t-name">ESTE SENSOR</div></div>`;
                 dispositivos.forEach(d => {
                     let nome = d.nome_custom || d.fabricante;
-                    let card = `<div class="t-card ${d.ip === globalGatewayIP ? 't-gateway' : 't-device'}"><div class="t-ip">${d.ip}</div><div class="t-mac">${d.mac}</div><div class="t-name">${nome} <button onclick="renomearDisp('${d.mac}','${d.nome_custom||''}')" title="Renomear"><i class="fa-solid fa-pen-to-square"></i></button> <button onclick="monitorarIP('${d.ip}', '${nome}')" style="color: var(--blue); margin-left: 5px;" title="Adicionar ao Watchdog"><i class="fa-solid fa-eye"></i></button></div></div>`;
+                    let card = `<div class="t-card ${d.ip === globalGatewayIP ? 't-gateway' : 't-device'}"><div class="t-ip">${d.ip}</div><div class="t-mac">${d.mac}</div><div class="t-name">${nome} <button onclick="renomearDisp('${d.mac}','${d.nome_custom||''}')" title="Renomear"><i class="fa-solid fa-pen-to-square"></i></button> <button onclick="monitorarIP('${d.ip}', '${nome}')" style="color: var(--blue); margin-left: 5px;" title="Adicionar ao Watchdog de Rede"><i class="fa-solid fa-eye"></i></button></div></div>`;
                     if(d.ip === globalGatewayIP) gatewayHtml = card; else outrosHtml += card;
                 });
                 if(gatewayHtml) document.getElementById('diag-gateway').innerHTML = gatewayHtml;
@@ -639,18 +635,42 @@
             ips.forEach(item => {
                 let cor = item.latencia === 0 ? 'var(--red)' : 'var(--green)';
                 let latText = item.latencia === 0 ? 'FALHA' : item.latencia + ' ms';
-                html += `<div style="background:var(--bg-input); padding:8px; border-radius:8px; margin-bottom:5px; display:flex; justify-content:space-between; border-left:4px solid ${cor}; font-size:0.9em;">
-                    <div><b style="color:var(--blue);">${item.descricao}</b><br><small style="color:var(--text-muted); font-family:monospace;">${item.ip}</small></div>
-                    <div style="display:flex; align-items:center; gap:10px;"><b style="color:${cor};">${latText}</b>
-                    <button onclick="excluirIP(${item.id})" style="background:none; border:none; color:var(--red); cursor:pointer;"><i class="fa-solid fa-trash"></i></button></div></div>`;
+                html += `<div style="background:var(--bg-input); padding:8px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; border-left:4px solid ${cor};">
+                    <div><b style="color:var(--blue); font-size:1.1em;">${item.descricao}</b><br><small style="color:var(--text-muted); font-family:monospace;">${item.ip}</small></div>
+                    <div style="display:flex; align-items:center; gap:12px;"><b style="color:${cor};">${latText}</b>
+                    <button onclick="excluirIP(${item.id})" style="background:none; border:none; color:var(--text-muted); cursor:pointer;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-muted)'"><i class="fa-solid fa-trash"></i></button></div></div>`;
             });
             document.getElementById('lista-custom-ips').innerHTML = html || '<div style="text-align:center; padding:15px; color:var(--text-muted);">Nenhum alvo cadastrado.</div>';
         }
 
+        async function carregarEnergiaIPs() {
+            const res = await fetch('/api/v2/ips_energia/' + mac_id);
+            const ips = await res.json(); let html = '';
+            ips.forEach(item => {
+                let isOnline = item.latencia > 0;
+                let cor = isOnline ? 'var(--green)' : 'var(--red)';
+                let statusText = isOnline ? 'COM ENERGIA' : 'SEM ENERGIA';
+                let icone = isOnline ? 'fa-plug-circle-check' : 'fa-plug-circle-xmark';
+                html += `<div style="background:var(--bg-input); padding:10px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; border-left:4px solid ${cor};">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <i class="fa-solid ${icone}" style="color:${cor}; font-size:1.5em;"></i>
+                        <div><b style="color:var(--text-main); font-size:1.1em;">${item.descricao}</b><br><small style="color:var(--text-muted); font-family:monospace;">${item.ip}</small></div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:15px;">
+                        <b style="color:${cor}; letter-spacing:1px; font-size:0.9em;">${statusText}</b>
+                        <button onclick="excluirEnergia(${item.id})" style="background:none; border:none; color:var(--text-muted); cursor:pointer; transition:0.2s;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-muted)'"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </div>`;
+            });
+            document.getElementById('lista-energia-ips').innerHTML = html || '<div style="text-align:center; padding:15px; color:var(--text-muted);">Nenhum ponto monitorado.</div>';
+        }
+
         async function addIP() { const ip = document.getElementById('new-ip').value; const desc = document.getElementById('new-desc').value; if(!ip) return; await fetch('/api/v2/ips_customizados/'+mac_id, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip, descricao:desc}) }); document.getElementById('new-ip').value=''; document.getElementById('new-desc').value=''; carregarCustomIPs(); }
-        async function excluirIP(id) { if(confirm("Remover alvo?")) { await fetch(`/api/v2/ips_customizados/${mac_id}/${id}`, { method: 'DELETE' }); carregarCustomIPs(); } }
+        async function excluirIP(id) { if(confirm("Remover alvo de rede?")) { await fetch(`/api/v2/ips_customizados/${mac_id}/${id}`, { method: 'DELETE' }); carregarCustomIPs(); } }
         
-        // ⚡ BOTÃO DE ADICIONAR AO WATCHDOG DIRETAMENTE DO MAPA NA NUVEM
+        async function addEnergia() { const ip = document.getElementById('new-ip-energia').value; const desc = document.getElementById('new-desc-energia').value; if(!ip) return; await fetch('/api/v2/ips_energia/'+mac_id, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip, descricao:desc}) }); document.getElementById('new-ip-energia').value=''; document.getElementById('new-desc-energia').value=''; carregarEnergiaIPs(); }
+        async function excluirEnergia(id) { if(confirm("Parar de monitorar energia deste ponto?")) { await fetch(`/api/v2/ips_energia/${mac_id}/${id}`, { method: 'DELETE' }); carregarEnergiaIPs(); } }
+
         async function monitorarIP(ip, nome) {
             if(confirm(`Deseja adicionar ${nome} (${ip}) ao Radar de Alvos Locais (Watchdog)?`)) {
                 await fetch('/api/v2/ips_customizados/'+mac_id, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip: ip, descricao: nome}) });
@@ -682,10 +702,11 @@
 
         setInterval(carregarRadar, 25000); 
         setInterval(carregarCustomIPs, 10000); 
+        setInterval(carregarEnergiaIPs, 10000); 
         setInterval(carregarHistorico, 10000);
         setInterval(carregarGraficos, 60000); 
         
-        buscarDadosAoVivo(); carregarRadar(); carregarCustomIPs(); carregarHistorico(); carregarGraficos(); carregarGraficosPing();
+        buscarDadosAoVivo(); carregarRadar(); carregarCustomIPs(); carregarEnergiaIPs(); carregarHistorico(); carregarGraficos(); carregarGraficosPing();
 
         const socket = io();
         socket.on('atualizacao_global', function(msg) {
