@@ -1,27 +1,42 @@
 from flask import Flask, jsonify, request, render_template, session, redirect, url_for, flash, send_from_directory
 from werkzeug.security import check_password_hash, generate_password_hash
-from flask_socketio import SocketIO  # ⚡ NOVO: Importando WebSockets
+from flask_socketio import SocketIO 
 import database
+import urllib.request, json # Necessários para o Telegram
 
 app = Flask(__name__)
 app.secret_key = 'chave_super_secreta_noc_md' 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent') # ⚡ NOVO: Ligando o túnel
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent') 
 
 # =========================================================
-# INICIALIZAÇÃO E AUTO-CURA DO BANCO DE DADOS (RODA SÓ 1x)
+# 🤖 CHAVES DO TELEGRAM (PREENCHA AQUI)
+# =========================================================
+TELEGRAM_BOT_TOKEN = "S8611160616:AAEYnOAXG-EInv4yDYSje5J_K0XbO6jIee0"
+TELEGRAM_CHAT_ID = "-5147163793"
+
+def enviar_telegram(mensagem):
+    """ Função silenciosa que envia alertas para o seu celular """
+    if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "SEU_TOKEN_AQUI": return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = json.dumps({"chat_id": TELEGRAM_CHAT_ID, "text": mensagem, "parse_mode": "HTML"}).encode('utf-8')
+    try:
+        req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json'}, method='POST')
+        urllib.request.urlopen(req, timeout=3)
+    except Exception as e:
+        print(f"⚠️ Erro ao enviar Telegram: {e}")
+
+# =========================================================
+# INICIALIZAÇÃO E AUTO-CURA DO BANCO DE DADOS
 # =========================================================
 try:
-    database.init_db() # Garante que as tabelas base existam
+    database.init_db() 
     conn = database.get_db()
     
-    # 1. Criação do Admin Mestre
     admin = conn.execute("SELECT * FROM clientes WHERE usuario = 'admin'").fetchone()
     if not admin:
         conn.execute("INSERT INTO clientes (usuario, senha, role) VALUES ('admin', 'admin123', 'Administrador Master')")
         conn.commit()
 
-    # 2. Injeção Blindada de Colunas (Atualizações do Sistema)
-    # Tabela SENSORES
     colunas_sensores = [
         "last_seen TIMESTAMP", "ip_gateway TEXT", "ultima_rota TEXT", 
         "download REAL", "upload REAL", "alerta_reconhecido INTEGER DEFAULT 1", 
@@ -33,10 +48,9 @@ try:
             conn.execute(f"ALTER TABLE sensores ADD COLUMN {col}")
             conn.commit()
         except: 
-            try: conn.execute("ROLLBACK") # 🛡️ O Segredo: Usar SQL puro caso o Wrapper não tenha o método
+            try: conn.execute("ROLLBACK") 
             except: pass
 
-    # Tabela CLIENTES
     colunas_clientes = ["nome TEXT", "cliente_pai_id INTEGER", "ativo INTEGER DEFAULT 1", "logo_url TEXT"]
     for col in colunas_clientes:
         try: 
@@ -46,7 +60,6 @@ try:
             try: conn.execute("ROLLBACK")
             except: pass
 
-    # 3. Patch do Admin
     try:
         conn.execute("UPDATE clientes SET role = 'Administrador Master' WHERE usuario = 'admin'")
         conn.commit()
@@ -120,7 +133,6 @@ def login():
                 
         except Exception as e:
             erro = "Erro interno ao validar as credenciais."
-            print(f"❌ [ERRO CRÍTICO NO LOGIN]: {e}") 
 
     return render_template('login.html', erro=erro)
 
@@ -158,7 +170,7 @@ def painel_sensor(mac_id):
     return render_template('sensor.html', sensor=sensor, nome=session['usuario'])
 
 # ==========================================
-# 📥 RECEPÇÃO DE DADOS (MUITO MAIS RÁPIDA AGORA)
+# 📥 RECEPÇÃO DE DADOS (TELEMETRIA DA NUVEM)
 # ==========================================
 @app.route('/api/v2/report_data', methods=['POST'])
 def report_data():
@@ -167,17 +179,15 @@ def report_data():
         data = request.json
         mac = data.get('mac_id')
         ip_display = data.get('ip_local')
+        nome_local_agente = data.get('nome_local', mac)
         
         conn = database.get_db()
         
-        # --- Lógica do Speedtest Automático ---
         try:
             from datetime import datetime
             agora_hora = datetime.now().hour
             hoje_id = datetime.now().strftime('%Y-%m-%d')
-            
             if 'AUTO_SPEEDTEST_DONE' not in globals(): AUTO_SPEEDTEST_DONE = set()
-                
             if agora_hora == 3 and f"{mac}_{hoje_id}" not in AUTO_SPEEDTEST_DONE:
                 SPEEDTEST_REQUESTS.add(mac)
                 AUTO_SPEEDTEST_DONE.add(f"{mac}_{hoje_id}")
@@ -191,6 +201,8 @@ def report_data():
             if sensor_dict.get('status') == 'offline':
                 try:
                     conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Conexão Restaurada', 'Aviso', 'O sensor restabeleceu a comunicação com a rede')", (mac,))
+                    # 🤖 TELEGRAM: SENSOR VOLTOU!
+                    enviar_telegram(f"✅ <b>CONEXÃO RESTAURADA</b>\n\n🖥️ <b>Sensor:</b> {sensor_dict.get('nome_local', mac)}\n🌐 <b>Status:</b> ONLINE\nℹ️ <b>Detalhe:</b> O equipamento restabeleceu a comunicação com a Central NOC.")
                 except: pass
 
             conn.execute('''UPDATE sensores SET 
@@ -213,6 +225,7 @@ def report_data():
                  data.get('temp'), data.get('ping_gateway'), 
                  data.get('ping_global'), data.get('ip_gateway')))
             conn.commit()
+            enviar_telegram(f"🎉 <b>NOVO SENSOR REGISTRADO</b>\n\n🖥️ <b>MAC:</b> {mac}\n🌐 <b>IP Local:</b> {ip_display}\nO NOC está monitorando um novo ambiente.")
 
         try:
             conn.execute('''CREATE TABLE IF NOT EXISTS historico_pings (
@@ -237,9 +250,41 @@ def report_data():
         return jsonify({"status": "OK", "command": comando})
 
     except Exception as e:
-        print(f"Erro Crítico na Telemetria: {e}")
         return jsonify({"status": "error", "command": "none", "erro_backend": str(e)}), 200
-        
+
+# ==========================================
+# 🔌 ROTAS DE MONITORAMENTO DE ENERGIA
+# ==========================================
+@app.route('/api/v2/ips_energia/<mac_id>', methods=['GET', 'POST'])
+def gerenciar_ips_energia(mac_id):
+    conn = database.get_db()
+    try: conn.execute('''CREATE TABLE IF NOT EXISTS ips_energia (id SERIAL PRIMARY KEY, sensor_mac TEXT, ip TEXT, descricao TEXT, latencia INTEGER DEFAULT 0)''')
+    except: pass
+    if request.method == 'POST':
+        data = request.json
+        conn.execute("INSERT INTO ips_energia (sensor_mac, ip, descricao) VALUES (?, ?, ?)", (mac_id, data['ip'], data['descricao']))
+        conn.commit()
+    ips = conn.execute("SELECT * FROM ips_energia WHERE sensor_mac = ? ORDER BY id DESC", (mac_id,)).fetchall()
+    conn.close()
+    return jsonify([dict(i) for i in ips])
+
+@app.route('/api/v2/ips_energia/<mac_id>/<int:id_ip>', methods=['DELETE'])
+def del_ips_energia(mac_id, id_ip):
+    conn = database.get_db()
+    conn.execute("DELETE FROM ips_energia WHERE id = ?", (id_ip,))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "OK"})
+
+@app.route('/api/v2/reportar_latencia_energia', methods=['POST'])
+def reportar_latencia_energia():
+    data = request.json
+    conn = database.get_db()
+    conn.execute("UPDATE ips_energia SET latencia = ? WHERE id = ?", (data['latencia'], data['id']))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "OK"})
+
 @app.route('/api/v2/comando_energia/<mac_id>', methods=['POST'])
 def enviar_comando_energia(mac_id):
     if 'user_id' not in session or session.get('role') != 'Administrador Master': return jsonify({"error": "Acesso Negado"}), 403
@@ -330,36 +375,22 @@ def atualizar_dispositivos():
 def renomear_dispositivo():
     data = request.json
     conn = database.get_db()
-    
-    try: 
-        conn.execute("CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)")
-        conn.commit()
+    try: conn.execute("CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)"); conn.commit()
     except: pass
-
-    # SQL Universal: Verifica se existe, depois Atualiza ou Insere (Funciona em Postgres e SQLite)
     try:
         existe = conn.execute("SELECT mac FROM nomes_conhecidos WHERE mac = ?", (data['mac'],)).fetchone()
-        if existe:
-            conn.execute("UPDATE nomes_conhecidos SET nome = ? WHERE mac = ?", (data['nome'], data['mac']))
-        else:
-            conn.execute("INSERT INTO nomes_conhecidos (mac, nome) VALUES (?, ?)", (data['mac'], data['nome']))
-            
+        if existe: conn.execute("UPDATE nomes_conhecidos SET nome = ? WHERE mac = ?", (data['nome'], data['mac']))
+        else: conn.execute("INSERT INTO nomes_conhecidos (mac, nome) VALUES (?, ?)", (data['mac'], data['nome']))
         conn.execute("UPDATE dispositivos SET nome_custom = ? WHERE mac = ? AND sensor_mac = ?", (data['nome'], data['mac'], data['sensor_mac']))
         conn.commit()
     except:
-        # Fallback de Segurança caso o PostgreSQL exija '%s'
         try:
             existe = conn.execute("SELECT mac FROM nomes_conhecidos WHERE mac = %s", (data['mac'],)).fetchone()
-            if existe:
-                conn.execute("UPDATE nomes_conhecidos SET nome = %s WHERE mac = %s", (data['nome'], data['mac']))
-            else:
-                conn.execute("INSERT INTO nomes_conhecidos (mac, nome) VALUES (%s, %s)", (data['mac'], data['nome']))
-                
+            if existe: conn.execute("UPDATE nomes_conhecidos SET nome = %s WHERE mac = %s", (data['nome'], data['mac']))
+            else: conn.execute("INSERT INTO nomes_conhecidos (mac, nome) VALUES (%s, %s)", (data['mac'], data['nome']))
             conn.execute("UPDATE dispositivos SET nome_custom = %s WHERE mac = %s AND sensor_mac = %s", (data['nome'], data['mac'], data['sensor_mac']))
             conn.commit()
-        except Exception as e:
-            print(f"Erro Crítico ao Renomear: {e}")
-            
+        except: pass
     conn.close()
     return jsonify({"status": "OK"})
 
@@ -369,8 +400,23 @@ def alertas_ia():
     conn = database.get_db()
     try: conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (id SERIAL PRIMARY KEY, sensor_mac TEXT, tipo_evento TEXT, gravidade TEXT, detalhes TEXT, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     except: pass
+    
+    # 🤖 TELEGRAM: INTERCEPTA OS AVISOS DO WATCHDOG AQUI!
+    mac = data.get('mac_id', 'Desconhecido')
+    sensor = conn.execute("SELECT nome_local FROM sensores WHERE mac_id = ?", (mac,)).fetchone()
+    nome_sensor = sensor['nome_local'] if sensor else mac
+
     for alerta in data.get('alertas', []):
-        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, ?, ?, ?)", (data['mac_id'], alerta['tipo'], alerta['gravidade'], alerta['detalhes']))
+        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, ?, ?, ?)", (mac, alerta['tipo'], alerta['gravidade'], alerta['detalhes']))
+        
+        # Lógica de Disparo
+        if alerta['gravidade'] == 'Crítica':
+            icone = "🔌" if "Energia" in alerta['tipo'] else "🖥️"
+            enviar_telegram(f"🚨 <b>ALERTA DE SISTEMA (CRÍTICO)</b>\n\n{icone} <b>Sensor:</b> {nome_sensor}\n⚠️ <b>Evento:</b> {alerta['tipo']}\n❌ <b>Detalhe:</b> {alerta['detalhes']}")
+        elif alerta['gravidade'] == 'OK' and ('Restaurad' in alerta['tipo']):
+            icone = "🔌" if "Energia" in alerta['tipo'] else "🖥️"
+            enviar_telegram(f"✅ <b>SISTEMA NORMALIZADO</b>\n\n{icone} <b>Sensor:</b> {nome_sensor}\n🟢 <b>Evento:</b> {alerta['tipo']}\nℹ️ <b>Detalhe:</b> {alerta['detalhes']}")
+
     conn.commit()
     conn.close()
     return jsonify({"status": "OK"})
@@ -386,18 +432,18 @@ def api_mapa_sensores():
         is_postgres = bool(os.environ.get('DATABASE_URL'))
         condicao_tempo = "last_seen < NOW() - INTERVAL '15 seconds'" if is_postgres else "last_seen < datetime('now', '-15 seconds', 'localtime')"
         
-        caidos = conn.execute(f"SELECT mac_id FROM sensores WHERE status = 'online' AND em_manutencao = 0 AND {condicao_tempo}").fetchall()
+        # 🤖 TELEGRAM: O CEIFEIRO DETECTA QUEDAS TOTAIS DE INTERNET AQUI
+        caidos = conn.execute(f"SELECT mac_id, nome_local FROM sensores WHERE status = 'online' AND em_manutencao = 0 AND {condicao_tempo}").fetchall()
         for c in caidos:
             conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder.')", (c['mac_id'],))
+            enviar_telegram(f"🚨 <b>QUEDA CRÍTICA (NOC Central)</b>\n\n🏢 <b>Local:</b> {c.get('nome_local', c['mac_id'])}\n❌ <b>Status:</b> OFFLINE TOTAL\nℹ️ <b>Detalhe:</b> O Agente parou de se comunicar com a nuvem. Verifique a energia e o link principal do site.")
         
         conn.execute(f"UPDATE sensores SET status = 'offline', alerta_reconhecido = 0 WHERE status = 'online' AND em_manutencao = 0 AND {condicao_tempo}")
         conn.commit()
     except Exception as e: print(f"Aviso no Ceifeiro: {e}")
 
     try:
-        # ⚡ A MÁGICA: Adicionamos o "s.ping_global" nesta linha abaixo!
         query_base = "SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, s.ram_usage, s.net_down, s.net_up, s.alerta_reconhecido, s.em_manutencao, s.ping_global, c.nome as cliente_nome FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id"
-        
         if role in ['Administrador Master', 'Operador Master']: sensores = conn.execute(query_base).fetchall()
         elif role == 'Cliente': sensores = conn.execute(query_base + " WHERE s.cliente_id = ?", (user_id,)).fetchall()
         else:
@@ -705,39 +751,6 @@ def toggle_manutencao(mac_id):
     conn.commit()
     conn.close()
     return jsonify({"status": "OK", "novo_estado": novo_estado})
-
-# ==========================================
-# 🔌 ROTAS DE MONITORAMENTO DE ENERGIA
-# ==========================================
-@app.route('/api/v2/ips_energia/<mac_id>', methods=['GET', 'POST'])
-def gerenciar_ips_energia(mac_id):
-    conn = database.get_db()
-    try: conn.execute('''CREATE TABLE IF NOT EXISTS ips_energia (id SERIAL PRIMARY KEY, sensor_mac TEXT, ip TEXT, descricao TEXT, latencia INTEGER DEFAULT 0)''')
-    except: pass
-    if request.method == 'POST':
-        data = request.json
-        conn.execute("INSERT INTO ips_energia (sensor_mac, ip, descricao) VALUES (?, ?, ?)", (mac_id, data['ip'], data['descricao']))
-        conn.commit()
-    ips = conn.execute("SELECT * FROM ips_energia WHERE sensor_mac = ? ORDER BY id DESC", (mac_id,)).fetchall()
-    conn.close()
-    return jsonify([dict(i) for i in ips])
-
-@app.route('/api/v2/ips_energia/<mac_id>/<int:id_ip>', methods=['DELETE'])
-def del_ips_energia(mac_id, id_ip):
-    conn = database.get_db()
-    conn.execute("DELETE FROM ips_energia WHERE id = ?", (id_ip,))
-    conn.commit()
-    conn.close()
-    return jsonify({"status": "OK"})
-
-@app.route('/api/v2/reportar_latencia_energia', methods=['POST'])
-def reportar_latencia_energia():
-    data = request.json
-    conn = database.get_db()
-    conn.execute("UPDATE ips_energia SET latencia = ? WHERE id = ?", (data['latencia'], data['id']))
-    conn.commit()
-    conn.close()
-    return jsonify({"status": "OK"})
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=10000, debug=True)
