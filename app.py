@@ -2,28 +2,44 @@ from flask import Flask, jsonify, request, render_template, session, redirect, u
 from werkzeug.security import check_password_hash, generate_password_hash
 from flask_socketio import SocketIO 
 import database
-import urllib.request, json # Necessários para o Telegram
+import urllib.request, json
 
 app = Flask(__name__)
 app.secret_key = 'chave_super_secreta_noc_md' 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent') 
 
 # =========================================================
-# 🤖 CHAVES DO TELEGRAM (PREENCHA AQUI)
+# 🤖 CHAVES DO TELEGRAM MASTER (O SEU BOT DE ADMIN)
 # =========================================================
 TELEGRAM_BOT_TOKEN = "8611160616:AAEYnOAXG-EInv4yDYSje5J_K0XbO6jIee0"
 TELEGRAM_CHAT_ID = "-5147163793"
 
-def enviar_telegram(mensagem):
-    """ Função silenciosa que envia alertas para o seu celular """
-    if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "SEU_TOKEN_AQUI": return
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = json.dumps({"chat_id": TELEGRAM_CHAT_ID, "text": mensagem, "parse_mode": "HTML"}).encode('utf-8')
+def enviar_telegram(mensagem, cliente_id=None):
+    """ Envia para o bot do cliente ou para o bot Master como fallback """
+    token_final = TELEGRAM_BOT_TOKEN
+    chat_id_final = TELEGRAM_CHAT_ID
+
+    # 1. Roteamento: Tenta achar o bot exclusivo do cliente
+    if cliente_id:
+        conn = database.get_db()
+        cliente = conn.execute("SELECT telegram_token, telegram_chat_id FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
+        conn.close()
+        
+        if cliente and cliente['telegram_token'] and cliente['telegram_chat_id']:
+            token_final = cliente['telegram_token']
+            chat_id_final = cliente['telegram_chat_id']
+
+    # Se não tem bot em lugar nenhum, aborta
+    if not token_final or token_final == "SEU_TOKEN_AQUI": return
+
+    # 2. Envia a mensagem
+    url = f"https://api.telegram.org/bot{token_final}/sendMessage"
+    payload = json.dumps({"chat_id": chat_id_final, "text": mensagem, "parse_mode": "HTML"}).encode('utf-8')
     try:
         req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json'}, method='POST')
         urllib.request.urlopen(req, timeout=3)
     except Exception as e:
-        print(f"⚠️ Erro ao enviar Telegram: {e}")
+        print(f"⚠️ Erro Telegram: {e}")
 
 # =========================================================
 # INICIALIZAÇÃO E AUTO-CURA DO BANCO DE DADOS
@@ -44,18 +60,15 @@ try:
         "em_manutencao INTEGER DEFAULT 0", "cliente_id INTEGER"
     ]
     for col in colunas_sensores:
-        try: 
-            conn.execute(f"ALTER TABLE sensores ADD COLUMN {col}")
-            conn.commit()
+        try: conn.execute(f"ALTER TABLE sensores ADD COLUMN {col}"); conn.commit()
         except: 
             try: conn.execute("ROLLBACK") 
             except: pass
 
-    colunas_clientes = ["nome TEXT", "cliente_pai_id INTEGER", "ativo INTEGER DEFAULT 1", "logo_url TEXT"]
+    # ⚡ AUTO-CURA: O PYTHON CRIA AS COLUNAS DO TELEGRAM AQUI SOZINHO!
+    colunas_clientes = ["nome TEXT", "cliente_pai_id INTEGER", "ativo INTEGER DEFAULT 1", "logo_url TEXT", "telegram_token TEXT", "telegram_chat_id TEXT"]
     for col in colunas_clientes:
-        try: 
-            conn.execute(f"ALTER TABLE clientes ADD COLUMN {col}")
-            conn.commit()
+        try: conn.execute(f"ALTER TABLE clientes ADD COLUMN {col}"); conn.commit()
         except: 
             try: conn.execute("ROLLBACK")
             except: pass
@@ -69,8 +82,7 @@ try:
 
     conn.close()
     print("✅ Banco de Dados sincronizado, atualizado e blindado!")
-except Exception as e:
-    print(f"⚠️ Aviso na inicialização do banco: {e}")
+except Exception as e: print(f"⚠️ Aviso na inicialização do banco: {e}")
 
 # =========================================================
 # VARIÁVEIS GLOBAIS DE MEMÓRIA
@@ -82,7 +94,7 @@ PENDING_COMMANDS = {}
 AUTO_SPEEDTEST_DONE = set()
 
 # ==========================================
-# 🔐 SISTEMA DE LOGIN E SESSÃO (BLINDADO)
+# 🔐 SISTEMA DE LOGIN E SESSÃO
 # ==========================================
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -131,8 +143,7 @@ def login():
             else: erro = "Usuário ou senha incorretos!" 
             conn.close()
                 
-        except Exception as e:
-            erro = "Erro interno ao validar as credenciais."
+        except Exception as e: erro = "Erro interno ao validar as credenciais."
 
     return render_template('login.html', erro=erro)
 
@@ -201,8 +212,7 @@ def report_data():
             if sensor_dict.get('status') == 'offline':
                 try:
                     conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Conexão Restaurada', 'Aviso', 'O sensor restabeleceu a comunicação com a rede')", (mac,))
-                    # 🤖 TELEGRAM: SENSOR VOLTOU!
-                    enviar_telegram(f"✅ <b>CONEXÃO RESTAURADA</b>\n\n🖥️ <b>Sensor:</b> {sensor_dict.get('nome_local', mac)}\n🌐 <b>Status:</b> ONLINE\nℹ️ <b>Detalhe:</b> O equipamento restabeleceu a comunicação com a Central NOC.")
+                    enviar_telegram(f"✅ <b>CONEXÃO RESTAURADA</b>\n\n🖥️ <b>Sensor:</b> {sensor_dict.get('nome_local', mac)}\n🌐 <b>Status:</b> ONLINE\nℹ️ <b>Detalhe:</b> O equipamento restabeleceu a comunicação com a Central NOC.", cliente_id=sensor_dict.get('cliente_id'))
                 except: pass
 
             conn.execute('''UPDATE sensores SET 
@@ -397,25 +407,25 @@ def renomear_dispositivo():
 @app.route('/api/v2/alertas_ia', methods=['POST'])
 def alertas_ia():
     data = request.json
+    mac = data.get('mac_id', 'Desconhecido')
     conn = database.get_db()
     try: conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (id SERIAL PRIMARY KEY, sensor_mac TEXT, tipo_evento TEXT, gravidade TEXT, detalhes TEXT, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     except: pass
     
-    # 🤖 TELEGRAM: INTERCEPTA OS AVISOS DO WATCHDOG AQUI!
-    mac = data.get('mac_id', 'Desconhecido')
-    sensor = conn.execute("SELECT nome_local FROM sensores WHERE mac_id = ?", (mac,)).fetchone()
+    sensor = conn.execute("SELECT nome_local, cliente_id FROM sensores WHERE mac_id = ?", (mac,)).fetchone()
     nome_sensor = sensor['nome_local'] if sensor else mac
+    cid = sensor['cliente_id'] if sensor else None
 
     for alerta in data.get('alertas', []):
         conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, ?, ?, ?)", (mac, alerta['tipo'], alerta['gravidade'], alerta['detalhes']))
         
-        # Lógica de Disparo
+        # 🤖 AVISOS COM ROTEAMENTO DE CLIENTE
         if alerta['gravidade'] == 'Crítica':
             icone = "🔌" if "Energia" in alerta['tipo'] else "🖥️"
-            enviar_telegram(f"🚨 <b>ALERTA DE SISTEMA (CRÍTICO)</b>\n\n{icone} <b>Sensor:</b> {nome_sensor}\n⚠️ <b>Evento:</b> {alerta['tipo']}\n❌ <b>Detalhe:</b> {alerta['detalhes']}")
+            enviar_telegram(f"🚨 <b>ALERTA DE SISTEMA (CRÍTICO)</b>\n\n{icone} <b>Sensor:</b> {nome_sensor}\n⚠️ <b>Evento:</b> {alerta['tipo']}\n❌ <b>Detalhe:</b> {alerta['detalhes']}", cliente_id=cid)
         elif alerta['gravidade'] == 'OK' and ('Restaurad' in alerta['tipo']):
             icone = "🔌" if "Energia" in alerta['tipo'] else "🖥️"
-            enviar_telegram(f"✅ <b>SISTEMA NORMALIZADO</b>\n\n{icone} <b>Sensor:</b> {nome_sensor}\n🟢 <b>Evento:</b> {alerta['tipo']}\nℹ️ <b>Detalhe:</b> {alerta['detalhes']}")
+            enviar_telegram(f"✅ <b>SISTEMA NORMALIZADO</b>\n\n{icone} <b>Sensor:</b> {nome_sensor}\n🟢 <b>Evento:</b> {alerta['tipo']}\nℹ️ <b>Detalhe:</b> {alerta['detalhes']}", cliente_id=cid)
 
     conn.commit()
     conn.close()
@@ -432,11 +442,10 @@ def api_mapa_sensores():
         is_postgres = bool(os.environ.get('DATABASE_URL'))
         condicao_tempo = "last_seen < NOW() - INTERVAL '15 seconds'" if is_postgres else "last_seen < datetime('now', '-15 seconds', 'localtime')"
         
-        # 🤖 TELEGRAM: O CEIFEIRO DETECTA QUEDAS TOTAIS DE INTERNET AQUI
-        caidos = conn.execute(f"SELECT mac_id, nome_local FROM sensores WHERE status = 'online' AND em_manutencao = 0 AND {condicao_tempo}").fetchall()
+        caidos = conn.execute(f"SELECT mac_id, nome_local, cliente_id FROM sensores WHERE status = 'online' AND em_manutencao = 0 AND {condicao_tempo}").fetchall()
         for c in caidos:
             conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder.')", (c['mac_id'],))
-            enviar_telegram(f"🚨 <b>QUEDA CRÍTICA (NOC Central)</b>\n\n🏢 <b>Local:</b> {c.get('nome_local', c['mac_id'])}\n❌ <b>Status:</b> OFFLINE TOTAL\nℹ️ <b>Detalhe:</b> O Agente parou de se comunicar com a nuvem. Verifique a energia e o link principal do site.")
+            enviar_telegram(f"🚨 <b>QUEDA CRÍTICA (NOC Central)</b>\n\n🏢 <b>Local:</b> {c.get('nome_local', c['mac_id'])}\n❌ <b>Status:</b> OFFLINE TOTAL\nℹ️ <b>Detalhe:</b> O Agente parou de se comunicar com a nuvem.", cliente_id=c.get('cliente_id'))
         
         conn.execute(f"UPDATE sensores SET status = 'offline', alerta_reconhecido = 0 WHERE status = 'online' AND em_manutencao = 0 AND {condicao_tempo}")
         conn.commit()
@@ -577,14 +586,15 @@ def gerenciar_usuarios():
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return "Acesso Negado.", 403
     conn = database.get_db()
     if session['role'] == 'Administrador Master':
-        usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url FROM clientes ORDER BY id DESC").fetchall()
+        # ⚡ BUSCA OS NOVOS CAMPOS DO TELEGRAM NO BANCO
+        usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id FROM clientes ORDER BY id DESC").fetchall()
         clientes_pais = conn.execute("SELECT id, nome FROM clientes WHERE role = 'Cliente'").fetchall()
     else:
         if session['role'] == 'Cliente': tenant_id = session['user_id']
         else: 
             user_info = conn.execute("SELECT cliente_pai_id FROM clientes WHERE id = ?", (session['user_id'],)).fetchone()
             tenant_id = user_info['cliente_pai_id']
-        usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url FROM clientes WHERE cliente_pai_id = ? ORDER BY id DESC", (tenant_id,)).fetchall()
+        usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id FROM clientes WHERE cliente_pai_id = ? ORDER BY id DESC", (tenant_id,)).fetchall()
         clientes_pais = [] 
     conn.close()
     return render_template('usuarios.html', usuarios=[dict(u) for u in usuarios], role_atual=session['role'], clientes_pais=[dict(c) for c in clientes_pais])
@@ -595,6 +605,8 @@ def criar_usuario():
     data = request.json
     senha_hash = generate_password_hash(data['senha'])
     logo_url = data.get('logo_url', '')
+    tg_token = data.get('telegram_token', '')
+    tg_chat = data.get('telegram_chat_id', '')
     conn = database.get_db()
     if session['role'] == 'Cliente': cliente_pai = session['user_id'] 
     elif session['role'] == 'Administrador Cliente':
@@ -604,10 +616,13 @@ def criar_usuario():
         cliente_pai = data.get('cliente_pai') 
         if not cliente_pai or cliente_pai == "null": cliente_pai = None
     try:
-        conn.execute("INSERT INTO clientes (nome, usuario, senha, role, cliente_pai_id, ativo, logo_url) VALUES (?, ?, ?, ?, ?, 1, ?)", (data['nome'], data['usuario'], senha_hash, data['role'], cliente_pai, logo_url))
+        # ⚡ INSERE COM OS CAMPOS DO TELEGRAM
+        conn.execute("INSERT INTO clientes (nome, usuario, senha, role, cliente_pai_id, ativo, logo_url, telegram_token, telegram_chat_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)", (data['nome'], data['usuario'], senha_hash, data['role'], cliente_pai, logo_url, tg_token, tg_chat))
         conn.commit()
         status = "OK"
-    except: status = "Erro: Usuário já existe"
+    except Exception as e: 
+        print(f"Erro ao criar user: {e}")
+        status = "Erro: Usuário já existe"
     finally: conn.close()
     return jsonify({"status": status})
 
@@ -639,9 +654,12 @@ def editar_usuario_info(id_user):
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return jsonify({"error": "Acesso Negado"}), 403
     data = request.json
     logo_url = data.get('logo_url', '')
+    tg_token = data.get('telegram_token', '')
+    tg_chat = data.get('telegram_chat_id', '')
     conn = database.get_db()
     try:
-        conn.execute("UPDATE clientes SET nome = ?, usuario = ?, logo_url = ? WHERE id = ?", (data.get('nome'), data.get('usuario'), logo_url, id_user))
+        # ⚡ ATUALIZA COM OS CAMPOS DO TELEGRAM
+        conn.execute("UPDATE clientes SET nome = ?, usuario = ?, logo_url = ?, telegram_token = ?, telegram_chat_id = ? WHERE id = ?", (data.get('nome'), data.get('usuario'), logo_url, tg_token, tg_chat, id_user))
         conn.commit()
         status = "OK"
     except: status = "Erro: Login já está em uso."

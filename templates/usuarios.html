@@ -92,6 +92,17 @@
                 </div>
             </div>
 
+            <div id="div_telegram" style="grid-column: span 2; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; border: 1px dashed var(--border); display: flex; gap: 15px;">
+                <div style="flex: 1;" class="input-group">
+                    <label style="color: var(--blue);"><i class="fa-brands fa-telegram"></i> Token do Bot (Opcional)</label>
+                    <input type="text" id="telegram_token" placeholder="Ex: 123456:ABC-DEF...">
+                </div>
+                <div style="flex: 1;" class="input-group">
+                    <label style="color: var(--blue);"><i class="fa-brands fa-telegram"></i> Chat ID (Opcional)</label>
+                    <input type="text" id="telegram_chat_id" placeholder="Ex: -100987654321">
+                </div>
+            </div>
+
             <div class="input-group" id="div_pai" style="grid-column: span 2; display: none;">
                 <label>Vincular a Cliente Pai</label>
                 <select id="cliente_pai">
@@ -145,7 +156,7 @@
                         {% endif %}
                     </td>
                     <td>
-                        <button class="btn-action" onclick="abrirModalEditar('{{ u.id }}', '{{ u.nome }}', '{{ u.usuario }}', '{{ u.role }}', '{{ u.logo_url }}')" title="Editar Info"><i class="fa-solid fa-pen"></i></button>
+                        <button class="btn-action" onclick="abrirModalEditar('{{ u.id }}', '{{ u.nome }}', '{{ u.usuario }}', '{{ u.role }}', '{{ u.logo_url }}', '{{ u.telegram_token }}', '{{ u.telegram_chat_id }}')" title="Editar Info"><i class="fa-solid fa-pen"></i></button>
                         <button class="btn-action" onclick="mudarSenha('{{ u.id }}')" title="Mudar Senha"><i class="fa-solid fa-key"></i></button>
                         <button class="btn-action power" onclick="toggleStatus('{{ u.id }}')" title="Ativar / Desativar"><i class="fa-solid fa-power-off"></i></button>
                         <button class="btn-action delete" onclick="deletarUsuario('{{ u.id }}')" title="Excluir Definitivamente"><i class="fa-solid fa-trash-can"></i></button>
@@ -176,6 +187,18 @@
                 <div class="logo-preview" id="edit-preview-container"></div>
             </div>
 
+            <div id="edit_div_telegram" style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; border: 1px dashed var(--border); margin-bottom: 15px;">
+                <label style="color: var(--blue); font-weight: bold; font-size: 0.85em; margin-bottom: 8px; display: block;"><i class="fa-brands fa-telegram"></i> Alertas VIP via Telegram</label>
+                <div class="input-group" style="margin-bottom: 10px;">
+                    <label>Token do Bot</label>
+                    <input type="text" id="edit_telegram_token" placeholder="Ex: 123456:ABC-DEF...">
+                </div>
+                <div class="input-group">
+                    <label>Chat ID do Grupo</label>
+                    <input type="text" id="edit_telegram_chat_id" placeholder="Ex: -100987654321">
+                </div>
+            </div>
+
             <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
                 <button class="btn-save" style="background: var(--bg-input); color: var(--text-main);" onclick="fecharModal()">Cancelar</button>
                 <button class="btn-save" onclick="salvarEdicao()">Salvar Alterações</button>
@@ -184,31 +207,31 @@
     </div>
 
     <script>
-        // 👁️ MOSTRA/ESCONDE CAMPOS DINAMICAMENTE
         function toggleCamposDinamicos() {
             const role = document.getElementById('role').value;
             const divLogo = document.getElementById('div_logo');
             const divPai = document.getElementById('div_pai');
+            const divTg = document.getElementById('div_telegram');
 
             if (role === 'Cliente') {
-                divLogo.style.display = 'flex'; // Mostra Logo
+                divLogo.style.display = 'flex'; 
                 divLogo.style.flexDirection = 'column';
-                divPai.style.display = 'none';  // Esconde Vínculo
+                divPai.style.display = 'none';  
+                divTg.style.display = 'flex'; // Mostra Telegram
             } else if (role.includes('Operador') || role === 'Administrador Cliente') {
-                divLogo.style.display = 'none'; // Esconde Logo
-                divPai.style.display = 'flex';  // Mostra Vínculo
+                divLogo.style.display = 'none'; 
+                divPai.style.display = 'flex';  
                 divPai.style.flexDirection = 'column';
+                divTg.style.display = 'none'; // Esconde Telegram
             } else {
-                // Admin Master não precisa de logo própria (usa a do sistema) nem de vínculo
                 divLogo.style.display = 'none';
                 divPai.style.display = 'none';
+                divTg.style.display = 'none';
             }
         }
 
-        // Executa ao carregar a página
         window.onload = () => toggleCamposDinamicos();
 
-        // 🖼️ PREVIEW DA LOGO
         function previewLogo(url, containerId) {
             const container = document.getElementById(containerId);
             if (url && url.length > 5) {
@@ -218,7 +241,6 @@
             }
         }
 
-        // 🟢 SALVAR NOVO USUÁRIO
         async function criarUsuario() {
             const valNome = document.getElementById('nome').value;
             const valUser = document.getElementById('usuario').value;
@@ -226,12 +248,18 @@
             const valRole = document.getElementById('role').value;
             const valLogo = document.getElementById('logo_url').value;
             const valPai = document.getElementById('cliente_pai').value;
+            const valTgToken = document.getElementById('telegram_token').value;
+            const valTgChat = document.getElementById('telegram_chat_id').value;
 
             if (!valNome || !valUser || !valSenha) {
                 alert("Preencha Nome, Usuário e Senha!"); return;
             }
 
-            const payload = { nome: valNome, usuario: valUser, senha: valSenha, role: valRole, logo_url: valLogo, cliente_pai: valPai };
+            const payload = { 
+                nome: valNome, usuario: valUser, senha: valSenha, role: valRole, 
+                logo_url: valLogo, cliente_pai: valPai,
+                telegram_token: valTgToken, telegram_chat_id: valTgChat 
+            };
 
             try {
                 const res = await fetch('/api/v2/usuarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -241,20 +269,24 @@
             } catch (e) { alert("Erro de conexão."); }
         }
 
-        // 🟡 EDITAR USUÁRIO (ABRIR MODAL)
-        function abrirModalEditar(id, nome, usuario, role, logo_url) {
+        // Atualizado com tg_token e tg_chat
+        function abrirModalEditar(id, nome, usuario, role, logo_url, tg_token, tg_chat) {
             document.getElementById('edit_id').value = id;
             document.getElementById('edit_nome').value = nome;
             document.getElementById('edit_usuario').value = usuario;
             document.getElementById('edit_logo_url').value = logo_url !== 'None' ? logo_url : '';
             
-            // Só exibe o campo de editar logo se ele for Cliente Dono
+            document.getElementById('edit_telegram_token').value = tg_token !== 'None' ? tg_token : '';
+            document.getElementById('edit_telegram_chat_id').value = tg_chat !== 'None' ? tg_chat : '';
+            
             if (role === 'Cliente') {
                 document.getElementById('edit_div_logo').style.display = 'flex';
                 document.getElementById('edit_div_logo').style.flexDirection = 'column';
+                document.getElementById('edit_div_telegram').style.display = 'block';
                 previewLogo(logo_url, 'edit-preview-container');
             } else {
                 document.getElementById('edit_div_logo').style.display = 'none';
+                document.getElementById('edit_div_telegram').style.display = 'none';
             }
 
             document.getElementById('modalEditar').style.display = 'flex';
@@ -264,13 +296,14 @@
             document.getElementById('modalEditar').style.display = 'none';
         }
 
-        // 🟡 EDITAR USUÁRIO (SALVAR)
         async function salvarEdicao() {
             const id = document.getElementById('edit_id').value;
             const payload = {
                 nome: document.getElementById('edit_nome').value,
                 usuario: document.getElementById('edit_usuario').value,
-                logo_url: document.getElementById('edit_logo_url').value
+                logo_url: document.getElementById('edit_logo_url').value,
+                telegram_token: document.getElementById('edit_telegram_token').value,
+                telegram_chat_id: document.getElementById('edit_telegram_chat_id').value
             };
 
             await fetch('/api/v2/usuarios/' + id + '/info', {
@@ -281,7 +314,6 @@
             window.location.reload();
         }
 
-        // 🔑 MUDAR SENHA
         async function mudarSenha(id) {
             const novaSenha = prompt("Digite a nova senha para este usuário:");
             if (novaSenha && novaSenha.trim() !== "") {
@@ -294,13 +326,11 @@
             }
         }
 
-        // 🔌 ATIVAR / DESATIVAR
         async function toggleStatus(id) {
             await fetch('/api/v2/usuarios/' + id + '/toggle_status', { method: 'POST' });
             window.location.reload();
         }
 
-        // 🔴 DELETAR
         async function deletarUsuario(id) {
             if (confirm("Tem certeza absoluta? O usuário será apagado para sempre!")) {
                 await fetch('/api/v2/usuarios/' + id, { method: 'DELETE' });
