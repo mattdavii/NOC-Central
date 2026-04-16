@@ -33,6 +33,7 @@ except ImportError: psutil = None
 # ==========================================
 URL_CENTRAL = "https://noc-central.onrender.com/api/v2/report_data" 
 PORTA_LOCAL = 10000
+TOKEN_SCADA = "admin123"
 
 IS_WIN = platform.system().lower() == 'windows'
 C_FLAGS = subprocess.CREATE_NO_WINDOW if IS_WIN else 0
@@ -40,7 +41,8 @@ C_FLAGS = subprocess.CREATE_NO_WINDOW if IS_WIN else 0
 app = Flask(__name__)
 
 dados_sensores = {
-    "cpu": 0, "ram": 0, "meu_ip": "Detectando...", "gateway_ip": "Detectando...", 
+    "cpu": 0, "ram": 0, "disco": 0, "net_down": 0, "net_up": 0, "portas": "",
+    "meu_ip": "Detectando...", "gateway_ip": "Detectando...", 
     "ping_gateway": 0, "pings": {"Google":0, "Cloudflare":0, "AWS":0, "Quad9":0}, 
     "custom_ips": [], "topologia": [], "logs": []
 }
@@ -248,8 +250,10 @@ def loop_telemetria():
             dispositivos = get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=forcar_varredura)
             if forcar_varredura: ultima_varredura = agora
 
+            # ⚡ ATUALIZAÇÃO DA VARIÁVEL COM OS DADOS NOVOS
             dados_sensores = {
-                "cpu": cpu, "ram": ram, "meu_ip": meu_ip, "gateway_ip": gateway_ip, 
+                "cpu": cpu, "ram": ram, "disco": disco, "net_down": net_down, "net_up": net_up, "portas": str_portas,
+                "meu_ip": meu_ip, "gateway_ip": gateway_ip, 
                 "ping_gateway": ping_gw, "pings": pings, "topologia": dispositivos, "logs": [], "custom_ips": [] 
             }
 
@@ -299,10 +303,6 @@ def loop_telemetria():
                             
             except Exception as e: 
                 espera_remota = 5
-                try:
-                    with open("erro_telemetria.txt", "w") as f:
-                        f.write(f"[{datetime.now()}] Falha de Conexão: {str(e)}\n")
-                except: pass
 
             time.sleep(espera_remota)
             
@@ -312,20 +312,16 @@ def loop_telemetria():
 # ⚡ MOTOR 4: WATCHDOG LOCAL E NUVEM 
 # ==========================================
 def loop_watchdog_local():
-    """ Vigia os alvos de rede E de energia """
     global cache_alvos
     mac = get_mac()
     url_get = URL_CENTRAL.replace('report_data', f'ips_customizados/{mac}')
     url_report = URL_CENTRAL.replace('report_data', 'reportar_latencia_custom')
-    
     url_get_energia = URL_CENTRAL.replace('report_data', f'ips_energia/{mac}')
     url_report_energia = URL_CENTRAL.replace('report_data', 'reportar_latencia_energia')
-    
     url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
 
     while True:
         try:
-            # 1. Puxa listas da Nuvem
             try:
                 req = urllib.request.Request(url_get, method='GET')
                 with urllib.request.urlopen(req, timeout=5) as response:
@@ -338,13 +334,11 @@ def loop_watchdog_local():
                     alvos_energia = json.loads(response.read().decode('utf-8'))
             except: alvos_energia = []
 
-            # 2. Puxa a lista Local (SQLite)
             conn = sqlite3.connect('sensor_local.db')
             alvos_locais = conn.execute("SELECT id, ip, descricao FROM alvos_locais").fetchall()
             alvos_energia_locais = conn.execute("SELECT id, ip, descricao FROM alvos_energia").fetchall()
             conn.close()
 
-            # PING REDE (NUVEM)
             for alvo in alvos_nuvem:
                 ip = alvo['ip']; desc = alvo['descricao']; latencia = ping(ip); ta_online = latencia > 0
                 try: urllib.request.urlopen(urllib.request.Request(url_report, data=json.dumps({"id": alvo['id'], "latencia": latencia}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
@@ -359,7 +353,6 @@ def loop_watchdog_local():
                     except: pass
                 cache_alvos[ip] = {'online': ta_online, 'latencia': latencia}
 
-            # PING ENERGIA (NUVEM)
             for alvo in alvos_energia:
                 ip = alvo['ip']; desc = alvo['descricao']; latencia = ping(ip); ta_online = latencia > 0
                 try: urllib.request.urlopen(urllib.request.Request(url_report_energia, data=json.dumps({"id": alvo['id'], "latencia": latencia}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
@@ -374,7 +367,6 @@ def loop_watchdog_local():
                     except: pass
                 cache_alvos['ENERGIA_'+ip] = {'online': ta_online, 'latencia': latencia}
 
-            # PING LOCAIS NORMAIS (se nao existir na nuvem)
             for id_alvo, ip, desc in alvos_locais:
                 if ip not in [a['ip'] for a in alvos_nuvem]: 
                     latencia = ping(ip); ta_online = latencia > 0
@@ -383,7 +375,6 @@ def loop_watchdog_local():
                     elif not ta_online and estado_anterior: log_local_event("Queda de Alvo Local", f"{desc} ({ip}) parou de responder!", "Crítica")
                     cache_alvos[ip] = {'online': ta_online, 'latencia': latencia}
                     
-            # PING LOCAIS ENERGIA (se nao existir na nuvem)
             for id_alvo, ip, desc in alvos_energia_locais:
                 if ip not in [a['ip'] for a in alvos_energia]: 
                     latencia = ping(ip); ta_online = latencia > 0
@@ -398,7 +389,25 @@ def loop_watchdog_local():
 # ==========================================
 # 🖥️ MOTOR 2: PAINEL WEB LOCAL (FOREGROUND)
 # ==========================================
-def check_auth(username, password): return username == 'Admin' and password == 'Admin'
+def check_auth(username, password): return username == 'admin' and password == 'admin'
+
+@app.route('/api/scada', methods=['GET'])
+def api_scada():
+    token = request.args.get('token')
+    if token != TOKEN_SCADA: return jsonify({"erro": "Acesso Negado. Token de integracao invalido."}), 401
+
+    conn = sqlite3.connect('sensor_local.db')
+    alvos = [{"ip": r[1], "descricao": r[2], "latencia_ms": cache_alvos.get(r[1], {}).get('latencia', 0), "status": "ONLINE" if cache_alvos.get(r[1], {}).get('latencia', 0) > 0 else "OFFLINE"} for r in conn.execute("SELECT * FROM alvos_locais").fetchall()]
+    alvos_energia = [{"ip": r[1], "descricao": r[2], "latencia_ms": cache_alvos.get('ENERGIA_'+r[1], {}).get('latencia', 0), "status": "COM ENERGIA" if cache_alvos.get('ENERGIA_'+r[1], {}).get('latencia', 0) > 0 else "SEM ENERGIA"} for r in conn.execute("SELECT * FROM alvos_energia").fetchall()]
+    conn.close()
+
+    payload_industrial = {
+        "sensor_mac": get_mac(),
+        "telemetria_host": { "cpu_percent": dados_sensores.get("cpu", 0), "ram_percent": dados_sensores.get("ram", 0) },
+        "links_wan": { "google_ms": dados_sensores.get("pings", {}).get("Google", 0), "cloudflare_ms": dados_sensores.get("pings", {}).get("Cloudflare", 0), "status_geral_wan": "ONLINE" if (dados_sensores.get("pings", {}).get("Google", 0) > 0 or dados_sensores.get("pings", {}).get("Cloudflare", 0) > 0) else "OFFLINE" },
+        "watchdog_rede": alvos, "watchdog_energia": alvos_energia
+    }
+    return jsonify(payload_industrial)
 
 @app.route('/api/local_data')
 def api_local_data():
@@ -430,43 +439,33 @@ def add_alvo():
     data = request.json
     conn = sqlite3.connect('sensor_local.db')
     conn.execute("INSERT INTO alvos_locais (ip, descricao) VALUES (?, ?)", (data['ip'], data['descricao']))
-    conn.commit()
-    conn.close()
-    return jsonify({"status": "OK"})
+    conn.commit(); conn.close(); return jsonify({"status": "OK"})
 
 @app.route('/api/alvos/<int:id_alvo>', methods=['DELETE'])
 def del_alvo(id_alvo):
     conn = sqlite3.connect('sensor_local.db')
     conn.execute("DELETE FROM alvos_locais WHERE id = ?", (id_alvo,))
-    conn.commit()
-    conn.close()
-    return jsonify({"status": "OK"})
+    conn.commit(); conn.close(); return jsonify({"status": "OK"})
 
 @app.route('/api/energia', methods=['POST'])
 def add_energia():
     data = request.json
     conn = sqlite3.connect('sensor_local.db')
     conn.execute("INSERT INTO alvos_energia (ip, descricao) VALUES (?, ?)", (data['ip'], data['descricao']))
-    conn.commit()
-    conn.close()
-    return jsonify({"status": "OK"})
+    conn.commit(); conn.close(); return jsonify({"status": "OK"})
 
 @app.route('/api/energia/<int:id_alvo>', methods=['DELETE'])
 def del_energia(id_alvo):
     conn = sqlite3.connect('sensor_local.db')
     conn.execute("DELETE FROM alvos_energia WHERE id = ?", (id_alvo,))
-    conn.commit()
-    conn.close()
-    return jsonify({"status": "OK"})
+    conn.commit(); conn.close(); return jsonify({"status": "OK"})
 
 @app.route('/api/topologia/nome', methods=['POST'])
 def rename_topo():
     data = request.json
     conn = sqlite3.connect('sensor_local.db')
     conn.execute("INSERT OR REPLACE INTO nomes_topologia (mac, nome) VALUES (?, ?)", (data['mac'], data['nome']))
-    conn.commit()
-    conn.close()
-    return jsonify({"status": "OK"})
+    conn.commit(); conn.close(); return jsonify({"status": "OK"})
 
 @app.route('/')
 def index():
@@ -474,6 +473,7 @@ def index():
     if not auth or not check_auth(auth.username, auth.password):
         return Response('Acesso Negado.', 401, {'WWW-Authenticate': 'Basic realm="NOC Sensor Local"'})
 
+    # ⚡ O PAINEL CIBERPUNK AGORA COM DISCO, PORTAS E VELOCÍMETRO LIVE
     HTML_CYBERPUNK = """
     <!DOCTYPE html>
     <html lang="pt-BR">
@@ -519,6 +519,8 @@ def index():
             .t-name { font-size: 0.85em; color: var(--blue); font-weight: bold; }
             .t-line-v { width: 3px; height: 25px; background: var(--border); } 
             .t-line-h { height: 3px; background: var(--border); }
+            .speed-box { text-align: center; background: rgba(0,0,0,0.3); padding: 18px; border-radius: 8px; border: 1px solid var(--bg-input); box-shadow: inset 0 0 10px rgba(0,0,0,0.5);}
+            .speed-val { font-family: 'JetBrains Mono', monospace; font-size: 2.5em; font-weight: bold; margin-top: 8px; }
         </style>
     </head>
     <body>
@@ -533,9 +535,13 @@ def index():
                     <div style="display: flex; justify-content: space-between;"><span><i class="fa-solid fa-microchip"></i> CPU</span> <strong id="cpu-text">0%</strong></div>
                     <div class="progress-bg"><div id="cpu-fill" class="progress-fill"></div></div>
                 </div>
-                <div>
+                <div style="margin-bottom: 15px;">
                     <div style="display: flex; justify-content: space-between;"><span><i class="fa-solid fa-memory"></i> RAM</span> <strong id="ram-text">0%</strong></div>
                     <div class="progress-bg"><div id="ram-fill" class="progress-fill"></div></div>
+                </div>
+                <div>
+                    <div style="display: flex; justify-content: space-between;"><span><i class="fa-solid fa-hard-drive"></i> Disco</span> <strong id="disk-text">0%</strong></div>
+                    <div class="progress-bg"><div id="disk-fill" class="progress-fill" style="background: linear-gradient(90deg, #cba6f7, #f5c2e7); box-shadow: 0 0 10px #cba6f7;"></div></div>
                 </div>
             </div>
 
@@ -543,15 +549,25 @@ def index():
                 <h3><span><i class="fa-solid fa-shield-heart"></i> Integridade da Rede</span></h3>
                 <div class="data-row"><span><i class="fa-solid fa-network-wired" style="color:var(--green)"></i> Gateway (<span id="gw-ip">--</span>):</span> <span id="status-local" class="pill-ok">ESTÁVEL</span></div>
                 <div class="data-row"><span><i class="fa-solid fa-globe" style="color:var(--blue)"></i> Internet (WAN):</span> <span id="status-wan" class="pill-ok">ONLINE</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-door-open" style="color:var(--purple)"></i> Portas:</span> <span id="portas-text" style="font-family: 'JetBrains Mono'; font-size: 0.75em; color: var(--text-muted);">--</span></div>
                 <div style="margin-top: auto; background: rgba(0,0,0,0.3); padding: 18px; border-radius: 8px; text-align: center; border: 1px solid var(--bg-input);">
                     <div style="font-size: 0.75em; color: var(--text-muted);">Latência Sensor ➔ Gateway</div>
                     <div id="ping-local" class="highlight" style="color: var(--green);">0 ms</div>
                 </div>
             </div>
 
-            <div class="card card-speed" style="display: flex; align-items: center; justify-content: center; border-top: 4px solid var(--border); opacity: 0.7;">
-                <i class="fa-solid fa-cloud-arrow-up" style="font-size: 3em; color: var(--yellow); margin-bottom: 15px;"></i>
-                <div style="font-weight: bold; color: var(--yellow); font-size: 1.1em; text-align: center;">Orquestrado<br>pela Central NOC</div>
+            <div class="card card-speed">
+                <h3><span><i class="fa-solid fa-arrow-right-arrow-left"></i> Tráfego em Tempo Real</span></h3>
+                <div style="flex-grow: 1; display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-top: 10px;">
+                    <div class="speed-box" style="flex: 1;">
+                        <div style="font-size: 0.75em; color: var(--text-muted); letter-spacing: 1px;"><i class="fa-solid fa-arrow-down" style="color:var(--green)"></i> DOWNLOAD</div>
+                        <div id="live-down" class="speed-val" style="color: var(--green); text-shadow: 0 0 15px rgba(166,227,161,0.4);">0.0</div><span style="font-size: 0.6em; color: var(--text-muted);">Mbps</span>
+                    </div>
+                    <div class="speed-box" style="flex: 1;">
+                        <div style="font-size: 0.75em; color: var(--text-muted); letter-spacing: 1px;"><i class="fa-solid fa-arrow-up" style="color:var(--red)"></i> UPLOAD</div>
+                        <div id="live-up" class="speed-val" style="color: var(--red); text-shadow: 0 0 15px rgba(243,139,168,0.4);">0.0</div><span style="font-size: 0.6em; color: var(--text-muted);">Mbps</span>
+                    </div>
+                </div>
             </div>
 
             <div class="card card-radar">
@@ -631,8 +647,16 @@ def index():
                     const res = await fetch('/api/local_data'); const data = await res.json();
                     document.getElementById('mac-id').innerText = data.mac; document.getElementById('topo-mac').innerText = data.mac;
                     document.getElementById('meu-ip').innerText = data.meu_ip;
+                    
                     document.getElementById('cpu-text').innerText = data.cpu + '%'; document.getElementById('cpu-fill').style.width = data.cpu + '%';
                     document.getElementById('ram-text').innerText = data.ram + '%'; document.getElementById('ram-fill').style.width = data.ram + '%';
+                    
+                    // ⚡ NOVOS MEDIDORES LOCAIS
+                    if(document.getElementById('disk-text')) { document.getElementById('disk-text').innerText = data.disco + '%'; document.getElementById('disk-fill').style.width = data.disco + '%'; }
+                    if(document.getElementById('portas-text')) document.getElementById('portas-text').innerText = data.portas || 'Nenhuma';
+                    if(document.getElementById('live-down')) document.getElementById('live-down').innerText = data.net_down || '0.0';
+                    if(document.getElementById('live-up')) document.getElementById('live-up').innerText = data.net_up || '0.0';
+
                     document.getElementById('gw-ip').innerText = data.gateway_ip;
                     const pl = data.ping_gateway;
                     document.getElementById('ping-local').innerText = pl + ' ms';
