@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOC TV - Sala de Operações</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-base: #05050a; --bg-card: #0d0d16; --border: #1f1f33;
+            --text-main: #ffffff; --text-muted: #6b7280;
+            --blue: #3b82f6; --green: #10b981; --red: #ef4444; --yellow: #f59e0b;
+        }
+
+        body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-base); color: var(--text-main); overflow: hidden; }
+        
+        /* HEADER GIGANTE PARA TV */
+        .tv-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; background: rgba(0,0,0,0.8); border-bottom: 2px solid var(--border); box-shadow: 0 10px 30px rgba(0,0,0,0.8); z-index: 10; position: relative;}
+        .tv-logo { font-size: 2.5em; font-weight: 900; color: var(--blue); letter-spacing: 2px; text-transform: uppercase; }
+        
+        .tv-stats { display: flex; gap: 30px; }
+        .stat-box { background: rgba(255,255,255,0.05); padding: 10px 25px; border-radius: 12px; text-align: center; border: 1px solid var(--border); }
+        .stat-num { font-family: 'JetBrains Mono'; font-size: 2.5em; font-weight: bold; line-height: 1; }
+        .stat-label { font-size: 0.8em; text-transform: uppercase; color: var(--text-muted); letter-spacing: 1px; font-weight: bold; }
+        
+        .tv-clock { font-family: 'JetBrains Mono'; font-size: 2.2em; font-weight: bold; color: var(--text-muted); }
+
+        /* GRID AUTO-AJUSTÁVEL */
+        .tv-container { padding: 30px 40px; height: calc(100vh - 150px); overflow-y: auto; scroll-behavior: smooth; }
+        .tv-container::-webkit-scrollbar { display: none; }
+        
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 25px; }
+        
+        /* CARDS DA TV */
+        .card { background: var(--bg-card); border-radius: 16px; padding: 25px; border: 2px solid var(--border); position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; min-height: 180px;}
+        .card::before { content: ''; position: absolute; top: 0; left: 0; width: 6px; height: 100%; }
+        
+        .card.online { border-color: rgba(16, 185, 129, 0.3); box-shadow: 0 0 20px rgba(16, 185, 129, 0.05); }
+        .card.online::before { background: var(--green); }
+        
+        .card.offline { border-color: rgba(239, 68, 68, 0.6); animation: pulse-red 2s infinite; }
+        .card.offline::before { background: var(--red); }
+        
+        .card.maintenance { border-color: rgba(245, 158, 11, 0.3); }
+        .card.maintenance::before { background: var(--yellow); }
+
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239,68,68, 0.4); } 70% { box-shadow: 0 0 30px 15px rgba(239,68,68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239,68,68, 0); } }
+
+        .c-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
+        .c-title { font-size: 1.4em; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 75%; }
+        .c-cliente { font-size: 0.75em; color: var(--blue); text-transform: uppercase; font-weight: bold; letter-spacing: 1px; display: block; margin-top: 5px; }
+        
+        .c-status-badge { font-family: 'JetBrains Mono'; font-weight: bold; padding: 6px 12px; border-radius: 6px; font-size: 0.9em; text-transform: uppercase; }
+        .online .c-status-badge { background: rgba(16,185,129,0.15); color: var(--green); }
+        .offline .c-status-badge { background: rgba(239,68,68,0.2); color: var(--red); animation: blink 1s infinite;}
+        .maintenance .c-status-badge { background: rgba(245,158,11,0.15); color: var(--yellow); }
+
+        @keyframes blink { 50% { opacity: 0.3; } }
+
+        .c-metrics { display: flex; justify-content: space-between; margin-top: auto; }
+        .metric { background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; text-align: center; flex: 1; margin: 0 5px; border: 1px solid rgba(255,255,255,0.05);}
+        .metric:first-child { margin-left: 0; } .metric:last-child { margin-right: 0; }
+        
+        .m-val { font-family: 'JetBrains Mono'; font-size: 1.4em; font-weight: bold; }
+        .m-lbl { font-size: 0.7em; color: var(--text-muted); text-transform: uppercase; display: block; margin-top: 5px; }
+
+        /* MODO ALERTA GERAL (PISCA A TELA TODA) */
+        body.alert-mode { animation: bg-alert 2s infinite; }
+        @keyframes bg-alert { 0%, 100% { background: var(--bg-base); } 50% { background: #1a0505; } }
+    </style>
+</head>
+<body>
+
+    <div class="tv-header">
+        <div class="tv-logo"><i class="fa-solid fa-tower-broadcast"></i> NOC Central TV</div>
+        
+        <div class="tv-stats">
+            <div class="stat-box" style="border-bottom: 3px solid var(--blue);">
+                <div class="stat-num" id="tot-sensores" style="color: var(--blue);">0</div>
+                <div class="stat-label">Total Monitorado</div>
+            </div>
+            <div class="stat-box" style="border-bottom: 3px solid var(--green);">
+                <div class="stat-num" id="tot-online" style="color: var(--green);">0</div>
+                <div class="stat-label">Online (Estáveis)</div>
+            </div>
+            <div class="stat-box" style="border-bottom: 3px solid var(--red);">
+                <div class="stat-num" id="tot-offline" style="color: var(--red);">0</div>
+                <div class="stat-label">Offline (Quedas)</div>
+            </div>
+        </div>
+
+        <div class="tv-clock" id="clock">00:00:00</div>
+    </div>
+
+    <div class="tv-container" id="scroll-box">
+        <div class="grid" id="grid-sensores">
+            </div>
+    </div>
+
+    <script>
+        // RELÓGIO DA TV
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('clock').innerText = now.toLocaleTimeString('pt-BR', { hour12: false });
+        }, 1000);
+
+        // MOTOR DE DADOS
+        async function buscarDadosTV() {
+            try {
+                const res = await fetch('/api/v2/mapa_sensores');
+                const data = await res.json();
+                const sensores = data.sensores || [];
+                
+                let html = '';
+                let t_online = 0, t_offline = 0;
+                let tem_queda_critica = false;
+
+                // Ordenação: Offline primeiro, depois Online
+                sensores.sort((a, b) => {
+                    if (a.status === 'offline' && b.status !== 'offline') return -1;
+                    if (a.status !== 'offline' && b.status === 'offline') return 1;
+                    return 0;
+                });
+
+                sensores.forEach(s => {
+                    let classe = 'online', text = 'ONLINE', bg_cpu = 'var(--text-main)';
+                    
+                    if (s.em_manutencao === 1) {
+                        classe = 'maintenance'; text = 'MANUTENÇÃO'; t_online++;
+                    } else if (s.status === 'offline') {
+                        classe = 'offline'; text = 'OFFLINE'; t_offline++;
+                        if (s.alerta_reconhecido === 0) tem_queda_critica = true;
+                    } else {
+                        t_online++;
+                        if(s.cpu_usage > 90) bg_cpu = 'var(--red)';
+                        else if(s.cpu_usage > 70) bg_cpu = 'var(--yellow)';
+                    }
+
+                    let wan_ping = '--';
+                    if (s.ping_global) {
+                        try {
+                            const pg = JSON.parse(s.ping_global);
+                            wan_ping = (pg.Google > 0 ? pg.Google : (pg.Cloudflare > 0 ? pg.Cloudflare : '--'));
+                        } catch(e) {}
+                    }
+
+                    html += `
+                        <div class="card ${classe}">
+                            <div class="c-header">
+                                <div style="width: 100%;">
+                                    <div class="c-title">${s.nome_local}</div>
+                                    <span class="c-cliente">${s.cliente_nome || 'Cliente Local'}</span>
+                                </div>
+                                <div class="c-status-badge">${text}</div>
+                            </div>
+                            <div class="c-metrics">
+                                <div class="metric"><span class="m-val" style="color: ${bg_cpu};">${s.cpu_usage || 0}%</span><span class="m-lbl">CPU</span></div>
+                                <div class="metric"><span class="m-val">${s.ram_usage || 0}%</span><span class="m-lbl">RAM</span></div>
+                                <div class="metric"><span class="m-val" style="color: ${wan_ping === '--' && classe !== 'offline' ? 'var(--red)' : 'var(--text-main)'}">${wan_ping !== '--' ? wan_ping+'ms' : '--'}</span><span class="m-lbl">PING WAN</span></div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                document.getElementById('grid-sensores').innerHTML = html || '<div style="text-align:center; grid-column: 1/-1; padding: 50px; color: var(--text-muted); font-size: 2em;">Nenhum sensor monitorado no momento.</div>';
+                
+                // ATUALIZA PLACAR
+                document.getElementById('tot-sensores').innerText = sensores.length;
+                document.getElementById('tot-online').innerText = t_online;
+                document.getElementById('tot-offline').innerText = t_offline;
+
+                // ALERTA VISUAL GLOBAL
+                if (tem_queda_critica) document.body.classList.add('alert-mode');
+                else document.body.classList.remove('alert-mode');
+
+            } catch (e) {
+                console.error("Erro na atualização da TV:", e);
+            }
+        }
+
+        // AUTO-SCROLL (A TV ROLA PARA BAIXO E PARA CIMA SOZINHA SE TIVER MUITOS SENSORES)
+        const scrollBox = document.getElementById('scroll-box');
+        let scrollDirection = 1;
+        setInterval(() => {
+            if (scrollBox.scrollHeight > scrollBox.clientHeight) {
+                scrollBox.scrollTop += scrollDirection;
+                if (scrollBox.scrollTop + scrollBox.clientHeight >= scrollBox.scrollHeight) {
+                    scrollDirection = -1; // Chegou no fim, sobe
+                } else if (scrollBox.scrollTop <= 0) {
+                    scrollDirection = 1;  // Chegou no topo, desce
+                }
+            }
+        }, 50); // Velocidade do scroll suave
+
+        // TAXA DE ATUALIZAÇÃO (Atualiza a TV a cada 5 segundos)
+        setInterval(buscarDadosTV, 5000);
+        buscarDadosTV();
+    </script>
+</body>
+</html>

@@ -171,6 +171,12 @@ def index():
     if 'usuario' not in session: return redirect(url_for('login'))
     return render_template('index.html', nome=session['usuario'])
 
+# 📺 ROTA NOVA: O MODO NOC TV
+@app.route('/tv')
+def noc_tv():
+    if 'usuario' not in session: return redirect(url_for('login'))
+    return render_template('tv.html')
+
 @app.route('/sensor/<mac_id>')
 def painel_sensor(mac_id):
     if 'user_id' not in session: return redirect(url_for('login'))
