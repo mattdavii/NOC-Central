@@ -331,6 +331,22 @@ def enviar_comando_remoto(mac_id):
     conn.commit(); conn.close()
     return jsonify({"status": "Comando enfileirado."})
 
+@app.route('/api/v2/enviar_wol/<mac_sensor>', methods=['POST'])
+def enviar_wol_remoto(mac_sensor):
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
+    mac_alvo = request.json.get('mac_alvo')
+    nome_alvo = request.json.get('nome_alvo', 'Dispositivo')
+    
+    # Adiciona na fila do Agente o comando "wol:MAC_DO_PC"
+    PENDING_COMMANDS[mac_sensor] = f"wol:{mac_alvo}"
+    
+    conn = database.get_db()
+    conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Comando Remoto', 'Aviso', ?)", 
+                 (mac_sensor, f"Operador disparou Magic Packet (Wake-on-LAN) para ligar o dispositivo: {nome_alvo} ({mac_alvo})"))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": f"Sinal de energia enviado para {nome_alvo}!"})
+
 # ==========================================
 # 📊 OUTRAS APIs DE TELA
 # ==========================================

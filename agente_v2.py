@@ -3,6 +3,7 @@ import os
 import threading
 import subprocess
 import re 
+import struct
 
 # 🛡️ TRUQUE ANTI-CRASH DO PYINSTALLER (--noconsole)
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")
@@ -265,6 +266,43 @@ def executar_scan_loop(mac, url_central, gateway_ip):
         urllib.request.urlopen(req2, timeout=5)
     except: pass
 
+def acordar_pc(macaddress):
+    """Envia o Magic Packet para acordar PCs na rede (Wake-on-LAN)"""
+    try:
+        if len(macaddress) == 17: sep = macaddress[2]
+        else: sep = ''
+        macaddress = macaddress.replace(sep, '')
+        data = b'FFFFFFFFFFFF' + (macaddress * 16).encode()
+        send_data = b''
+        for i in range(0, len(data), 2):
+            send_data = send_data + struct.pack('B', int(data[i: i + 2], 16))
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.sendto(send_data, ('255.255.255.255', 9))
+        sock.close()
+    except: pass
+
+def executar_scan_loop(mac, url_central, gateway_ip):
+    """ Busca Ativa por Loops L2 (Tempestade de Broadcast) """
+    try:
+        req = urllib.request.Request(url_central.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "🔍 Scan de Loop Iniciado", "gravidade": "Aviso", "detalhes": "Injetando pacotes de estresse na rede local para medir a taxa de reflexão do Switch..."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+        urllib.request.urlopen(req, timeout=3)
+        if not psutil or gateway_ip == "Desconhecido": return
+        net_start = psutil.net_io_counters(); time.sleep(2); net_mid = psutil.net_io_counters()
+        bytes_base = net_mid.bytes_recv - net_start.bytes_recv
+        for _ in range(30): threading.Thread(target=ping_silencioso, args=(gateway_ip,), daemon=True).start()
+        time.sleep(3)
+        net_end = psutil.net_io_counters()
+        bytes_stress = net_end.bytes_recv - net_mid.bytes_recv
+        if bytes_stress > (bytes_base * 5) and bytes_stress > 2_000_000:
+            msg = f"⚠️ ATENÇÃO: LOOP L2 CONFIRMADO! O Switch refletiu um volume absurdo de tráfego ({round(bytes_stress/1_000_000, 2)} MB). Isole os cabos!"
+            grav = "Crítica"
+        else:
+            msg = f"✅ Rede Limpa. Nenhum Loop de Reflexão ou Tempestade de Broadcast detectada."
+            grav = "OK"
+        urllib.request.urlopen(urllib.request.Request(url_central.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Resultado: Scan de Loop", "gravidade": grav, "detalhes": msg}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+    except: pass
+
 # ==========================================
 # 📡 MOTOR 1: TELEMETRIA E AUTO-CURA WAN
 # ==========================================
@@ -387,7 +425,11 @@ def loop_telemetria():
                     elif comando == "run_speedtest": threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
                     elif comando == "run_traceroute": threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
                     elif comando == "flush_dns": subprocess.call("ipconfig /flushdns" if IS_WIN else "sudo systemd-resolve --flush-caches", shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
-                    elif comando == "scan_loop": threading.Thread(target=executar_scan_loop, args=(mac, URL_CENTRAL, gateway_ip), daemon=True).start()
+                    elif comando == "scan_loop": 
+                        threading.Thread(target=executar_scan_loop, args=(mac, URL_CENTRAL, gateway_ip), daemon=True).start()
+                    elif comando and comando.startswith("wol:"): 
+                        mac_pc_desligado = comando.split(":")[1]
+                        acordar_pc(mac_pc_desligado)
                     elif comando == "top_processos":
                     
                         if psutil: 
