@@ -733,5 +733,34 @@ def debug_db():
     try: sensores = conn.execute("SELECT * FROM sensores").fetchall(); return jsonify({"SISTEMA_VIVO": True, "sensores_no_banco": [dict(s) for s in sensores]})
     except Exception as e: return jsonify({"SISTEMA_VIVO": False, "erro_fatal": str(e)})
 
+# ==========================================
+# 📄 ROTA DA FASE 4: RELATÓRIO EXECUTIVO PDF
+# ==========================================
+@app.route('/relatorio/<mac_id>')
+def gerar_relatorio(mac_id):
+    if 'user_id' not in session: return redirect(url_for('login'))
+    
+    conn = database.get_db()
+    
+    # Busca dados do cliente e do sensor
+    sensor = conn.execute("SELECT s.*, c.nome as cliente_nome, c.logo_url FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id WHERE s.mac_id = ?", (mac_id,)).fetchone()
+    
+    if not sensor:
+        conn.close()
+        return "Sensor não encontrado", 404
+        
+    # Pega as últimas 30 ocorrências relevantes (Filtra pings normais)
+    try: logs = conn.execute("SELECT tipo_evento, gravidade, detalhes, to_char(data_hora - INTERVAL '3 hours', 'DD/MM/YYYY HH24:MI') as data_hora FROM logs_ia WHERE sensor_mac = ? ORDER BY id DESC LIMIT 30", (mac_id,)).fetchall()
+    except: logs = []
+
+    # Pega topologia atual
+    try: dispositivos = conn.execute("SELECT ip, mac, fabricante, nome_custom FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
+    except: dispositivos = []
+    
+    conn.close()
+    
+    from datetime import datetime
+    return render_template('relatorio.html', sensor=dict(sensor), logs=[dict(l) for l in logs], dispositivos=[dict(d) for d in dispositivos], data_emissao=datetime.now().strftime('%d/%m/%Y às %H:%M'))
+
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=10000, debug=True)

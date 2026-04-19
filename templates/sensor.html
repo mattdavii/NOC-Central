@@ -210,9 +210,14 @@
                     <button class="btn-acao" onclick="solicitarSpeedtest()" style="background: rgba(166,227,161,0.1); color: var(--green); border: 1px solid var(--green);">
                         <i class="fa-solid fa-gauge-high"></i> Forçar Speedtest
                     </button>
-                    <button class="btn-acao" onclick="dispararComandoRemoto('reboot')" style="background: rgba(243,139,168,0.1); color: var(--red); border: 1px solid var(--red);">
-                        <i class="fa-solid fa-power-off"></i> Reiniciar Host
+                    
+                    <button class="btn-acao" onclick="dispararComandoRemoto('scan_loop')" style="background: rgba(243,139,168,0.15); color: var(--red); border: 1px dashed var(--red);">
+                        <i class="fa-solid fa-hurricane"></i> Scan de Loop L2
                     </button>
+
+                    <a href="/relatorio/{{ sensor.mac_id }}" target="_blank" class="btn-acao" style="background: rgba(203,166,247,0.15); color: var(--purple); border: 1px solid var(--purple); text-decoration: none;">
+                        <i class="fa-solid fa-file-pdf"></i> Gerar Relatório PDF
+                    </a>
                 </div>
             </div>
         </div>

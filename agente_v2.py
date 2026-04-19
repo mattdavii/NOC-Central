@@ -230,6 +230,41 @@ def executar_traceroute(mac, url_central):
         urllib.request.urlopen(req, timeout=10)
     except: pass
 
+def executar_scan_loop(mac, url_central, gateway_ip):
+    try:
+        req = urllib.request.Request(url_central.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "🔍 Scan de Loop Iniciado", "gravidade": "Aviso", "detalhes": "Injetando pacotes de estresse na rede local para medir a taxa de reflexão do Switch..."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+        urllib.request.urlopen(req, timeout=3)
+        
+        if not psutil or gateway_ip == "Desconhecido": return
+
+        # 1. Mede o "Silêncio" (Tráfego Base)
+        net_start = psutil.net_io_counters()
+        time.sleep(2)
+        net_mid = psutil.net_io_counters()
+        bytes_base = net_mid.bytes_recv - net_start.bytes_recv
+        
+        # 2. Injeta o Estresse (Stress Test Local)
+        for _ in range(30):
+            threading.Thread(target=ping_silencioso, args=(gateway_ip,), daemon=True).start()
+        
+        time.sleep(3) # Aguarda o switch surtar (se houver loop)
+        
+        # 3. Mede a Reflexão
+        net_end = psutil.net_io_counters()
+        bytes_stress = net_end.bytes_recv - net_mid.bytes_recv
+        
+        # 4. Avaliação (Se o tráfego estresse for 5x maior que a base E muito alto)
+        if bytes_stress > (bytes_base * 5) and bytes_stress > 2_000_000: # 2MB de reflexão de pacotes minúsculos = Tempestade
+            msg = f"⚠️ ATENÇÃO: LOOP L2 CONFIRMADO! O Switch refletiu um volume absurdo de lixo durante o teste ({round(bytes_stress/1_000_000, 2)} MB de puro broadcast recebidos em 3s). Isole os cabos do Switch imediatamente!"
+            grav = "Crítica"
+        else:
+            msg = f"✅ Rede Limpa. Nenhum Loop de Reflexão ou Tempestade de Broadcast foi detectada durante o teste de estresse de carga."
+            grav = "OK"
+            
+        req2 = urllib.request.Request(url_central.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Resultado: Scan de Loop L2", "gravidade": grav, "detalhes": msg}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+        urllib.request.urlopen(req2, timeout=5)
+    except: pass
+
 # ==========================================
 # 📡 MOTOR 1: TELEMETRIA E AUTO-CURA WAN
 # ==========================================
@@ -352,7 +387,9 @@ def loop_telemetria():
                     elif comando == "run_speedtest": threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
                     elif comando == "run_traceroute": threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
                     elif comando == "flush_dns": subprocess.call("ipconfig /flushdns" if IS_WIN else "sudo systemd-resolve --flush-caches", shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
+                    elif comando == "scan_loop": threading.Thread(target=executar_scan_loop, args=(mac, URL_CENTRAL, gateway_ip), daemon=True).start()
                     elif comando == "top_processos":
+                    
                         if psutil: 
                             try:
                                 for p in psutil.process_iter(['cpu_percent']): pass
