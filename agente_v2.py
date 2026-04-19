@@ -190,7 +190,7 @@ def executar_traceroute(mac, url_central):
     except: pass
 
 # ==========================================
-# 📡 MOTOR 1: ENVIO E COLETA (BACKGROUND)
+# 📡 MOTOR 1: ENVIO, COLETA E AUTO-CURA
 # ==========================================
 def loop_telemetria():
     global dados_sensores
@@ -200,6 +200,10 @@ def loop_telemetria():
         os_name = platform.system()
         ultima_medicao_speedtest = 0 
         ultima_varredura = 0 
+        
+        # Variáveis da Inteligência de Auto-Cura
+        contador_falhas_wan = 0
+        ultimo_reparo_wan = 0
         
         if psutil:
             last_net = psutil.net_io_counters()
@@ -243,6 +247,36 @@ def loop_telemetria():
                 futures = {executor.submit(ping, ip): name for name, ip in hosts_ping.items()}
                 for future in concurrent.futures.as_completed(futures): pings[futures[future]] = future.result()
 
+            # ⚙️ MÓDULO DE AUTO-CURA (SELF-HEALING WAN)
+            if pings["Google"] == 0 and pings["Cloudflare"] == 0:
+                contador_falhas_wan += 1
+            else:
+                contador_falhas_wan = 0 # Zerou a contagem, tá saudável
+                
+            # Se falhar 3x seguidas e não tiver reparado nos últimos 5 min
+            if contador_falhas_wan == 3 and (agora - ultimo_reparo_wan) > 300:
+                try:
+                    # Executa a limpeza da placa de rede direto no SO
+                    if IS_WIN:
+                        subprocess.call("ipconfig /flushdns", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
+                        subprocess.call("ipconfig /renew", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
+                    else:
+                        subprocess.call("sudo systemd-resolve --flush-caches", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    
+                    log_local_event("Auto-Cura", "Queda de DNS/WAN detectada. O Agente executou Flush DNS e Renew IP.", "Aviso")
+                    
+                    # Tenta mandar um POST desesperado para a nuvem avisando o que fez
+                    try:
+                        url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
+                        alerta = [{"tipo": "⚙️ Sistema de Auto-Cura", "gravidade": "Aviso", "detalhes": "Agente detectou isolamento da Internet. Executado script de Flush DNS e Renovação de IP localmente."}]
+                        req = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": alerta}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+                        urllib.request.urlopen(req, timeout=3)
+                    except: pass
+                except: pass
+                
+                ultimo_reparo_wan = agora # Reinicia o timer de resfriamento
+
+
             meu_ip, gateway_ip = get_network_info()
             ping_gw = ping(gateway_ip) if gateway_ip != "Desconhecido" else 0
             
@@ -250,7 +284,6 @@ def loop_telemetria():
             dispositivos = get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=forcar_varredura)
             if forcar_varredura: ultima_varredura = agora
 
-            # ⚡ ATUALIZAÇÃO DA VARIÁVEL COM OS DADOS NOVOS
             dados_sensores = {
                 "cpu": cpu, "ram": ram, "disco": disco, "net_down": net_down, "net_up": net_up, "portas": str_portas,
                 "meu_ip": meu_ip, "gateway_ip": gateway_ip, 
@@ -389,7 +422,7 @@ def loop_watchdog_local():
 # ==========================================
 # 🖥️ MOTOR 2: PAINEL WEB LOCAL (FOREGROUND)
 # ==========================================
-def check_auth(username, password): return username == 'admin' and password == 'admin'
+def check_auth(username, password): return username == 'Admin' and password == 'Admin'
 
 @app.route('/api/scada', methods=['GET'])
 def api_scada():
@@ -473,7 +506,6 @@ def index():
     if not auth or not check_auth(auth.username, auth.password):
         return Response('Acesso Negado.', 401, {'WWW-Authenticate': 'Basic realm="NOC Sensor Local"'})
 
-    # ⚡ O PAINEL CIBERPUNK AGORA COM DISCO, PORTAS E VELOCÍMETRO LIVE
     HTML_CYBERPUNK = """
     <!DOCTYPE html>
     <html lang="pt-BR">
@@ -651,7 +683,6 @@ def index():
                     document.getElementById('cpu-text').innerText = data.cpu + '%'; document.getElementById('cpu-fill').style.width = data.cpu + '%';
                     document.getElementById('ram-text').innerText = data.ram + '%'; document.getElementById('ram-fill').style.width = data.ram + '%';
                     
-                    // ⚡ NOVOS MEDIDORES LOCAIS
                     if(document.getElementById('disk-text')) { document.getElementById('disk-text').innerText = data.disco + '%'; document.getElementById('disk-fill').style.width = data.disco + '%'; }
                     if(document.getElementById('portas-text')) document.getElementById('portas-text').innerText = data.portas || 'Nenhuma';
                     if(document.getElementById('live-down')) document.getElementById('live-down').innerText = data.net_down || '0.0';
