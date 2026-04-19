@@ -760,33 +760,66 @@ def debug_db():
     except Exception as e: return jsonify({"SISTEMA_VIVO": False, "erro_fatal": str(e)})
 
 # ==========================================
-# 📄 ROTA DA FASE 4: RELATÓRIO EXECUTIVO PDF
+# 📄 ROTA DA FASE 4: RELATÓRIO EXECUTIVO PDF (COM FILTROS)
 # ==========================================
 @app.route('/relatorio/<mac_id>')
 def gerar_relatorio(mac_id):
     if 'user_id' not in session: return redirect(url_for('login'))
     
+    tipo_filtro = request.args.get('tipo', 'ultimos')
+    data_inicio = request.args.get('inicio', '')
+    data_fim = request.args.get('fim', '')
+
     conn = database.get_db()
-    
-    # Busca dados do cliente e do sensor
     sensor = conn.execute("SELECT s.*, c.nome as cliente_nome, c.logo_url FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id WHERE s.mac_id = ?", (mac_id,)).fetchone()
     
     if not sensor:
-        conn.close()
-        return "Sensor não encontrado", 404
-        
-    # Pega as últimas 30 ocorrências relevantes (Filtra pings normais)
-    try: logs = conn.execute("SELECT tipo_evento, gravidade, detalhes, to_char(data_hora - INTERVAL '3 hours', 'DD/MM/YYYY HH24:MI') as data_hora FROM logs_ia WHERE sensor_mac = ? ORDER BY id DESC LIMIT 30", (mac_id,)).fetchall()
-    except: logs = []
+        conn.close(); return "Sensor não encontrado", 404
 
-    # Pega topologia atual
-    try: dispositivos = conn.execute("SELECT ip, mac, fabricante, nome_custom FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
+    # Monta a Query Baseada no Filtro Escolhido
+    periodo_str = "Últimos 30 eventos detectados"
+    
+    try:
+        import os
+        is_postgres = bool(os.environ.get('DATABASE_URL'))
+        
+        # Sintaxe adaptável para SQLite ou Postgres
+        if is_postgres: query_logs = "SELECT tipo_evento, gravidade, detalhes, to_char(data_hora - INTERVAL '3 hours', 'DD/MM/YYYY HH24:MI') as data_hora FROM logs_ia WHERE sensor_mac = %s"
+        else: query_logs = "SELECT tipo_evento, gravidade, detalhes, strftime('%d/%m/%Y %H:%M', data_hora, '-3 hours') as data_hora FROM logs_ia WHERE sensor_mac = ?"
+        
+        params = [mac_id]
+
+        if tipo_filtro == 'dia' and data_inicio:
+            if is_postgres: query_logs += " AND DATE(data_hora - INTERVAL '3 hours') = %s"
+            else: query_logs += " AND date(data_hora, '-3 hours') = ?"
+            params.append(data_inicio)
+            data_formatada = datetime.strptime(data_inicio, '%Y-%m-%d').strftime('%d/%m/%Y')
+            periodo_str = f"Eventos do dia {data_formatada}"
+            
+        elif tipo_filtro == 'periodo' and data_inicio and data_fim:
+            if is_postgres: query_logs += " AND DATE(data_hora - INTERVAL '3 hours') BETWEEN %s AND %s"
+            else: query_logs += " AND date(data_hora, '-3 hours') BETWEEN ? AND ?"
+            params.extend([data_inicio, data_fim])
+            d1 = datetime.strptime(data_inicio, '%Y-%m-%d').strftime('%d/%m/%Y')
+            d2 = datetime.strptime(data_fim, '%Y-%m-%d').strftime('%d/%m/%Y')
+            periodo_str = f"Período: {d1} a {d2}"
+
+        query_logs += " ORDER BY id DESC"
+        if tipo_filtro == 'ultimos': query_logs += " LIMIT 30"
+        else: query_logs += " LIMIT 1000" # Limite de segurança para PDFs mensais
+        
+        logs = conn.execute(query_logs, params).fetchall()
+    except Exception as e:
+        print("Erro relatorio:", e)
+        logs = []
+
+    try: dispositivos = conn.execute("SELECT ip, mac, fabricante, nome_custom, status FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
     except: dispositivos = []
     
     conn.close()
     
     from datetime import datetime
-    return render_template('relatorio.html', sensor=dict(sensor), logs=[dict(l) for l in logs], dispositivos=[dict(d) for d in dispositivos], data_emissao=datetime.now().strftime('%d/%m/%Y às %H:%M'))
+    return render_template('relatorio.html', sensor=dict(sensor), logs=[dict(l) for l in logs], dispositivos=[dict(d) for d in dispositivos], data_emissao=datetime.now().strftime('%d/%m/%Y às %H:%M'), periodo_str=periodo_str)
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=10000, debug=True)

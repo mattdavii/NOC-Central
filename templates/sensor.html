@@ -55,7 +55,7 @@
         .speed-val { font-family: 'JetBrains Mono', monospace; font-size: 2.5em; font-weight: bold; margin-top: 8px; }
 
         .botoes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-top: 15px; }
-        .btn-acao { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 15px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 0.9em; text-transform: uppercase; }
+        .btn-acao { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 15px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 0.9em; text-transform: uppercase; border: none; outline: none; }
         .btn-acao:hover { box-shadow: 0 0 15px inset; filter: brightness(1.2); }
 
         .global-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-top: 10px;}
@@ -95,7 +95,7 @@
         .sla-text { font-size: 0.9em; color: var(--text-muted); }
         .sla-val { font-family: 'JetBrains Mono'; font-size: 2em; color: var(--green); font-weight: bold; text-shadow: 0 0 15px rgba(166,227,161,0.5);}
 
-        /* ⚡ MODAL (POP-UP) DA TOPOLOGIA */
+        /* ⚡ MODAL GERAL (POP-UP) */
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.85); backdrop-filter: blur(8px); }
         .modal-content { background-color: var(--bg-card); margin: 2% auto; padding: 20px; border: 1px solid var(--border); width: 95%; height: 90vh; border-radius: 12px; display: flex; flex-direction: column; box-shadow: 0 0 30px rgba(0,0,0,0.8);}
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;}
@@ -104,13 +104,11 @@
         #network-modal-canvas { flex-grow: 1; width: 100%; min-height: 70vh; background: radial-gradient(circle, rgba(21,21,33,1) 0%, rgba(11,11,19,1) 100%); border-radius: 8px; border: 1px solid var(--bg-input); outline: none; }
         
         /* ⚡ MENU FLUTUANTE DE AÇÕES DO NÓ */
-        /* ⚡ MENU FLUTUANTE DE AÇÕES DO NÓ (CORRIGIDO PARA TELA CHEIA E NORMAL) */
         #node-menu { display: none; position: fixed; background: var(--bg-card); border: 1px solid var(--blue); padding: 15px; border-radius: 8px; box-shadow: 0 5px 30px rgba(0,0,0,0.9); z-index: 9999; min-width: 200px;}
         #node-menu h4 { margin: 0 0 10px 0; color: var(--text-main); font-size: 1em; border-bottom: 1px dashed var(--border); padding-bottom: 5px; }
         .node-btn { display: block; width: 100%; text-align: left; background: var(--bg-input); border: none; color: var(--text-main); padding: 8px 12px; margin-bottom: 5px; border-radius: 4px; cursor: pointer; transition: 0.2s; font-size: 0.85em;}
         .node-btn:hover { background: var(--blue); color: var(--bg-base); font-weight: bold; }
         .node-btn.btn-red:hover { background: var(--red); }
-
     </style>
 </head>
 <body>
@@ -127,6 +125,7 @@
     </nav>
 
     <div class="container">
+        
         <div class="painel-grid">
             <div class="card card-hw">
                 <h3>
@@ -214,7 +213,6 @@
                     <div id="ping-local" class="highlight" style="color: var(--green); text-shadow: 0 0 15px rgba(166,227,161,0.4); margin-top: 5px;">0 ms</div>
                 </div>
             </div>
-            
         </div> 
         
         <div class="painel-grid" style="grid-template-columns: 1fr;">
@@ -239,9 +237,9 @@
                         <i class="fa-solid fa-hurricane"></i> Scan de Loop L2
                     </button>
 
-                    <a href="/relatorio/{{ sensor.mac_id }}" target="_blank" class="btn-acao" style="background: rgba(203,166,247,0.15); color: var(--purple); border: 1px solid var(--purple); text-decoration: none;">
-                        <i class="fa-solid fa-file-pdf"></i> Gerar Relatório PDF
-                    </a>
+                    <button class="btn-acao" onclick="abrirModalRelatorio()" style="background: rgba(203,166,247,0.15); color: var(--purple); border: 1px solid var(--purple);">
+                        <i class="fa-solid fa-file-pdf"></i> Extrair Relatório
+                    </button>
                 </div>
             </div>
         </div>
@@ -277,16 +275,6 @@
                     <button class="node-btn btn-red" id="btn-menu-wol"><i class="fa-solid fa-bolt"></i> Enviar Wake-on-LAN</button>
                     <button class="node-btn" onclick="document.getElementById('node-menu').style.display='none'" style="text-align: center; color: var(--text-muted); background: transparent; margin-top: 10px;">Fechar</button>
                 </div>
-            </div>
-        </div>
-
-        <div id="modalTopologia" class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2 style="margin: 0; color: var(--blue);"><i class="fa-solid fa-project-diagram"></i> Centro de Comando de Topologia</h2>
-                    <span class="close-modal" onclick="fecharModalTopologia()">&times;</span>
-                </div>
-                <div id="network-modal-canvas"></div>
             </div>
         </div>
 
@@ -372,6 +360,50 @@
             </div>
         </div>
 
+    </div>
+
+    <div id="modalTopologia" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 style="margin: 0; color: var(--blue);"><i class="fa-solid fa-project-diagram"></i> Centro de Comando de Topologia</h2>
+                <span class="close-modal" onclick="fecharModalTopologia()">&times;</span>
+            </div>
+            <div id="network-modal-canvas"></div>
+        </div>
+    </div>
+
+    <div id="modalRelatorio" class="modal">
+        <div class="modal-content" style="width: 450px; height: auto; padding: 30px;">
+            <div class="modal-header">
+                <h2 style="margin: 0; color: var(--purple);"><i class="fa-solid fa-file-pdf"></i> Extração de Relatório</h2>
+                <span class="close-modal" onclick="fecharModalRelatorio()">&times;</span>
+            </div>
+            <div style="margin-top: 15px;">
+                <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                    <input type="radio" name="tipo_relatorio" value="ultimos" checked onchange="toggleFiltrosRelatorio()"> Últimos 30 Eventos (Padrão)
+                </label>
+                <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                    <input type="radio" name="tipo_relatorio" value="dia" onchange="toggleFiltrosRelatorio()"> Um Dia Específico
+                </label>
+                <label style="display: block; margin-bottom: 20px; cursor: pointer;">
+                    <input type="radio" name="tipo_relatorio" value="periodo" onchange="toggleFiltrosRelatorio()"> Período Customizado
+                </label>
+
+                <div id="box-data-inicio" style="display: none; margin-bottom: 15px;">
+                    <span style="font-size: 0.85em; color: var(--text-muted); display: block; margin-bottom: 5px;" id="lbl-inicio">Data:</span>
+                    <input type="date" id="rel_data_inicio">
+                </div>
+
+                <div id="box-data-fim" style="display: none; margin-bottom: 20px;">
+                    <span style="font-size: 0.85em; color: var(--text-muted); display: block; margin-bottom: 5px;">Até a Data:</span>
+                    <input type="date" id="rel_data_fim">
+                </div>
+
+                <button onclick="gerarPDF()" style="width: 100%; padding: 15px; background: var(--purple); color: var(--bg-base); border: none; border-radius: 8px; font-weight: bold; font-size: 1.1em; cursor: pointer; transition: 0.2s;">
+                    <i class="fa-solid fa-print"></i> Visualizar e Imprimir
+                </button>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.1/socket.io.min.js"></script>
@@ -472,12 +504,13 @@
         async function dispararComandoRemoto(comando) {
             let confirmacao = true;
             if (comando === 'reboot') confirmacao = confirm("CUIDADO: Isso vai reiniciar fisicamente o computador do cliente. Tem certeza?");
+            if (comando === 'scan_loop') confirmacao = confirm("O Scan de Loop injetará tráfego local de estresse para detectar reflexões. Deseja prosseguir?");
             
             if (confirmacao) {
                 try {
                     const res = await fetch(`/api/v2/enviar_comando/${mac_id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ comando: comando }) });
                     const data = await res.json();
-                    alert(data.status || "Comando enviado para a fila do Agente!");
+                    alert(data.status || "Comando enfileirado no Agente!");
                 } catch (error) { alert("Erro ao comunicar com a Central."); }
             }
         }
@@ -517,7 +550,7 @@
                         ip = partes.pop();
                         latencia = partes.join(' ');
                     } else {
-                        ip = "Tempo Esgotado / Firewall";
+                        ip = "Tempo Esgotado / Firewall Bloqueando";
                         latencia = "<span style='color: var(--red);'>* * *</span>";
                     }
 
@@ -588,7 +621,6 @@
                 document.getElementById('ram-text').innerText = data.ram_usage + '%';
                 document.getElementById('ram-fill').style.width = data.ram_usage + '%';
                 
-                // ⚡ Temperaturas Injetadas Aqui
                 document.getElementById('temp-text').innerText = (data.temp > 0 ? data.temp : '--') + ' °C';
                 if(document.getElementById('gpu-text')) document.getElementById('gpu-text').innerText = (data.gpu_temp != null ? data.gpu_temp : '--') + ' °C';
                 
@@ -632,15 +664,11 @@
                     });
                 }
                 
-                const sWan = document.getElementById('status-wan'), wIcon = document.getElementById('wan-icon'), wText = document.getElementById('wan-text');
+                const sWan = document.getElementById('status-wan');
                 if(!internetOk) { 
                     if(sWan) { sWan.innerText = "OFFLINE"; sWan.className = "status-pill pill-fail"; } 
-                    if(wIcon) wIcon.className = "fa-solid fa-cloud wan-offline"; 
-                    if(wText) wText.style.color = "var(--red)"; 
                 } else { 
                     if(sWan) { sWan.innerText = "ONLINE"; sWan.className = "status-pill pill-ok"; } 
-                    if(wIcon) wIcon.className = "fa-solid fa-cloud wan-online"; 
-                    if(wText) wText.style.color = "var(--blue)"; 
                 }
 
                 if(!document.getElementById('btn-st').innerHTML.includes('fa-spin')) {
@@ -662,7 +690,7 @@
 
         // ----- 🕸️ MOTOR DO VIS.JS (TOPOLOGIA AVANÇADA) -----
         let network = null;
-        let networkModal = null; // Grafo do Pop-up
+        let networkModal = null;
         let nodes = new vis.DataSet();
         let edges = new vis.DataSet();
 
@@ -675,7 +703,6 @@
                     let clickedNodeId = params.nodes[0];
                     let node = nodes.get(clickedNodeId);
                     
-                    // ⚡ CORREÇÃO DO BUG DO CLIQUE AQUI:
                     if (clickedNodeId !== 'internet' && clickedNodeId !== globalGatewayIP && clickedNodeId !== globalSensorIP) {
                         
                         document.getElementById('menu-node-title').innerText = node.rawName || node.label.split('\n')[0].replace('💻 ', '');
@@ -684,7 +711,6 @@
                         document.getElementById('btn-menu-watchdog').onclick = () => { monitorarIP(node.id, node.rawName); menu.style.display = 'none'; };
                         document.getElementById('btn-menu-wol').onclick = () => { dispararWoL(node.mac, node.rawName); menu.style.display = 'none'; };
                         
-                        // Pega a posição exata do mouse na tela para desenhar o menu ali!
                         menu.style.left = (params.event.srcEvent.clientX + 15) + 'px';
                         menu.style.top = (params.event.srcEvent.clientY) + 'px';
                         menu.style.display = 'block';
@@ -692,7 +718,7 @@
                         menu.style.display = 'none';
                     }
                 } else {
-                    menu.style.display = 'none'; // Clicou no vazio, esconde o menu
+                    menu.style.display = 'none'; 
                 }
             });
         }
@@ -705,19 +731,13 @@
                 physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -100, centralGravity: 0.01, springLength: 100, springConstant: 0.08 }, stabilization: { iterations: 150 } },
                 interaction: { hover: true }
             };
-            
-            // ⚡ Renderiza APENAS no Card Menor ao iniciar a página
             network = new vis.Network(document.getElementById('network-topology'), data, options);
             configurarEventosGrafo(network, false);
         }
 
         function abrirModalTopologia() {
             document.getElementById('modalTopologia').style.display = 'block';
-            
-            // Limpa o canvas fantasma
             document.getElementById('network-modal-canvas').innerHTML = "";
-            
-            // Dá 200ms pro CSS abrir a tela antes de desenhar (Isso mata o bug da tela preta!)
             setTimeout(() => {
                 var data = { nodes: nodes, edges: edges };
                 var options = {
@@ -728,22 +748,24 @@
                 };
                 networkModal = new vis.Network(document.getElementById('network-modal-canvas'), data, options);
                 configurarEventosGrafo(networkModal, true);
-                networkModal.fit(); // Dá o zoom perfeito
+                networkModal.fit();
             }, 200);
+        }
+
+        function fecharModalTopologia() {
+            document.getElementById('modalTopologia').style.display = 'none';
         }
 
         async function carregarRadar(btn) {
             if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
             try {
-                // ⚡ Busca a telemetria do gateway primeiro!
                 const sensorRes = await fetch('/api/v2/sensor_data/' + mac_id);
                 const sensorInfo = await sensorRes.json();
                 globalGatewayIP = sensorInfo.ip_gateway;
                 globalSensorIP = sensorInfo.ip_sensor;
                 
-                // Define a cor do Gateway baseado no ping real do Agente
                 let gatewayOnline = (sensorInfo.ping_gateway > 0 && sensorInfo.ping_gateway < 1000);
-                let gatewayCor = gatewayOnline ? '#a6e3a1' : '#f38ba8';
+                let gatewayCor = gatewayOnline ? '#a6e3a1' : '#f38ba8'; 
                 let gatewayStatus = gatewayOnline ? '[ON]' : '[OFF]';
 
                 const res = await fetch('/api/v2/dispositivos/' + mac_id);
@@ -753,7 +775,6 @@
                 
                 nodes.add({ id: 'internet', label: '☁️ INTERNET', shape: 'box', color: { background: '#89b4fa', border: '#89b4fa' }, font: {color: '#0b0b13', face: 'Inter', size: 16, bold: true} });
 
-                // ⚡ CRIA O ROTEADOR COM A COR CORRETA AQUI:
                 if(globalGatewayIP) {
                     nodes.add({ id: globalGatewayIP, label: `🖧 Gateway ${gatewayStatus}\n${globalGatewayIP}`, shape: 'box', color: { background: gatewayCor, border: gatewayCor }, font: {color: '#0b0b13', face: 'JetBrains Mono', bold: true} });
                     edges.add({ from: 'internet', to: globalGatewayIP, color: { color: gatewayCor }, width: 3});
@@ -765,69 +786,6 @@
                 }
 
                 dispositivos.forEach(d => {
-                    if(d.ip === globalGatewayIP || d.ip === globalSensorIP) return;
-                    let nome = d.nome_custom || d.fabricante;
-                    let cor_fundo = d.status === 'online' ? '#a6e3a1' : '#f38ba8';
-                    let status_txt = d.status === 'online' ? 'ON' : 'OFF';
-
-                    nodes.add({ 
-                        id: d.ip, 
-                        rawName: nome,
-                        label: `💻 ${nome} [${status_txt}]\n${d.ip}`, 
-                        title: `MAC: ${d.mac}\nClique para ver Opções`, 
-                        mac: d.mac, 
-                        shape: 'box',
-                        color: { background: cor_fundo, border: cor_fundo },
-                        font: {color: '#0b0b13', face: 'JetBrains Mono'}
-                    });
-                    edges.add({ from: globalGatewayIP, to: d.ip, color: {color: '#36364a'} });
-                });
-
-            } catch(e) { console.error("Erro no Radar:", e); }
-            if(btn) setTimeout(() => btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Scan Rápido', 1000);
-        }
-
-        function fecharModalTopologia() {
-            document.getElementById('modalTopologia').style.display = 'none';
-        }
-
-        async function carregarRadar(btn) {
-            if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-            try {
-                // 1. Busca a telemetria mestre primeiro
-                const sensorRes = await fetch('/api/v2/sensor_data/' + mac_id);
-                const sensorInfo = await sensorRes.json();
-                globalGatewayIP = sensorInfo.ip_gateway;
-                globalSensorIP = sensorInfo.ip_sensor;
-                
-                // Define a cor do Roteador baseada EXCLUSIVAMENTE no ping principal do Agente
-                let gatewayOnline = (sensorInfo.ping_gateway > 0 && sensorInfo.ping_gateway < 1000);
-                let gatewayCor = gatewayOnline ? '#a6e3a1' : '#f38ba8'; // Verde ou Vermelho
-                let gatewayStatus = gatewayOnline ? '[ON]' : '[OFF]';
-
-                const res = await fetch('/api/v2/dispositivos/' + mac_id);
-                const dispositivos = await res.json();
-                
-                nodes.clear(); edges.clear();
-                
-                // INTERNET (Sempre Azul)
-                nodes.add({ id: 'internet', label: '☁️ INTERNET', shape: 'box', color: { background: '#89b4fa', border: '#89b4fa' }, font: {color: '#0b0b13', face: 'Inter', size: 16, bold: true} });
-
-                // ROTEADOR (Protegido contra sobrescrita)
-                if(globalGatewayIP) {
-                    nodes.add({ id: globalGatewayIP, label: `🖧 Roteador ${gatewayStatus}\n${globalGatewayIP}`, shape: 'box', color: { background: gatewayCor, border: gatewayCor }, font: {color: '#0b0b13', face: 'JetBrains Mono', bold: true} });
-                    edges.add({ from: 'internet', to: globalGatewayIP, color: { color: gatewayCor }, width: 3});
-                }
-
-                // SENSOR NOC
-                if(globalSensorIP && globalGatewayIP) {
-                    nodes.add({ id: globalSensorIP, label: '🛡️ NOC Sensor\n'+globalSensorIP, shape: 'box', color: { background: '#a6e3a1', border: '#a6e3a1' }, font: {color: '#0b0b13', face: 'JetBrains Mono', bold: true} });
-                    edges.add({ from: globalGatewayIP, to: globalSensorIP, color: { color: '#a6e3a1' }, width: 2});
-                }
-
-                // DISPOSITIVOS
-                dispositivos.forEach(d => {
-                    // ⚡ O SEGREDO: Pula o Roteador e o Sensor para não estragar a cor deles!
                     if(d.ip === globalGatewayIP || d.ip === globalSensorIP) return;
                     
                     let nome = d.nome_custom || d.fabricante;
@@ -851,10 +809,43 @@
             if(btn) setTimeout(() => btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Scan Rápido', 1000);
         }
 
-        // ⚡ CORREÇÃO DA ORDEM DE CARREGAMENTO (AQUI ESTAVA A CORRIDA)
+        // ----- FUNÇÕES DO RELATÓRIO PDF -----
+        function abrirModalRelatorio() { document.getElementById('modalRelatorio').style.display = 'block'; }
+        function fecharModalRelatorio() { document.getElementById('modalRelatorio').style.display = 'none'; }
+        
+        function toggleFiltrosRelatorio() {
+            let tipo = document.querySelector('input[name="tipo_relatorio"]:checked').value;
+            let boxInicio = document.getElementById('box-data-inicio');
+            let boxFim = document.getElementById('box-data-fim');
+            let lblInicio = document.getElementById('lbl-inicio');
+            
+            if (tipo === 'ultimos') { boxInicio.style.display = 'none'; boxFim.style.display = 'none'; }
+            else if (tipo === 'dia') { boxInicio.style.display = 'block'; boxFim.style.display = 'none'; lblInicio.innerText = 'Escolha o Dia:'; }
+            else if (tipo === 'periodo') { boxInicio.style.display = 'block'; boxFim.style.display = 'block'; lblInicio.innerText = 'Data de Início:'; }
+        }
+
+        function gerarPDF() {
+            let tipo = document.querySelector('input[name="tipo_relatorio"]:checked').value;
+            let url = `/relatorio/${mac_id}?tipo=${tipo}`;
+            
+            if (tipo === 'dia') {
+                let d1 = document.getElementById('rel_data_inicio').value;
+                if (!d1) return alert('Selecione a data!');
+                url += `&inicio=${d1}`;
+            } else if (tipo === 'periodo') {
+                let d1 = document.getElementById('rel_data_inicio').value;
+                let d2 = document.getElementById('rel_data_fim').value;
+                if (!d1 || !d2) return alert('Selecione as duas datas!');
+                url += `&inicio=${d1}&fim=${d2}`;
+            }
+            
+            fecharModalRelatorio();
+            window.open(url, '_blank'); 
+        }
+
+        // ----- ORDEM DE CARREGAMENTO MESTRE -----
         window.onload = async function() {
             inicializarGrafo();
-            // O comando "await" obriga o sistema a descobrir os IPs PRIMEIRO, antes de desenhar o mapa.
             await buscarDadosAoVivo(); 
             carregarRadar();
             
@@ -862,7 +853,16 @@
             carregarCustomIPs(); 
             carregarEnergiaIPs(); 
             carregarServicosOS();
+            carregarHistorico(); 
+            carregarGraficos();
         };
+
+        async function dispararWoL(mac_alvo, nome_alvo) {
+            try {
+                const res = await fetch(`/api/v2/enviar_wol/${mac_id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mac_alvo: mac_alvo, nome_alvo: nome_alvo }) });
+                const data = await res.json(); alert(data.status || "Pacote Mágico (WoL) enviado!");
+            } catch (error) { alert("Erro ao comunicar com a Central."); }
+        }
 
         async function renomearDisp(mac, atual) { let n = prompt("Nome para este dispositivo:", atual); if(n) { await fetch('/api/v2/renomear_dispositivo', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mac, nome:n, sensor_mac:mac_id}) }); carregarRadar(); } }
         
@@ -902,7 +902,6 @@
             document.getElementById('lista-energia-ips').innerHTML = html || '<div style="text-align:center; padding:15px; color:var(--text-muted);">Nenhum ponto monitorado.</div>';
         }
 
-        // ⚡ NOVA FUNÇÃO: CARREGAR SERVIÇOS DO SO
         async function carregarServicosOS() {
             const res = await fetch('/api/v2/servicos_os/' + mac_id);
             const srvs = await res.json(); let html = '';
@@ -924,7 +923,6 @@
         async function addEnergia() { const ip = document.getElementById('new-ip-energia').value; const desc = document.getElementById('new-desc-energia').value; if(!ip) return; await fetch('/api/v2/ips_energia/'+mac_id, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip, descricao:desc}) }); document.getElementById('new-ip-energia').value=''; document.getElementById('new-desc-energia').value=''; carregarEnergiaIPs(); }
         async function excluirEnergia(id) { if(confirm("Parar de monitorar energia deste ponto?")) { await fetch(`/api/v2/ips_energia/${mac_id}/${id}`, { method: 'DELETE' }); carregarEnergiaIPs(); } }
 
-        // ⚡ NOVAS AÇÕES PARA SERVIÇOS DO SO
         async function addServicoOS() { const nome = document.getElementById('new-srv-nome').value; const desc = document.getElementById('new-srv-desc').value; if(!nome) return; await fetch('/api/v2/servicos_os/'+mac_id, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({nome_servico:nome, descricao:desc}) }); document.getElementById('new-srv-nome').value=''; document.getElementById('new-srv-desc').value=''; carregarServicosOS(); }
         async function excluirServicoOS(id) { if(confirm("Parar de monitorar este serviço?")) { await fetch(`/api/v2/servicos_os/${mac_id}/${id}`, { method: 'DELETE' }); carregarServicosOS(); } }
 
@@ -960,11 +958,10 @@
         setInterval(carregarRadar, 25000); 
         setInterval(carregarCustomIPs, 10000); 
         setInterval(carregarEnergiaIPs, 10000);
-        setInterval(carregarServicosOS, 10000); // ⚡ TIMER DOS SERVIÇOS
+        setInterval(carregarServicosOS, 10000); 
         setInterval(carregarHistorico, 10000);
         setInterval(carregarGraficos, 60000); 
-        
-        buscarDadosAoVivo(); carregarRadar(); carregarCustomIPs(); carregarEnergiaIPs(); carregarServicosOS(); carregarHistorico(); carregarGraficos(); carregarGraficosPing();
+        setInterval(buscarDadosAoVivo, 5000);
 
         const socket = io();
         socket.on('atualizacao_global', function(msg) {
@@ -973,7 +970,6 @@
                 carregarGraficosPing();
             }
         });
-
     </script>
 </body>
 </html>

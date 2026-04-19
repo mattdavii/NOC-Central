@@ -41,22 +41,24 @@
             {% endif %}
         </div>
 
-        <div class="grid">
+        <div class="grid" style="grid-template-columns: 1fr 1fr 1fr; margin-bottom: 30px;">
             <div class="box">
                 <strong>Cliente / Local</strong>
-                <span>{{ sensor.cliente_nome or 'Cliente Local' }} - {{ sensor.nome_local }}</span>
+                <span style="font-size: 16px;">{{ sensor.cliente_nome or 'Cliente Local' }}<br>{{ sensor.nome_local }}</span>
             </div>
             <div class="box">
-                <strong>Período de Emissão</strong>
-                <span>{{ data_emissao }}</span>
-            </div>
-            <div class="box">
-                <strong>Equipamento Monitorado (Agente)</strong>
-                <span style="font-family: monospace; font-size: 16px;">{{ sensor.mac_id }}</span>
-            </div>
-            <div class="box">
-                <strong>Gateway Padrão (Roteador)</strong>
+                <strong>Gateway Padrão</strong>
                 <span style="font-family: monospace; font-size: 16px;">{{ sensor.ip_gateway or 'Desconhecido' }}</span>
+                <br>
+                <strong style="margin-top: 5px;">Equipamento Agente</strong>
+                <span style="font-family: monospace; font-size: 13px;">{{ sensor.mac_id }}</span>
+            </div>
+            <div class="box" style="background: #f0f9ff; border-color: #bae6fd;">
+                <strong>Filtro de Extração</strong>
+                <span style="font-size: 14px; color: #0369a1;">{{ periodo_str }}</span>
+                <br>
+                <strong style="margin-top: 5px;">Data de Emissão</strong>
+                <span style="font-size: 13px; color: #0369a1;">{{ data_emissao }}</span>
             </div>
         </div>
 
