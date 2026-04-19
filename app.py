@@ -470,7 +470,7 @@ def api_mapa_sensores():
     try:
         import os
         is_postgres = bool(os.environ.get('DATABASE_URL'))
-        condicao_tempo = "last_seen < NOW() - INTERVAL '15 seconds'" if is_postgres else "last_seen < datetime('now', '-15 seconds', 'localtime')"
+        condicao_tempo = "last_seen < NOW() - INTERVAL '60 seconds'" if is_postgres else "last_seen < datetime('now', '-60 seconds', 'localtime')"
         
         caidos = conn.execute(f"SELECT mac_id, nome_local, cliente_id FROM sensores WHERE status = 'online' AND em_manutencao = 0 AND {condicao_tempo}").fetchall()
         for c in caidos:
