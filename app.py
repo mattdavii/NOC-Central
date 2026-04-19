@@ -392,18 +392,28 @@ def atualizar_dispositivos():
     sensor_data = conn.execute("SELECT ip_gateway FROM sensores WHERE mac_id = ?", (sensor_mac,)).fetchone()
     ip_gw = sensor_data['ip_gateway'] if sensor_data else None
 
-    try: conn.execute('''CREATE TABLE IF NOT EXISTS dispositivos (id SERIAL PRIMARY KEY, sensor_mac TEXT, ip TEXT, mac TEXT, fabricante TEXT, nome_custom TEXT)'''); conn.commit()
+    # ⚡ CRIA A TABELA JÁ COM A COLUNA 'STATUS'
+    try: conn.execute('''CREATE TABLE IF NOT EXISTS dispositivos (id SERIAL PRIMARY KEY, sensor_mac TEXT, ip TEXT, mac TEXT, fabricante TEXT, nome_custom TEXT, status TEXT DEFAULT 'offline')'''); conn.commit()
     except: pass
+    
+    # ⚡ FORÇA A CRIAÇÃO DA COLUNA CASO A TABELA SEJA ANTIGA
+    try: conn.execute("ALTER TABLE dispositivos ADD COLUMN status TEXT DEFAULT 'offline'"); conn.commit()
+    except: pass
+
     try: conn.execute("CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)"); conn.commit()
     except: pass
     
     nomes_salvos = {row['mac']: row['nome'] for row in conn.execute("SELECT mac, nome FROM nomes_conhecidos").fetchall()}
+
     conn.execute("DELETE FROM dispositivos WHERE sensor_mac = ?", (sensor_mac,))
     for disp in data.get('lista', []):
         nome = nomes_salvos.get(disp['mac'])
         if not nome: nome = "Gateway / Roteador" if disp['ip'] == ip_gw else "Desconhecido"
-        conn.execute("INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, nome_custom) VALUES (?, ?, ?, ?, ?)", (sensor_mac, disp['ip'], disp['mac'], disp['fabricante'], nome))
-    conn.commit(); conn.close()
+        # ⚡ AGORA SALVA O STATUS NO BANCO
+        status_disp = disp.get('status', 'offline')
+        conn.execute("INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, nome_custom, status) VALUES (?, ?, ?, ?, ?, ?)", (sensor_mac, disp['ip'], disp['mac'], disp['fabricante'], nome, status_disp))
+    conn.commit()
+    conn.close()
     return jsonify({"status": "OK"})
 
 @app.route('/api/v2/renomear_dispositivo', methods=['POST'])

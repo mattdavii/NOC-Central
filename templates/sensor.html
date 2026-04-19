@@ -101,7 +101,7 @@
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;}
         .close-modal { color: var(--red); font-size: 28px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         .close-modal:hover { transform: scale(1.2); }
-        #network-modal-canvas { flex-grow: 1; width: 100%; background: radial-gradient(circle, rgba(21,21,33,1) 0%, rgba(11,11,19,1) 100%); border-radius: 8px; border: 1px solid var(--bg-input); outline: none; }
+        #network-modal-canvas { flex-grow: 1; width: 100%; min-height: 70vh; background: radial-gradient(circle, rgba(21,21,33,1) 0%, rgba(11,11,19,1) 100%); border-radius: 8px; border: 1px solid var(--bg-input); outline: none; }
         
         /* ⚡ MENU FLUTUANTE DE AÇÕES DO NÓ */
         #node-menu { display: none; position: absolute; background: var(--bg-card); border: 1px solid var(--blue); padding: 15px; border-radius: 8px; box-shadow: 0 5px 20px rgba(0,0,0,0.7); z-index: 100; min-width: 200px;}
@@ -711,24 +711,21 @@
         function abrirModalTopologia() {
             document.getElementById('modalTopologia').style.display = 'block';
             
-            // Força a limpeza do mapa antigo no modal
+            // Limpa o canvas fantasma
             document.getElementById('network-modal-canvas').innerHTML = "";
             
-            // Dá um tempo para o navegador renderizar a DIV e pega o tamanho real
+            // Dá 200ms pro CSS abrir a tela antes de desenhar (Isso mata o bug da tela preta!)
             setTimeout(() => {
                 var data = { nodes: nodes, edges: edges };
                 var options = {
-                    nodes: { shape: 'box', font: { color: '#0b0b13', face: 'JetBrains Mono', bold: true }, borderWidth: 2 },
-                    edges: { width: 2, color: { color: '#36364a' }, smooth: { type: 'continuous' } },
-                    physics: { stabilization: true }
+                    nodes: { shape: 'box', font: { color: '#0b0b13', face: 'JetBrains Mono', bold: true }, borderWidth: 2, shadow: { enabled: true, color: 'rgba(0,0,0,0.5)', size: 10 } },
+                    edges: { width: 2, color: { color: '#36364a', highlight: '#89b4fa' }, smooth: { type: 'continuous' } },
+                    physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -100, centralGravity: 0.01, springLength: 100, springConstant: 0.08 }, stabilization: { iterations: 150 } },
+                    interaction: { hover: true }
                 };
-                
-                // Recria o grafo especificamente para o modal
                 networkModal = new vis.Network(document.getElementById('network-modal-canvas'), data, options);
                 configurarEventosGrafo(networkModal, true);
-                
-                // Ajusta o zoom automaticamente
-                networkModal.fit();
+                networkModal.fit(); // Dá o zoom perfeito
             }, 200);
         }
 

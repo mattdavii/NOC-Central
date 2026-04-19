@@ -114,15 +114,19 @@ def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
                     dispositivos_temp.append({"ip": ip, "mac": mac, "nome": "Desconhecido", "fabricante": "Desconhecido"})
     except: pass
 
-    # ⚡ TESTE CONCORRENTE (ULTRA-RÁPIDO) PARA ON/OFF
+    # ⚡ TESTE CONCORRENTE BLINDADO CONTRA O WINDOWS
     def checar_status(d):
-        # Tenta pingar com timeout curto de 500ms
         param = '-n' if IS_WIN else '-c'
-        comando = f"ping {param} 1 -w 500 {d['ip']}"
+        comando = ['ping', param, '1', '-w', '500', d['ip']] if IS_WIN else ['ping', param, '1', '-W', '1', d['ip']]
         try:
-            # shell=True ajuda no Windows a evitar bloqueios de execução
-            res = subprocess.call(comando, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
-            d['status'] = 'online' if res == 0 else 'offline'
+            saida = subprocess.check_output(comando, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
+            if 'unreachable' in saida.lower() or 'inacessível' in saida.lower() or 'esgotado' in saida.lower():
+                d['status'] = 'offline'
+            elif '<1ms' in saida or 'ttl=' in saida.lower():
+                d['status'] = 'online'
+            else:
+                match = re.search(r'(?:time|tempo)[=<](\d+)', saida.lower())
+                d['status'] = 'online' if match else 'offline'
         except:
             d['status'] = 'offline'
         return d
