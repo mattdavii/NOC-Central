@@ -116,11 +116,12 @@ def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
 
     # ⚡ TESTE CONCORRENTE (ULTRA-RÁPIDO) PARA ON/OFF
     def checar_status(d):
+        # Tenta pingar com timeout curto de 500ms
         param = '-n' if IS_WIN else '-c'
-        timeout_param = '-w' if IS_WIN else '-W'
-        timeout_val = '500' if IS_WIN else '1'
+        comando = f"ping {param} 1 -w 500 {d['ip']}"
         try:
-            res = subprocess.call(['ping', param, '1', timeout_param, timeout_val, d['ip']], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
+            # shell=True ajuda no Windows a evitar bloqueios de execução
+            res = subprocess.call(comando, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
             d['status'] = 'online' if res == 0 else 'offline'
         except:
             d['status'] = 'offline'

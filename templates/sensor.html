@@ -711,25 +711,71 @@
         function abrirModalTopologia() {
             document.getElementById('modalTopologia').style.display = 'block';
             
-            // ⚡ O SEGREDO: Só constrói o mapa gigante quando a div não for mais "display: none"
-            if (!networkModal) {
+            // Força a limpeza do mapa antigo no modal
+            document.getElementById('network-modal-canvas').innerHTML = "";
+            
+            // Dá um tempo para o navegador renderizar a DIV e pega o tamanho real
+            setTimeout(() => {
                 var data = { nodes: nodes, edges: edges };
                 var options = {
-                    nodes: { shape: 'box', font: { color: '#0b0b13', face: 'JetBrains Mono', bold: true }, borderWidth: 2, shadow: { enabled: true, color: 'rgba(0,0,0,0.5)', size: 10 } },
-                    edges: { width: 2, color: { color: '#36364a', highlight: '#89b4fa' }, smooth: { type: 'continuous' } },
-                    physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -100, centralGravity: 0.01, springLength: 100, springConstant: 0.08 }, stabilization: { iterations: 150 } },
-                    interaction: { hover: true }
+                    nodes: { shape: 'box', font: { color: '#0b0b13', face: 'JetBrains Mono', bold: true }, borderWidth: 2 },
+                    edges: { width: 2, color: { color: '#36364a' }, smooth: { type: 'continuous' } },
+                    physics: { stabilization: true }
                 };
+                
+                // Recria o grafo especificamente para o modal
                 networkModal = new vis.Network(document.getElementById('network-modal-canvas'), data, options);
                 configurarEventosGrafo(networkModal, true);
-            }
-            
-            // Dá um tempo milimétrico pro navegador e redimensiona
-            setTimeout(() => {
-                networkModal.setSize('100%', '100%');
-                networkModal.redraw();
+                
+                // Ajusta o zoom automaticamente
                 networkModal.fit();
-            }, 100);
+            }, 200);
+        }
+
+        async function carregarRadar(btn) {
+            if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            try {
+                // Sincroniza os IPs globais antes de desenhar
+                const sensorRes = await fetch('/api/v2/sensor_data/' + mac_id);
+                const sensorInfo = await sensorRes.json();
+                globalGatewayIP = sensorInfo.ip_gateway;
+                globalSensorIP = sensorInfo.ip_sensor;
+
+                const res = await fetch('/api/v2/dispositivos/' + mac_id);
+                const dispositivos = await res.json();
+                
+                nodes.clear(); edges.clear();
+                
+                // INTERNET (Sempre Azul)
+                nodes.add({ id: 'internet', label: '☁️ INTERNET', shape: 'box', color: '#89b4fa' });
+
+                // GATEWAY (Só fica vermelho se o Agente disser que está offline)
+                if(globalGatewayIP) {
+                    nodes.add({ id: globalGatewayIP, label: '🖧 Roteador\n'+globalGatewayIP, shape: 'box', color: '#f38ba8' }); // Cor base
+                    edges.add({ from: 'internet', to: globalGatewayIP, color: '#f38ba8', width: 3});
+                }
+
+                dispositivos.forEach(d => {
+                    let cor = d.status === 'online' ? '#a6e3a1' : '#f38ba8';
+                    
+                    // Se for o Roteador na lista, atualiza a cor dele no nó principal
+                    if(d.ip === globalGatewayIP) {
+                        nodes.update({id: globalGatewayIP, color: cor});
+                        return;
+                    }
+
+                    nodes.add({ 
+                        id: d.ip, 
+                        label: `💻 ${d.nome_custom || d.fabricante}\n${d.ip}`, 
+                        shape: 'box', 
+                        color: cor,
+                        mac: d.mac
+                    });
+                    edges.add({ from: globalGatewayIP, to: d.ip });
+                });
+
+            } catch(e) { console.error(e); }
+            if(btn) setTimeout(() => btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Scan Radar', 1000);
         }
 
         function fecharModalTopologia() {
