@@ -794,37 +794,52 @@
         async function carregarRadar(btn) {
             if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
             try {
-                if(!network) inicializarGrafo();
+                // 1. Busca a telemetria mestre primeiro
+                const sensorRes = await fetch('/api/v2/sensor_data/' + mac_id);
+                const sensorInfo = await sensorRes.json();
+                globalGatewayIP = sensorInfo.ip_gateway;
+                globalSensorIP = sensorInfo.ip_sensor;
+                
+                // Define a cor do Roteador baseada EXCLUSIVAMENTE no ping principal do Agente
+                let gatewayOnline = (sensorInfo.ping_gateway > 0 && sensorInfo.ping_gateway < 1000);
+                let gatewayCor = gatewayOnline ? '#a6e3a1' : '#f38ba8'; // Verde ou Vermelho
+                let gatewayStatus = gatewayOnline ? '[ON]' : '[OFF]';
+
                 const res = await fetch('/api/v2/dispositivos/' + mac_id);
                 const dispositivos = await res.json();
                 
                 nodes.clear(); edges.clear();
                 
-                nodes.add({ id: 'internet', label: '☁️ INTERNET', shape: 'box', color: { background: '#89b4fa', border: '#89b4fa' } });
+                // INTERNET (Sempre Azul)
+                nodes.add({ id: 'internet', label: '☁️ INTERNET', shape: 'box', color: { background: '#89b4fa', border: '#89b4fa' }, font: {color: '#0b0b13', face: 'Inter', size: 16, bold: true} });
 
+                // ROTEADOR (Protegido contra sobrescrita)
                 if(globalGatewayIP) {
-                    nodes.add({ id: globalGatewayIP, label: '🖧 Roteador\n'+globalGatewayIP, shape: 'box', color: { background: '#f38ba8', border: '#f38ba8' } });
-                    edges.add({ from: 'internet', to: globalGatewayIP, color: { color: '#f38ba8' }, width: 3});
+                    nodes.add({ id: globalGatewayIP, label: `🖧 Roteador ${gatewayStatus}\n${globalGatewayIP}`, shape: 'box', color: { background: gatewayCor, border: gatewayCor }, font: {color: '#0b0b13', face: 'JetBrains Mono', bold: true} });
+                    edges.add({ from: 'internet', to: globalGatewayIP, color: { color: gatewayCor }, width: 3});
                 }
 
+                // SENSOR NOC
                 if(globalSensorIP && globalGatewayIP) {
-                    nodes.add({ id: globalSensorIP, label: '🛡️ NOC Sensor\n'+globalSensorIP, shape: 'box', color: { background: '#a6e3a1', border: '#a6e3a1' } });
+                    nodes.add({ id: globalSensorIP, label: '🛡️ NOC Sensor\n'+globalSensorIP, shape: 'box', color: { background: '#a6e3a1', border: '#a6e3a1' }, font: {color: '#0b0b13', face: 'JetBrains Mono', bold: true} });
                     edges.add({ from: globalGatewayIP, to: globalSensorIP, color: { color: '#a6e3a1' }, width: 2});
                 }
 
+                // DISPOSITIVOS
                 dispositivos.forEach(d => {
+                    // ⚡ O SEGREDO: Pula o Roteador e o Sensor para não estragar a cor deles!
                     if(d.ip === globalGatewayIP || d.ip === globalSensorIP) return;
-                    let nome = d.nome_custom || d.fabricante;
                     
-                    // ⚡ CORES POR STATUS (ON / OFF)
-                    let cor_fundo = d.status === 'online' ? '#a6e3a1' : '#f38ba8'; // Verde se On, Vermelho se Off
+                    let nome = d.nome_custom || d.fabricante;
+                    let cor_fundo = d.status === 'online' ? '#a6e3a1' : '#f38ba8';
                     let status_txt = d.status === 'online' ? 'ON' : 'OFF';
 
                     nodes.add({ 
                         id: d.ip, 
                         rawName: nome,
-                        mac: d.mac,
                         label: `💻 ${nome} [${status_txt}]\n${d.ip}`, 
+                        title: `MAC: ${d.mac}\nClique para ver Opções`, 
+                        mac: d.mac, 
                         shape: 'box',
                         color: { background: cor_fundo, border: cor_fundo },
                         font: {color: '#0b0b13', face: 'JetBrains Mono'}
@@ -832,7 +847,7 @@
                     edges.add({ from: globalGatewayIP, to: d.ip, color: {color: '#36364a'} });
                 });
 
-            } catch(e) { console.error(e); }
+            } catch(e) { console.error("Erro no Radar:", e); }
             if(btn) setTimeout(() => btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Scan Rápido', 1000);
         }
 

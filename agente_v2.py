@@ -142,10 +142,13 @@ def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
 
 def ping(host):
     param = '-n' if IS_WIN else '-c'
-    comando = ['ping', param, '1', host]
+    timeout_param = '-w' if IS_WIN else '-W'
+    timeout_val = '1000' if IS_WIN else '1'
+    comando = f"ping {param} 1 {timeout_param} {timeout_val} {host}"
     try:
-        saida = subprocess.check_output(comando, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
-        if 'unreachable' in saida.lower() or 'inacessível' in saida.lower(): return 0
+        saida = subprocess.check_output(comando, shell=True, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
+        if 'unreachable' in saida.lower() or 'inacessível' in saida.lower() or 'esgotado' in saida.lower() or 'timed out' in saida.lower() or 'falha' in saida.lower():
+            return 0
         if '<1ms' in saida: return 1
         match = re.search(r'(?:time|tempo)[=<](\d+)', saida.lower())
         if match: return int(match.group(1))
