@@ -48,6 +48,7 @@ dados_sensores = {
 }
 
 cache_alvos = {}
+MAC_GATEWAY_CONHECIDO = None # 🌪️ Variável para detecção de Loop/Clonagem
 
 def get_mac():
     mac = uuid.getnode()
@@ -190,10 +191,11 @@ def executar_traceroute(mac, url_central):
     except: pass
 
 # ==========================================
-# 📡 MOTOR 1: ENVIO, COLETA E AUTO-CURA
+# 📡 MOTOR 1: ENVIO E COLETA E AUTO-CURA
 # ==========================================
 def loop_telemetria():
     global dados_sensores
+    global MAC_GATEWAY_CONHECIDO
     
     try:
         mac = get_mac()
@@ -201,7 +203,6 @@ def loop_telemetria():
         ultima_medicao_speedtest = 0 
         ultima_varredura = 0 
         
-        # Variáveis da Inteligência de Auto-Cura
         contador_falhas_wan = 0
         ultimo_reparo_wan = 0
         
@@ -248,34 +249,24 @@ def loop_telemetria():
                 for future in concurrent.futures.as_completed(futures): pings[futures[future]] = future.result()
 
             # ⚙️ MÓDULO DE AUTO-CURA (SELF-HEALING WAN)
-            if pings["Google"] == 0 and pings["Cloudflare"] == 0:
-                contador_falhas_wan += 1
-            else:
-                contador_falhas_wan = 0 # Zerou a contagem, tá saudável
+            if pings["Google"] == 0 and pings["Cloudflare"] == 0: contador_falhas_wan += 1
+            else: contador_falhas_wan = 0
                 
-            # Se falhar 3x seguidas e não tiver reparado nos últimos 5 min
             if contador_falhas_wan == 3 and (agora - ultimo_reparo_wan) > 300:
                 try:
-                    # Executa a limpeza da placa de rede direto no SO
                     if IS_WIN:
                         subprocess.call("ipconfig /flushdns", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
                         subprocess.call("ipconfig /renew", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
                     else:
                         subprocess.call("sudo systemd-resolve --flush-caches", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    
                     log_local_event("Auto-Cura", "Queda de DNS/WAN detectada. O Agente executou Flush DNS e Renew IP.", "Aviso")
-                    
-                    # Tenta mandar um POST desesperado para a nuvem avisando o que fez
                     try:
                         url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
                         alerta = [{"tipo": "⚙️ Sistema de Auto-Cura", "gravidade": "Aviso", "detalhes": "Agente detectou isolamento da Internet. Executado script de Flush DNS e Renovação de IP localmente."}]
-                        req = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": alerta}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
-                        urllib.request.urlopen(req, timeout=3)
+                        urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": alerta}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
                     except: pass
                 except: pass
-                
-                ultimo_reparo_wan = agora # Reinicia o timer de resfriamento
-
+                ultimo_reparo_wan = agora
 
             meu_ip, gateway_ip = get_network_info()
             ping_gw = ping(gateway_ip) if gateway_ip != "Desconhecido" else 0
@@ -283,6 +274,29 @@ def loop_telemetria():
             forcar_varredura = (agora - ultima_varredura > 300)
             dispositivos = get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=forcar_varredura)
             if forcar_varredura: ultima_varredura = agora
+
+            # 🌪️ MÓDULO STORM WATCH: DETECÇÃO LÓGICA DE LOOP
+            gw_mac_atual = None
+            for d in dispositivos:
+                if d['ip'] == gateway_ip: gw_mac_atual = d['mac']; break
+
+            alertas_rede = []
+            
+            # Heurística 1: MAC Flapping
+            if MAC_GATEWAY_CONHECIDO and gw_mac_atual and MAC_GATEWAY_CONHECIDO != gw_mac_atual:
+                alertas_rede.append({"tipo": "🌪️ MAC Flapping / Loop L2", "gravidade": "Crítica", "detalhes": f"O MAC do Gateway mudou bruscamente de {MAC_GATEWAY_CONHECIDO} para {gw_mac_atual}. Indício CRÍTICO de Loop Físico ou Conflito de IP na rede!"})
+            if gw_mac_atual: MAC_GATEWAY_CONHECIDO = gw_mac_atual
+
+            # Heurística 2: Tempestade de Broadcast (Storm)
+            if (ping_gw == 0 or ping_gw > 500) and net_down > 15.0 and net_up < 2.0:
+                alertas_rede.append({"tipo": "🌪️ Tempestade de Broadcast", "gravidade": "Crítica", "detalhes": f"Inundação de pacotes L2 na rede local ({net_down} Mbps de tráfego de lixo) e o Gateway parou de responder. Alguém fechou um Loop L2 em um Switch!"})
+
+            if alertas_rede:
+                try:
+                    url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
+                    urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": alertas_rede}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
+                except: pass
+
 
             dados_sensores = {
                 "cpu": cpu, "ram": ram, "disco": disco, "net_down": net_down, "net_up": net_up, "portas": str_portas,
