@@ -122,20 +122,34 @@ def ping(host):
         return 0
     except: return 0
 
+# ==========================================
+# 🌡️ MOTOR TÉRMICO HÍBRIDO (OHM + Nativo)
+# ==========================================
 def ler_temperaturas():
     cpu_t = 0.0
     gpu_t = 0.0
     
-    if hasattr(psutil, "sensors_temperatures"):
+    # 1. TENTATIVA HARDCORE: OpenHardwareMonitor (Se o cliente instalou)
+    if IS_WIN:
+        try:
+            cmd_ohm = 'powershell -Command "(Get-WmiObject -Namespace root\\OpenHardwareMonitor -Class Sensor -ErrorAction Stop | Where-Object { $_.SensorType -eq \'Temperature\' -and ($_.Name -match \'CPU Package\' -or $_.Name -match \'CPU Core\') } | Measure-Object -Property Value -Average).Average"'
+            out = subprocess.check_output(cmd_ohm, shell=True, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL).strip()
+            if out and out != "0":
+                cpu_t = round(float(out.replace(',', '.')), 1)
+        except: pass
+
+    # 2. TENTATIVA NATIVA PYTHON (Linux/Mac/Alguns Windows)
+    if cpu_t == 0.0 and hasattr(psutil, "sensors_temperatures"):
         try:
             st = psutil.sensors_temperatures()
             for name, entries in st.items():
-                if "coretemp" in name.lower() or "cpu" in name.lower(): cpu_t = entries[0].current
+                if "coretemp" in name.lower() or "cpu" in name.lower(): cpu_t = round(entries[0].current, 1)
         except: pass
 
+    # 3. TENTATIVA WMI DO WINDOWS (Placas-mãe amigáveis)
     if IS_WIN and cpu_t == 0.0:
         try:
-            cmd = 'powershell -Command "Get-WmiObject MSAcpi_ThermalZoneTemperature -Namespace root/wmi | Select -ExpandProperty CurrentTemperature"'
+            cmd = 'powershell -Command "Get-WmiObject MSAcpi_ThermalZoneTemperature -Namespace root/wmi -ErrorAction Stop | Select -ExpandProperty CurrentTemperature"'
             out = subprocess.check_output(cmd, shell=True, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL).strip()
             if out:
                 kelvin_raw = float(out.split('\n')[0])
@@ -143,6 +157,7 @@ def ler_temperaturas():
                 if 20 < celsius < 120: cpu_t = round(celsius, 1)
         except: pass
 
+    # LEITURA DA GPU (Nvidia)
     try:
         out = subprocess.check_output('nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader', shell=True, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL).strip()
         if out: gpu_t = float(out.split('\n')[0])
@@ -440,7 +455,6 @@ def loop_watchdog_local():
             servicos_locais = conn.execute("SELECT id, nome_servico, descricao FROM servicos_os").fetchall()
             conn.close()
 
-            # Mescla serviços da nuvem com os locais para monitorar todos
             todos_servicos = servicos_nuvem.copy()
             nomes_na_nuvem = [s['nome_servico'] for s in servicos_nuvem]
             for srv_local in servicos_locais:
@@ -770,7 +784,10 @@ def index():
                     
                     document.getElementById('cpu-text').innerText = data.cpu + '%'; document.getElementById('cpu-fill').style.width = data.cpu + '%';
                     document.getElementById('ram-text').innerText = data.ram + '%'; document.getElementById('ram-fill').style.width = data.ram + '%';
-                    document.getElementById('temp-text').innerText = data.temp + ' °C'; document.getElementById('gpu-text').innerText = data.gpu_temp + ' °C';
+                    
+                    // AQUI ESTÁ A "FUGA ELEGANTE" NA TELA LOCAL:
+                    document.getElementById('temp-text').innerText = (data.temp > 0 ? data.temp : '--') + ' °C'; 
+                    document.getElementById('gpu-text').innerText = (data.gpu_temp > 0 ? data.gpu_temp : '--') + ' °C';
                     
                     if(document.getElementById('disk-text')) { document.getElementById('disk-text').innerText = data.disco + '%'; document.getElementById('disk-fill').style.width = data.disco + '%'; }
                     if(document.getElementById('portas-text')) document.getElementById('portas-text').innerText = data.portas || 'Nenhuma';

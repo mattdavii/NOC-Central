@@ -553,7 +553,7 @@
                 document.getElementById('ram-fill').style.width = data.ram_usage + '%';
                 
                 // ⚡ Temperaturas Injetadas Aqui
-                document.getElementById('temp-text').innerText = data.temp + ' °C';
+                document.getElementById('temp-text').innerText = (data.temp > 0 ? data.temp : '--') + ' °C';
                 if(document.getElementById('gpu-text')) document.getElementById('gpu-text').innerText = (data.gpu_temp != null ? data.gpu_temp : '--') + ' °C';
                 
                 document.getElementById('disk-text').innerText = (data.disco || 0) + '%';

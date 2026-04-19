@@ -11,8 +11,8 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 # =========================================================
 # 🤖 CHAVES DO TELEGRAM MASTER (O SEU BOT DE ADMIN)
 # =========================================================
-TELEGRAM_BOT_TOKEN = "SEU_TOKEN_AQUI"
-TELEGRAM_CHAT_ID = "SEU_CHAT_ID_AQUI"
+TELEGRAM_BOT_TOKEN = "8611160616:AAEYnOAXG-EInv4yDYSje5J_K0XbO6jIee0"
+TELEGRAM_CHAT_ID = "-5147163793"
 
 def enviar_telegram(mensagem, cliente_id=None):
     token_final = TELEGRAM_BOT_TOKEN
