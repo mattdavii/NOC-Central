@@ -755,7 +755,7 @@
 
                 // ⚡ CRIA O ROTEADOR COM A COR CORRETA AQUI:
                 if(globalGatewayIP) {
-                    nodes.add({ id: globalGatewayIP, label: `🖧 Roteador ${gatewayStatus}\n${globalGatewayIP}`, shape: 'box', color: { background: gatewayCor, border: gatewayCor }, font: {color: '#0b0b13', face: 'JetBrains Mono', bold: true} });
+                    nodes.add({ id: globalGatewayIP, label: `🖧 Gateway ${gatewayStatus}\n${globalGatewayIP}`, shape: 'box', color: { background: gatewayCor, border: gatewayCor }, font: {color: '#0b0b13', face: 'JetBrains Mono', bold: true} });
                     edges.add({ from: 'internet', to: globalGatewayIP, color: { color: gatewayCor }, width: 3});
                 }
 
