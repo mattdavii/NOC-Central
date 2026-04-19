@@ -104,7 +104,8 @@
         #network-modal-canvas { flex-grow: 1; width: 100%; min-height: 70vh; background: radial-gradient(circle, rgba(21,21,33,1) 0%, rgba(11,11,19,1) 100%); border-radius: 8px; border: 1px solid var(--bg-input); outline: none; }
         
         /* ⚡ MENU FLUTUANTE DE AÇÕES DO NÓ */
-        #node-menu { display: none; position: absolute; background: var(--bg-card); border: 1px solid var(--blue); padding: 15px; border-radius: 8px; box-shadow: 0 5px 20px rgba(0,0,0,0.7); z-index: 100; min-width: 200px;}
+        /* ⚡ MENU FLUTUANTE DE AÇÕES DO NÓ (CORRIGIDO PARA TELA CHEIA E NORMAL) */
+        #node-menu { display: none; position: fixed; background: var(--bg-card); border: 1px solid var(--blue); padding: 15px; border-radius: 8px; box-shadow: 0 5px 30px rgba(0,0,0,0.9); z-index: 9999; min-width: 200px;}
         #node-menu h4 { margin: 0 0 10px 0; color: var(--text-main); font-size: 1em; border-bottom: 1px dashed var(--border); padding-bottom: 5px; }
         .node-btn { display: block; width: 100%; text-align: left; background: var(--bg-input); border: none; color: var(--text-main); padding: 8px 12px; margin-bottom: 5px; border-radius: 4px; cursor: pointer; transition: 0.2s; font-size: 0.85em;}
         .node-btn:hover { background: var(--blue); color: var(--bg-base); font-weight: bold; }
@@ -668,28 +669,30 @@
         function configurarEventosGrafo(grafo_instance, is_modal) {
             grafo_instance.on("click", function (params) {
                 const menu = document.getElementById('node-menu');
+                if (!menu) return;
+
                 if (params.nodes.length > 0) {
                     let clickedNodeId = params.nodes[0];
                     let node = nodes.get(clickedNodeId);
                     
-                    if (nodeId !== 'internet' && nodeId !== globalGatewayIP && nodeId !== globalSensorIP) {
-                        // Mostra o Menu Flutuante
-                        document.getElementById('menu-node-title').innerText = node.rawName || node.label;
+                    // ⚡ CORREÇÃO DO BUG DO CLIQUE AQUI:
+                    if (clickedNodeId !== 'internet' && clickedNodeId !== globalGatewayIP && clickedNodeId !== globalSensorIP) {
+                        
+                        document.getElementById('menu-node-title').innerText = node.rawName || node.label.split('\n')[0].replace('💻 ', '');
                         
                         document.getElementById('btn-menu-rename').onclick = () => { renomearDisp(node.mac, node.rawName); menu.style.display = 'none'; };
                         document.getElementById('btn-menu-watchdog').onclick = () => { monitorarIP(node.id, node.rawName); menu.style.display = 'none'; };
                         document.getElementById('btn-menu-wol').onclick = () => { dispararWoL(node.mac, node.rawName); menu.style.display = 'none'; };
                         
-                        // Posiciona o menu no local do clique
-                        let containerPos = is_modal ? document.getElementById('network-modal-canvas').getBoundingClientRect() : document.getElementById('network-topology').getBoundingClientRect();
-                        menu.style.left = (params.pointer.DOM.x + 20) + 'px';
-                        menu.style.top = (params.pointer.DOM.y) + 'px';
+                        // Pega a posição exata do mouse na tela para desenhar o menu ali!
+                        menu.style.left = (params.event.srcEvent.clientX + 15) + 'px';
+                        menu.style.top = (params.event.srcEvent.clientY) + 'px';
                         menu.style.display = 'block';
                     } else {
                         menu.style.display = 'none';
                     }
                 } else {
-                    menu.style.display = 'none';
+                    menu.style.display = 'none'; // Clicou no vazio, esconde o menu
                 }
             });
         }
@@ -732,47 +735,56 @@
         async function carregarRadar(btn) {
             if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
             try {
-                // Sincroniza os IPs globais antes de desenhar
+                // ⚡ Busca a telemetria do gateway primeiro!
                 const sensorRes = await fetch('/api/v2/sensor_data/' + mac_id);
                 const sensorInfo = await sensorRes.json();
                 globalGatewayIP = sensorInfo.ip_gateway;
                 globalSensorIP = sensorInfo.ip_sensor;
+                
+                // Define a cor do Gateway baseado no ping real do Agente
+                let gatewayOnline = (sensorInfo.ping_gateway > 0 && sensorInfo.ping_gateway < 1000);
+                let gatewayCor = gatewayOnline ? '#a6e3a1' : '#f38ba8';
+                let gatewayStatus = gatewayOnline ? '[ON]' : '[OFF]';
 
                 const res = await fetch('/api/v2/dispositivos/' + mac_id);
                 const dispositivos = await res.json();
                 
                 nodes.clear(); edges.clear();
                 
-                // INTERNET (Sempre Azul)
-                nodes.add({ id: 'internet', label: '☁️ INTERNET', shape: 'box', color: '#89b4fa' });
+                nodes.add({ id: 'internet', label: '☁️ INTERNET', shape: 'box', color: { background: '#89b4fa', border: '#89b4fa' }, font: {color: '#0b0b13', face: 'Inter', size: 16, bold: true} });
 
-                // GATEWAY (Só fica vermelho se o Agente disser que está offline)
+                // ⚡ CRIA O ROTEADOR COM A COR CORRETA AQUI:
                 if(globalGatewayIP) {
-                    nodes.add({ id: globalGatewayIP, label: '🖧 Roteador\n'+globalGatewayIP, shape: 'box', color: '#f38ba8' }); // Cor base
-                    edges.add({ from: 'internet', to: globalGatewayIP, color: '#f38ba8', width: 3});
+                    nodes.add({ id: globalGatewayIP, label: `🖧 Roteador ${gatewayStatus}\n${globalGatewayIP}`, shape: 'box', color: { background: gatewayCor, border: gatewayCor }, font: {color: '#0b0b13', face: 'JetBrains Mono', bold: true} });
+                    edges.add({ from: 'internet', to: globalGatewayIP, color: { color: gatewayCor }, width: 3});
+                }
+
+                if(globalSensorIP && globalGatewayIP) {
+                    nodes.add({ id: globalSensorIP, label: '🛡️ NOC Sensor\n'+globalSensorIP, shape: 'box', color: { background: '#a6e3a1', border: '#a6e3a1' }, font: {color: '#0b0b13', face: 'JetBrains Mono', bold: true} });
+                    edges.add({ from: globalGatewayIP, to: globalSensorIP, color: { color: '#a6e3a1' }, width: 2});
                 }
 
                 dispositivos.forEach(d => {
-                    let cor = d.status === 'online' ? '#a6e3a1' : '#f38ba8';
-                    
-                    // Se for o Roteador na lista, atualiza a cor dele no nó principal
-                    if(d.ip === globalGatewayIP) {
-                        nodes.update({id: globalGatewayIP, color: cor});
-                        return;
-                    }
+                    if(d.ip === globalGatewayIP || d.ip === globalSensorIP) return;
+                    let nome = d.nome_custom || d.fabricante;
+                    let cor_fundo = d.status === 'online' ? '#a6e3a1' : '#f38ba8';
+                    let status_txt = d.status === 'online' ? 'ON' : 'OFF';
 
                     nodes.add({ 
                         id: d.ip, 
-                        label: `💻 ${d.nome_custom || d.fabricante}\n${d.ip}`, 
-                        shape: 'box', 
-                        color: cor,
-                        mac: d.mac
+                        rawName: nome,
+                        label: `💻 ${nome} [${status_txt}]\n${d.ip}`, 
+                        title: `MAC: ${d.mac}\nClique para ver Opções`, 
+                        mac: d.mac, 
+                        shape: 'box',
+                        color: { background: cor_fundo, border: cor_fundo },
+                        font: {color: '#0b0b13', face: 'JetBrains Mono'}
                     });
-                    edges.add({ from: globalGatewayIP, to: d.ip });
+                    edges.add({ from: globalGatewayIP, to: d.ip, color: {color: '#36364a'} });
                 });
 
-            } catch(e) { console.error(e); }
-            if(btn) setTimeout(() => btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Scan Radar', 1000);
+            } catch(e) { console.error("Erro no Radar:", e); }
+            if(btn) setTimeout(() => btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Scan Rápido', 1000);
         }
 
         function fecharModalTopologia() {
