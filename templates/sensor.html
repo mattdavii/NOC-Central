@@ -703,18 +703,33 @@
                 interaction: { hover: true }
             };
             
-            // Renderiza no Card Menor
+            // ⚡ Renderiza APENAS no Card Menor ao iniciar a página
             network = new vis.Network(document.getElementById('network-topology'), data, options);
             configurarEventosGrafo(network, false);
-
-            // Renderiza no Pop-up Gigante (invisível por enquanto)
-            networkModal = new vis.Network(document.getElementById('network-modal-canvas'), data, options);
-            configurarEventosGrafo(networkModal, true);
         }
 
         function abrirModalTopologia() {
             document.getElementById('modalTopologia').style.display = 'block';
-            networkModal.fit(); // Ajusta o zoom para a tela gigante
+            
+            // ⚡ O SEGREDO: Só constrói o mapa gigante quando a div não for mais "display: none"
+            if (!networkModal) {
+                var data = { nodes: nodes, edges: edges };
+                var options = {
+                    nodes: { shape: 'box', font: { color: '#0b0b13', face: 'JetBrains Mono', bold: true }, borderWidth: 2, shadow: { enabled: true, color: 'rgba(0,0,0,0.5)', size: 10 } },
+                    edges: { width: 2, color: { color: '#36364a', highlight: '#89b4fa' }, smooth: { type: 'continuous' } },
+                    physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -100, centralGravity: 0.01, springLength: 100, springConstant: 0.08 }, stabilization: { iterations: 150 } },
+                    interaction: { hover: true }
+                };
+                networkModal = new vis.Network(document.getElementById('network-modal-canvas'), data, options);
+                configurarEventosGrafo(networkModal, true);
+            }
+            
+            // Dá um tempo milimétrico pro navegador e redimensiona
+            setTimeout(() => {
+                networkModal.setSize('100%', '100%');
+                networkModal.redraw();
+                networkModal.fit();
+            }, 100);
         }
 
         function fecharModalTopologia() {

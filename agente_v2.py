@@ -101,7 +101,7 @@ def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
             for t in threads: t.join()
         except: pass
         
-    dispositivos = []
+    dispositivos_temp = []
     prefixo_rede = '.'.join(meu_ip.split('.')[:-1]) + '.'
     try:
         saida = subprocess.check_output("arp -a", shell=True, universal_newlines=True, creationflags=C_FLAGS, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -111,11 +111,28 @@ def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
                 ip = partes[0]
                 mac = partes[1].replace('-', ':').upper()
                 if ip.startswith(prefixo_rede) and not ip.endswith(".255"): 
-                    # ⚡ NOVO: PINGA O DISPOSITIVO PARA VER SE ESTÁ ONLINE
-                    lat = ping(ip)
-                    status_disp = 'online' if lat > 0 else 'offline'
-                    dispositivos.append({"ip": ip, "mac": mac, "nome": "Desconhecido", "fabricante": "Desconhecido", "status": status_disp})
+                    dispositivos_temp.append({"ip": ip, "mac": mac, "nome": "Desconhecido", "fabricante": "Desconhecido"})
     except: pass
+
+    # ⚡ TESTE CONCORRENTE (ULTRA-RÁPIDO) PARA ON/OFF
+    def checar_status(d):
+        param = '-n' if IS_WIN else '-c'
+        timeout_param = '-w' if IS_WIN else '-W'
+        timeout_val = '500' if IS_WIN else '1'
+        try:
+            res = subprocess.call(['ping', param, '1', timeout_param, timeout_val, d['ip']], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
+            d['status'] = 'online' if res == 0 else 'offline'
+        except:
+            d['status'] = 'offline'
+        return d
+
+    dispositivos = []
+    if dispositivos_temp:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            futures = [executor.submit(checar_status, d) for d in dispositivos_temp]
+            for future in concurrent.futures.as_completed(futures):
+                dispositivos.append(future.result())
+
     return dispositivos
 
 def ping(host):
