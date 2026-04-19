@@ -95,6 +95,21 @@
         .sla-text { font-size: 0.9em; color: var(--text-muted); }
         .sla-val { font-family: 'JetBrains Mono'; font-size: 2em; color: var(--green); font-weight: bold; text-shadow: 0 0 15px rgba(166,227,161,0.5);}
 
+        /* ⚡ MODAL (POP-UP) DA TOPOLOGIA */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.85); backdrop-filter: blur(8px); }
+        .modal-content { background-color: var(--bg-card); margin: 2% auto; padding: 20px; border: 1px solid var(--border); width: 95%; height: 90vh; border-radius: 12px; display: flex; flex-direction: column; box-shadow: 0 0 30px rgba(0,0,0,0.8);}
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;}
+        .close-modal { color: var(--red); font-size: 28px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .close-modal:hover { transform: scale(1.2); }
+        #network-modal-canvas { flex-grow: 1; width: 100%; background: radial-gradient(circle, rgba(21,21,33,1) 0%, rgba(11,11,19,1) 100%); border-radius: 8px; border: 1px solid var(--bg-input); outline: none; }
+        
+        /* ⚡ MENU FLUTUANTE DE AÇÕES DO NÓ */
+        #node-menu { display: none; position: absolute; background: var(--bg-card); border: 1px solid var(--blue); padding: 15px; border-radius: 8px; box-shadow: 0 5px 20px rgba(0,0,0,0.7); z-index: 100; min-width: 200px;}
+        #node-menu h4 { margin: 0 0 10px 0; color: var(--text-main); font-size: 1em; border-bottom: 1px dashed var(--border); padding-bottom: 5px; }
+        .node-btn { display: block; width: 100%; text-align: left; background: var(--bg-input); border: none; color: var(--text-main); padding: 8px 12px; margin-bottom: 5px; border-radius: 4px; cursor: pointer; transition: 0.2s; font-size: 0.85em;}
+        .node-btn:hover { background: var(--blue); color: var(--bg-base); font-weight: bold; }
+        .node-btn.btn-red:hover { background: var(--red); }
+
     </style>
 </head>
 <body>
@@ -230,24 +245,47 @@
             </div>
         </div>
 
-        <div class="painel-grid">
-            <div class="card card-hist-grafico card-half">
+        <div class="painel-grid" style="grid-template-columns: 1fr;">
+            <div class="card card-hist-grafico card-full">
                 <h3>
                     <span><i class="fa-solid fa-chart-area"></i> Evolução de Banda (Timeline)</span>
-                    <button class="action-btn" onclick="carregarGraficos()" style="background: var(--bg-input); color: var(--text-main); font-size: 0.8em;"><i class="fa-solid fa-rotate"></i> Atualizar</button>
+                    <button class="btn-acao" onclick="carregarGraficos()" style="background: var(--bg-input); color: var(--text-main); font-size: 0.8em; padding: 6px 12px; border: none;"><i class="fa-solid fa-rotate"></i> Atualizar</button>
                 </h3>
-                <div style="position: relative; flex-grow: 1; min-height: 300px; width: 100%; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--bg-input); padding: 10px; box-sizing: border-box;">
+                <div style="position: relative; flex-grow: 1; min-height: 350px; width: 100%; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--bg-input); padding: 10px; box-sizing: border-box;">
                     <canvas id="chartVelocidade"></canvas>
                 </div>
             </div>
+        </div>
 
-            <div class="card card-radar">
+        <div class="painel-grid" style="grid-template-columns: 1fr;">
+            <div class="card card-radar card-full" style="position: relative;">
                 <h3>
-                    <span><i class="fa-solid fa-project-diagram"></i> Topologia de Rede</span>
-                    <button class="action-btn" onclick="carregarRadar(this)" style="background: var(--blue); color: var(--bg-base); font-size:0.8em;"><i class="fa-solid fa-rotate"></i> Scan Radar</button>
+                    <span><i class="fa-solid fa-project-diagram"></i> Topologia de Rede Dinâmica</span>
+                    <div>
+                        <button class="btn-acao" onclick="abrirModalTopologia()" style="background: var(--purple); color: white; font-size:0.8em; padding: 6px 12px; border: none; display: inline-flex; margin-right: 10px;"><i class="fa-solid fa-expand"></i> Expandir Tela Cheia</button>
+                        <button class="btn-acao" onclick="carregarRadar(this)" style="background: var(--blue); color: var(--bg-base); font-size:0.8em; padding: 6px 12px; border: none; display: inline-flex;"><i class="fa-solid fa-rotate"></i> Scan Rápido</button>
+                    </div>
                 </h3>
-                <div id="network-topology"></div>
-                <div style="text-align: right; padding: 5px; font-size: 0.75em; color: var(--text-muted);">* Pode arrastar os ícones. Clique num PC offline para ligar (WoL).</div>
+                <div id="network-topology" style="height: 450px;"></div>
+                <div style="text-align: right; padding: 5px; font-size: 0.75em; color: var(--text-muted);">* Arraste os ícones. Clique em um dispositivo para exibir opções de Edição e WoL.</div>
+                
+                <div id="node-menu">
+                    <h4 id="menu-node-title">Dispositivo</h4>
+                    <button class="node-btn" id="btn-menu-rename"><i class="fa-solid fa-pen"></i> Renomear</button>
+                    <button class="node-btn" id="btn-menu-watchdog"><i class="fa-solid fa-eye"></i> Adicionar ao Watchdog</button>
+                    <button class="node-btn btn-red" id="btn-menu-wol"><i class="fa-solid fa-bolt"></i> Enviar Wake-on-LAN</button>
+                    <button class="node-btn" onclick="document.getElementById('node-menu').style.display='none'" style="text-align: center; color: var(--text-muted); background: transparent; margin-top: 10px;">Fechar</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="modalTopologia" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 style="margin: 0; color: var(--blue);"><i class="fa-solid fa-project-diagram"></i> Centro de Comando de Topologia</h2>
+                    <span class="close-modal" onclick="fecharModalTopologia()">&times;</span>
+                </div>
+                <div id="network-modal-canvas"></div>
             </div>
         </div>
 
@@ -621,39 +659,66 @@
             setTimeout(() => { document.getElementById('btn-st').innerHTML = '<i class="fa-solid fa-play"></i> Testar Agora'; carregarGraficos(); }, 40000);
         }
 
+        // ----- 🕸️ MOTOR DO VIS.JS (TOPOLOGIA AVANÇADA) -----
         let network = null;
+        let networkModal = null; // Grafo do Pop-up
         let nodes = new vis.DataSet();
         let edges = new vis.DataSet();
 
-        function inicializarGrafo() {
-            var container = document.getElementById('network-topology');
-            var data = { nodes: nodes, edges: edges };
-            var options = {
-                nodes: { shape: 'dot', size: 16, font: { color: '#cdd6f4', face: 'JetBrains Mono', size: 12 }, borderWidth: 2, shadow: { enabled: true, color: 'rgba(137,180,250,0.5)', size: 10 } },
-                edges: { width: 2, color: { color: '#36364a', highlight: '#89b4fa' }, smooth: { type: 'continuous' } },
-                physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -100, centralGravity: 0.01, springLength: 100, springConstant: 0.08 }, stabilization: { iterations: 150 } },
-                interaction: { hover: true, tooltipDelay: 200 }
-            };
-            network = new vis.Network(container, data, options);
-
-            network.on("click", function (params) {
+        function configurarEventosGrafo(grafo_instance, is_modal) {
+            grafo_instance.on("click", function (params) {
+                const menu = document.getElementById('node-menu');
                 if (params.nodes.length > 0) {
                     let clickedNodeId = params.nodes[0];
-                    let clickedNode = nodes.get(clickedNodeId);
-                    if(clickedNode.label.includes('Desconhecido') || clickedNode.title.includes('OFFLINE') || clickedNode.title.includes('WoL')) {
-                        if(confirm(`🔌 Este dispositivo parece offline. Deseja enviar um Magic Packet (Wake-on-LAN) para acordar o MAC: ${clickedNode.mac}?`)) {
-                            dispararWoL(clickedNode.mac, clickedNode.label.split('\\n')[0]);
-                        }
+                    let node = nodes.get(clickedNodeId);
+                    
+                    if (nodeId !== 'internet' && nodeId !== globalGatewayIP && nodeId !== globalSensorIP) {
+                        // Mostra o Menu Flutuante
+                        document.getElementById('menu-node-title').innerText = node.rawName || node.label;
+                        
+                        document.getElementById('btn-menu-rename').onclick = () => { renomearDisp(node.mac, node.rawName); menu.style.display = 'none'; };
+                        document.getElementById('btn-menu-watchdog').onclick = () => { monitorarIP(node.id, node.rawName); menu.style.display = 'none'; };
+                        document.getElementById('btn-menu-wol').onclick = () => { dispararWoL(node.mac, node.rawName); menu.style.display = 'none'; };
+                        
+                        // Posiciona o menu no local do clique
+                        let containerPos = is_modal ? document.getElementById('network-modal-canvas').getBoundingClientRect() : document.getElementById('network-topology').getBoundingClientRect();
+                        menu.style.left = (params.pointer.DOM.x + 20) + 'px';
+                        menu.style.top = (params.pointer.DOM.y) + 'px';
+                        menu.style.display = 'block';
+                    } else {
+                        menu.style.display = 'none';
                     }
+                } else {
+                    menu.style.display = 'none';
                 }
             });
         }
 
-        async function dispararWoL(mac_alvo, nome_alvo) {
-            try {
-                const res = await fetch(`/api/v2/enviar_wol/${mac_id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mac_alvo: mac_alvo, nome_alvo: nome_alvo }) });
-                const data = await res.json(); alert(data.status || "Pacote Mágico (WoL) enviado!");
-            } catch (error) { alert("Erro ao comunicar com a Central."); }
+        function inicializarGrafo() {
+            var data = { nodes: nodes, edges: edges };
+            var options = {
+                nodes: { shape: 'box', font: { color: '#0b0b13', face: 'JetBrains Mono', bold: true }, borderWidth: 2, shadow: { enabled: true, color: 'rgba(0,0,0,0.5)', size: 10 } },
+                edges: { width: 2, color: { color: '#36364a', highlight: '#89b4fa' }, smooth: { type: 'continuous' } },
+                physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -100, centralGravity: 0.01, springLength: 100, springConstant: 0.08 }, stabilization: { iterations: 150 } },
+                interaction: { hover: true }
+            };
+            
+            // Renderiza no Card Menor
+            network = new vis.Network(document.getElementById('network-topology'), data, options);
+            configurarEventosGrafo(network, false);
+
+            // Renderiza no Pop-up Gigante (invisível por enquanto)
+            networkModal = new vis.Network(document.getElementById('network-modal-canvas'), data, options);
+            configurarEventosGrafo(networkModal, true);
+        }
+
+        function abrirModalTopologia() {
+            document.getElementById('modalTopologia').style.display = 'block';
+            networkModal.fit(); // Ajusta o zoom para a tela gigante
+        }
+
+        function fecharModalTopologia() {
+            document.getElementById('modalTopologia').style.display = 'none';
         }
 
         async function carregarRadar(btn) {
@@ -665,40 +730,40 @@
                 
                 nodes.clear(); edges.clear();
                 
-                // 1. NÓ RAIZ: A INTERNET (Formato de Caixa Colorida + Emoji Nativo)
-                nodes.add({ id: 'internet', label: '☁️ INTERNET', shape: 'box', color: { background: '#89b4fa', border: '#89b4fa' }, font: {color: '#0b0b13', face: 'Inter', size: 16, bold: true} });
+                nodes.add({ id: 'internet', label: '☁️ INTERNET', shape: 'box', color: { background: '#89b4fa', border: '#89b4fa' } });
 
-                // 2. NÓ DO GATEWAY (ROTEADOR)
                 if(globalGatewayIP) {
-                    nodes.add({ id: globalGatewayIP, label: '🖧 Roteador (Gateway)\n'+globalGatewayIP, shape: 'box', color: { background: '#f38ba8', border: '#f38ba8' }, font: {color: '#0b0b13', face: 'JetBrains Mono', bold: true} });
+                    nodes.add({ id: globalGatewayIP, label: '🖧 Roteador\n'+globalGatewayIP, shape: 'box', color: { background: '#f38ba8', border: '#f38ba8' } });
                     edges.add({ from: 'internet', to: globalGatewayIP, color: { color: '#f38ba8' }, width: 3});
                 }
 
-                // 3. NÓ DO NOSSO SENSOR NOC
                 if(globalSensorIP && globalGatewayIP) {
-                    nodes.add({ id: globalSensorIP, label: '🛡️ NOC Sensor\n'+globalSensorIP, shape: 'box', color: { background: '#a6e3a1', border: '#a6e3a1' }, font: {color: '#0b0b13', face: 'JetBrains Mono', bold: true} });
+                    nodes.add({ id: globalSensorIP, label: '🛡️ NOC Sensor\n'+globalSensorIP, shape: 'box', color: { background: '#a6e3a1', border: '#a6e3a1' } });
                     edges.add({ from: globalGatewayIP, to: globalSensorIP, color: { color: '#a6e3a1' }, width: 2});
                 }
 
-                // 4. DISPOSITIVOS CLIENTES (PCs, Celulares, TVs)
                 dispositivos.forEach(d => {
                     if(d.ip === globalGatewayIP || d.ip === globalSensorIP) return;
                     let nome = d.nome_custom || d.fabricante;
+                    
+                    // ⚡ CORES POR STATUS (ON / OFF)
+                    let cor_fundo = d.status === 'online' ? '#a6e3a1' : '#f38ba8'; // Verde se On, Vermelho se Off
+                    let status_txt = d.status === 'online' ? 'ON' : 'OFF';
+
                     nodes.add({ 
                         id: d.ip, 
-                        label: '💻 ' + nome + '\n' + d.ip, 
-                        title: `MAC: ${d.mac}\nClique para tentar ligar (WoL)`, 
-                        mac: d.mac, 
-                        shape: 'dot',
-                        size: 15,
-                        color: { background: '#151521', border: '#cba6f7' },
-                        font: {color: '#cdd6f4', face: 'JetBrains Mono'}
+                        rawName: nome,
+                        mac: d.mac,
+                        label: `💻 ${nome} [${status_txt}]\n${d.ip}`, 
+                        shape: 'box',
+                        color: { background: cor_fundo, border: cor_fundo },
+                        font: {color: '#0b0b13', face: 'JetBrains Mono'}
                     });
                     edges.add({ from: globalGatewayIP, to: d.ip, color: {color: '#36364a'} });
                 });
 
-            } catch(e) { console.error("Erro ao desenhar radar:", e); }
-            if(btn) setTimeout(() => btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Scan Local', 1000);
+            } catch(e) { console.error(e); }
+            if(btn) setTimeout(() => btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Scan Rápido', 1000);
         }
 
         // ⚡ CORREÇÃO DA ORDEM DE CARREGAMENTO (AQUI ESTAVA A CORRIDA)

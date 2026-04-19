@@ -94,8 +94,13 @@ def varredura_profunda_arp(ip_gateway):
 
 def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
     if forcar_varredura and gateway_ip != "Desconhecido":
-        varredura_profunda_arp(gateway_ip) 
-
+        try:
+            base_ip = ".".join(gateway_ip.split('.')[:-1])
+            threads = [threading.Thread(target=ping_silencioso, args=(f"{base_ip}.{i}",)) for i in range(1, 255)]
+            for t in threads: t.start()
+            for t in threads: t.join()
+        except: pass
+        
     dispositivos = []
     prefixo_rede = '.'.join(meu_ip.split('.')[:-1]) + '.'
     try:
@@ -105,8 +110,11 @@ def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
             if len(partes) >= 2 and '.' in partes[0] and ('-' in partes[1] or ':' in partes[1]):
                 ip = partes[0]
                 mac = partes[1].replace('-', ':').upper()
-                if ip.startswith(prefixo_rede) and not ip.endswith(".255"):
-                    dispositivos.append({"ip": ip, "mac": mac, "nome": "Desconhecido", "fabricante": "Desconhecido"})
+                if ip.startswith(prefixo_rede) and not ip.endswith(".255"): 
+                    # ⚡ NOVO: PINGA O DISPOSITIVO PARA VER SE ESTÁ ONLINE
+                    lat = ping(ip)
+                    status_disp = 'online' if lat > 0 else 'offline'
+                    dispositivos.append({"ip": ip, "mac": mac, "nome": "Desconhecido", "fabricante": "Desconhecido", "status": status_disp})
     except: pass
     return dispositivos
 
@@ -389,7 +397,7 @@ def loop_telemetria():
             meu_ip, gateway_ip = get_network_info()
             ping_gw = ping(gateway_ip) if gateway_ip != "Desconhecido" else 0
             
-            forcar_varredura = (agora - ultima_varredura > 300)
+            forcar_varredura = (agora - ultima_varredura > 20)
             dispositivos = get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=forcar_varredura)
             if forcar_varredura: ultima_varredura = agora
 
