@@ -48,12 +48,13 @@ try:
         conn.execute("INSERT INTO clientes (usuario, senha, role) VALUES ('admin', 'admin123', 'Administrador Master')")
         conn.commit()
 
-    # ⚡ COLUNA DA GPU_TEMP ADICIONADA AQUI!
+    # ⚡ COLUNA DA MEMÓRIA DE ALERTA E GPU INJETADAS AQUI!
     colunas_sensores = [
         "last_seen TIMESTAMP", "ip_gateway TEXT", "ultima_rota TEXT", 
         "download REAL", "upload REAL", "alerta_reconhecido INTEGER DEFAULT 1", 
         "disco REAL", "net_up REAL", "net_down REAL", "portas TEXT", 
-        "em_manutencao INTEGER DEFAULT 0", "cliente_id INTEGER", "gpu_temp REAL"
+        "em_manutencao INTEGER DEFAULT 0", "cliente_id INTEGER", "gpu_temp REAL",
+        "memoria_alerta TEXT DEFAULT 'ONLINE'"
     ]
     for col in colunas_sensores:
         try: conn.execute(f"ALTER TABLE sensores ADD COLUMN {col}"); conn.commit()
@@ -186,6 +187,7 @@ def report_data():
         ip_display = data.get('ip_local')
         
         conn = database.get_db()
+        
         try:
             from datetime import datetime
             agora_hora = datetime.now().hour
@@ -201,16 +203,20 @@ def report_data():
         
         if sensor:
             sensor_dict = dict(sensor) 
-            if sensor_dict.get('status') == 'offline':
+            
+            # ⚡ O SEGREDO DO ANTI-SPAM (MÁQUINA DE ESTADOS)
+            estado_anterior = sensor_dict.get('memoria_alerta', 'ONLINE')
+            
+            if estado_anterior == 'OFFLINE' or sensor_dict.get('status') == 'offline':
                 try:
                     conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Conexão Restaurada', 'Aviso', 'O sensor restabeleceu a comunicação com a rede')", (mac,))
                     enviar_telegram(f"✅ <b>CONEXÃO RESTAURADA</b>\n\n🖥️ <b>Sensor:</b> {sensor_dict.get('nome_local', mac)}\n🌐 <b>Status:</b> ONLINE", cliente_id=sensor_dict.get('cliente_id'))
                 except: pass
 
-            # ⚡ UPDATE COM A GPU_TEMP
+            # ⚡ UPDATE COM GPU_TEMP E RESET DA MEMÓRIA DE ALERTA PARA ONLINE
             conn.execute('''UPDATE sensores SET 
                 ip_sensor = ?, cpu_usage = ?, ram_usage = ?, temp = ?, gpu_temp = ?,
-                status = 'online', ping_gateway = ?, ping_global = ?,
+                status = 'online', memoria_alerta = 'ONLINE', ping_gateway = ?, ping_global = ?,
                 ip_gateway = ?, last_seen = CURRENT_TIMESTAMP,
                 disco = ?, net_up = ?, net_down = ?, portas = ?
                 WHERE mac_id = ?''', 
@@ -221,10 +227,9 @@ def report_data():
                  mac))
             conn.commit()
         else:
-            # ⚡ INSERT COM A GPU_TEMP
             conn.execute('''INSERT INTO sensores 
-                (mac_id, nome_local, ip_sensor, cpu_usage, ram_usage, temp, gpu_temp, status, lat, lon, ping_gateway, ping_global, ip_gateway, last_seen, alerta_reconhecido, em_manutencao) 
-                VALUES (?, 'Novo Sensor', ?, ?, ?, ?, ?, 'online', -14.235, -51.925, ?, ?, ?, CURRENT_TIMESTAMP, 1, 0)''', 
+                (mac_id, nome_local, ip_sensor, cpu_usage, ram_usage, temp, gpu_temp, status, memoria_alerta, lat, lon, ping_gateway, ping_global, ip_gateway, last_seen, alerta_reconhecido, em_manutencao) 
+                VALUES (?, 'Novo Sensor', ?, ?, ?, ?, ?, 'online', 'ONLINE', -14.235, -51.925, ?, ?, ?, CURRENT_TIMESTAMP, 1, 0)''', 
                 (mac, ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
                  data.get('temp'), data.get('gpu_temp'), data.get('ping_gateway'), 
                  data.get('ping_global'), data.get('ip_gateway')))
@@ -337,7 +342,6 @@ def enviar_wol_remoto(mac_sensor):
     mac_alvo = request.json.get('mac_alvo')
     nome_alvo = request.json.get('nome_alvo', 'Dispositivo')
     
-    # Adiciona na fila do Agente o comando "wol:MAC_DO_PC"
     PENDING_COMMANDS[mac_sensor] = f"wol:{mac_alvo}"
     
     conn = database.get_db()
@@ -348,7 +352,7 @@ def enviar_wol_remoto(mac_sensor):
     return jsonify({"status": f"Sinal de energia enviado para {nome_alvo}!"})
 
 # ==========================================
-# 📊 OUTRAS APIs DE TELA
+# 📊 OUTRAS APIs DE TELA E ALERTAS
 # ==========================================
 @app.route('/api/v2/graficos_ping/<mac_id>')
 def obter_graficos_ping(mac_id):
@@ -392,11 +396,9 @@ def atualizar_dispositivos():
     sensor_data = conn.execute("SELECT ip_gateway FROM sensores WHERE mac_id = ?", (sensor_mac,)).fetchone()
     ip_gw = sensor_data['ip_gateway'] if sensor_data else None
 
-    # ⚡ CRIA A TABELA JÁ COM A COLUNA 'STATUS'
     try: conn.execute('''CREATE TABLE IF NOT EXISTS dispositivos (id SERIAL PRIMARY KEY, sensor_mac TEXT, ip TEXT, mac TEXT, fabricante TEXT, nome_custom TEXT, status TEXT DEFAULT 'offline')'''); conn.commit()
     except: pass
     
-    # ⚡ FORÇA A CRIAÇÃO DA COLUNA CASO A TABELA SEJA ANTIGA
     try: conn.execute("ALTER TABLE dispositivos ADD COLUMN status TEXT DEFAULT 'offline'"); conn.commit()
     except: pass
 
@@ -409,7 +411,6 @@ def atualizar_dispositivos():
     for disp in data.get('lista', []):
         nome = nomes_salvos.get(disp['mac'])
         if not nome: nome = "Gateway / Roteador" if disp['ip'] == ip_gw else "Desconhecido"
-        # ⚡ AGORA SALVA O STATUS NO BANCO
         status_disp = disp.get('status', 'offline')
         conn.execute("INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, nome_custom, status) VALUES (?, ?, ?, ?, ?, ?)", (sensor_mac, disp['ip'], disp['mac'], disp['fabricante'], nome, status_disp))
     conn.commit()
@@ -461,6 +462,9 @@ def alertas_ia():
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
 
+# ==========================================
+# 🚨 WATCHDOG DA NUVEM (QUEDAS CRÍTICAS)
+# ==========================================
 @app.route('/api/v2/mapa_sensores')
 def api_mapa_sensores():
     if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 401
@@ -470,14 +474,18 @@ def api_mapa_sensores():
     try:
         import os
         is_postgres = bool(os.environ.get('DATABASE_URL'))
+        
+        # ⚡ O SEGREDO DOS 60 SEGUNDOS
         condicao_tempo = "last_seen < NOW() - INTERVAL '60 seconds'" if is_postgres else "last_seen < datetime('now', '-60 seconds', 'localtime')"
         
-        caidos = conn.execute(f"SELECT mac_id, nome_local, cliente_id FROM sensores WHERE status = 'online' AND em_manutencao = 0 AND {condicao_tempo}").fetchall()
+        # ⚡ SÓ CHAMA O TELEGRAM SE A MEMÓRIA DA NUVEM AINDA ACHAR QUE ESTAVA ONLINE
+        caidos = conn.execute(f"SELECT mac_id, nome_local, cliente_id FROM sensores WHERE status = 'online' AND em_manutencao = 0 AND (memoria_alerta = 'ONLINE' OR memoria_alerta IS NULL) AND {condicao_tempo}").fetchall()
         for c in caidos:
             conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder.')", (c['mac_id'],))
             enviar_telegram(f"🚨 <b>QUEDA CRÍTICA</b>\n\n🏢 <b>Local:</b> {c.get('nome_local', c['mac_id'])}\n❌ <b>Status:</b> OFFLINE TOTAL", cliente_id=c.get('cliente_id'))
         
-        conn.execute(f"UPDATE sensores SET status = 'offline', alerta_reconhecido = 0 WHERE status = 'online' AND em_manutencao = 0 AND {condicao_tempo}")
+        # Atualiza a memória de alerta para OFFLINE (Para não mandar spam no próximo refresh da tela)
+        conn.execute(f"UPDATE sensores SET status = 'offline', memoria_alerta = 'OFFLINE', alerta_reconhecido = 0 WHERE em_manutencao = 0 AND {condicao_tempo}")
         conn.commit()
     except Exception as e: pass
 
@@ -500,7 +508,9 @@ def get_sensor_data(mac_id):
     try:
         import os
         is_postgres = bool(os.environ.get('DATABASE_URL'))
-        condicao_tempo = "last_seen < NOW() - INTERVAL '15 seconds'" if is_postgres else "last_seen < datetime('now', '-15 seconds', 'localtime')"
+        
+        # ⚡ MANTENDO 60 SEGUNDOS AQUI TAMBÉM
+        condicao_tempo = "last_seen < NOW() - INTERVAL '60 seconds'" if is_postgres else "last_seen < datetime('now', '-60 seconds', 'localtime')"
         conn.execute(f"UPDATE sensores SET status = 'offline' WHERE em_manutencao = 0 AND {condicao_tempo}"); conn.commit()
     except: pass
     sensor = conn.execute("SELECT * FROM sensores WHERE mac_id = ?", (mac_id,)).fetchone()
