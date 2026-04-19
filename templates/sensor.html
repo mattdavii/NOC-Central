@@ -621,23 +621,98 @@
             setTimeout(() => { document.getElementById('btn-st').innerHTML = '<i class="fa-solid fa-play"></i> Testar Agora'; carregarGraficos(); }, 40000);
         }
 
+        let network = null;
+        let nodes = new vis.DataSet();
+        let edges = new vis.DataSet();
+
+        function inicializarGrafo() {
+            var container = document.getElementById('network-topology');
+            var data = { nodes: nodes, edges: edges };
+            var options = {
+                nodes: { shape: 'dot', size: 16, font: { color: '#cdd6f4', face: 'JetBrains Mono', size: 12 }, borderWidth: 2, shadow: { enabled: true, color: 'rgba(137,180,250,0.5)', size: 10 } },
+                edges: { width: 2, color: { color: '#36364a', highlight: '#89b4fa' }, smooth: { type: 'continuous' } },
+                physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -100, centralGravity: 0.01, springLength: 100, springConstant: 0.08 }, stabilization: { iterations: 150 } },
+                interaction: { hover: true, tooltipDelay: 200 }
+            };
+            network = new vis.Network(container, data, options);
+
+            network.on("click", function (params) {
+                if (params.nodes.length > 0) {
+                    let clickedNodeId = params.nodes[0];
+                    let clickedNode = nodes.get(clickedNodeId);
+                    if(clickedNode.label.includes('Desconhecido') || clickedNode.title.includes('OFFLINE') || clickedNode.title.includes('WoL')) {
+                        if(confirm(`🔌 Este dispositivo parece offline. Deseja enviar um Magic Packet (Wake-on-LAN) para acordar o MAC: ${clickedNode.mac}?`)) {
+                            dispararWoL(clickedNode.mac, clickedNode.label.split('\\n')[0]);
+                        }
+                    }
+                }
+            });
+        }
+
+        async function dispararWoL(mac_alvo, nome_alvo) {
+            try {
+                const res = await fetch(`/api/v2/enviar_wol/${mac_id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mac_alvo: mac_alvo, nome_alvo: nome_alvo }) });
+                const data = await res.json(); alert(data.status || "Pacote Mágico (WoL) enviado!");
+            } catch (error) { alert("Erro ao comunicar com a Central."); }
+        }
+
         async function carregarRadar(btn) {
             if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
             try {
+                if(!network) inicializarGrafo();
                 const res = await fetch('/api/v2/dispositivos/' + mac_id);
                 const dispositivos = await res.json();
-                let gatewayHtml = '', outrosHtml = '';
-                document.getElementById('diag-sensor').innerHTML = `<div class="t-card t-sensor"><div class="t-ip">${globalSensorIP}</div><div class="t-mac">${mac_id}</div><div class="t-name">ESTE SENSOR</div></div>`;
+                
+                nodes.clear(); edges.clear();
+                
+                // 1. NÓ RAIZ: A INTERNET (Formato de Caixa Colorida + Emoji Nativo)
+                nodes.add({ id: 'internet', label: '☁️ INTERNET', shape: 'box', color: { background: '#89b4fa', border: '#89b4fa' }, font: {color: '#0b0b13', face: 'Inter', size: 16, bold: true} });
+
+                // 2. NÓ DO GATEWAY (ROTEADOR)
+                if(globalGatewayIP) {
+                    nodes.add({ id: globalGatewayIP, label: '🖧 Roteador (Gateway)\n'+globalGatewayIP, shape: 'box', color: { background: '#f38ba8', border: '#f38ba8' }, font: {color: '#0b0b13', face: 'JetBrains Mono', bold: true} });
+                    edges.add({ from: 'internet', to: globalGatewayIP, color: { color: '#f38ba8' }, width: 3});
+                }
+
+                // 3. NÓ DO NOSSO SENSOR NOC
+                if(globalSensorIP && globalGatewayIP) {
+                    nodes.add({ id: globalSensorIP, label: '🛡️ NOC Sensor\n'+globalSensorIP, shape: 'box', color: { background: '#a6e3a1', border: '#a6e3a1' }, font: {color: '#0b0b13', face: 'JetBrains Mono', bold: true} });
+                    edges.add({ from: globalGatewayIP, to: globalSensorIP, color: { color: '#a6e3a1' }, width: 2});
+                }
+
+                // 4. DISPOSITIVOS CLIENTES (PCs, Celulares, TVs)
                 dispositivos.forEach(d => {
+                    if(d.ip === globalGatewayIP || d.ip === globalSensorIP) return;
                     let nome = d.nome_custom || d.fabricante;
-                    let card = `<div class="t-card ${d.ip === globalGatewayIP ? 't-gateway' : 't-device'}"><div class="t-ip">${d.ip}</div><div class="t-mac">${d.mac}</div><div class="t-name">${nome} <button onclick="renomearDisp('${d.mac}','${d.nome_custom||''}')" title="Renomear"><i class="fa-solid fa-pen-to-square"></i></button> <button onclick="monitorarIP('${d.ip}', '${nome}')" style="color: var(--blue); margin-left: 5px;" title="Adicionar ao Watchdog de Rede"><i class="fa-solid fa-eye"></i></button></div></div>`;
-                    if(d.ip === globalGatewayIP) gatewayHtml = card; else outrosHtml += card;
+                    nodes.add({ 
+                        id: d.ip, 
+                        label: '💻 ' + nome + '\n' + d.ip, 
+                        title: `MAC: ${d.mac}\nClique para tentar ligar (WoL)`, 
+                        mac: d.mac, 
+                        shape: 'dot',
+                        size: 15,
+                        color: { background: '#151521', border: '#cba6f7' },
+                        font: {color: '#cdd6f4', face: 'JetBrains Mono'}
+                    });
+                    edges.add({ from: globalGatewayIP, to: d.ip, color: {color: '#36364a'} });
                 });
-                if(gatewayHtml) document.getElementById('diag-gateway').innerHTML = gatewayHtml;
-                document.getElementById('diag-outros').innerHTML = outrosHtml;
-            } catch(e) {}
-            if(btn) setTimeout(() => btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Scan Radar', 1000);
+
+            } catch(e) { console.error("Erro ao desenhar radar:", e); }
+            if(btn) setTimeout(() => btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Scan Local', 1000);
         }
+
+        // ⚡ CORREÇÃO DA ORDEM DE CARREGAMENTO (AQUI ESTAVA A CORRIDA)
+        window.onload = async function() {
+            inicializarGrafo();
+            // O comando "await" obriga o sistema a descobrir os IPs PRIMEIRO, antes de desenhar o mapa.
+            await buscarDadosAoVivo(); 
+            carregarRadar();
+            
+            carregarGraficosPing();
+            carregarCustomIPs(); 
+            carregarEnergiaIPs(); 
+            carregarServicosOS();
+        };
 
         async function renomearDisp(mac, atual) { let n = prompt("Nome para este dispositivo:", atual); if(n) { await fetch('/api/v2/renomear_dispositivo', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mac, nome:n, sensor_mac:mac_id}) }); carregarRadar(); } }
         
