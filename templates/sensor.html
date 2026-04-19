@@ -115,8 +115,10 @@
                     </div>
                 </h3>
                 <div class="data-row" style="margin-top:10px;">
-                    <span><i class="fa-solid fa-temperature-half" style="color:var(--yellow); width: 20px;"></i> Temperatura:</span> 
-                    <strong id="temp-text" style="color:var(--yellow); text-shadow: 0 0 10px rgba(249,226,175,0.3);">-- °C</strong>
+                    <div style="display: flex; gap: 15px; width: 100%;">
+                        <span style="flex: 1;"><i class="fa-solid fa-temperature-half" style="color:var(--yellow);"></i> CPU: <strong id="temp-text" style="color:var(--yellow);">-- °C</strong></span> 
+                        <span style="flex: 1;"><i class="fa-solid fa-fire-flame-curved" style="color:var(--red);"></i> GPU: <strong id="gpu-text" style="color:var(--red);">-- °C</strong></span>
+                    </div>
                 </div>
                 <div style="margin-bottom: 15px;">
                     <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--text-muted);">
@@ -267,25 +269,35 @@
             </div>
         </div>
 
-        <div class="painel-grid-duo">
+        <div class="painel-grid" style="grid-template-columns: repeat(3, 1fr);">
             <div class="card card-custom">
-                <h3 style="margin-bottom: 15px;"><span><i class="fa-solid fa-crosshairs"></i> Radar de Alvos Locais (Pings)</span></h3>
+                <h3 style="margin-bottom: 15px;"><span><i class="fa-solid fa-crosshairs"></i> Radar de Pings</span></h3>
                 <div style="display: flex; gap: 5px; margin-bottom: 15px;">
-                    <input type="text" id="new-ip" placeholder="IP (Ex: 192.168.0.10)">
-                    <input type="text" id="new-desc" placeholder="Câmera 01">
+                    <input type="text" id="new-ip" placeholder="IP Alvo">
+                    <input type="text" id="new-desc" placeholder="Ex: Câmera">
                     <button class="action-btn" onclick="addIP()" style="background: var(--red); color: white;"><i class="fa-solid fa-plus"></i></button>
                 </div>
                 <div id="lista-custom-ips" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
             </div>
 
             <div class="card card-energia">
-                <h3 style="margin-bottom: 15px; color: #fab387;"><span><i class="fa-solid fa-plug-circle-bolt"></i> Monitoramento de Energia</span></h3>
+                <h3 style="margin-bottom: 15px; color: #fab387;"><span><i class="fa-solid fa-plug-circle-bolt"></i> Watchdog de Energia</span></h3>
                 <div style="display: flex; gap: 5px; margin-bottom: 15px;">
-                    <input type="text" id="new-ip-energia" placeholder="IP (Fora do Nobreak)">
-                    <input type="text" id="new-desc-energia" placeholder="Roteador da Recepção">
+                    <input type="text" id="new-ip-energia" placeholder="IP fora do Nobreak">
+                    <input type="text" id="new-desc-energia" placeholder="Roteador Vivo">
                     <button class="action-btn" onclick="addEnergia()" style="background: #fab387; color: var(--bg-base);"><i class="fa-solid fa-plus"></i></button>
                 </div>
                 <div id="lista-energia-ips" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
+            </div>
+
+            <div class="card card-speed">
+                <h3 style="margin-bottom: 15px; color: var(--purple);"><span><i class="fa-solid fa-cogs"></i> Serviços do SO (Auto-Cura)</span></h3>
+                <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+                    <input type="text" id="new-srv-nome" placeholder="Nome Exato (Ex: Spooler)">
+                    <input type="text" id="new-srv-desc" placeholder="Apelido">
+                    <button class="action-btn" onclick="addServicoOS()" style="background: var(--purple); color: var(--bg-base);"><i class="fa-solid fa-plus"></i></button>
+                </div>
+                <div id="lista-servicos-os" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
             </div>
         </div>
 
@@ -539,7 +551,10 @@
                 document.getElementById('cpu-fill').style.width = data.cpu_usage + '%';
                 document.getElementById('ram-text').innerText = data.ram_usage + '%';
                 document.getElementById('ram-fill').style.width = data.ram_usage + '%';
+                
+                // ⚡ Temperaturas Injetadas Aqui
                 document.getElementById('temp-text').innerText = data.temp + ' °C';
+                if(document.getElementById('gpu-text')) document.getElementById('gpu-text').innerText = (data.gpu_temp != null ? data.gpu_temp : '--') + ' °C';
                 
                 document.getElementById('disk-text').innerText = (data.disco || 0) + '%';
                 document.getElementById('disk-fill').style.width = (data.disco || 0) + '%';
@@ -665,11 +680,31 @@
             document.getElementById('lista-energia-ips').innerHTML = html || '<div style="text-align:center; padding:15px; color:var(--text-muted);">Nenhum ponto monitorado.</div>';
         }
 
+        // ⚡ NOVA FUNÇÃO: CARREGAR SERVIÇOS DO SO
+        async function carregarServicosOS() {
+            const res = await fetch('/api/v2/servicos_os/' + mac_id);
+            const srvs = await res.json(); let html = '';
+            srvs.forEach(item => {
+                let isOnline = item.status.includes('ONLINE');
+                let cor = isOnline ? 'var(--green)' : 'var(--red)';
+                let icone = isOnline ? 'fa-check-circle' : 'fa-triangle-exclamation';
+                html += `<div style="background:var(--bg-input); padding:8px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; border-left:4px solid ${cor};">
+                    <div><b style="color:var(--purple); font-size:1.1em;">${item.descricao}</b><br><small style="color:var(--text-muted); font-family:monospace;">${item.nome_servico}</small></div>
+                    <div style="display:flex; align-items:center; gap:12px;"><i class="fa-solid ${icone}" style="color:${cor}; font-size:1.2em;" title="${item.status}"></i>
+                    <button onclick="excluirServicoOS(${item.id})" style="background:none; border:none; color:var(--text-muted); cursor:pointer;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-muted)'"><i class="fa-solid fa-trash"></i></button></div></div>`;
+            });
+            document.getElementById('lista-servicos-os').innerHTML = html || '<div style="text-align:center; padding:15px; color:var(--text-muted);">Nenhum serviço monitorado.</div>';
+        }
+
         async function addIP() { const ip = document.getElementById('new-ip').value; const desc = document.getElementById('new-desc').value; if(!ip) return; await fetch('/api/v2/ips_customizados/'+mac_id, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip, descricao:desc}) }); document.getElementById('new-ip').value=''; document.getElementById('new-desc').value=''; carregarCustomIPs(); }
         async function excluirIP(id) { if(confirm("Remover alvo de rede?")) { await fetch(`/api/v2/ips_customizados/${mac_id}/${id}`, { method: 'DELETE' }); carregarCustomIPs(); } }
         
         async function addEnergia() { const ip = document.getElementById('new-ip-energia').value; const desc = document.getElementById('new-desc-energia').value; if(!ip) return; await fetch('/api/v2/ips_energia/'+mac_id, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip, descricao:desc}) }); document.getElementById('new-ip-energia').value=''; document.getElementById('new-desc-energia').value=''; carregarEnergiaIPs(); }
         async function excluirEnergia(id) { if(confirm("Parar de monitorar energia deste ponto?")) { await fetch(`/api/v2/ips_energia/${mac_id}/${id}`, { method: 'DELETE' }); carregarEnergiaIPs(); } }
+
+        // ⚡ NOVAS AÇÕES PARA SERVIÇOS DO SO
+        async function addServicoOS() { const nome = document.getElementById('new-srv-nome').value; const desc = document.getElementById('new-srv-desc').value; if(!nome) return; await fetch('/api/v2/servicos_os/'+mac_id, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({nome_servico:nome, descricao:desc}) }); document.getElementById('new-srv-nome').value=''; document.getElementById('new-srv-desc').value=''; carregarServicosOS(); }
+        async function excluirServicoOS(id) { if(confirm("Parar de monitorar este serviço?")) { await fetch(`/api/v2/servicos_os/${mac_id}/${id}`, { method: 'DELETE' }); carregarServicosOS(); } }
 
         async function monitorarIP(ip, nome) {
             if(confirm(`Deseja adicionar ${nome} (${ip}) ao Radar de Alvos Locais (Watchdog)?`)) {
@@ -702,11 +737,12 @@
 
         setInterval(carregarRadar, 25000); 
         setInterval(carregarCustomIPs, 10000); 
-        setInterval(carregarEnergiaIPs, 10000); 
+        setInterval(carregarEnergiaIPs, 10000);
+        setInterval(carregarServicosOS, 10000); // ⚡ TIMER DOS SERVIÇOS
         setInterval(carregarHistorico, 10000);
         setInterval(carregarGraficos, 60000); 
         
-        buscarDadosAoVivo(); carregarRadar(); carregarCustomIPs(); carregarEnergiaIPs(); carregarHistorico(); carregarGraficos(); carregarGraficosPing();
+        buscarDadosAoVivo(); carregarRadar(); carregarCustomIPs(); carregarEnergiaIPs(); carregarServicosOS(); carregarHistorico(); carregarGraficos(); carregarGraficosPing();
 
         const socket = io();
         socket.on('atualizacao_global', function(msg) {

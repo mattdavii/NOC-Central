@@ -80,6 +80,12 @@ try:
         try: conn.execute("ROLLBACK")
         except: pass
 
+        # ⚡ AUTO-CURA: TABELA DE SERVIÇOS DA FASE 3
+    try:
+        conn.execute('''CREATE TABLE IF NOT EXISTS servicos_os (id SERIAL PRIMARY KEY, sensor_mac TEXT, nome_servico TEXT, descricao TEXT, status TEXT DEFAULT 'ONLINE')''')
+        conn.commit()
+    except: pass
+
     conn.close()
     print("✅ Banco de Dados sincronizado, atualizado e blindado!")
 except Exception as e: print(f"⚠️ Aviso na inicialização do banco: {e}")
@@ -775,6 +781,37 @@ def toggle_manutencao(mac_id):
     conn.commit()
     conn.close()
     return jsonify({"status": "OK", "novo_estado": novo_estado})
+
+# ==========================================
+# ⚙️ ROTAS DA FASE 3 (WATCHDOG DE SERVIÇOS OS)
+# ==========================================
+@app.route('/api/v2/servicos_os/<mac_id>', methods=['GET', 'POST'])
+def gerenciar_servicos_os(mac_id):
+    conn = database.get_db()
+    if request.method == 'POST':
+        data = request.json
+        conn.execute("INSERT INTO servicos_os (sensor_mac, nome_servico, descricao) VALUES (?, ?, ?)", (mac_id, data['nome_servico'], data['descricao']))
+        conn.commit()
+    srvs = conn.execute("SELECT * FROM servicos_os WHERE sensor_mac = ? ORDER BY id DESC", (mac_id,)).fetchall()
+    conn.close()
+    return jsonify([dict(i) for i in srvs])
+
+@app.route('/api/v2/servicos_os/<mac_id>/<int:id_srv>', methods=['DELETE'])
+def del_servico_os(mac_id, id_srv):
+    conn = database.get_db()
+    conn.execute("DELETE FROM servicos_os WHERE id = ?", (id_srv,))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "OK"})
+
+@app.route('/api/v2/reportar_status_servico', methods=['POST'])
+def reportar_status_servico():
+    data = request.json
+    conn = database.get_db()
+    conn.execute("UPDATE servicos_os SET status = ? WHERE id = ?", (data['status'], data['id']))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "OK"})
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=10000, debug=True)
