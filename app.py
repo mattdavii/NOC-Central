@@ -462,6 +462,25 @@ def alertas_ia():
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
 
+# ⚡ FUNÇÃO GUARDIÃ: Verifica quedas independente de qual tela o usuário abriu
+def verificar_quedas_global(conn):
+    try:
+        import os
+        is_postgres = bool(os.environ.get('DATABASE_URL'))
+        condicao_tempo = "last_seen < NOW() - INTERVAL '60 seconds'" if is_postgres else "last_seen < datetime('now', '-60 seconds', 'localtime')"
+        
+        # Acha quem caiu e a nuvem ainda acha que está ONLINE
+        caidos = conn.execute(f"SELECT mac_id, nome_local, cliente_id FROM sensores WHERE status = 'online' AND em_manutencao = 0 AND (memoria_alerta = 'ONLINE' OR memoria_alerta IS NULL) AND {condicao_tempo}").fetchall()
+        
+        for c in caidos:
+            conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder.')", (c['mac_id'],))
+            enviar_telegram(f"🚨 <b>QUEDA CRÍTICA</b>\n\n🏢 <b>Local:</b> {c.get('nome_local', c['mac_id'])}\n❌ <b>Status:</b> OFFLINE TOTAL", cliente_id=c.get('cliente_id'))
+        
+        # Atualiza o status para offline e evita spam
+        conn.execute(f"UPDATE sensores SET status = 'offline', memoria_alerta = 'OFFLINE', alerta_reconhecido = 0 WHERE em_manutencao = 0 AND {condicao_tempo}")
+        conn.commit()
+    except Exception as e: pass
+
 # ==========================================
 # 🚨 WATCHDOG DA NUVEM (QUEDAS CRÍTICAS)
 # ==========================================
@@ -471,23 +490,7 @@ def api_mapa_sensores():
     role = session.get('role'); user_id = session.get('user_id')
     conn = database.get_db()
 
-    try:
-        import os
-        is_postgres = bool(os.environ.get('DATABASE_URL'))
-        
-        # ⚡ O SEGREDO DOS 60 SEGUNDOS
-        condicao_tempo = "last_seen < NOW() - INTERVAL '60 seconds'" if is_postgres else "last_seen < datetime('now', '-60 seconds', 'localtime')"
-        
-        # ⚡ SÓ CHAMA O TELEGRAM SE A MEMÓRIA DA NUVEM AINDA ACHAR QUE ESTAVA ONLINE
-        caidos = conn.execute(f"SELECT mac_id, nome_local, cliente_id FROM sensores WHERE status = 'online' AND em_manutencao = 0 AND (memoria_alerta = 'ONLINE' OR memoria_alerta IS NULL) AND {condicao_tempo}").fetchall()
-        for c in caidos:
-            conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder.')", (c['mac_id'],))
-            enviar_telegram(f"🚨 <b>QUEDA CRÍTICA</b>\n\n🏢 <b>Local:</b> {c.get('nome_local', c['mac_id'])}\n❌ <b>Status:</b> OFFLINE TOTAL", cliente_id=c.get('cliente_id'))
-        
-        # Atualiza a memória de alerta para OFFLINE (Para não mandar spam no próximo refresh da tela)
-        conn.execute(f"UPDATE sensores SET status = 'offline', memoria_alerta = 'OFFLINE', alerta_reconhecido = 0 WHERE em_manutencao = 0 AND {condicao_tempo}")
-        conn.commit()
-    except Exception as e: pass
+    verificar_quedas_global(conn) # ⚡ Chama o Guardião
 
     try:
         query_base = "SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, s.ram_usage, s.net_down, s.net_up, s.alerta_reconhecido, s.em_manutencao, s.ping_global, c.nome as cliente_nome FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id"
@@ -505,14 +508,9 @@ def api_mapa_sensores():
 @app.route('/api/v2/sensor_data/<mac_id>', methods=['GET'])
 def get_sensor_data(mac_id):
     conn = database.get_db()
-    try:
-        import os
-        is_postgres = bool(os.environ.get('DATABASE_URL'))
-        
-        # ⚡ MANTENDO 60 SEGUNDOS AQUI TAMBÉM
-        condicao_tempo = "last_seen < NOW() - INTERVAL '60 seconds'" if is_postgres else "last_seen < datetime('now', '-60 seconds', 'localtime')"
-        conn.execute(f"UPDATE sensores SET status = 'offline' WHERE em_manutencao = 0 AND {condicao_tempo}"); conn.commit()
-    except: pass
+    
+    verificar_quedas_global(conn) # ⚡ Chama o Guardião na tela do Sensor também!
+    
     sensor = conn.execute("SELECT * FROM sensores WHERE mac_id = ?", (mac_id,)).fetchone()
     conn.close()
     if sensor: return jsonify(dict(sensor))

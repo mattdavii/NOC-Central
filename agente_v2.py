@@ -348,10 +348,13 @@ def loop_telemetria():
     contador_falhas_wan = 0
     ultimo_reparo_wan = 0
     
+    
     if psutil:
         last_net = psutil.net_io_counters()
         last_net_time = time.time()
-    
+    tempo_inicio_cpu_alta = 0
+    tempo_inicio_ram_alta = 0
+
     while True:
         try:
             agora = time.time()
@@ -364,17 +367,28 @@ def loop_telemetria():
             disco = psutil.disk_usage('/').percent if psutil else 0.0 
             cpu_temp, gpu_temp = ler_temperaturas()
 
-            # 🚨 GATILHO DE PROTEÇÃO TÉRMICA
+           # 🚨 GATILHOS DE ESTRESSE CONTÍNUO DE HARDWARE
             alertas_rede = []
-            if cpu_temp >= 85.0 and not ALARMES_DISPARADOS.get("temp_cpu", False):
-                alertas_rede.append({"tipo": "🔥 Superaquecimento CPU", "gravidade": "Crítica", "detalhes": f"A temperatura atingiu {cpu_temp}°C."})
-                ALARMES_DISPARADOS["temp_cpu"] = True
-            elif cpu_temp < 75.0 and ALARMES_DISPARADOS.get("temp_cpu", False): ALARMES_DISPARADOS["temp_cpu"] = False
+            
+            # CPU > 90% por 7 Minutos (420 segundos)
+            if cpu >= 90.0:
+                if tempo_inicio_cpu_alta == 0: tempo_inicio_cpu_alta = agora
+                elif (agora - tempo_inicio_cpu_alta) >= 420 and not ALARMES_DISPARADOS.get("uso_cpu", False):
+                    alertas_rede.append({"tipo": "🔥 Gargalo de CPU", "gravidade": "Crítica", "detalhes": f"A CPU está acima de 90% há mais de 7 minutos ininterruptos ({cpu}%)."})
+                    ALARMES_DISPARADOS["uso_cpu"] = True
+            else:
+                tempo_inicio_cpu_alta = 0
+                ALARMES_DISPARADOS["uso_cpu"] = False
 
-            if gpu_temp >= 85.0 and not ALARMES_DISPARADOS.get("temp_gpu", False):
-                alertas_rede.append({"tipo": "🔥 Superaquecimento GPU", "gravidade": "Crítica", "detalhes": f"A placa de vídeo atingiu {gpu_temp}°C."})
-                ALARMES_DISPARADOS["temp_gpu"] = True
-            elif gpu_temp < 75.0 and ALARMES_DISPARADOS.get("temp_gpu", False): ALARMES_DISPARADOS["temp_gpu"] = False
+            # RAM > 95% por 5 Minutos (300 segundos)
+            if ram >= 95.0:
+                if tempo_inicio_ram_alta == 0: tempo_inicio_ram_alta = agora
+                elif (agora - tempo_inicio_ram_alta) >= 300 and not ALARMES_DISPARADOS.get("uso_ram", False):
+                    alertas_rede.append({"tipo": "🚨 Sobrecarga de RAM", "gravidade": "Crítica", "detalhes": f"A memória RAM está acima de 95% há mais de 5 minutos ({ram}%)."})
+                    ALARMES_DISPARADOS["uso_ram"] = True
+            else:
+                tempo_inicio_ram_alta = 0
+                ALARMES_DISPARADOS["uso_ram"] = False
 
             net_up = 0.0; net_down = 0.0
             if psutil:

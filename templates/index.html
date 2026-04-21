@@ -230,9 +230,6 @@
                     let customIcon = L.divIcon({ className: '', html: `<div style="background-color: ${corBase}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #11111b; box-shadow: 0 0 10px ${corBase};"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
                     L.marker([lat, lon], {icon: customIcon}).addTo(layerSensores).bindPopup(`<h4>${s.nome_local || 'Desconhecido'}</h4><div style="font-size: 0.8em; margin-bottom:10px;">Status: <b style="color:${corBase}">${statusText}</b></div><a href="/sensor/${s.mac_id}" style="color:var(--blue);">Ver Sensor</a>`);
 
-                    // ==========================================
-                    // 🟢 A MÁGICA FOI INSERIDA AQUI NESSA PARTE:
-                    // ==========================================
                     let clienteNome = s.cliente_nome || 'Cliente Padrão';
                     let termoBusca = `${s.nome_local} ${s.mac_id} ${clienteNome}`;
 
@@ -266,7 +263,6 @@
                             
                             <a href="/sensor/${s.mac_id}" class="btn-acesso"><i class="fa-solid fa-chart-line"></i> Acessar Telemetria</a>
                         </div>`;
-                    // ==========================================
                 });
 
                 document.getElementById('kpi-total').innerText = total; document.getElementById('kpi-on').innerText = online; document.getElementById('kpi-off').innerText = offline;
@@ -312,7 +308,17 @@
             }
         });
 
-        carregarSensores(); carregarLogsGlobais();
+        // ==========================================
+        // ⚡ INICIALIZAÇÃO E MOTOR DE REFRESH AUTOMÁTICO
+        // ==========================================
+        carregarSensores(); 
+        carregarLogsGlobais();
+
+        // ⚡ O Loop Infinito a cada 15 Segundos
+        setInterval(() => {
+            carregarSensores();
+            carregarLogsGlobais();
+        }, 15000);
 
         try {
             const socket = io(); 
