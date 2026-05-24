@@ -467,19 +467,25 @@ def verificar_quedas_global(conn):
     try:
         import os
         is_postgres = bool(os.environ.get('DATABASE_URL'))
-        condicao_tempo = "last_seen < NOW() - INTERVAL '60 seconds'" if is_postgres else "last_seen < datetime('now', '-60 seconds', 'localtime')"
         
+        # ⚡ CORREÇÃO DO FUSO HORÁRIO: Removido o 'localtime' para comparar UTC com UTC perfeitamente!
+        condicao_tempo = "last_seen < NOW() - INTERVAL '60 seconds'" if is_postgres else "last_seen < datetime('now', '-60 seconds')"
+        
+        # Trata o placeholder para evitar crash se você já migrou para o Postgres (Neon)
+        ph = "%s" if is_postgres else "?"
+
         # Acha quem caiu e a nuvem ainda acha que está ONLINE
         caidos = conn.execute(f"SELECT mac_id, nome_local, cliente_id FROM sensores WHERE status = 'online' AND em_manutencao = 0 AND (memoria_alerta = 'ONLINE' OR memoria_alerta IS NULL) AND {condicao_tempo}").fetchall()
         
         for c in caidos:
-            conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder.')", (c['mac_id'],))
+            conn.execute(f"INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES ({ph}, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder.')", (c['mac_id'],))
             enviar_telegram(f"🚨 <b>QUEDA CRÍTICA</b>\n\n🏢 <b>Local:</b> {c.get('nome_local', c['mac_id'])}\n❌ <b>Status:</b> OFFLINE TOTAL", cliente_id=c.get('cliente_id'))
         
         # Atualiza o status para offline e evita spam
         conn.execute(f"UPDATE sensores SET status = 'offline', memoria_alerta = 'OFFLINE', alerta_reconhecido = 0 WHERE em_manutencao = 0 AND {condicao_tempo}")
         conn.commit()
-    except Exception as e: pass
+    except Exception as e:
+        print(f"Erro no guardiao: {e}")
 
 # ==========================================
 # 🚨 WATCHDOG DA NUVEM (QUEDAS CRÍTICAS)
