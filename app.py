@@ -74,6 +74,12 @@ try:
         conn.commit()
     except: pass
 
+    # ⚡ TABELA DE PINGS INJETADA AQUI PARA ALIVIAR O MOTOR EM TEMPO REAL
+    try:
+        conn.execute('''CREATE TABLE IF NOT EXISTS historico_pings (id SERIAL PRIMARY KEY, sensor_mac TEXT, google INTEGER, cloudflare INTEGER, aws INTEGER, quad9 INTEGER, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        conn.commit()
+    except: pass
+
     try:
         conn.execute("UPDATE clientes SET role = 'Administrador Master' WHERE usuario = 'admin'")
         conn.commit()
@@ -236,13 +242,13 @@ def report_data():
             conn.commit()
             enviar_telegram(f"🎉 <b>NOVO SENSOR REGISTRADO</b>\n\n🖥️ <b>MAC:</b> {mac}\n🌐 <b>IP:</b> {ip_display}")
 
+        # ⚡ INSERE OS DADOS NO BANCO SEM EXIGIR CRIAÇÃO DE TABELA AQUI
         try:
-            conn.execute('''CREATE TABLE IF NOT EXISTS historico_pings (id SERIAL PRIMARY KEY, sensor_mac TEXT, google INTEGER, cloudflare INTEGER, aws INTEGER, quad9 INTEGER, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
             if data.get('ping_global'):
                 import json
                 pings = json.loads(data['ping_global'])
                 conn.execute("INSERT INTO historico_pings (sensor_mac, google, cloudflare, aws, quad9) VALUES (?, ?, ?, ?, ?)", (mac, pings.get('Google'), pings.get('Cloudflare'), pings.get('AWS'), pings.get('Quad9')))
-            conn.commit()
+                conn.commit()
         except: pass
 
         conn.close()
