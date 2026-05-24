@@ -462,30 +462,48 @@ def alertas_ia():
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
 
-# ⚡ FUNÇÃO GUARDIÃ: Verifica quedas independente de qual tela o usuário abriu
+# ⚡ FUNÇÃO GUARDIÃ: Verifica quedas (BLINDADA CONTRA ERROS SILENCIOSOS)
 def verificar_quedas_global(conn):
+    caidos = []
+    
+    # 1. TENTATIVA POSTGRESQL (Neon / Render)
     try:
-        import os
-        is_postgres = bool(os.environ.get('DATABASE_URL'))
+        condicao = "last_seen < NOW() - INTERVAL '60 seconds'"
+        caidos = conn.execute(f"SELECT mac_id, nome_local, cliente_id FROM sensores WHERE status = 'online' AND em_manutencao = 0 AND (memoria_alerta = 'ONLINE' OR memoria_alerta IS NULL) AND {condicao}").fetchall()
         
-        # ⚡ CORREÇÃO DO FUSO HORÁRIO: Removido o 'localtime' para comparar UTC com UTC perfeitamente!
-        condicao_tempo = "last_seen < NOW() - INTERVAL '60 seconds'" if is_postgres else "last_seen < datetime('now', '-60 seconds')"
-        
-        # Trata o placeholder para evitar crash se você já migrou para o Postgres (Neon)
-        ph = "%s" if is_postgres else "?"
-
-        # Acha quem caiu e a nuvem ainda acha que está ONLINE
-        caidos = conn.execute(f"SELECT mac_id, nome_local, cliente_id FROM sensores WHERE status = 'online' AND em_manutencao = 0 AND (memoria_alerta = 'ONLINE' OR memoria_alerta IS NULL) AND {condicao_tempo}").fetchall()
-        
-        for c in caidos:
-            conn.execute(f"INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES ({ph}, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder.')", (c['mac_id'],))
-            enviar_telegram(f"🚨 <b>QUEDA CRÍTICA</b>\n\n🏢 <b>Local:</b> {c.get('nome_local', c['mac_id'])}\n❌ <b>Status:</b> OFFLINE TOTAL", cliente_id=c.get('cliente_id'))
-        
-        # Atualiza o status para offline e evita spam
-        conn.execute(f"UPDATE sensores SET status = 'offline', memoria_alerta = 'OFFLINE', alerta_reconhecido = 0 WHERE em_manutencao = 0 AND {condicao_tempo}")
+        # ⚡ MUDA PARA OFFLINE IMEDIATAMENTE ANTES DE QUALQUER ALERTA
+        conn.execute(f"UPDATE sensores SET status = 'offline', memoria_alerta = 'OFFLINE', alerta_reconhecido = 0 WHERE status = 'online' AND em_manutencao = 0 AND {condicao}")
         conn.commit()
-    except Exception as e:
-        print(f"Erro no guardiao: {e}")
+    except:
+        # 2. TENTATIVA SQLITE (Local)
+        try:
+            condicao = "last_seen < datetime('now', '-60 seconds')"
+            caidos = conn.execute(f"SELECT mac_id, nome_local, cliente_id FROM sensores WHERE status = 'online' AND em_manutencao = 0 AND (memoria_alerta = 'ONLINE' OR memoria_alerta IS NULL) AND {condicao}").fetchall()
+            
+            # ⚡ MUDA PARA OFFLINE IMEDIATAMENTE ANTES DE QUALQUER ALERTA
+            conn.execute(f"UPDATE sensores SET status = 'offline', memoria_alerta = 'OFFLINE', alerta_reconhecido = 0 WHERE status = 'online' AND em_manutencao = 0 AND {condicao}")
+            conn.commit()
+        except Exception as e:
+            print(f"Erro fatal no banco ao verificar quedas: {e}")
+            return
+
+    # 3. DISPARA OS ALERTAS PARA QUEM REALMENTE CAIU
+    for c in caidos:
+        try:
+            # Garante a leitura independente de como o banco devolve os dados
+            mac = c['mac_id'] if hasattr(c, 'keys') else c[0]
+            nome = c['nome_local'] if hasattr(c, 'keys') else c[1]
+            cid = c['cliente_id'] if hasattr(c, 'keys') else c[2]
+            
+            try: # Tenta salvar log no formato Postgres
+                conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (%s, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder.')", (mac,))
+            except: # Tenta salvar log no formato SQLite
+                conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder.')", (mac,))
+            conn.commit()
+            
+            enviar_telegram(f"🚨 <b>QUEDA CRÍTICA</b>\n\n🏢 <b>Local:</b> {nome}\n❌ <b>Status:</b> OFFLINE TOTAL", cliente_id=cid)
+        except Exception as e:
+            print(f"Erro ao disparar alerta de queda: {e}")
 
 # ==========================================
 # 🚨 WATCHDOG DA NUVEM (QUEDAS CRÍTICAS)
