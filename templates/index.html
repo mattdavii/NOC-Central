@@ -322,8 +322,23 @@
 
         try {
             const socket = io(); 
-            socket.on('atualizacao_global', function(msg) { carregarSensores(); carregarLogsGlobais(); });
-            socket.on('connect', function() { document.getElementById('terminal-logs').innerHTML = '<div style="color: var(--green); margin-bottom: 10px;">[WEBSOCKET] Túnel de Tempo Real estabelecido.</div>' + document.getElementById('terminal-logs').innerHTML; });
+            let aguardandoSocket = false; // ⚡ A nossa trava de inteligência
+            
+            socket.on('atualizacao_global', function(msg) { 
+                // Se receber 50 avisos do Agente, ele ignora e só recarrega a tela a cada 3 segundos
+                if(!aguardandoSocket) {
+                    aguardandoSocket = true;
+                    setTimeout(() => {
+                        carregarSensores(); 
+                        carregarLogsGlobais();
+                        aguardandoSocket = false;
+                    }, 3000); 
+                }
+            });
+            
+            socket.on('connect', function() { 
+                document.getElementById('terminal-logs').innerHTML = '<div style="color: var(--green); margin-bottom: 10px;">[WEBSOCKET] Túnel de Tempo Real estabelecido.</div>' + document.getElementById('terminal-logs').innerHTML; 
+            });
         } catch(e) { console.warn("Socket.io falhou."); }
     </script>
 </body>
