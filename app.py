@@ -557,6 +557,7 @@ def configurar_sensor():
 def solicitar_speedtest(mac_id):
     SPEEDTEST_REQUESTS.add(mac_id); return jsonify({"status": "Teste na fila"})
 
+# ⚡ CORREÇÃO DO SPEEDTEST E GRÁFICOS INJETADA AQUI!
 @app.route('/api/v2/reportar_velocidade', methods=['POST'])
 def reportar_velocidade():
     try:
@@ -564,22 +565,22 @@ def reportar_velocidade():
         mac = data.get('mac_id')
         conn = database.get_db()
         
-        # ⚡ 1. Cria a tabela de gráficos do zero se a Nuvem tiver esquecido!
+        # 1. Garante que a tabela do gráfico existe
         try:
             conn.execute('''CREATE TABLE IF NOT EXISTS historico_telemetria (id SERIAL PRIMARY KEY, sensor_mac TEXT, download REAL, upload REAL, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
             conn.commit()
         except: pass
         
-        # ⚡ 2. Salva o dado na tela principal (Radar)
+        # 2. Atualiza os cards principais da tela
         conn.execute("UPDATE sensores SET download = ?, upload = ? WHERE mac_id = ?", (data['down'], data['up'], mac))
         
-        # ⚡ 3. Salva o dado no Gráfico (Timeline)
+        # 3. Insere na base do Gráfico Timeline
         conn.execute("INSERT INTO historico_telemetria (sensor_mac, download, upload) VALUES (?, ?, ?)", (mac, data['down'], data['up']))
         
         conn.commit()
         conn.close()
         
-        # Avisa o painel web para piscar a tela e mostrar os dados novos
+        # 4. Grita pro front-end atualizar instantaneamente a tela
         socketio.emit('atualizacao_global', {'mac_id': mac})
         
         return jsonify({"status": "OK"})
