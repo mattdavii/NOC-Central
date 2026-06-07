@@ -560,13 +560,32 @@ def solicitar_speedtest(mac_id):
 @app.route('/api/v2/reportar_velocidade', methods=['POST'])
 def reportar_velocidade():
     try:
-        data = request.json; mac = data.get('mac_id')
+        data = request.json
+        mac = data.get('mac_id')
         conn = database.get_db()
+        
+        # ⚡ 1. Cria a tabela de gráficos do zero se a Nuvem tiver esquecido!
+        try:
+            conn.execute('''CREATE TABLE IF NOT EXISTS historico_telemetria (id SERIAL PRIMARY KEY, sensor_mac TEXT, download REAL, upload REAL, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+            conn.commit()
+        except: pass
+        
+        # ⚡ 2. Salva o dado na tela principal (Radar)
         conn.execute("UPDATE sensores SET download = ?, upload = ? WHERE mac_id = ?", (data['down'], data['up'], mac))
+        
+        # ⚡ 3. Salva o dado no Gráfico (Timeline)
         conn.execute("INSERT INTO historico_telemetria (sensor_mac, download, upload) VALUES (?, ?, ?)", (mac, data['down'], data['up']))
-        conn.commit(); conn.close()
+        
+        conn.commit()
+        conn.close()
+        
+        # Avisa o painel web para piscar a tela e mostrar os dados novos
+        socketio.emit('atualizacao_global', {'mac_id': mac})
+        
         return jsonify({"status": "OK"})
-    except Exception as e: return jsonify({"status": "error"}), 500
+    except Exception as e:
+        print(f"Erro ao salvar Speedtest: {e}")
+        return jsonify({"status": "error"}), 500
 
 @app.route('/api/v2/graficos/<mac_id>')
 def obter_graficos(mac_id):
