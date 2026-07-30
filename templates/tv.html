@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#0b0b13">
     <title>NOC TV - Sala de Operações</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -283,6 +285,12 @@
         setInterval(buscarLogsTV, 15000); // Atualiza os logs a cada 15 seg
         buscarDadosTV();
         buscarLogsTV();
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/sw.js')
+                .then(reg => console.log('SW registrado:', reg.scope))
+                .catch(err => console.error('Erro ao registrar SW:', err));
+        }
     </script>
 </body>
 </html>
