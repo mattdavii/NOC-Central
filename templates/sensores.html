@@ -83,6 +83,7 @@
                         </td>
                         <td>
                             <button class="action-btn" onclick="vincularSensor('{{ s.mac_id }}')"><i class="fa-solid fa-link"></i> Salvar Vínculo</button>
+                            <button class="action-btn" onclick="acessoLocal('{{ s.mac_id }}', '{{ s.ip_sensor }}')" title="Gerar acesso ao painel local deste site (válido por 1h)"><i class="fa-solid fa-key"></i> Acesso Local</button>
                         </td>
                     </tr>
                     {% endfor %}
@@ -92,6 +93,19 @@
     </div>
 
     <script>
+        async function acessoLocal(mac, ip) {
+            try {
+                const res = await fetch(`/api/v2/gerar_token_local/${mac}`);
+                const data = await res.json();
+                if (!res.ok) { alert('Erro ao gerar acesso: ' + (data.erro || res.status)); return; }
+                const url = `http://${ip}:10000/?token=${data.token}`;
+                prompt('Acesso ao painel local (válido por 1h). Copie o link abaixo ou clique OK para abrir:', url);
+                window.open(url, '_blank');
+            } catch (e) {
+                alert('Erro ao gerar acesso local: ' + e);
+            }
+        }
+
         async function vincularSensor(mac) {
             // Remove os dois pontos do MAC para achar o ID correto do select no HTML
             const selectId = "cliente-" + mac.replace(/:/g, '');
