@@ -1,12 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 
+import certifi
+
 a = Analysis(
     ['agente_v2.py'],
     pathex=[],
     binaries=[],
-    datas=[],
-    hiddenimports=['speedtest'],
+    # Garante que o bundle de certificados do certifi vá junto no executável (o fix de SSL depende disso)
+    datas=[(certifi.where(), 'certifi')],
+    hiddenimports=['speedtest', 'jwt', 'certifi', 'cryptography'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

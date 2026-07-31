@@ -4,6 +4,11 @@ from flask_socketio import SocketIO
 import database
 import urllib.request, json
 import os
+import jwt
+from datetime import datetime, timedelta, timezone
+
+# Chave privada RSA usada para assinar os tokens de acesso local do agente (agente_v2.py guarda só a pública)
+JWT_PRIVATE_KEY = os.environ.get('JWT_PRIVATE_KEY', '')
 
 app = Flask(__name__)
 app.secret_key = 'chave_super_secreta_noc_md' 
@@ -23,8 +28,8 @@ def db_execute(conn, sql, params=()):
 # =========================================================
 # 🤖 CHAVES DO TELEGRAM MASTER (O SEU BOT DE ADMIN)
 # =========================================================
-TELEGRAM_BOT_TOKEN = "8611160616:AAEYnOAXG-EInv4yDYSje5J_K0XbO6jIee0"
-TELEGRAM_CHAT_ID = "-5147163793"
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 
 def enviar_telegram(mensagem, cliente_id=None):
     token_final = TELEGRAM_BOT_TOKEN
@@ -58,7 +63,8 @@ try:
     
     admin = conn.execute("SELECT * FROM clientes WHERE usuario = 'admin'").fetchone()
     if not admin:
-        conn.execute("INSERT INTO clientes (usuario, senha, role) VALUES ('admin', 'admin123', 'Administrador Master')")
+        senha_inicial_hash = generate_password_hash(os.environ.get('ADMIN_SENHA_INICIAL', 'admin123'))
+        conn.execute("INSERT INTO clientes (usuario, senha, role) VALUES ('admin', ?, 'Administrador Master')", (senha_inicial_hash,))
         conn.commit()
 
     colunas_sensores = [
@@ -299,6 +305,34 @@ def public_cron_trigger():
     verificar_quedas_global(conn)
     conn.close()
     return jsonify({"status": "Watchdog executado com sucesso"})
+
+# ==========================================
+# 🔑 TOKEN DE ACESSO AO PAINEL LOCAL DO AGENTE
+# ==========================================
+@app.route('/api/v2/gerar_token_local/<mac>')
+def gerar_token_local(mac):
+    # Só quem já está autenticado na central pode gerar acesso ao painel local de um site
+    if 'usuario' not in session:
+        return jsonify({"erro": "Não autenticado"}), 401
+    if not JWT_PRIVATE_KEY:
+        return jsonify({"erro": "JWT_PRIVATE_KEY não configurada no servidor (variável de ambiente ausente)"}), 500
+    payload = {
+        "mac": mac,
+        "exp": datetime.now(timezone.utc) + timedelta(hours=1)
+    }
+    token = jwt.encode(payload, JWT_PRIVATE_KEY, algorithm="RS256")
+    return jsonify({"token": token, "mac": mac, "expira_em_horas": 1})
+
+# ==========================================
+# 🔄 VERSÃO DO AGENTE (PARA O AUTO-UPDATE)
+# ==========================================
+# Atualize os dois valores abaixo toda vez que compilar e publicar uma nova versão do agente.
+VERSAO_AGENTE_ATUAL = "2.1.0"
+URL_DOWNLOAD_AGENTE = "https://noc-central.up.railway.app/static/downloads/agente_v2.exe"
+
+@app.route('/api/v2/agent_versao')
+def agent_versao():
+    return jsonify({"versao": VERSAO_AGENTE_ATUAL, "url_download": URL_DOWNLOAD_AGENTE})
 
 # ==========================================
 # 🔌 ROTAS: ENERGIA E SERVIÇOS DO SO

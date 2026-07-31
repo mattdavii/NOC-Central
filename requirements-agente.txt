@@ -1,0 +1,8 @@
+Flask
+pystray
+Pillow
+speedtest-cli
+psutil
+PyJWT[crypto]==2.7.0
+certifi
+pyinstaller

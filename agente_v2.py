@@ -17,14 +17,15 @@ from flask import Flask, request, Response, render_template_string, jsonify
 import pystray
 from PIL import Image, ImageDraw
 import speedtest 
+import jwt
 
-# 🛡️ BALA DE PRATA: Corrige o bug de SSL do PyInstaller com HTTPS
-import ssl
+# 🛡️ Fix de SSL do PyInstaller: aponta explicitamente pro bundle de certificados do certifi
+# (em vez de desligar a verificação, que abriria brecha pra MITM em toda chamada HTTPS do agente)
+import ssl, certifi
 try:
-    _create_unverified_https_context = ssl._create_unverified_context
-except AttributeError: pass
-else:
-    ssl._create_default_https_context = _create_unverified_https_context
+    ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=certifi.where())
+except Exception:
+    pass
 
 try: import psutil
 except ImportError: psutil = None
@@ -32,9 +33,20 @@ except ImportError: psutil = None
 # ==========================================
 # ⚙️ CONFIGURAÇÃO DO AGENTE
 # ==========================================
-URL_CENTRAL = "https://noc-central.onrender.com/api/v2/report_data" 
+URL_CENTRAL = "https://noc-central.up.railway.app/api/v2/report_data"
 PORTA_LOCAL = 10000
-TOKEN_SCADA = "admin123"
+VERSAO_AGENTE = "2.1.0"
+
+# Chave pública RSA usada para verificar o token JWT emitido pela central (a privada nunca sai do servidor)
+CHAVE_PUBLICA_JWT = """-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuIUu6w07fxVBc059OuLU
++kwG0GB1GewJLElBABmhNVV1gRjvxEg1tpXI3hMaFYH8KcDaT2iZ/RB7DZPR7mje
+DKVrp0QysRjATufi8h9Bqj9Lq0IbJGP0mJ/cv0YyN7fSy4p65De6HxAWDITz2kds
+lkLWGs/oEYjfqLNCsATVZ7EivAObQZmqixXSTSMiqK6ITxRVCU7btxFz1TXck83r
+hxuJPc1+3kAZQeULDXLsPgEAAS0CAE8wrw1xyIenIiuHfg9c3zgV2T5/4rQV+u56
+ZCz37+OAze6+j0iMi18ECCRG3dTpaXw9X5FxrJ9X0O/hm/RTYqOUTKisDLoohhux
+uwIDAQAB
+-----END PUBLIC KEY-----"""
 
 IS_WIN = platform.system().lower() == 'windows'
 C_FLAGS = subprocess.CREATE_NO_WINDOW if IS_WIN else 0
@@ -221,6 +233,45 @@ def log_local_event(tipo, detalhes, gravidade="Alerta"):
         conn.close()
     except: pass
 
+def verificar_atualizacao(mac):
+    """Confere se há uma versão mais nova do agente na central. Se houver e o agente estiver rodando como .exe (PyInstaller) no Windows, baixa e troca o executável sozinho (Windows não deixa sobrescrever um .exe em execução, por isso o script .bat auxiliar que espera o processo atual encerrar)."""
+    try:
+        url_versao = URL_CENTRAL.replace('report_data', 'agent_versao')
+        with urllib.request.urlopen(url_versao, timeout=5) as resp:
+            info = json.loads(resp.read().decode())
+
+        versao_nova = info.get('versao')
+        url_download = info.get('url_download')
+        if not versao_nova or versao_nova == VERSAO_AGENTE or not url_download:
+            return
+
+        log_local_event("Atualização", f"Nova versão disponível: {versao_nova} (atual: {VERSAO_AGENTE})", "Aviso")
+
+        # Só tenta trocar o executável sozinho se estiver realmente congelado (PyInstaller) rodando no Windows.
+        # Em modo desenvolvimento (rodando via `python agente_v2.py`), só avisa — não tem .exe pra substituir.
+        if not IS_WIN or not getattr(sys, 'frozen', False):
+            return
+
+        exe_atual = sys.executable
+        exe_novo = exe_atual + ".novo"
+        urllib.request.urlretrieve(url_download, exe_novo)
+
+        bat_path = os.path.join(os.path.dirname(exe_atual), "_atualizar_noc_agente.bat")
+        with open(bat_path, "w") as f:
+            f.write(
+                "@echo off\r\n"
+                "timeout /t 2 /nobreak > NUL\r\n"
+                f'del "{exe_atual}"\r\n'
+                f'ren "{exe_novo}" "{os.path.basename(exe_atual)}"\r\n'
+                f'start "" "{exe_atual}"\r\n'
+                'del "%~f0"\r\n'
+            )
+        subprocess.Popen(['cmd', '/c', bat_path], creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS)
+        log_local_event("Atualização", f"Baixado {versao_nova}. Reiniciando para aplicar a atualização...", "Crítica")
+        os._exit(0)
+    except Exception as e:
+        log_local_event("Atualização", f"Falha ao checar ou baixar atualização: {e}", "Alerta")
+
 def executar_speedtest(mac, url_central):
     d, u = 0.0, 0.0
     erro_principal = ""
@@ -244,7 +295,8 @@ def executar_speedtest(mac, url_central):
                 alerta = [{"tipo": "Falha de Speedtest", "gravidade": "Aviso", "detalhes": f"Ookla: {erro_principal} | Tele2: {str(e2)}"}]
                 req_log = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": alerta}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
                 urllib.request.urlopen(req_log, timeout=5)
-            except: pass
+            except:
+                log_local_event("Speedtest", f"Falha total: Ookla={erro_principal} | Tele2={str(e2)} | e não conseguiu nem reportar à central (sem internet?)", "Crítica")
             return
 
     try:
@@ -252,7 +304,8 @@ def executar_speedtest(mac, url_central):
         url_speed = url_central.replace('report_data', 'reportar_velocidade')
         req = urllib.request.Request(url_speed, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
         urllib.request.urlopen(req, timeout=10)
-    except: pass
+    except:
+        log_local_event("Speedtest", f"Medição OK ({round(d,1)}down/{round(u,1)}up Mbps) mas falhou ao reportar à central", "Alerta")
 
 def executar_traceroute(mac, url_central):
     try:
@@ -262,42 +315,8 @@ def executar_traceroute(mac, url_central):
         url_trace = url_central.replace('report_data', 'reportar_rota')
         req = urllib.request.Request(url_trace, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
         urllib.request.urlopen(req, timeout=10)
-    except: pass
-
-def executar_scan_loop(mac, url_central, gateway_ip):
-    try:
-        req = urllib.request.Request(url_central.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "🔍 Scan de Loop Iniciado", "gravidade": "Aviso", "detalhes": "Injetando pacotes de estresse na rede local para medir a taxa de reflexão do Switch..."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
-        urllib.request.urlopen(req, timeout=3)
-        
-        if not psutil or gateway_ip == "Desconhecido": return
-
-        # 1. Mede o "Silêncio" (Tráfego Base)
-        net_start = psutil.net_io_counters()
-        time.sleep(2)
-        net_mid = psutil.net_io_counters()
-        bytes_base = net_mid.bytes_recv - net_start.bytes_recv
-        
-        # 2. Injeta o Estresse (Stress Test Local)
-        for _ in range(30):
-            threading.Thread(target=ping_silencioso, args=(gateway_ip,), daemon=True).start()
-        
-        time.sleep(3) # Aguarda o switch surtar (se houver loop)
-        
-        # 3. Mede a Reflexão
-        net_end = psutil.net_io_counters()
-        bytes_stress = net_end.bytes_recv - net_mid.bytes_recv
-        
-        # 4. Avaliação (Se o tráfego estresse for 5x maior que a base E muito alto)
-        if bytes_stress > (bytes_base * 5) and bytes_stress > 2_000_000: # 2MB de reflexão de pacotes minúsculos = Tempestade
-            msg = f"⚠️ ATENÇÃO: LOOP L2 CONFIRMADO! O Switch refletiu um volume absurdo de lixo durante o teste ({round(bytes_stress/1_000_000, 2)} MB de puro broadcast recebidos em 3s). Isole os cabos do Switch imediatamente!"
-            grav = "Crítica"
-        else:
-            msg = f"✅ Rede Limpa. Nenhum Loop de Reflexão ou Tempestade de Broadcast foi detectada durante o teste de estresse de carga."
-            grav = "OK"
-            
-        req2 = urllib.request.Request(url_central.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Resultado: Scan de Loop L2", "gravidade": grav, "detalhes": msg}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
-        urllib.request.urlopen(req2, timeout=5)
-    except: pass
+    except Exception as e:
+        log_local_event("Traceroute", f"Falhou ao executar ou reportar: {e}", "Alerta")
 
 def acordar_pc(macaddress):
     """Envia o Magic Packet para acordar PCs na rede (Wake-on-LAN)"""
@@ -345,8 +364,10 @@ def loop_telemetria():
     os_name = platform.system()
     ultima_varredura = 0 
     ultima_medicao_speedtest = 0
+    ultima_verificacao_update = 0
     contador_falhas_wan = 0
     ultimo_reparo_wan = 0
+    central_indisponivel = False
     
     
     if psutil:
@@ -361,6 +382,10 @@ def loop_telemetria():
             if agora - ultima_medicao_speedtest > 900:
                 threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
                 ultima_medicao_speedtest = agora
+
+            if agora - ultima_verificacao_update > 21600:  # a cada 6h
+                threading.Thread(target=verificar_atualizacao, args=(mac,), daemon=True).start()
+                ultima_verificacao_update = agora
 
             cpu = psutil.cpu_percent(interval=None) if psutil else 0.0
             ram = psutil.virtual_memory().percent if psutil else 0.0
@@ -429,8 +454,10 @@ def loop_telemetria():
                     try:
                         url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
                         urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "⚙️ Sistema de Auto-Cura", "gravidade": "Aviso", "detalhes": "Agente executou script de Flush DNS localmente."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
-                    except: pass
-                except: pass
+                    except Exception as e:
+                        log_local_event("Auto-Cura", f"Flush DNS rodou, mas falhou ao reportar à central: {e}", "Alerta")
+                except Exception as e:
+                    log_local_event("Auto-Cura", f"Falhou ao executar Flush DNS/Renew IP: {e}", "Crítica")
                 ultimo_reparo_wan = agora
 
             meu_ip, gateway_ip = get_network_info()
@@ -454,7 +481,8 @@ def loop_telemetria():
 
             if alertas_rede:
                 try: urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": alertas_rede}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
-                except: pass
+                except Exception as e:
+                    log_local_event("Alerta de Rede", f"Detectou {[a['tipo'] for a in alertas_rede]} mas falhou ao reportar à central: {e}", "Crítica")
 
             dados_sensores["cpu"] = cpu; dados_sensores["ram"] = ram; dados_sensores["disco"] = disco; dados_sensores["temp"] = cpu_temp; dados_sensores["gpu_temp"] = gpu_temp; dados_sensores["net_down"] = net_down; dados_sensores["net_up"] = net_up; dados_sensores["portas"] = str_portas; dados_sensores["meu_ip"] = meu_ip; dados_sensores["gateway_ip"] = gateway_ip; dados_sensores["ping_gateway"] = ping_gw; dados_sensores["pings"] = pings; dados_sensores["topologia"] = dispositivos
 
@@ -486,14 +514,26 @@ def loop_telemetria():
                                 procs = sorted(psutil.process_iter(['name', 'cpu_percent']), key=lambda p: p.info.get('cpu_percent') or 0, reverse=True)[:5]
                                 lista_procs = " | ".join([f"{p.info['name']} ({round((p.info.get('cpu_percent') or 0) / num_cores, 1)}%)" for p in procs])
                                 urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Diagnóstico", "gravidade": "Aviso", "detalhes": lista_procs}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
-                            except: pass
+                            except Exception as e:
+                                log_local_event("Diagnóstico Remoto", f"top_processos falhou: {e}", "Alerta")
                 
                 if forcar_varredura:
                     try: urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'atualizar_dispositivos'), data=json.dumps({"mac_id": mac, "lista": dispositivos}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
-                    except: pass
-            except: espera_remota = 5
+                    except Exception as e:
+                        log_local_event("Topologia", f"Falha ao reportar dispositivos à central: {e}", "Alerta")
+
+                if central_indisponivel:
+                    log_local_event("Conectividade Central", "Conexão com a central RESTABELECIDA.", "OK")
+                    central_indisponivel = False
+            except Exception as e:
+                espera_remota = 5
+                if not central_indisponivel:
+                    log_local_event("Conectividade Central", f"Não consegue mais reportar telemetria à central: {e}", "Crítica")
+                    central_indisponivel = True
             time.sleep(espera_remota)
-        except: time.sleep(5)
+        except Exception as e:
+            log_local_event("Erro Loop Telemetria", f"Iteração falhou por completo: {e}", "Crítica")
+            time.sleep(5)
 
 # ==========================================
 # ⚡ MOTOR 4: WATCHDOG COMPLETO (Rede + Energia + SO)
@@ -508,6 +548,7 @@ def loop_watchdog_local():
     url_get_srv = URL_CENTRAL.replace('report_data', f'servicos_os/{mac}')
     url_report_srv = URL_CENTRAL.replace('report_data', 'reportar_status_servico')
     url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
+    central_indisponivel_watchdog = False
 
     while True:
         try:
@@ -515,7 +556,14 @@ def loop_watchdog_local():
             try:
                 req = urllib.request.Request(url_get, method='GET')
                 with urllib.request.urlopen(req, timeout=5) as response: alvos_nuvem = json.loads(response.read().decode('utf-8'))
-            except: alvos_nuvem = []
+                if central_indisponivel_watchdog:
+                    log_local_event("Conectividade Central", "Watchdog: conexão com a central RESTABELECIDA.", "OK")
+                    central_indisponivel_watchdog = False
+            except Exception as e:
+                alvos_nuvem = []
+                if not central_indisponivel_watchdog:
+                    log_local_event("Conectividade Central", f"Watchdog não consegue mais buscar alvos da central: {e}", "Crítica")
+                    central_indisponivel_watchdog = True
 
             try:
                 req_e = urllib.request.Request(url_get_energia, method='GET')
@@ -535,10 +583,12 @@ def loop_watchdog_local():
                 estado_anterior = cache_alvos.get(ip, {}).get('online', True)
                 if ta_online and not estado_anterior:
                     try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Alvo Restaurado", "gravidade": "OK", "detalhes": f"{desc} ({ip}) voltou."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
-                    except: pass
+                    except Exception as e:
+                        log_local_event("Alvo Restaurado", f"{desc} ({ip}) voltou mas falhou ao reportar: {e}", "Alerta")
                 elif not ta_online and estado_anterior:
                     try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Queda de Alvo", "gravidade": "Crítica", "detalhes": f"{desc} ({ip}) parou!"}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
-                    except: pass
+                    except Exception as e:
+                        log_local_event("Queda de Alvo", f"{desc} ({ip}) caiu mas falhou ao reportar: {e}", "Crítica")
                 cache_alvos[ip] = {'online': ta_online, 'latencia': latencia}
 
             for alvo in alvos_energia:
@@ -549,10 +599,12 @@ def loop_watchdog_local():
                 estado_anterior = cache_alvos.get('ENERGIA_'+ip, {}).get('online', True)
                 if ta_online and not estado_anterior:
                     try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Energia Restaurada", "gravidade": "OK", "detalhes": f"Energia em {desc} ({ip})."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
-                    except: pass
+                    except Exception as e:
+                        log_local_event("Energia Restaurada", f"Energia em {desc} ({ip}) voltou mas falhou ao reportar: {e}", "Alerta")
                 elif not ta_online and estado_anterior:
                     try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Queda de Energia", "gravidade": "Crítica", "detalhes": f"FALTA DE ENERGIA em {desc} ({ip})!"}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
-                    except: pass
+                    except Exception as e:
+                        log_local_event("Queda de Energia", f"Falta de energia em {desc} ({ip}) mas falhou ao reportar: {e}", "Crítica")
                 cache_alvos['ENERGIA_'+ip] = {'online': ta_online, 'latencia': latencia}
 
             for id_alvo, ip, desc in alvos_locais:
@@ -623,28 +675,44 @@ def loop_watchdog_local():
                     if 'ONLINE' in status_atual and estado_anterior == 'OFFLINE':
                         msg = f"O serviço {desc_srv} ({nome_srv}) foi religado pela Auto-Cura." if "Recuperado" in status_atual else f"O serviço {desc_srv} foi restaurado."
                         try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Serviço Restaurado", "gravidade": "OK", "detalhes": msg}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
-                        except: pass
+                        except Exception as e:
+                            log_local_event("Serviço Restaurado", f"{msg} mas falhou ao reportar: {e}", "Alerta")
                     elif status_atual == 'OFFLINE' and estado_anterior != 'OFFLINE':
                         try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Falha de Serviço Crítico", "gravidade": "Crítica", "detalhes": f"O serviço {desc_srv} parou! Requer intervenção."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
-                        except: pass
+                        except Exception as e:
+                            log_local_event("Falha de Serviço Crítico", f"{desc_srv} parou mas falhou ao reportar: {e}", "Crítica")
                     cache_alvos['SRV_ANT_'+nome_srv] = status_atual
 
-        except Exception as e: pass
+        except Exception as e:
+            log_local_event("Erro Loop Watchdog", f"Iteração falhou por completo: {e}", "Crítica")
         time.sleep(5)
 
 # ==========================================
 # 🖥️ MOTOR 2: PAINEL WEB LOCAL (FOREGROUND)
 # ==========================================
-def check_auth(username, password): return username == 'Admin' and password == 'Admin'
+def verificar_token_local(req):
+    """Verifica o token JWT assinado pela central (RS256, só a chave pública fica aqui). Só retorna True se a assinatura bater, não estiver expirado, e o 'mac' do token for o deste agente."""
+    token = req.args.get('token') or req.headers.get('X-Auth-Token', '')
+    if not token: return False
+    try:
+        payload = jwt.decode(token, CHAVE_PUBLICA_JWT, algorithms=["RS256"])
+        return payload.get('mac') == get_mac()
+    except Exception:
+        return False
+
+@app.before_request
+def exigir_token_local():
+    if not verificar_token_local(request):
+        return jsonify({"erro": "Acesso negado. Token ausente, inválido ou expirado. Gere um novo token no painel da central."}), 401
 
 @app.route('/api/scada', methods=['GET'])
 def api_scada():
-    token = request.args.get('token')
-    if token != TOKEN_SCADA: return jsonify({"erro": "Acesso Negado. Token invalido."}), 401
     conn = sqlite3.connect('sensor_local.db')
-    alvos = [{"ip": r[1], "descricao": r[2], "latencia_ms": cache_alvos.get(r[1], {}).get('latencia', 0), "status": "ONLINE" if cache_alvos.get(r[1], {}).get('latencia', 0) > 0 else "OFFLINE"} for r in conn.execute("SELECT * FROM alvos_locais").fetchall()]
-    alvos_energia = [{"ip": r[1], "descricao": r[2], "latencia_ms": cache_alvos.get('ENERGIA_'+r[1], {}).get('latencia', 0), "status": "COM ENERGIA" if cache_alvos.get('ENERGIA_'+r[1], {}).get('latencia', 0) > 0 else "SEM ENERGIA"} for r in conn.execute("SELECT * FROM alvos_energia").fetchall()]
-    conn.close()
+    try:
+        alvos = [{"ip": r[1], "descricao": r[2], "latencia_ms": cache_alvos.get(r[1], {}).get('latencia', 0), "status": "ONLINE" if cache_alvos.get(r[1], {}).get('latencia', 0) > 0 else "OFFLINE"} for r in conn.execute("SELECT * FROM alvos_locais").fetchall()]
+        alvos_energia = [{"ip": r[1], "descricao": r[2], "latencia_ms": cache_alvos.get('ENERGIA_'+r[1], {}).get('latencia', 0), "status": "COM ENERGIA" if cache_alvos.get('ENERGIA_'+r[1], {}).get('latencia', 0) > 0 else "SEM ENERGIA"} for r in conn.execute("SELECT * FROM alvos_energia").fetchall()]
+    finally:
+        conn.close()
     return jsonify({
         "sensor_mac": get_mac(),
         "telemetria_host": { "cpu_percent": dados_sensores.get("cpu", 0), "ram_percent": dados_sensores.get("ram", 0), "temp_cpu": dados_sensores.get("temp", 0), "temp_gpu": dados_sensores.get("gpu_temp", 0) },
@@ -655,19 +723,21 @@ def api_scada():
 @app.route('/api/local_data')
 def api_local_data():
     conn = sqlite3.connect('sensor_local.db')
-    nomes_salvos = {row[0]: row[1] for row in conn.execute("SELECT mac, nome FROM nomes_topologia").fetchall()}
-    topologia_rica = []
-    for d in dados_sensores['topologia']:
-        d_rico = dict(d)
-        if d_rico['mac'] in nomes_salvos: d_rico['nome'] = nomes_salvos[d_rico['mac']]
-        topologia_rica.append(d_rico)
-        
-    alvos = [{"id": r[0], "ip": r[1], "descricao": r[2], "latencia": cache_alvos.get(r[1], {}).get('latencia', 0)} for r in conn.execute("SELECT * FROM alvos_locais ORDER BY id DESC").fetchall()]
-    alvos_energia = [{"id": r[0], "ip": r[1], "descricao": r[2], "latencia": cache_alvos.get('ENERGIA_'+r[1], {}).get('latencia', 0)} for r in conn.execute("SELECT * FROM alvos_energia ORDER BY id DESC").fetchall()]
-    servicos = [{"id": r[0], "nome_servico": r[1], "descricao": r[2], "status": cache_alvos.get('SRV_'+r[1], {}).get('status', 'Analisando...')} for r in conn.execute("SELECT * FROM servicos_os ORDER BY id DESC").fetchall()]
-    logs = [{"tipo": r[0], "detalhes": r[1], "gravidade": r[2], "hora": r[3]} for r in conn.execute("SELECT tipo, detalhes, gravidade, time(data_hora, 'localtime') FROM logs_locais ORDER BY id DESC LIMIT 20").fetchall()]
-    conn.close()
-    
+    try:
+        nomes_salvos = {row[0]: row[1] for row in conn.execute("SELECT mac, nome FROM nomes_topologia").fetchall()}
+        topologia_rica = []
+        for d in dados_sensores['topologia']:
+            d_rico = dict(d)
+            if d_rico['mac'] in nomes_salvos: d_rico['nome'] = nomes_salvos[d_rico['mac']]
+            topologia_rica.append(d_rico)
+
+        alvos = [{"id": r[0], "ip": r[1], "descricao": r[2], "latencia": cache_alvos.get(r[1], {}).get('latencia', 0)} for r in conn.execute("SELECT * FROM alvos_locais ORDER BY id DESC").fetchall()]
+        alvos_energia = [{"id": r[0], "ip": r[1], "descricao": r[2], "latencia": cache_alvos.get('ENERGIA_'+r[1], {}).get('latencia', 0)} for r in conn.execute("SELECT * FROM alvos_energia ORDER BY id DESC").fetchall()]
+        servicos = [{"id": r[0], "nome_servico": r[1], "descricao": r[2], "status": cache_alvos.get('SRV_'+r[1], {}).get('status', 'Analisando...')} for r in conn.execute("SELECT * FROM servicos_os ORDER BY id DESC").fetchall()]
+        logs = [{"tipo": r[0], "detalhes": r[1], "gravidade": r[2], "hora": r[3]} for r in conn.execute("SELECT tipo, detalhes, gravidade, time(data_hora, 'localtime') FROM logs_locais ORDER BY id DESC LIMIT 20").fetchall()]
+    finally:
+        conn.close()
+
     dados_export = dict(dados_sensores)
     dados_export['topologia'] = topologia_rica
     dados_export['custom_ips'] = alvos
@@ -680,48 +750,81 @@ def api_local_data():
 
 @app.route('/api/alvos', methods=['POST'])
 def add_alvo():
-    data = request.json; conn = sqlite3.connect('sensor_local.db')
-    conn.execute("INSERT INTO alvos_locais (ip, descricao) VALUES (?, ?)", (data['ip'], data['descricao']))
-    conn.commit(); conn.close(); return jsonify({"status": "OK"})
+    data = request.json or {}
+    ip, descricao = data.get('ip'), data.get('descricao')
+    if not ip or not descricao: return jsonify({"erro": "Campos 'ip' e 'descricao' são obrigatórios"}), 400
+    conn = sqlite3.connect('sensor_local.db')
+    try:
+        conn.execute("INSERT INTO alvos_locais (ip, descricao) VALUES (?, ?)", (ip, descricao)); conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"status": "OK"})
 
 @app.route('/api/alvos/<int:id_alvo>', methods=['DELETE'])
 def del_alvo(id_alvo):
-    conn = sqlite3.connect('sensor_local.db'); conn.execute("DELETE FROM alvos_locais WHERE id = ?", (id_alvo,))
-    conn.commit(); conn.close(); return jsonify({"status": "OK"})
+    conn = sqlite3.connect('sensor_local.db')
+    try:
+        conn.execute("DELETE FROM alvos_locais WHERE id = ?", (id_alvo,)); conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"status": "OK"})
 
 @app.route('/api/energia', methods=['POST'])
 def add_energia():
-    data = request.json; conn = sqlite3.connect('sensor_local.db')
-    conn.execute("INSERT INTO alvos_energia (ip, descricao) VALUES (?, ?)", (data['ip'], data['descricao']))
-    conn.commit(); conn.close(); return jsonify({"status": "OK"})
+    data = request.json or {}
+    ip, descricao = data.get('ip'), data.get('descricao')
+    if not ip or not descricao: return jsonify({"erro": "Campos 'ip' e 'descricao' são obrigatórios"}), 400
+    conn = sqlite3.connect('sensor_local.db')
+    try:
+        conn.execute("INSERT INTO alvos_energia (ip, descricao) VALUES (?, ?)", (ip, descricao)); conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"status": "OK"})
 
 @app.route('/api/energia/<int:id_alvo>', methods=['DELETE'])
 def del_energia(id_alvo):
-    conn = sqlite3.connect('sensor_local.db'); conn.execute("DELETE FROM alvos_energia WHERE id = ?", (id_alvo,))
-    conn.commit(); conn.close(); return jsonify({"status": "OK"})
+    conn = sqlite3.connect('sensor_local.db')
+    try:
+        conn.execute("DELETE FROM alvos_energia WHERE id = ?", (id_alvo,)); conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"status": "OK"})
 
 @app.route('/api/servicos_os', methods=['POST'])
 def add_servico():
-    data = request.json; conn = sqlite3.connect('sensor_local.db')
-    conn.execute("INSERT INTO servicos_os (nome_servico, descricao) VALUES (?, ?)", (data['nome_servico'], data['descricao']))
-    conn.commit(); conn.close(); return jsonify({"status": "OK"})
+    data = request.json or {}
+    nome_servico, descricao = data.get('nome_servico'), data.get('descricao')
+    if not nome_servico or not descricao: return jsonify({"erro": "Campos 'nome_servico' e 'descricao' são obrigatórios"}), 400
+    conn = sqlite3.connect('sensor_local.db')
+    try:
+        conn.execute("INSERT INTO servicos_os (nome_servico, descricao) VALUES (?, ?)", (nome_servico, descricao)); conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"status": "OK"})
 
 @app.route('/api/servicos_os/<int:id_srv>', methods=['DELETE'])
 def del_servico(id_srv):
-    conn = sqlite3.connect('sensor_local.db'); conn.execute("DELETE FROM servicos_os WHERE id = ?", (id_srv,))
-    conn.commit(); conn.close(); return jsonify({"status": "OK"})
+    conn = sqlite3.connect('sensor_local.db')
+    try:
+        conn.execute("DELETE FROM servicos_os WHERE id = ?", (id_srv,)); conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"status": "OK"})
 
 @app.route('/api/topologia/nome', methods=['POST'])
 def rename_topo():
-    data = request.json; conn = sqlite3.connect('sensor_local.db')
-    conn.execute("INSERT OR REPLACE INTO nomes_topologia (mac, nome) VALUES (?, ?)", (data['mac'], data['nome']))
-    conn.commit(); conn.close(); return jsonify({"status": "OK"})
+    data = request.json or {}
+    mac, nome = data.get('mac'), data.get('nome')
+    if not mac or not nome: return jsonify({"erro": "Campos 'mac' e 'nome' são obrigatórios"}), 400
+    conn = sqlite3.connect('sensor_local.db')
+    try:
+        conn.execute("INSERT OR REPLACE INTO nomes_topologia (mac, nome) VALUES (?, ?)", (mac, nome)); conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"status": "OK"})
 
 @app.route('/')
 def index():
-    auth = request.authorization
-    if not auth or not check_auth(auth.username, auth.password): return Response('Acesso Negado.', 401, {'WWW-Authenticate': 'Basic realm="NOC Sensor Local"'})
-
     HTML_CYBERPUNK = """
     <!DOCTYPE html>
     <html lang="pt-BR">
@@ -883,6 +986,14 @@ def index():
         </div>
 
         <script>
+            // Repassa o token JWT (recebido na própria URL do painel) em toda chamada fetch feita por esta página
+            const TOKEN_LOCAL = new URLSearchParams(window.location.search).get('token') || '';
+            const _fetchOriginal = window.fetch;
+            window.fetch = function(url, opcoes) {
+                opcoes = opcoes || {};
+                opcoes.headers = Object.assign({}, opcoes.headers, {'X-Auth-Token': TOKEN_LOCAL});
+                return _fetchOriginal(url, opcoes);
+            };
             let chartPingInstance = null; let historicoHoras = [], dGoogle = [], dCf = [], dAws = [], dQuad = [];
             async function addIP() { const ip = document.getElementById('new-ip').value; const desc = document.getElementById('new-desc').value; if(!ip) return; await fetch('/api/alvos', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip, descricao:desc}) }); document.getElementById('new-ip').value=''; document.getElementById('new-desc').value=''; }
             async function excluirIP(id) { if(confirm("Remover alvo local?")) { await fetch('/api/alvos/' + id, { method: 'DELETE' }); } }
