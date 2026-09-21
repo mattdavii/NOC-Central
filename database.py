@@ -1,108 +1,200 @@
-import sqlite3
 import os
-from urllib.parse import urlparse
+import sqlite3
+import threading
 
-DATABASE_URL = os.environ.get('DATABASE_URL')
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+DB_POOL_MIN = max(1, int(os.environ.get("DB_POOL_MIN", "1")))
+DB_POOL_MAX = max(DB_POOL_MIN, int(os.environ.get("DB_POOL_MAX", "10")))
 
-# --- NOSSA CAPA PROTETORA (O TRADUTOR OFICIAL) ---
+_pg_pool = None
+_pg_pool_lock = threading.Lock()
+
+
 class PostgresWrapper:
-    def __init__(self, conn):
+    """Compatibilidade mínima com a interface sqlite usada pelo projeto.
+
+    Em produção, a conexão vem de um pool e close() devolve a conexão ao pool
+    em vez de abrir/fechar um socket PostgreSQL a cada requisição.
+    """
+
+    def __init__(self, conn, pool):
         self.conn = conn
+        self._pool = pool
+        self._closed = False
 
     def execute(self, query, params=None):
         cur = self.conn.cursor()
-        query_pg = query.replace('?', '%s')
+        query_pg = query.replace("?", "%s")
         try:
-            if params:
+            if params is not None:
                 cur.execute(query_pg, params)
             else:
                 cur.execute(query_pg)
             return cur
-        except Exception as e:
-            # O SEGREDO: Se o comando falhar (ex: coluna já existe), limpa a memória do Postgres para ele não travar o resto do site!
+        except Exception:
             self.conn.rollback()
-            raise e # Repassa o erro
+            cur.close()
+            raise
 
     def commit(self):
         self.conn.commit()
 
-    def close(self):
-        self.conn.close()
+    def rollback(self):
+        self.conn.rollback()
 
     def cursor(self):
         return self.conn.cursor()
-    
+
+    def close(self):
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            # Nunca devolve ao pool uma transação quebrada/aberta.
+            self.conn.rollback()
+        except Exception:
+            pass
+        self._pool.putconn(self.conn)
+
+
+def _get_postgres_pool():
+    global _pg_pool
+    if _pg_pool is not None:
+        return _pg_pool
+
+    with _pg_pool_lock:
+        if _pg_pool is None:
+            import psycopg2.pool
+
+            dsn = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+            _pg_pool = psycopg2.pool.ThreadedConnectionPool(
+                DB_POOL_MIN,
+                DB_POOL_MAX,
+                dsn,
+            )
+            print(f"✅ Pool PostgreSQL iniciado ({DB_POOL_MIN}-{DB_POOL_MAX} conexões).")
+    return _pg_pool
+
+
 def get_db_connection():
     if DATABASE_URL:
-        import psycopg2
-        import psycopg2.extras
-        
-        url_corrigida = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-        url = urlparse(url_corrigida)
-        
-        conn = psycopg2.connect(
-            database=url.path[1:],
-            user=url.username,
-            password=url.password,
-            host=url.hostname,
-            port=url.port,
-            cursor_factory=psycopg2.extras.DictCursor
-        )
-        # Entregamos a conexão VESTIDA COM A CAPA
-        return PostgresWrapper(conn)
-    else:
-        conn = sqlite3.connect('database.db')
-        conn.row_factory = sqlite3.Row
-        return conn
+        pool = _get_postgres_pool()
+        conn = pool.getconn()
+        try:
+            import psycopg2.extras
+            conn.cursor_factory = psycopg2.extras.DictCursor
+        except Exception:
+            pass
+        return PostgresWrapper(conn, pool)
+
+    conn = sqlite3.connect("database.db", timeout=10)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _safe_execute(conn, sql):
+    try:
+        conn.execute(sql)
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
 
 def init_db():
     conn = get_db_connection()
-    
-    # 1. CRIAÇÃO BASE (Caso o banco venha do zero)
-    conn.execute('''
+
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS sensores (
             mac_id TEXT PRIMARY KEY, nome_local TEXT, ip_sensor TEXT,
             cpu_usage REAL, ram_usage REAL, temp REAL, status TEXT,
             lat REAL, lon REAL, ping_gateway REAL, ping_global TEXT,
             ip_gateway TEXT, last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    ''')
-    
+        """
+    )
+
     if DATABASE_URL:
-        conn.execute('''CREATE TABLE IF NOT EXISTS historico_pings (id SERIAL PRIMARY KEY, sensor_mac TEXT, google INTEGER, cloudflare INTEGER, aws INTEGER, quad9 INTEGER, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-        conn.execute('''CREATE TABLE IF NOT EXISTS clientes (id SERIAL PRIMARY KEY, usuario TEXT, senha TEXT, role TEXT)''')
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS historico_pings (
+                id SERIAL PRIMARY KEY,
+                sensor_mac TEXT,
+                google INTEGER,
+                cloudflare INTEGER,
+                aws INTEGER,
+                quad9 INTEGER,
+                data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS clientes (
+                id SERIAL PRIMARY KEY,
+                usuario TEXT,
+                senha TEXT,
+                role TEXT
+            )
+            """
+        )
     else:
-        conn.execute('''CREATE TABLE IF NOT EXISTS historico_pings (id INTEGER PRIMARY KEY AUTOINCREMENT, sensor_mac TEXT, google INTEGER, cloudflare INTEGER, aws INTEGER, quad9 INTEGER, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-        conn.execute('''CREATE TABLE IF NOT EXISTS clientes (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, senha TEXT, role TEXT)''')
-
-    # ========================================================
-    # 🚀 2. AUTO-MIGRAÇÃO (ATUALIZAÇÃO DE BANCOS EXISTENTES)
-    # ========================================================
-    
-    # Adiciona a Logomarca na tabela de Clientes
-    try:
-        conn.execute("ALTER TABLE clientes ADD COLUMN logo_url TEXT DEFAULT ''")
-    except Exception:
-        # Se a coluna já existir, o Postgres joga um erro e bloqueia a transação. 
-        # Nós usamos o rollback para "limpar" o erro e seguir em frente!
-        if DATABASE_URL: conn.conn.rollback() 
-        pass 
-
-    # Adiciona a vinculação do Nome do Cliente na tabela de Sensores
-    try:
-        conn.execute("ALTER TABLE sensores ADD COLUMN cliente_nome TEXT DEFAULT 'Cliente Padrão'")
-    except Exception:
-        if DATABASE_URL: conn.conn.rollback()
-        pass
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS historico_pings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sensor_mac TEXT,
+                google INTEGER,
+                cloudflare INTEGER,
+                aws INTEGER,
+                quad9 INTEGER,
+                data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS clientes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario TEXT,
+                senha TEXT,
+                role TEXT
+            )
+            """
+        )
 
     conn.commit()
-    conn.close()
-    print("✅ Banco de dados sincronizado (Com Suporte a White-Label e Filtros) e pronto para operação!")
 
-# O famoso apelido para o app.py não quebrar
+    # Migrações compatíveis com bancos existentes.
+    _safe_execute(conn, "ALTER TABLE clientes ADD COLUMN logo_url TEXT DEFAULT ''")
+    _safe_execute(conn, "ALTER TABLE sensores ADD COLUMN cliente_nome TEXT DEFAULT 'Cliente Padrão'")
+
+    # Índices para as consultas mais frequentes do dashboard e histórico.
+    _safe_execute(
+        conn,
+        "CREATE INDEX IF NOT EXISTS idx_sensores_status_last_seen ON sensores(status, last_seen)",
+    )
+    _safe_execute(
+        conn,
+        "CREATE INDEX IF NOT EXISTS idx_sensores_cliente ON sensores(cliente_id)",
+    )
+    _safe_execute(
+        conn,
+        "CREATE INDEX IF NOT EXISTS idx_historico_pings_sensor_id ON historico_pings(sensor_mac, id)",
+    )
+
+    conn.close()
+    print("✅ Banco de dados sincronizado, indexado e pronto para operação.")
+
+
+# Alias histórico usado pelo app.py.
 get_db = get_db_connection
 
-if __name__ == '__main__':
-    if not DATABASE_URL and os.path.exists('database.db'):
-        os.remove('database.db')
+
+if __name__ == "__main__":
+    if not DATABASE_URL and os.path.exists("database.db"):
+        os.remove("database.db")
     init_db()
