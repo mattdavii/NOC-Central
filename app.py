@@ -199,6 +199,31 @@ try:
     except: pass
 
     try:
+        if os.environ.get("DATABASE_URL"):
+            conn.execute('''CREATE TABLE IF NOT EXISTS comandos_pendentes (
+                id SERIAL PRIMARY KEY,
+                sensor_mac TEXT NOT NULL,
+                comando TEXT NOT NULL,
+                criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )''')
+        else:
+            conn.execute('''CREATE TABLE IF NOT EXISTS comandos_pendentes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sensor_mac TEXT NOT NULL,
+                comando TEXT NOT NULL,
+                criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )''')
+        conn.commit()
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_comandos_sensor_id ON comandos_pendentes(sensor_mac, id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sensores_cliente ON sensores(cliente_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_logs_sensor_id ON logs_ia(sensor_mac, id)")
+        conn.commit()
+    except Exception as e:
+        try: conn.execute("ROLLBACK")
+        except: pass
+        print(f"⚠️ Aviso ao criar filas/índices: {e}")
+
+    try:
         conn.execute("UPDATE clientes SET role = 'Administrador Master' WHERE usuario = 'admin'")
         conn.commit()
     except:
@@ -221,6 +246,60 @@ _guardiao_ultima_execucao = 0.0
 
 PING_HISTORY_INTERVAL = max(30, int(os.environ.get("PING_HISTORY_INTERVAL", "60")))
 _ultimo_historico_ping = {}
+
+
+def enfileirar_comando(sensor_mac, comando, conn=None):
+    """Fila persistente: sobrevive a restart e permite múltiplos workers."""
+    if not sensor_mac or not comando:
+        return False
+    propria = conn is None
+    if propria:
+        conn = database.get_db()
+    try:
+        db_execute(
+            conn,
+            "INSERT INTO comandos_pendentes (sensor_mac, comando) VALUES (?, ?)",
+            (sensor_mac, comando),
+        )
+        conn.commit()
+        return True
+    finally:
+        if propria:
+            conn.close()
+
+
+def consumir_comando(conn, sensor_mac):
+    """Remove e devolve, de forma atômica no Postgres, o comando mais antigo."""
+    if os.environ.get("DATABASE_URL"):
+        row = db_execute(
+            conn,
+            """
+            DELETE FROM comandos_pendentes
+            WHERE id = (
+                SELECT id FROM comandos_pendentes
+                WHERE sensor_mac = ?
+                ORDER BY id
+                FOR UPDATE SKIP LOCKED
+                LIMIT 1
+            )
+            RETURNING comando
+            """,
+            (sensor_mac,),
+        ).fetchone()
+        conn.commit()
+        return row["comando"] if row else "none"
+
+    row = db_execute(
+        conn,
+        "SELECT id, comando FROM comandos_pendentes WHERE sensor_mac = ? ORDER BY id LIMIT 1",
+        (sensor_mac,),
+    ).fetchone()
+    if not row:
+        return "none"
+    db_execute(conn, "DELETE FROM comandos_pendentes WHERE id = ?", (row["id"],))
+    conn.commit()
+    return row["comando"]
+
 
 # ==========================================
 # ⚡ FUNÇÃO GUARDIÃ GLOBAL (CRON DA NUVEM)
@@ -363,7 +442,7 @@ def report_data():
             hoje_id = datetime.now().strftime('%Y-%m-%d')
             if 'AUTO_SPEEDTEST_DONE' not in globals(): AUTO_SPEEDTEST_DONE = set()
             if agora_hora == 3 and f"{mac}_{hoje_id}" not in AUTO_SPEEDTEST_DONE:
-                SPEEDTEST_REQUESTS.add(mac)
+                enfileirar_comando(mac, "run_speedtest", conn=conn)
                 AUTO_SPEEDTEST_DONE.add(f"{mac}_{hoje_id}")
                 if len(AUTO_SPEEDTEST_DONE) > 500: AUTO_SPEEDTEST_DONE.clear()
         except: pass
@@ -420,13 +499,8 @@ def report_data():
         except Exception as e:
             print(f"⚠️ Falha ao gravar histórico de ping: {e}")
 
+        comando = consumir_comando(conn, mac)
         conn.close()
-
-        comando = "none"
-        if mac in SPEEDTEST_REQUESTS: SPEEDTEST_REQUESTS.remove(mac); comando = "run_speedtest"
-        elif mac in TRACEROUTE_REQUESTS: TRACEROUTE_REQUESTS.remove(mac); comando = "run_traceroute"
-        elif mac in UPDATE_REQUESTS: UPDATE_REQUESTS.remove(mac); comando = "update_agent"
-        elif mac in PENDING_COMMANDS: comando = PENDING_COMMANDS.pop(mac)
 
         socketio.emit('atualizacao_global', {'mac_id': mac})
         return jsonify({"status": "OK", "command": comando})
@@ -534,14 +608,15 @@ def reportar_status_servico():
 @app.route('/api/v2/comando_energia/<mac_id>', methods=['POST'])
 def enviar_comando_energia(mac_id):
     if 'user_id' not in session or session.get('role') != 'Administrador Master': return jsonify({"error": "Acesso Negado"}), 403
-    PENDING_COMMANDS[mac_id] = request.json.get('comando')
+    comando = request.json.get('comando')
+    enfileirar_comando(mac_id, comando)
     return jsonify({"status": "Comando enfileirado"})
 
 @app.route('/api/v2/enviar_comando/<mac_id>', methods=['POST'])
 def enviar_comando_remoto(mac_id):
     if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     comando = request.json.get('comando')
-    PENDING_COMMANDS[mac_id] = comando
+    enfileirar_comando(mac_id, comando)
     conn = database.get_db()
     try: conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (id SERIAL PRIMARY KEY, sensor_mac TEXT, tipo_evento TEXT, gravidade TEXT, detalhes TEXT, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     except: pass
@@ -555,7 +630,7 @@ def enviar_wol_remoto(mac_sensor):
     mac_alvo = request.json.get('mac_alvo')
     nome_alvo = request.json.get('nome_alvo', 'Dispositivo')
     
-    PENDING_COMMANDS[mac_sensor] = f"wol:{mac_alvo}"
+    enfileirar_comando(mac_sensor, f"wol:{mac_alvo}")
     
     conn = database.get_db()
     db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Comando Remoto', 'Aviso', ?)", 
@@ -710,7 +785,8 @@ def configurar_sensor():
 
 @app.route('/api/v2/solicitar_speedtest/<mac_id>', methods=['POST'])
 def solicitar_speedtest(mac_id):
-    SPEEDTEST_REQUESTS.add(mac_id); return jsonify({"status": "Teste na fila"})
+    enfileirar_comando(mac_id, "run_speedtest")
+    return jsonify({"status": "Teste na fila"})
 
 @app.route('/api/v2/reportar_velocidade', methods=['POST'])
 def reportar_velocidade():
@@ -925,7 +1001,8 @@ def deletar_sensor(mac_id):
 
 @app.route('/api/v2/solicitar_traceroute/<mac_id>', methods=['POST'])
 def solicitar_traceroute(mac_id):
-    TRACEROUTE_REQUESTS.add(mac_id); return jsonify({"status": "OK"})
+    enfileirar_comando(mac_id, "run_traceroute")
+    return jsonify({"status": "OK"})
 
 @app.route('/api/v2/reportar_rota', methods=['POST'])
 def reportar_rota():
@@ -946,7 +1023,8 @@ def logs_globais():
 
 @app.route('/api/v2/solicitar_update/<mac_id>', methods=['POST'])
 def solicitar_update(mac_id):
-    UPDATE_REQUESTS.add(mac_id); return jsonify({"status": "OK"})
+    enfileirar_comando(mac_id, "update_agent")
+    return jsonify({"status": "OK"})
 
 @app.route('/api/v2/toggle_manutencao/<mac_id>', methods=['POST'])
 def toggle_manutencao(mac_id):
