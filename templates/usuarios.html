@@ -171,6 +171,7 @@
         <div class="card modal-content">
             <h3 style="margin-top: 0; color: var(--blue); border-bottom: 1px solid var(--border); padding-bottom: 10px;"><i class="fa-solid fa-user-pen"></i> Editar Usuário</h3>
             <input type="hidden" id="edit_id">
+            <input type="hidden" id="edit_role">
             
             <div class="input-group" style="margin-bottom: 15px;">
                 <label>Nome / Empresa</label>
@@ -200,6 +201,7 @@
             </div>
 
             <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                <button id="btn_testar_telegram" class="btn-save" style="background:#229ED9; color:white; display:none;" onclick="testarTelegram()"><i class="fa-brands fa-telegram"></i> Testar Telegram</button>
                 <button class="btn-save" style="background: var(--bg-input); color: var(--text-main);" onclick="fecharModal()">Cancelar</button>
                 <button class="btn-save" onclick="salvarEdicao()">Salvar Alterações</button>
             </div>
@@ -272,6 +274,7 @@
         // Atualizado com tg_token e tg_chat
         function abrirModalEditar(id, nome, usuario, role, logo_url, tg_token, tg_chat) {
             document.getElementById('edit_id').value = id;
+            document.getElementById('edit_role').value = role;
             document.getElementById('edit_nome').value = nome;
             document.getElementById('edit_usuario').value = usuario;
             document.getElementById('edit_logo_url').value = logo_url !== 'None' ? logo_url : '';
@@ -283,10 +286,12 @@
                 document.getElementById('edit_div_logo').style.display = 'flex';
                 document.getElementById('edit_div_logo').style.flexDirection = 'column';
                 document.getElementById('edit_div_telegram').style.display = 'block';
+                document.getElementById('btn_testar_telegram').style.display = 'inline-block';
                 previewLogo(logo_url, 'edit-preview-container');
             } else {
                 document.getElementById('edit_div_logo').style.display = 'none';
                 document.getElementById('edit_div_telegram').style.display = 'none';
+                document.getElementById('btn_testar_telegram').style.display = 'none';
             }
 
             document.getElementById('modalEditar').style.display = 'flex';
@@ -294,6 +299,42 @@
 
         function fecharModal() {
             document.getElementById('modalEditar').style.display = 'none';
+        }
+
+        async function testarTelegram() {
+            const id = document.getElementById('edit_id').value;
+            const botao = document.getElementById('btn_testar_telegram');
+            const original = botao.innerHTML;
+            botao.disabled = true;
+            botao.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Testando...';
+            try {
+                // Salva as credenciais digitadas antes do teste.
+                const payload = {
+                    nome: document.getElementById('edit_nome').value,
+                    usuario: document.getElementById('edit_usuario').value,
+                    logo_url: document.getElementById('edit_logo_url').value,
+                    telegram_token: document.getElementById('edit_telegram_token').value,
+                    telegram_chat_id: document.getElementById('edit_telegram_chat_id').value
+                };
+                await fetch('/api/v2/usuarios/' + id + '/info', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const res = await fetch('/api/v2/testar_telegram/' + id, { method: 'POST' });
+                const data = await res.json();
+                if (res.ok && data.ok) {
+                    alert('✅ Telegram funcionando. Mensagem de teste entregue.');
+                } else {
+                    alert('❌ Falha no Telegram: ' + (data.erro || data.error || 'erro desconhecido'));
+                }
+            } catch (e) {
+                alert('❌ Falha ao testar Telegram: ' + e);
+            } finally {
+                botao.disabled = false;
+                botao.innerHTML = original;
+            }
         }
 
         async function salvarEdicao() {
