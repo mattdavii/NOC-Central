@@ -33,9 +33,16 @@ except ImportError: psutil = None
 # ==========================================
 # ⚙️ CONFIGURAÇÃO DO AGENTE
 # ==========================================
-URL_CENTRAL = "https://noc-central.up.railway.app/api/v2/report_data"
-PORTA_LOCAL = 10000
-VERSAO_AGENTE = "2.1.0"
+URL_CENTRAL = os.environ.get(
+    "NOC_CENTRAL_URL",
+    "https://noc-central.up.railway.app/api/v2/report_data",
+).strip()
+PORTA_LOCAL = int(os.environ.get("NOC_LOCAL_PORT", "10000"))
+VERSAO_AGENTE = "2.2.0"
+
+TELEMETRIA_INTERVALO = max(3, int(os.environ.get("NOC_TELEMETRIA_INTERVALO", "5")))
+WATCHDOG_INTERVALO = max(10, int(os.environ.get("NOC_WATCHDOG_INTERVALO", "15")))
+SCAN_REDE_INTERVALO = max(30, int(os.environ.get("NOC_SCAN_REDE_INTERVALO", "60")))
 
 # Chave pública RSA usada para verificar o token JWT emitido pela central (a privada nunca sai do servidor)
 CHAVE_PUBLICA_JWT = """-----BEGIN PUBLIC KEY-----
@@ -88,9 +95,21 @@ def get_network_info():
     return meu_ip, gateway
 
 def ping_silencioso(ip):
-    param = '-n' if IS_WIN else '-c'
-    try: subprocess.call(['ping', param, '1', '-w', '500', ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, creationflags=C_FLAGS)
-    except: pass
+    try:
+        if IS_WIN:
+            comando = ['ping', '-n', '1', '-w', '500', ip]
+        else:
+            comando = ['ping', '-c', '1', '-W', '1', ip]
+        subprocess.call(
+            comando,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            creationflags=C_FLAGS,
+            timeout=2,
+        )
+    except Exception:
+        pass
 
 def varredura_profunda_arp(ip_gateway):
     try:
@@ -108,38 +127,89 @@ def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
     if forcar_varredura and gateway_ip != "Desconhecido":
         try:
             base_ip = ".".join(gateway_ip.split('.')[:-1])
-            threads = [threading.Thread(target=ping_silencioso, args=(f"{base_ip}.{i}",)) for i in range(1, 255)]
-            for t in threads: t.start()
-            for t in threads: t.join()
-        except: pass
-        
+            with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
+                list(executor.map(ping_silencioso, [f"{base_ip}.{i}" for i in range(1, 255)]))
+        except Exception:
+            pass
+
     dispositivos_temp = []
     prefixo_rede = '.'.join(meu_ip.split('.')[:-1]) + '.'
-    try:
-        saida = subprocess.check_output("arp -a", shell=True, universal_newlines=True, creationflags=C_FLAGS, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        for linha in saida.split('\n'):
-            partes = linha.split()
-            if len(partes) >= 2 and '.' in partes[0] and ('-' in partes[1] or ':' in partes[1]):
-                ip = partes[0]
-                mac = partes[1].replace('-', ':').upper()
-                if ip.startswith(prefixo_rede) and not ip.endswith(".255"): 
-                    dispositivos_temp.append({"ip": ip, "mac": mac, "nome": "Desconhecido", "fabricante": "Desconhecido"})
-    except: pass
 
-    # ⚡ TESTE CONCORRENTE BLINDADO CONTRA O WINDOWS
+    try:
+        if IS_WIN:
+            saida = subprocess.check_output(
+                "arp -a",
+                shell=True,
+                universal_newlines=True,
+                creationflags=C_FLAGS,
+                stdin=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            for linha in saida.split('\n'):
+                partes = linha.split()
+                if len(partes) >= 2 and '.' in partes[0] and ('-' in partes[1] or ':' in partes[1]):
+                    ip = partes[0]
+                    mac = partes[1].replace('-', ':').upper()
+                    if ip.startswith(prefixo_rede) and not ip.endswith(".255"):
+                        dispositivos_temp.append({
+                            "ip": ip,
+                            "mac": mac,
+                            "nome": "Desconhecido",
+                            "fabricante": "Desconhecido",
+                        })
+        else:
+            # Linux moderno: ip neigh é mais estável que tentar interpretar arp -a.
+            saida = subprocess.check_output(
+                ["ip", "neigh", "show"],
+                universal_newlines=True,
+                stdin=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            )
+            for linha in saida.splitlines():
+                partes = linha.split()
+                if len(partes) < 3:
+                    continue
+                ip = partes[0]
+                if not ip.startswith(prefixo_rede) or ip.endswith(".255"):
+                    continue
+                try:
+                    idx = partes.index("lladdr")
+                    mac = partes[idx + 1].replace('-', ':').upper()
+                except (ValueError, IndexError):
+                    continue
+                dispositivos_temp.append({
+                    "ip": ip,
+                    "mac": mac,
+                    "nome": "Desconhecido",
+                    "fabricante": "Desconhecido",
+                })
+    except Exception:
+        pass
+
     def checar_status(d):
-        param = '-n' if IS_WIN else '-c'
-        comando = ['ping', param, '1', '-w', '500', d['ip']] if IS_WIN else ['ping', param, '1', '-W', '1', d['ip']]
+        comando = (
+            ['ping', '-n', '1', '-w', '500', d['ip']]
+            if IS_WIN
+            else ['ping', '-c', '1', '-W', '1', d['ip']]
+        )
         try:
-            saida = subprocess.check_output(comando, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
-            if 'unreachable' in saida.lower() or 'inacessível' in saida.lower() or 'esgotado' in saida.lower():
+            saida = subprocess.check_output(
+                comando,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                creationflags=C_FLAGS,
+                timeout=2,
+            ).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
+            texto = saida.lower()
+            if 'unreachable' in texto or 'inacessível' in texto or 'esgotado' in texto:
                 d['status'] = 'offline'
-            elif '<1ms' in saida or 'ttl=' in saida.lower():
+            elif '<1ms' in saida or 'ttl=' in texto or '1 received' in texto or '1 recebidos' in texto:
                 d['status'] = 'online'
             else:
-                match = re.search(r'(?:time|tempo)[=<](\d+)', saida.lower())
+                match = re.search(r'(?:time|tempo)[=<]?([0-9.]+)', texto)
                 d['status'] = 'online' if match else 'offline'
-        except:
+        except Exception:
             d['status'] = 'offline'
         return d
 
@@ -174,40 +244,82 @@ def ping(host):
 def ler_temperaturas():
     cpu_t = 0.0
     gpu_t = 0.0
-    
-    # 1. TENTATIVA HARDCORE: OpenHardwareMonitor (Se o cliente instalou)
+
+    # Windows: OpenHardwareMonitor, quando disponível.
     if IS_WIN:
         try:
             cmd_ohm = 'powershell -Command "(Get-WmiObject -Namespace root\\OpenHardwareMonitor -Class Sensor -ErrorAction Stop | Where-Object { $_.SensorType -eq \'Temperature\' -and ($_.Name -match \'CPU Package\' -or $_.Name -match \'CPU Core\') } | Measure-Object -Property Value -Average).Average"'
-            out = subprocess.check_output(cmd_ohm, shell=True, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL).strip()
+            out = subprocess.check_output(
+                cmd_ohm,
+                shell=True,
+                universal_newlines=True,
+                creationflags=C_FLAGS,
+                stderr=subprocess.DEVNULL,
+            ).strip()
             if out and out != "0":
                 cpu_t = round(float(out.replace(',', '.')), 1)
-        except: pass
+        except Exception:
+            pass
 
-    # 2. TENTATIVA NATIVA PYTHON (Linux/Mac/Alguns Windows)
-    if cpu_t == 0.0 and hasattr(psutil, "sensors_temperatures"):
+    # Linux/Mac: psutil expõe lm-sensors. Suporta Intel, AMD e amdgpu.
+    if psutil and hasattr(psutil, "sensors_temperatures"):
         try:
-            st = psutil.sensors_temperatures()
-            for name, entries in st.items():
-                if "coretemp" in name.lower() or "cpu" in name.lower(): cpu_t = round(entries[0].current, 1)
-        except: pass
+            sensores = psutil.sensors_temperatures() or {}
+            prioridades_cpu = ("k10temp", "zenpower", "coretemp", "cpu", "acpitz")
+            for chave in prioridades_cpu:
+                for nome, entries in sensores.items():
+                    if chave in nome.lower() and entries:
+                        candidatos = [e.current for e in entries if getattr(e, "current", None) is not None]
+                        candidatos = [t for t in candidatos if 0 < t < 130]
+                        if candidatos:
+                            cpu_t = round(max(candidatos), 1)
+                            break
+                if cpu_t:
+                    break
 
-    # 3. TENTATIVA WMI DO WINDOWS (Placas-mãe amigáveis)
+            for nome, entries in sensores.items():
+                if "amdgpu" in nome.lower() and entries:
+                    candidatos = [e.current for e in entries if getattr(e, "current", None) is not None]
+                    candidatos = [t for t in candidatos if 0 < t < 130]
+                    if candidatos:
+                        gpu_t = round(max(candidatos), 1)
+                        break
+        except Exception:
+            pass
+
+    # Fallback WMI do Windows.
     if IS_WIN and cpu_t == 0.0:
         try:
             cmd = 'powershell -Command "Get-WmiObject MSAcpi_ThermalZoneTemperature -Namespace root/wmi -ErrorAction Stop | Select -ExpandProperty CurrentTemperature"'
-            out = subprocess.check_output(cmd, shell=True, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL).strip()
+            out = subprocess.check_output(
+                cmd,
+                shell=True,
+                universal_newlines=True,
+                creationflags=C_FLAGS,
+                stderr=subprocess.DEVNULL,
+            ).strip()
             if out:
                 kelvin_raw = float(out.split('\n')[0])
                 celsius = (kelvin_raw / 10.0) - 273.15
-                if 20 < celsius < 120: cpu_t = round(celsius, 1)
-        except: pass
+                if 20 < celsius < 120:
+                    cpu_t = round(celsius, 1)
+        except Exception:
+            pass
 
-    # LEITURA DA GPU (Nvidia)
-    try:
-        out = subprocess.check_output('nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader', shell=True, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL).strip()
-        if out: gpu_t = float(out.split('\n')[0])
-    except: pass
+    # NVIDIA, em qualquer SO com nvidia-smi instalado.
+    if gpu_t == 0.0:
+        try:
+            out = subprocess.check_output(
+                'nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader',
+                shell=True,
+                universal_newlines=True,
+                creationflags=C_FLAGS,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+            if out:
+                gpu_t = float(out.split('\n')[0])
+        except Exception:
+            pass
 
     return cpu_t, gpu_t
 
@@ -355,6 +467,63 @@ def executar_scan_loop(mac, url_central, gateway_ip):
         urllib.request.urlopen(urllib.request.Request(url_central.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Resultado: Scan de Loop", "gravidade": grav, "detalhes": msg}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
     except: pass
 
+def executar_flush_dns():
+    if IS_WIN:
+        return subprocess.call(
+            "ipconfig /flushdns",
+            shell=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=C_FLAGS,
+        ) == 0
+
+    comandos = [
+        ["resolvectl", "flush-caches"],
+        ["sudo", "-n", "resolvectl", "flush-caches"],
+        ["sudo", "-n", "systemd-resolve", "--flush-caches"],
+    ]
+    for comando in comandos:
+        try:
+            if subprocess.run(
+                comando,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+            ).returncode == 0:
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def executar_admin_linux(acao, alvo=None):
+    """Executa apenas ações administrativas pré-definidas, sem prompt de senha."""
+    if IS_WIN:
+        return False
+
+    wrapper = "/usr/local/sbin/minipc-admin"
+    if os.path.isfile(wrapper) and os.access(wrapper, os.X_OK):
+        cmd = ["sudo", "-n", wrapper, acao]
+        if alvo:
+            cmd.append(alvo)
+    else:
+        if acao == "reboot":
+            cmd = ["sudo", "-n", "reboot"]
+        elif acao == "start-service" and alvo:
+            cmd = ["sudo", "-n", "systemctl", "start", alvo]
+        else:
+            return False
+    try:
+        return subprocess.run(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=20,
+        ).returncode == 0
+    except Exception:
+        return False
+
+
 # ==========================================
 # 📡 MOTOR 1: TELEMETRIA E AUTO-CURA WAN
 # ==========================================
@@ -449,8 +618,9 @@ def loop_telemetria():
                         subprocess.call("ipconfig /flushdns", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
                         subprocess.call("ipconfig /renew", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
                     else:
-                        subprocess.call("sudo systemd-resolve --flush-caches", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    log_local_event("Auto-Cura", "Queda de DNS/WAN detectada. O Agente executou Flush DNS e Renew IP.", "Aviso")
+                        if not executar_flush_dns():
+                            raise RuntimeError("não foi possível limpar o cache DNS sem interação")
+                    log_local_event("Auto-Cura", "Queda de DNS/WAN detectada. O Agente executou limpeza de DNS.", "Aviso")
                     try:
                         url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
                         urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "⚙️ Sistema de Auto-Cura", "gravidade": "Aviso", "detalhes": "Agente executou script de Flush DNS localmente."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
@@ -463,7 +633,7 @@ def loop_telemetria():
             meu_ip, gateway_ip = get_network_info()
             ping_gw = ping(gateway_ip) if gateway_ip != "Desconhecido" else 0
             
-            forcar_varredura = (agora - ultima_varredura > 20)
+            forcar_varredura = (agora - ultima_varredura > SCAN_REDE_INTERVALO)
             dispositivos = get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=forcar_varredura)
             if forcar_varredura: ultima_varredura = agora
 
@@ -488,18 +658,24 @@ def loop_telemetria():
 
             payload = { "mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", "ip_local": meu_ip, "ip_gateway": gateway_ip, "cpu_usage": cpu, "ram_usage": ram, "disco": disco, "temp": cpu_temp, "gpu_temp": gpu_temp, "ping_gateway": ping_gw, "ping_global": json.dumps(pings), "net_up": net_up, "net_down": net_down, "portas": str_portas }
             
-            espera_remota = 3
+            espera_remota = TELEMETRIA_INTERVALO
             try:
                 req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
                 with urllib.request.urlopen(req, timeout=5) as response:
                     res_data = json.loads(response.read().decode('utf-8'))
                     comando = res_data.get("command")
-                    espera_remota = res_data.get("intervalo", 3) 
+                    espera_remota = max(TELEMETRIA_INTERVALO, int(res_data.get("intervalo", TELEMETRIA_INTERVALO))) 
 
-                    if comando == "reboot": subprocess.call("shutdown /r /t 0" if IS_WIN else "sudo reboot", shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
+                    if comando == "reboot":
+                        if IS_WIN:
+                            subprocess.call("shutdown /r /t 0", shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
+                        elif not executar_admin_linux("reboot"):
+                            log_local_event("Comando Remoto", "Reboot negado: sudo não interativo/wrapper não autorizado.", "Crítica")
                     elif comando == "run_speedtest": threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
                     elif comando == "run_traceroute": threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
-                    elif comando == "flush_dns": subprocess.call("ipconfig /flushdns" if IS_WIN else "sudo systemd-resolve --flush-caches", shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
+                    elif comando == "flush_dns":
+                        if not executar_flush_dns():
+                            log_local_event("Comando Remoto", "Falha ao limpar cache DNS.", "Alerta")
                     elif comando == "scan_loop": 
                         threading.Thread(target=executar_scan_loop, args=(mac, URL_CENTRAL, gateway_ip), daemon=True).start()
                     elif comando and comando.startswith("wol:"): 
@@ -654,8 +830,10 @@ def loop_watchdog_local():
 
                 if status_atual == 'OFFLINE':
                     try:
-                        if IS_WIN: subprocess.call(f'net start "{nome_srv}"', shell=True, creationflags=C_FLAGS, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        else: subprocess.call(f'sudo systemctl start "{nome_srv}"', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        if IS_WIN:
+                            subprocess.call(f'net start "{nome_srv}"', shell=True, creationflags=C_FLAGS, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        else:
+                            executar_admin_linux("start-service", nome_srv)
                         time.sleep(2)
                         if IS_WIN:
                             out = subprocess.check_output(f'sc query "{nome_srv}"', shell=True, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL)
@@ -685,7 +863,7 @@ def loop_watchdog_local():
 
         except Exception as e:
             log_local_event("Erro Loop Watchdog", f"Iteração falhou por completo: {e}", "Crítica")
-        time.sleep(5)
+        time.sleep(WATCHDOG_INTERVALO)
 
 # ==========================================
 # 🖥️ MOTOR 2: PAINEL WEB LOCAL (FOREGROUND)
@@ -1129,8 +1307,22 @@ def run_tray():
 if __name__ == "__main__":
     try:
         init_local_db()
-        threading.Thread(target=lambda: app.run(host='0.0.0.0', port=PORTA_LOCAL, debug=False, use_reloader=False), daemon=True).start()
+        threading.Thread(
+            target=lambda: app.run(host='0.0.0.0', port=PORTA_LOCAL, debug=False, use_reloader=False),
+            daemon=True,
+        ).start()
         threading.Thread(target=loop_telemetria, daemon=True).start()
         threading.Thread(target=loop_watchdog_local, daemon=True).start()
-        run_tray() 
-    except Exception as e: pass
+
+        if IS_WIN:
+            run_tray()
+        else:
+            # Modo headless/systemd: mantém o processo principal vivo sem depender
+            # de X11, bandeja do sistema ou sessão gráfica.
+            print(f"✅ NOC Sensor Linux {VERSAO_AGENTE} ativo.")
+            threading.Event().wait()
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"❌ Falha fatal do NOC Sensor: {e}")
+        raise
