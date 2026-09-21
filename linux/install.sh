@@ -31,6 +31,8 @@ NOC_LOCAL_PORT=10000
 NOC_TELEMETRIA_INTERVALO=5
 NOC_WATCHDOG_INTERVALO=15
 NOC_SCAN_REDE_INTERVALO=60
+# Depois que todos os agentes estiverem atualizados, configure a mesma chave no Railway:
+# NOC_SENSOR_API_KEY=gere-uma-chave-forte-e-unica
 EOF
 fi
 
