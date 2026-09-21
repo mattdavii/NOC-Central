@@ -372,25 +372,24 @@
         carregarSensores(); 
         carregarLogsGlobais();
 
-        // ⚡ O Loop Infinito a cada 15 Segundos
-        setInterval(() => {
-            carregarSensores();
-            carregarLogsGlobais();
-        }, 15000);
+        // Polling é apenas fallback. O tempo real fica a cargo do Socket.IO.
+        setInterval(carregarSensores, 30000);
+        setInterval(carregarLogsGlobais, 30000);
 
         try {
-            const socket = io(); 
-            let aguardandoSocket = false; // ⚡ A nossa trava de inteligência
+            const socket = io();
+            let aguardandoSocket = false;
             
-            socket.on('atualizacao_global', function(msg) { 
-                // Se receber 50 avisos do Agente, ele ignora e só recarrega a tela a cada 3 segundos
+            socket.on('atualizacao_global', function(msg) {
+                // Consolida vários batimentos dos sensores em uma atualização visual.
+                // Logs globais continuam no polling de 30 s para não consultar o banco
+                // a cada pacote de telemetria.
                 if(!aguardandoSocket) {
                     aguardandoSocket = true;
                     setTimeout(() => {
-                        carregarSensores(); 
-                        carregarLogsGlobais();
+                        carregarSensores();
                         aguardandoSocket = false;
-                    }, 3000); 
+                    }, 5000);
                 }
             });
             
