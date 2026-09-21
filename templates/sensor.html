@@ -955,19 +955,25 @@
             if (res.ok) buscarDadosAoVivo();
         }
 
-        setInterval(carregarRadar, 25000); 
-        setInterval(carregarCustomIPs, 10000); 
-        setInterval(carregarEnergiaIPs, 10000);
-        setInterval(carregarServicosOS, 10000); 
-        setInterval(carregarHistorico, 10000);
-        setInterval(carregarGraficos, 60000); 
-        setInterval(buscarDadosAoVivo, 5000);
+        // Dados de configuração mudam pouco; não precisam pressionar o banco a cada 10 s.
+        setInterval(carregarRadar, 60000);
+        setInterval(carregarCustomIPs, 30000);
+        setInterval(carregarEnergiaIPs, 30000);
+        setInterval(carregarServicosOS, 30000);
+        setInterval(carregarHistorico, 30000);
+        setInterval(carregarGraficos, 120000);
+        setInterval(carregarGraficosPing, 60000);
+        setInterval(buscarDadosAoVivo, 10000);
 
         const socket = io();
+        let atualizacaoSocketPendente = false;
         socket.on('atualizacao_global', function(msg) {
-            if (msg.mac_id === mac_id) {
-                buscarDadosAoVivo();
-                carregarGraficosPing();
+            if (msg.mac_id === mac_id && !atualizacaoSocketPendente) {
+                atualizacaoSocketPendente = true;
+                setTimeout(() => {
+                    buscarDadosAoVivo();
+                    atualizacaoSocketPendente = false;
+                }, 3000);
             }
         });
     </script>
