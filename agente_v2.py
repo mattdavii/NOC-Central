@@ -38,7 +38,7 @@ URL_CENTRAL = os.environ.get(
     "https://noc-central.up.railway.app/api/v2/report_data",
 ).strip()
 PORTA_LOCAL = int(os.environ.get("NOC_LOCAL_PORT", "10000"))
-VERSAO_AGENTE = "2.2.0"
+VERSAO_AGENTE = "2.1.0"
 
 TELEMETRIA_INTERVALO = max(3, int(os.environ.get("NOC_TELEMETRIA_INTERVALO", "5")))
 WATCHDOG_INTERVALO = max(10, int(os.environ.get("NOC_WATCHDOG_INTERVALO", "15")))
@@ -388,7 +388,7 @@ def executar_speedtest(mac, url_central):
     d, u = 0.0, 0.0
     erro_principal = ""
     try:
-        st = speedtest.Speedtest(secure=False)
+        st = speedtest.Speedtest(secure=True)
         st.get_best_server()
         d = st.download(threads=8) / 1_000_000
         u = st.upload(threads=8) / 1_000_000
@@ -673,6 +673,7 @@ def loop_telemetria():
                             log_local_event("Comando Remoto", "Reboot negado: sudo não interativo/wrapper não autorizado.", "Crítica")
                     elif comando == "run_speedtest": threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
                     elif comando == "run_traceroute": threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
+                    elif comando == "update_agent": threading.Thread(target=verificar_atualizacao, args=(mac,), daemon=True).start()
                     elif comando == "flush_dns":
                         if not executar_flush_dns():
                             log_local_event("Comando Remoto", "Falha ao limpar cache DNS.", "Alerta")
