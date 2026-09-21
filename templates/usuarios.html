@@ -54,6 +54,9 @@
             <a href="/" class="btn-voltar"><i class="fa-solid fa-arrow-left"></i> Voltar ao Dashboard</a>
             <h1 style="margin: 10px 0 0 0; color: var(--blue);"><i class="fa-solid fa-users-gear"></i> Gestão de Usuários</h1>
         </div>
+        {% if role_atual == 'Administrador Master' %}
+        <button class="btn-save" style="background:#229ED9; color:white;" onclick="testarTelegramMaster()"><i class="fa-brands fa-telegram"></i> Testar Bot Master</button>
+        {% endif %}
     </div>
 
     <div class="card">
@@ -299,6 +302,20 @@
 
         function fecharModal() {
             document.getElementById('modalEditar').style.display = 'none';
+        }
+
+        async function testarTelegramMaster() {
+            try {
+                const res = await fetch('/api/v2/testar_telegram/0', { method: 'POST' });
+                const data = await res.json();
+                if (res.ok && data.ok) {
+                    alert('✅ Bot Master funcionando. Mensagem de teste entregue.');
+                } else {
+                    alert('❌ Falha no Bot Master: ' + (data.erro || data.error || 'erro desconhecido'));
+                }
+            } catch (e) {
+                alert('❌ Falha ao testar Bot Master: ' + e);
+            }
         }
 
         async function testarTelegram() {
