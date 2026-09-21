@@ -43,6 +43,14 @@ VERSAO_AGENTE = "2.1.0"
 TELEMETRIA_INTERVALO = max(3, int(os.environ.get("NOC_TELEMETRIA_INTERVALO", "5")))
 WATCHDOG_INTERVALO = max(10, int(os.environ.get("NOC_WATCHDOG_INTERVALO", "15")))
 SCAN_REDE_INTERVALO = max(30, int(os.environ.get("NOC_SCAN_REDE_INTERVALO", "60")))
+SENSOR_API_KEY = os.environ.get("NOC_SENSOR_API_KEY", "").strip()
+
+
+def api_headers():
+    headers = {"Content-Type": "application/json"}
+    if SENSOR_API_KEY:
+        headers["X-NOC-Sensor-Key"] = SENSOR_API_KEY
+    return headers
 
 # Chave pública RSA usada para verificar o token JWT emitido pela central (a privada nunca sai do servidor)
 CHAVE_PUBLICA_JWT = """-----BEGIN PUBLIC KEY-----
@@ -405,7 +413,7 @@ def executar_speedtest(mac, url_central):
             try:
                 url_log = url_central.replace('report_data', 'alertas_ia')
                 alerta = [{"tipo": "Falha de Speedtest", "gravidade": "Aviso", "detalhes": f"Ookla: {erro_principal} | Tele2: {str(e2)}"}]
-                req_log = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": alerta}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+                req_log = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": alerta}).encode('utf-8'), headers=api_headers(), method='POST')
                 urllib.request.urlopen(req_log, timeout=5)
             except:
                 log_local_event("Speedtest", f"Falha total: Ookla={erro_principal} | Tele2={str(e2)} | e não conseguiu nem reportar à central (sem internet?)", "Crítica")
@@ -414,7 +422,7 @@ def executar_speedtest(mac, url_central):
     try:
         payload = {"mac_id": mac, "down": round(d, 2), "up": round(u, 2)}
         url_speed = url_central.replace('report_data', 'reportar_velocidade')
-        req = urllib.request.Request(url_speed, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+        req = urllib.request.Request(url_speed, data=json.dumps(payload).encode('utf-8'), headers=api_headers(), method='POST')
         urllib.request.urlopen(req, timeout=10)
     except:
         log_local_event("Speedtest", f"Medição OK ({round(d,1)}down/{round(u,1)}up Mbps) mas falhou ao reportar à central", "Alerta")
@@ -425,7 +433,7 @@ def executar_traceroute(mac, url_central):
         resultado = subprocess.check_output(cmd, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, timeout=40, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
         payload = {"mac_id": mac, "rota": resultado}
         url_trace = url_central.replace('report_data', 'reportar_rota')
-        req = urllib.request.Request(url_trace, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+        req = urllib.request.Request(url_trace, data=json.dumps(payload).encode('utf-8'), headers=api_headers(), method='POST')
         urllib.request.urlopen(req, timeout=10)
     except Exception as e:
         log_local_event("Traceroute", f"Falhou ao executar ou reportar: {e}", "Alerta")
@@ -449,7 +457,7 @@ def acordar_pc(macaddress):
 def executar_scan_loop(mac, url_central, gateway_ip):
     """ Busca Ativa por Loops L2 (Tempestade de Broadcast) """
     try:
-        req = urllib.request.Request(url_central.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "🔍 Scan de Loop Iniciado", "gravidade": "Aviso", "detalhes": "Injetando pacotes de estresse na rede local para medir a taxa de reflexão do Switch..."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+        req = urllib.request.Request(url_central.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "🔍 Scan de Loop Iniciado", "gravidade": "Aviso", "detalhes": "Injetando pacotes de estresse na rede local para medir a taxa de reflexão do Switch..."}]}).encode('utf-8'), headers=api_headers(), method='POST')
         urllib.request.urlopen(req, timeout=3)
         if not psutil or gateway_ip == "Desconhecido": return
         net_start = psutil.net_io_counters(); time.sleep(2); net_mid = psutil.net_io_counters()
@@ -464,7 +472,7 @@ def executar_scan_loop(mac, url_central, gateway_ip):
         else:
             msg = f"✅ Rede Limpa. Nenhum Loop de Reflexão ou Tempestade de Broadcast detectada."
             grav = "OK"
-        urllib.request.urlopen(urllib.request.Request(url_central.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Resultado: Scan de Loop", "gravidade": grav, "detalhes": msg}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+        urllib.request.urlopen(urllib.request.Request(url_central.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Resultado: Scan de Loop", "gravidade": grav, "detalhes": msg}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
     except: pass
 
 def executar_flush_dns():
@@ -623,7 +631,7 @@ def loop_telemetria():
                     log_local_event("Auto-Cura", "Queda de DNS/WAN detectada. O Agente executou limpeza de DNS.", "Aviso")
                     try:
                         url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
-                        urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "⚙️ Sistema de Auto-Cura", "gravidade": "Aviso", "detalhes": "Agente executou script de Flush DNS localmente."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
+                        urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "⚙️ Sistema de Auto-Cura", "gravidade": "Aviso", "detalhes": "Agente executou script de Flush DNS localmente."}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
                     except Exception as e:
                         log_local_event("Auto-Cura", f"Flush DNS rodou, mas falhou ao reportar à central: {e}", "Alerta")
                 except Exception as e:
@@ -650,7 +658,7 @@ def loop_telemetria():
                 alertas_rede.append({"tipo": "🌪️ Tempestade de Broadcast", "gravidade": "Crítica", "detalhes": f"Inundação L2 detectada ({net_down} Mbps de lixo)."})
 
             if alertas_rede:
-                try: urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": alertas_rede}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
+                try: urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": alertas_rede}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
                 except Exception as e:
                     log_local_event("Alerta de Rede", f"Detectou {[a['tipo'] for a in alertas_rede]} mas falhou ao reportar à central: {e}", "Crítica")
 
@@ -660,7 +668,7 @@ def loop_telemetria():
             
             espera_remota = TELEMETRIA_INTERVALO
             try:
-                req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+                req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers=api_headers(), method='POST')
                 with urllib.request.urlopen(req, timeout=5) as response:
                     res_data = json.loads(response.read().decode('utf-8'))
                     comando = res_data.get("command")
@@ -690,12 +698,12 @@ def loop_telemetria():
                                 num_cores = psutil.cpu_count() or 1
                                 procs = sorted(psutil.process_iter(['name', 'cpu_percent']), key=lambda p: p.info.get('cpu_percent') or 0, reverse=True)[:5]
                                 lista_procs = " | ".join([f"{p.info['name']} ({round((p.info.get('cpu_percent') or 0) / num_cores, 1)}%)" for p in procs])
-                                urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Diagnóstico", "gravidade": "Aviso", "detalhes": lista_procs}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                                urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Diagnóstico", "gravidade": "Aviso", "detalhes": lista_procs}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                             except Exception as e:
                                 log_local_event("Diagnóstico Remoto", f"top_processos falhou: {e}", "Alerta")
                 
                 if forcar_varredura:
-                    try: urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'atualizar_dispositivos'), data=json.dumps({"mac_id": mac, "lista": dispositivos}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                    try: urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'atualizar_dispositivos'), data=json.dumps({"mac_id": mac, "lista": dispositivos}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                     except Exception as e:
                         log_local_event("Topologia", f"Falha ao reportar dispositivos à central: {e}", "Alerta")
 
@@ -731,7 +739,7 @@ def loop_watchdog_local():
         try:
             # ----- 1. WATCHDOG REDE E ENERGIA (NUVEM) -----
             try:
-                req = urllib.request.Request(url_get, method='GET')
+                req = urllib.request.Request(url_get, headers=api_headers(), method='GET')
                 with urllib.request.urlopen(req, timeout=5) as response: alvos_nuvem = json.loads(response.read().decode('utf-8'))
                 if central_indisponivel_watchdog:
                     log_local_event("Conectividade Central", "Watchdog: conexão com a central RESTABELECIDA.", "OK")
@@ -743,7 +751,7 @@ def loop_watchdog_local():
                     central_indisponivel_watchdog = True
 
             try:
-                req_e = urllib.request.Request(url_get_energia, method='GET')
+                req_e = urllib.request.Request(url_get_energia, headers=api_headers(), method='GET')
                 with urllib.request.urlopen(req_e, timeout=5) as response: alvos_energia = json.loads(response.read().decode('utf-8'))
             except: alvos_energia = []
 
@@ -754,32 +762,32 @@ def loop_watchdog_local():
 
             for alvo in alvos_nuvem:
                 ip = alvo['ip']; desc = alvo['descricao']; latencia = ping(ip); ta_online = latencia > 0
-                try: urllib.request.urlopen(urllib.request.Request(url_report, data=json.dumps({"id": alvo['id'], "latencia": latencia}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                try: urllib.request.urlopen(urllib.request.Request(url_report, data=json.dumps({"id": alvo['id'], "latencia": latencia}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                 except: pass
                 
                 estado_anterior = cache_alvos.get(ip, {}).get('online', True)
                 if ta_online and not estado_anterior:
-                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Alvo Restaurado", "gravidade": "OK", "detalhes": f"{desc} ({ip}) voltou."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Alvo Restaurado", "gravidade": "OK", "detalhes": f"{desc} ({ip}) voltou."}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                     except Exception as e:
                         log_local_event("Alvo Restaurado", f"{desc} ({ip}) voltou mas falhou ao reportar: {e}", "Alerta")
                 elif not ta_online and estado_anterior:
-                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Queda de Alvo", "gravidade": "Crítica", "detalhes": f"{desc} ({ip}) parou!"}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Queda de Alvo", "gravidade": "Crítica", "detalhes": f"{desc} ({ip}) parou!"}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                     except Exception as e:
                         log_local_event("Queda de Alvo", f"{desc} ({ip}) caiu mas falhou ao reportar: {e}", "Crítica")
                 cache_alvos[ip] = {'online': ta_online, 'latencia': latencia}
 
             for alvo in alvos_energia:
                 ip = alvo['ip']; desc = alvo['descricao']; latencia = ping(ip); ta_online = latencia > 0
-                try: urllib.request.urlopen(urllib.request.Request(url_report_energia, data=json.dumps({"id": alvo['id'], "latencia": latencia}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                try: urllib.request.urlopen(urllib.request.Request(url_report_energia, data=json.dumps({"id": alvo['id'], "latencia": latencia}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                 except: pass
                 
                 estado_anterior = cache_alvos.get('ENERGIA_'+ip, {}).get('online', True)
                 if ta_online and not estado_anterior:
-                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Energia Restaurada", "gravidade": "OK", "detalhes": f"Energia em {desc} ({ip})."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Energia Restaurada", "gravidade": "OK", "detalhes": f"Energia em {desc} ({ip})."}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                     except Exception as e:
                         log_local_event("Energia Restaurada", f"Energia em {desc} ({ip}) voltou mas falhou ao reportar: {e}", "Alerta")
                 elif not ta_online and estado_anterior:
-                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Queda de Energia", "gravidade": "Crítica", "detalhes": f"FALTA DE ENERGIA em {desc} ({ip})!"}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Queda de Energia", "gravidade": "Crítica", "detalhes": f"FALTA DE ENERGIA em {desc} ({ip})!"}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                     except Exception as e:
                         log_local_event("Queda de Energia", f"Falta de energia em {desc} ({ip}) mas falhou ao reportar: {e}", "Crítica")
                 cache_alvos['ENERGIA_'+ip] = {'online': ta_online, 'latencia': latencia}
@@ -802,7 +810,7 @@ def loop_watchdog_local():
 
             # ----- 2. AUTO-CURA DE SERVIÇOS DO SO -----
             try:
-                req = urllib.request.Request(url_get_srv, method='GET')
+                req = urllib.request.Request(url_get_srv, headers=api_headers(), method='GET')
                 with urllib.request.urlopen(req, timeout=5) as response: servicos_nuvem = json.loads(response.read().decode('utf-8'))
             except: servicos_nuvem = []
 
@@ -847,17 +855,17 @@ def loop_watchdog_local():
                 cache_alvos['SRV_'+nome_srv] = {'status': status_atual}
 
                 if not is_local:
-                    try: urllib.request.urlopen(urllib.request.Request(url_report_srv, data=json.dumps({"id": id_srv, "status": status_atual}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
+                    try: urllib.request.urlopen(urllib.request.Request(url_report_srv, data=json.dumps({"id": id_srv, "status": status_atual}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
                     except: pass
                     
                     estado_anterior = cache_alvos.get('SRV_ANT_'+nome_srv, 'ONLINE')
                     if 'ONLINE' in status_atual and estado_anterior == 'OFFLINE':
                         msg = f"O serviço {desc_srv} ({nome_srv}) foi religado pela Auto-Cura." if "Recuperado" in status_atual else f"O serviço {desc_srv} foi restaurado."
-                        try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Serviço Restaurado", "gravidade": "OK", "detalhes": msg}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
+                        try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Serviço Restaurado", "gravidade": "OK", "detalhes": msg}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
                         except Exception as e:
                             log_local_event("Serviço Restaurado", f"{msg} mas falhou ao reportar: {e}", "Alerta")
                     elif status_atual == 'OFFLINE' and estado_anterior != 'OFFLINE':
-                        try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Falha de Serviço Crítico", "gravidade": "Crítica", "detalhes": f"O serviço {desc_srv} parou! Requer intervenção."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
+                        try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Falha de Serviço Crítico", "gravidade": "Crítica", "detalhes": f"O serviço {desc_srv} parou! Requer intervenção."}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
                         except Exception as e:
                             log_local_event("Falha de Serviço Crítico", f"{desc_srv} parou mas falhou ao reportar: {e}", "Crítica")
                     cache_alvos['SRV_ANT_'+nome_srv] = status_atual
