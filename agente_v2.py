@@ -240,8 +240,9 @@ def ping(host):
         if 'unreachable' in saida.lower() or 'inacessível' in saida.lower() or 'esgotado' in saida.lower() or 'timed out' in saida.lower() or 'falha' in saida.lower():
             return 0
         if '<1ms' in saida: return 1
-        match = re.search(r'(?:time|tempo)[=<](\d+)', saida.lower())
-        if match: return int(match.group(1))
+        match = re.search(r'(?:time|tempo)\s*[=<]\s*(\d+(?:[.,]\d+)?)', saida.lower())
+        # Preserve sub-millisecond replies; zero is reserved for failed pings.
+        if match: return float(match.group(1).replace(',', '.')) or 1
         if 'ttl=' in saida.lower(): return 1
         return 0
     except: return 0
