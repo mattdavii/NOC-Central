@@ -65,12 +65,14 @@ def _get_postgres_pool():
     with _pg_pool_lock:
         if _pg_pool is None:
             import psycopg2.pool
+            import psycopg2.extras
 
             dsn = DATABASE_URL.replace("postgres://", "postgresql://", 1)
             _pg_pool = psycopg2.pool.ThreadedConnectionPool(
                 DB_POOL_MIN,
                 DB_POOL_MAX,
                 dsn,
+                cursor_factory=psycopg2.extras.DictCursor,
             )
             print(f"✅ Pool PostgreSQL iniciado ({DB_POOL_MIN}-{DB_POOL_MAX} conexões).")
     return _pg_pool
@@ -80,11 +82,6 @@ def get_db_connection():
     if DATABASE_URL:
         pool = _get_postgres_pool()
         conn = pool.getconn()
-        try:
-            import psycopg2.extras
-            conn.cursor_factory = psycopg2.extras.DictCursor
-        except Exception:
-            pass
         return PostgresWrapper(conn, pool)
 
     conn = sqlite3.connect("database.db", timeout=10)
