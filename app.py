@@ -5,14 +5,26 @@ import database
 import urllib.request, json
 import os
 import jwt
+import html
+import secrets
+import threading
+import time
+import urllib.error
 from datetime import datetime, timedelta, timezone
 
 # Chave privada RSA usada para assinar os tokens de acesso local do agente (agente_v2.py guarda só a pública)
 JWT_PRIVATE_KEY = os.environ.get('JWT_PRIVATE_KEY', '')
 
 app = Flask(__name__)
-app.secret_key = 'chave_super_secreta_noc_md' 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent') 
+
+# Em produção, configure FLASK_SECRET_KEY no Railway. Sem ela, usamos uma
+# chave efêmera segura (as sessões serão invalidadas a cada restart/deploy).
+app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
+if not os.environ.get("FLASK_SECRET_KEY"):
+    print("⚠️ FLASK_SECRET_KEY ausente: usando chave efêmera. Configure-a no Railway.")
+
+SOCKETIO_ALLOWED_ORIGINS = os.environ.get("SOCKETIO_ALLOWED_ORIGINS", "*")
+socketio = SocketIO(app, cors_allowed_origins=SOCKETIO_ALLOWED_ORIGINS, async_mode='gevent') 
 
 # ==========================================
 # ⚡ TRADUTOR DE SQL (SQLITE <-> POSTGRES)
@@ -32,27 +44,103 @@ TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 
 def enviar_telegram(mensagem, cliente_id=None):
-    token_final = TELEGRAM_BOT_TOKEN
-    chat_id_final = TELEGRAM_CHAT_ID
+    """Envia Telegram com diagnóstico explícito e fallback para o bot master."""
+    token_final = (TELEGRAM_BOT_TOKEN or "").strip()
+    chat_id_final = (TELEGRAM_CHAT_ID or "").strip()
+    origem = "master"
 
     if cliente_id:
         conn = database.get_db()
         try:
-            cliente = db_execute(conn, "SELECT telegram_token, telegram_chat_id FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
-            if cliente and cliente['telegram_token'] and cliente['telegram_chat_id']:
-                token_final = cliente['telegram_token']
-                chat_id_final = cliente['telegram_chat_id']
-        except Exception as e: print(f"Erro buscar token cliente: {e}")
-        finally: conn.close()
+            cliente = db_execute(
+                conn,
+                "SELECT telegram_token, telegram_chat_id FROM clientes WHERE id = ?",
+                (cliente_id,),
+            ).fetchone()
+            if cliente:
+                tg_token = (cliente["telegram_token"] or "").strip()
+                tg_chat = (cliente["telegram_chat_id"] or "").strip()
+                if tg_token and tg_chat:
+                    token_final = tg_token
+                    chat_id_final = tg_chat
+                    origem = f"cliente:{cliente_id}"
+        except Exception as e:
+            print(f"⚠️ Telegram: falha ao buscar credenciais do cliente {cliente_id}: {e}")
+        finally:
+            conn.close()
 
-    if not token_final or token_final == "SEU_TOKEN_AQUI": return
+    if not token_final or token_final == "SEU_TOKEN_AQUI":
+        msg = f"Telegram não configurado ({origem}): token ausente."
+        print(f"⚠️ {msg}")
+        return {"ok": False, "erro": msg, "origem": origem}
+
+    if not chat_id_final:
+        msg = f"Telegram não configurado ({origem}): chat_id ausente."
+        print(f"⚠️ {msg}")
+        return {"ok": False, "erro": msg, "origem": origem}
 
     url = f"https://api.telegram.org/bot{token_final}/sendMessage"
-    payload = json.dumps({"chat_id": chat_id_final, "text": mensagem, "parse_mode": "HTML"}).encode('utf-8')
+    payload = json.dumps(
+        {"chat_id": chat_id_final, "text": mensagem, "parse_mode": "HTML"}
+    ).encode("utf-8")
+
     try:
-        req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json'}, method='POST')
-        urllib.request.urlopen(req, timeout=3)
-    except Exception as e: print(f"⚠️ Erro Telegram: {e}")
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            resposta = json.loads(resp.read().decode("utf-8"))
+        if not resposta.get("ok"):
+            msg = resposta.get("description", "Telegram rejeitou a mensagem.")
+            print(f"⚠️ Telegram ({origem}): {msg}")
+            return {"ok": False, "erro": msg, "origem": origem}
+        print(f"✅ Telegram entregue ({origem}).")
+        return {"ok": True, "origem": origem}
+    except urllib.error.HTTPError as e:
+        try:
+            corpo = e.read().decode("utf-8", errors="ignore")
+            detalhe = json.loads(corpo).get("description", corpo)
+        except Exception:
+            detalhe = str(e)
+        print(f"⚠️ Erro Telegram HTTP ({origem}): {detalhe}")
+        return {"ok": False, "erro": detalhe, "origem": origem}
+    except Exception as e:
+        print(f"⚠️ Erro Telegram ({origem}): {e}")
+        return {"ok": False, "erro": str(e), "origem": origem}
+
+
+@app.route("/api/v2/testar_telegram/<int:cliente_id>", methods=["POST"])
+def testar_telegram(cliente_id):
+    if "user_id" not in session or session.get("role") not in [
+        "Administrador Master", "Cliente", "Administrador Cliente"
+    ]:
+        return jsonify({"error": "Acesso Negado"}), 403
+
+    role = session.get("role")
+    if role == "Cliente" and session.get("user_id") != cliente_id:
+        return jsonify({"error": "Acesso Negado"}), 403
+    if role == "Administrador Cliente":
+        conn = database.get_db()
+        try:
+            info = db_execute(
+                conn,
+                "SELECT cliente_pai_id FROM clientes WHERE id = ?",
+                (session.get("user_id"),),
+            ).fetchone()
+            if not info or info["cliente_pai_id"] != cliente_id:
+                return jsonify({"error": "Acesso Negado"}), 403
+        finally:
+            conn.close()
+
+    destino = None if cliente_id == 0 else cliente_id
+    resultado = enviar_telegram(
+        "✅ <b>TESTE NOC CENTRAL</b>\n\nIntegração com Telegram funcionando corretamente.",
+        cliente_id=destino,
+    )
+    return jsonify(resultado), (200 if resultado.get("ok") else 502)
 
 # =========================================================
 # INICIALIZAÇÃO E AUTO-CURA DO BANCO DE DADOS
@@ -63,8 +151,16 @@ try:
     
     admin = conn.execute("SELECT * FROM clientes WHERE usuario = 'admin'").fetchone()
     if not admin:
-        senha_inicial_hash = generate_password_hash(os.environ.get('ADMIN_SENHA_INICIAL', 'admin123'))
-        conn.execute("INSERT INTO clientes (usuario, senha, role) VALUES ('admin', ?, 'Administrador Master')", (senha_inicial_hash,))
+        senha_inicial = os.environ.get("ADMIN_SENHA_INICIAL")
+        if not senha_inicial:
+            senha_inicial = secrets.token_urlsafe(18)
+            print("⚠️ ADMIN_SENHA_INICIAL ausente. Senha temporária gerada para o primeiro admin:")
+            print(f"   {senha_inicial}")
+        senha_inicial_hash = generate_password_hash(senha_inicial)
+        conn.execute(
+            "INSERT INTO clientes (usuario, senha, role) VALUES ('admin', ?, 'Administrador Master')",
+            (senha_inicial_hash,),
+        )
         conn.commit()
 
     colunas_sensores = [
@@ -119,10 +215,25 @@ UPDATE_REQUESTS = set()
 PENDING_COMMANDS = {}
 AUTO_SPEEDTEST_DONE = set()
 
+GUARDIAO_INTERVALO = max(10, int(os.environ.get("GUARDIAO_INTERVALO", "15")))
+_guardiao_lock = threading.Lock()
+_guardiao_ultima_execucao = 0.0
+
+PING_HISTORY_INTERVAL = max(30, int(os.environ.get("PING_HISTORY_INTERVAL", "60")))
+_ultimo_historico_ping = {}
+
 # ==========================================
 # ⚡ FUNÇÃO GUARDIÃ GLOBAL (CRON DA NUVEM)
 # ==========================================
-def verificar_quedas_global(conn):
+def verificar_quedas_global(conn, force=False):
+    global _guardiao_ultima_execucao
+
+    agora_monotonic = time.monotonic()
+    with _guardiao_lock:
+        if not force and (agora_monotonic - _guardiao_ultima_execucao) < GUARDIAO_INTERVALO:
+            return
+        _guardiao_ultima_execucao = agora_monotonic
+
     caidos = []
     is_postgres = bool(os.environ.get('DATABASE_URL'))
     condicao = "last_seen < NOW() - INTERVAL '60 seconds'" if is_postgres else "last_seen < datetime('now', '-60 seconds')"
@@ -148,9 +259,32 @@ def verificar_quedas_global(conn):
             db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder.')", (mac,))
             conn.commit()
             
-            enviar_telegram(f"🚨 <b>QUEDA CRÍTICA DETECTADA</b>\n\n🏢 <b>Host:</b> {nome}\n🆔 <b>MAC:</b> {mac}\n❌ <b>Status:</b> OFFLINE TOTAL", cliente_id=cid)
+            enviar_telegram(f"🚨 <b>QUEDA CRÍTICA DETECTADA</b>\n\n🏢 <b>Host:</b> {html.escape(str(nome))}\n🆔 <b>MAC:</b> {html.escape(str(mac))}\n❌ <b>Status:</b> OFFLINE TOTAL", cliente_id=cid)
         except Exception as err:
             print(f"Erro ao emitir alerta de queda: {err}")
+
+
+def _loop_guardiao_background():
+    """Detecta quedas mesmo quando nenhum sensor novo está enviando telemetria."""
+    while True:
+        time.sleep(GUARDIAO_INTERVALO)
+        conn = None
+        try:
+            conn = database.get_db()
+            verificar_quedas_global(conn, force=True)
+        except Exception as e:
+            print(f"⚠️ Guardião em background: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+
+if os.environ.get("DISABLE_BACKGROUND_GUARDIAN", "0") != "1":
+    threading.Thread(
+        target=_loop_guardiao_background,
+        name="noc-guardiao",
+        daemon=True,
+    ).start()
 
 # ==========================================
 # 🔐 SISTEMA DE LOGIN E SESSÃO
@@ -163,12 +297,6 @@ def login():
         senha_digitada = request.form.get('senha', '').strip()
         conn = database.get_db()
         try:
-            if usuario_digitado == 'admin' and senha_digitada == 'admin123':
-                user = conn.execute("SELECT * FROM clientes WHERE usuario = 'admin'").fetchone()
-                session['logged_in'] = True; session['usuario'] = 'admin'; session['role'] = 'Administrador Master'
-                session['user_id'] = user['id'] if user else 1; session['logo_cliente'] = dict(user).get('logo_url', '') if user else ''
-                return redirect(url_for('index'))
-
             user = db_execute(conn, "SELECT * FROM clientes WHERE usuario = ?", (usuario_digitado,)).fetchone()
             
             if user and (str(user['senha']).strip() == senha_digitada or check_password_hash(str(user['senha']).strip(), senha_digitada)):
@@ -250,7 +378,7 @@ def report_data():
             if estado_anterior == 'OFFLINE' or sensor_dict.get('status') == 'offline':
                 try:
                     db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Conexão Restaurada', 'Aviso', 'O sensor restabeleceu a comunicação com a rede')", (mac,))
-                    enviar_telegram(f"✅ <b>CONEXÃO RESTAURADA</b>\n\n🖥️ <b>Sensor:</b> {sensor_dict.get('nome_local', mac)}\n🌐 <b>Status:</b> ONLINE", cliente_id=sensor_dict.get('cliente_id'))
+                    enviar_telegram(f"✅ <b>CONEXÃO RESTAURADA</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor_dict.get('nome_local', mac)))}\n🌐 <b>Status:</b> ONLINE", cliente_id=sensor_dict.get('cliente_id'))
                 except: pass
 
             db_execute(conn, '''UPDATE sensores SET 
@@ -273,15 +401,24 @@ def report_data():
                  data.get('temp'), data.get('gpu_temp'), data.get('ping_gateway'), 
                  data.get('ping_global'), data.get('ip_gateway')))
             conn.commit()
-            enviar_telegram(f"🎉 <b>NOVO SENSOR REGISTRADO</b>\n\n🖥️ <b>MAC:</b> {mac}\n🌐 <b>IP:</b> {ip_display}")
+            enviar_telegram(f"🎉 <b>NOVO SENSOR REGISTRADO</b>\n\n🖥️ <b>MAC:</b> {html.escape(str(mac))}\n🌐 <b>IP:</b> {html.escape(str(ip_display))}")
 
         try:
-            if data.get('ping_global'):
-                import json
-                pings = json.loads(data['ping_global'])
-                db_execute(conn, "INSERT INTO historico_pings (sensor_mac, google, cloudflare, aws, quad9) VALUES (?, ?, ?, ?, ?)", (mac, pings.get('Google'), pings.get('Cloudflare'), pings.get('AWS'), pings.get('Quad9')))
+            # Estado atual continua sendo atualizado a cada batimento, mas o histórico
+            # é amostrado para evitar dezenas de milhares de linhas/dia por sensor.
+            agora_hist = time.monotonic()
+            ultimo_hist = _ultimo_historico_ping.get(mac, 0)
+            if data.get("ping_global") and (agora_hist - ultimo_hist) >= PING_HISTORY_INTERVAL:
+                pings = json.loads(data["ping_global"])
+                db_execute(
+                    conn,
+                    "INSERT INTO historico_pings (sensor_mac, google, cloudflare, aws, quad9) VALUES (?, ?, ?, ?, ?)",
+                    (mac, pings.get("Google"), pings.get("Cloudflare"), pings.get("AWS"), pings.get("Quad9")),
+                )
                 conn.commit()
-        except: pass
+                _ultimo_historico_ping[mac] = agora_hist
+        except Exception as e:
+            print(f"⚠️ Falha ao gravar histórico de ping: {e}")
 
         conn.close()
 
@@ -525,9 +662,9 @@ def alertas_ia():
         db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, ?, ?, ?)", (mac, alerta['tipo'], alerta['gravidade'], alerta['detalhes']))
         if alerta['gravidade'] == 'Crítica':
             icone = "🔥" if "Superaquecimento" in alerta['tipo'] else ("🌪️" if "Tempestade" in alerta['tipo'] else "🖥️")
-            enviar_telegram(f"🚨 <b>ALERTA CRÍTICO</b>\n\n{icone} <b>Sensor:</b> {nome_sensor}\n⚠️ <b>Evento:</b> {alerta['tipo']}\n❌ <b>Detalhe:</b> {alerta['detalhes']}", cliente_id=cid)
+            enviar_telegram(f"🚨 <b>ALERTA CRÍTICO</b>\n\n{icone} <b>Sensor:</b> {html.escape(str(nome_sensor))}\n⚠️ <b>Evento:</b> {html.escape(str(alerta['tipo']))}\n❌ <b>Detalhe:</b> {html.escape(str(alerta['detalhes']))}", cliente_id=cid)
         elif alerta['gravidade'] == 'OK' and ('Restaurad' in alerta['tipo']):
-            enviar_telegram(f"✅ <b>SISTEMA NORMALIZADO</b>\n\n🖥️ <b>Sensor:</b> {nome_sensor}\n🟢 <b>Evento:</b> {alerta['tipo']}\nℹ️ <b>Detalhe:</b> {alerta['detalhes']}", cliente_id=cid)
+            enviar_telegram(f"✅ <b>SISTEMA NORMALIZADO</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(nome_sensor))}\n🟢 <b>Evento:</b> {html.escape(str(alerta['tipo']))}\nℹ️ <b>Detalhe:</b> {html.escape(str(alerta['detalhes']))}", cliente_id=cid)
 
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
