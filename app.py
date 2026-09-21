@@ -625,6 +625,7 @@ def gerenciar_ips_energia(mac_id):
 
 @app.route('/api/v2/ips_energia/<mac_id>/<int:id_ip>', methods=['DELETE'])
 def del_ips_energia(mac_id, id_ip):
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     conn = database.get_db()
     db_execute(conn, "DELETE FROM ips_energia WHERE id = ?", (id_ip,))
     conn.commit(); conn.close()
@@ -655,6 +656,7 @@ def gerenciar_servicos_os(mac_id):
 
 @app.route('/api/v2/servicos_os/<mac_id>/<int:id_srv>', methods=['DELETE'])
 def del_servico_os(mac_id, id_srv):
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     conn = database.get_db()
     db_execute(conn, "DELETE FROM servicos_os WHERE id = ?", (id_srv,))
     conn.commit(); conn.close()
@@ -712,6 +714,7 @@ def enviar_wol_remoto(mac_sensor):
 # ==========================================
 @app.route('/api/v2/graficos_ping/<mac_id>')
 def obter_graficos_ping(mac_id):
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     conn = database.get_db()
     try: registros = db_execute(conn, "SELECT google, cloudflare, aws, quad9, to_char(data_hora - INTERVAL '3 hours', 'HH24:MI:SS') as hora FROM historico_pings WHERE sensor_mac = ? ORDER BY id DESC LIMIT 30", (mac_id,)).fetchall()
     except: registros = []
@@ -783,6 +786,7 @@ def atualizar_dispositivos():
 
 @app.route('/api/v2/renomear_dispositivo', methods=['POST'])
 def renomear_dispositivo():
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     data = request.json; conn = database.get_db()
     try: conn.execute("CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)"); conn.commit()
     except: pass
@@ -845,6 +849,7 @@ def api_mapa_sensores():
 
 @app.route('/api/v2/sensor_data/<mac_id>', methods=['GET'])
 def get_sensor_data(mac_id):
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     conn = database.get_db()
     
     verificar_quedas_global(conn) 
@@ -856,6 +861,7 @@ def get_sensor_data(mac_id):
 
 @app.route('/api/v2/configurar_sensor', methods=['POST'])
 def configurar_sensor():
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     data = request.json; conn = database.get_db()
     db_execute(conn, "UPDATE sensores SET nome_local = ?, lat = ?, lon = ? WHERE mac_id = ?", (data['nome'], data['lat'], data['lon'], data['mac_id']))
     conn.commit(); conn.close()
@@ -863,6 +869,7 @@ def configurar_sensor():
 
 @app.route('/api/v2/solicitar_speedtest/<mac_id>', methods=['POST'])
 def solicitar_speedtest(mac_id):
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     enfileirar_comando(mac_id, "run_speedtest")
     return jsonify({"status": "Teste na fila"})
 
@@ -894,6 +901,7 @@ def reportar_velocidade():
 
 @app.route('/api/v2/graficos/<mac_id>')
 def obter_graficos(mac_id):
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     conn = database.get_db()
     try: registros = db_execute(conn, "SELECT download, upload, to_char(data_hora - INTERVAL '3 hours', 'HH24:MI') as hora FROM historico_telemetria WHERE sensor_mac = ? ORDER BY id DESC LIMIT 15", (mac_id,)).fetchall()
     except: registros = []
@@ -917,6 +925,7 @@ def gerenciar_ips(mac_id):
 
 @app.route('/api/v2/ips_customizados/<mac_id>/<int:id_ip>', methods=['DELETE', 'PUT'])
 def crud_ips(mac_id, id_ip):
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     conn = database.get_db()
     if request.method == 'DELETE': db_execute(conn, "DELETE FROM ips_custom WHERE id = ?", (id_ip,))
     elif request.method == 'PUT':
@@ -936,6 +945,7 @@ def reportar_latencia_custom():
 
 @app.route('/api/v2/historico/<mac_id>')
 def historico_alertas(mac_id):
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     data_filtro = request.args.get('data')
     conn = database.get_db()
     try: conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (id SERIAL PRIMARY KEY, sensor_mac TEXT, tipo_evento TEXT, gravidade TEXT, detalhes TEXT, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
@@ -949,6 +959,7 @@ def historico_alertas(mac_id):
 
 @app.route('/api/v2/dispositivos/<mac_id>', methods=['GET'])
 def get_dispositivos(mac_id):
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     conn = database.get_db()
     dispositivos = db_execute(conn, "SELECT * FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
     conn.close()
@@ -1085,6 +1096,7 @@ def deletar_sensor(mac_id):
 
 @app.route('/api/v2/solicitar_traceroute/<mac_id>', methods=['POST'])
 def solicitar_traceroute(mac_id):
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     enfileirar_comando(mac_id, "run_traceroute")
     return jsonify({"status": "OK"})
 
@@ -1099,6 +1111,7 @@ def reportar_rota():
 
 @app.route('/api/v2/logs_globais')
 def logs_globais():
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     conn = database.get_db()
     try: logs = conn.execute('''SELECT l.tipo_evento, l.gravidade, l.detalhes, to_char(l.data_hora - INTERVAL '3 hours', 'DD/MM HH24:MI:SS') as hora, s.nome_local FROM logs_ia l LEFT JOIN sensores s ON l.sensor_mac = s.mac_id ORDER BY l.id DESC LIMIT 50''').fetchall()
     except:
@@ -1109,6 +1122,7 @@ def logs_globais():
 
 @app.route('/api/v2/solicitar_update/<mac_id>', methods=['POST'])
 def solicitar_update(mac_id):
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     enfileirar_comando(mac_id, "update_agent")
     return jsonify({"status": "OK"})
 
