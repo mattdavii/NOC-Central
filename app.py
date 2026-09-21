@@ -206,6 +206,14 @@ try:
                 comando TEXT NOT NULL,
                 criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )''')
+            conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (
+                id SERIAL PRIMARY KEY,
+                sensor_mac TEXT,
+                tipo_evento TEXT,
+                gravidade TEXT,
+                detalhes TEXT,
+                data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )''')
         else:
             conn.execute('''CREATE TABLE IF NOT EXISTS comandos_pendentes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -213,11 +221,29 @@ try:
                 comando TEXT NOT NULL,
                 criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )''')
+            conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sensor_mac TEXT,
+                tipo_evento TEXT,
+                gravidade TEXT,
+                detalhes TEXT,
+                data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )''')
         conn.commit()
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_comandos_sensor_id ON comandos_pendentes(sensor_mac, id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_sensores_cliente ON sensores(cliente_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_logs_sensor_id ON logs_ia(sensor_mac, id)")
-        conn.commit()
+
+        for indice_sql in [
+            "CREATE INDEX IF NOT EXISTS idx_comandos_sensor_id ON comandos_pendentes(sensor_mac, id)",
+            "CREATE INDEX IF NOT EXISTS idx_sensores_cliente ON sensores(cliente_id)",
+            "CREATE INDEX IF NOT EXISTS idx_logs_sensor_id ON logs_ia(sensor_mac, id)",
+            "CREATE INDEX IF NOT EXISTS idx_historico_telemetria_sensor_id ON historico_telemetria(sensor_mac, id)",
+        ]:
+            try:
+                conn.execute(indice_sql)
+                conn.commit()
+            except Exception as idx_err:
+                try: conn.execute("ROLLBACK")
+                except: pass
+                print(f"⚠️ Índice não criado: {idx_err}")
     except Exception as e:
         try: conn.execute("ROLLBACK")
         except: pass
