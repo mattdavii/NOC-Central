@@ -6,6 +6,7 @@ import urllib.request, json
 import os
 import jwt
 import html
+import hmac
 import secrets
 import threading
 import time
@@ -42,6 +43,33 @@ def db_execute(conn, sql, params=()):
 # =========================================================
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
+
+# Autenticação progressiva dos sensores. Enquanto a variável estiver vazia,
+# mantém compatibilidade com agentes antigos. Depois de atualizar os agentes,
+# configure a mesma chave no Railway e nos sensores para ativar a proteção.
+NOC_SENSOR_API_KEY = os.environ.get("NOC_SENSOR_API_KEY", "").strip()
+if not NOC_SENSOR_API_KEY:
+    print("⚠️ NOC_SENSOR_API_KEY ausente: API de sensores em modo compatibilidade.")
+
+CRON_SECRET = os.environ.get("CRON_SECRET", "").strip()
+
+
+def validar_sensor_ou_sessao():
+    if session.get("user_id"):
+        return None
+    if not NOC_SENSOR_API_KEY:
+        return None
+    fornecida = request.headers.get("X-NOC-Sensor-Key", "")
+    if fornecida and hmac.compare_digest(fornecida, NOC_SENSOR_API_KEY):
+        return None
+    return jsonify({"error": "Sensor não autenticado"}), 401
+
+
+def exigir_sensor_ou_sessao():
+    erro = validar_sensor_ou_sessao()
+    if erro:
+        return erro
+    return None
 
 def enviar_telegram(mensagem, cliente_id=None):
     """Envia Telegram com diagnóstico explícito e fallback para o bot master."""
@@ -451,6 +479,8 @@ def painel_sensor(mac_id):
 # ==========================================
 @app.route('/api/v2/report_data', methods=['POST'])
 def report_data():
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error: return auth_error
     global AUTO_SPEEDTEST_DONE 
     try:
         data = request.json
@@ -538,6 +568,10 @@ def report_data():
 # ==========================================
 @app.route('/api/v2/cron')
 def public_cron_trigger():
+    if CRON_SECRET:
+        fornecido = request.headers.get("X-Cron-Secret") or request.args.get("token", "")
+        if not hmac.compare_digest(fornecido, CRON_SECRET):
+            return jsonify({"error": "Acesso Negado"}), 403
     conn = database.get_db()
     verificar_quedas_global(conn)
     conn.close()
@@ -576,6 +610,8 @@ def agent_versao():
 # ==========================================
 @app.route('/api/v2/ips_energia/<mac_id>', methods=['GET', 'POST'])
 def gerenciar_ips_energia(mac_id):
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error: return auth_error
     conn = database.get_db()
     try: conn.execute('''CREATE TABLE IF NOT EXISTS ips_energia (id SERIAL PRIMARY KEY, sensor_mac TEXT, ip TEXT, descricao TEXT, latencia INTEGER DEFAULT 0)''')
     except: pass
@@ -596,6 +632,8 @@ def del_ips_energia(mac_id, id_ip):
 
 @app.route('/api/v2/reportar_latencia_energia', methods=['POST'])
 def reportar_latencia_energia():
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error: return auth_error
     data = request.json
     conn = database.get_db()
     db_execute(conn, "UPDATE ips_energia SET latencia = ? WHERE id = ?", (data['latencia'], data['id']))
@@ -604,6 +642,8 @@ def reportar_latencia_energia():
 
 @app.route('/api/v2/servicos_os/<mac_id>', methods=['GET', 'POST'])
 def gerenciar_servicos_os(mac_id):
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error: return auth_error
     conn = database.get_db()
     if request.method == 'POST':
         data = request.json
@@ -622,6 +662,8 @@ def del_servico_os(mac_id, id_srv):
 
 @app.route('/api/v2/reportar_status_servico', methods=['POST'])
 def reportar_status_servico():
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error: return auth_error
     data = request.json
     conn = database.get_db()
     db_execute(conn, "UPDATE servicos_os SET status = ? WHERE id = ?", (data['status'], data['id']))
@@ -679,6 +721,8 @@ def obter_graficos_ping(mac_id):
 
 @app.route('/api/v2/registrar_sensor', methods=['POST'])
 def registrar_sensor():
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error: return auth_error
     data = request.json; conn = database.get_db()
     sensor = db_execute(conn, "SELECT mac_id FROM sensores WHERE mac_id = ?", (data['mac_id'],)).fetchone()
     if not sensor:
@@ -689,6 +733,8 @@ def registrar_sensor():
 
 @app.route('/api/v2/telemetria_instantanea', methods=['POST'])
 def telemetria_instantanea():
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error: return auth_error
     data = request.json; mac_id = data['mac_id']; run_st = mac_id in SPEEDTEST_REQUESTS
     if run_st: SPEEDTEST_REQUESTS.remove(mac_id) 
     conn = database.get_db()
@@ -698,6 +744,8 @@ def telemetria_instantanea():
 
 @app.route('/api/v2/telemetria_global', methods=['POST'])
 def telemetria_global():
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error: return auth_error
     data = request.json; conn = database.get_db()
     db_execute(conn, "UPDATE sensores SET ping_global = ?, traceroute = ? WHERE mac_id = ?", (data.get('pings'), data.get('tracert'), data['mac_id']))
     conn.commit(); conn.close()
@@ -705,6 +753,8 @@ def telemetria_global():
 
 @app.route('/api/v2/atualizar_dispositivos', methods=['POST'])
 def atualizar_dispositivos():
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error: return auth_error
     data = request.json; sensor_mac = data.get('mac_id')
     conn = database.get_db()
     sensor_data = db_execute(conn, "SELECT ip_gateway FROM sensores WHERE mac_id = ?", (sensor_mac,)).fetchone()
@@ -749,6 +799,8 @@ def renomear_dispositivo():
 
 @app.route('/api/v2/alertas_ia', methods=['POST'])
 def alertas_ia():
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error: return auth_error
     data = request.json
     mac = data.get('mac_id', 'Desconhecido')
     conn = database.get_db()
@@ -816,6 +868,8 @@ def solicitar_speedtest(mac_id):
 
 @app.route('/api/v2/reportar_velocidade', methods=['POST'])
 def reportar_velocidade():
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error: return auth_error
     try:
         data = request.json
         mac = data.get('mac_id')
@@ -848,6 +902,8 @@ def obter_graficos(mac_id):
 
 @app.route('/api/v2/ips_customizados/<mac_id>', methods=['GET', 'POST'])
 def gerenciar_ips(mac_id):
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error: return auth_error
     conn = database.get_db()
     try: conn.execute('''CREATE TABLE IF NOT EXISTS ips_custom (id SERIAL PRIMARY KEY, sensor_mac TEXT, ip TEXT, descricao TEXT, latencia INTEGER DEFAULT 0)''')
     except: pass
@@ -871,6 +927,8 @@ def crud_ips(mac_id, id_ip):
 
 @app.route('/api/v2/reportar_latencia_custom', methods=['POST'])
 def reportar_latencia_custom():
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error: return auth_error
     data = request.json; conn = database.get_db()
     db_execute(conn, "UPDATE ips_custom SET latencia = ? WHERE id = ?", (data['latencia'], data['id']))
     conn.commit(); conn.close()
@@ -1032,6 +1090,8 @@ def solicitar_traceroute(mac_id):
 
 @app.route('/api/v2/reportar_rota', methods=['POST'])
 def reportar_rota():
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error: return auth_error
     data = request.json; conn = database.get_db()
     db_execute(conn, "UPDATE sensores SET ultima_rota = ? WHERE mac_id = ?", (data['rota'], data['mac_id']))
     conn.commit(); conn.close()
@@ -1065,6 +1125,8 @@ def toggle_manutencao(mac_id):
 
 @app.route('/debug')
 def debug_db():
+    if 'user_id' not in session or session.get('role') != 'Administrador Master':
+        return jsonify({"error": "Acesso Negado"}), 403
     conn = database.get_db()
     try: sensores = conn.execute("SELECT * FROM sensores").fetchall(); return jsonify({"SISTEMA_VIVO": True, "sensores_no_banco": [dict(s) for s in sensores]})
     except Exception as e: return jsonify({"SISTEMA_VIVO": False, "erro_fatal": str(e)})
