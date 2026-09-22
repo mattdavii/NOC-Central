@@ -11,7 +11,7 @@ if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 if sys.stdin is None:  sys.stdin = open(os.devnull, "r")
 
 # 📦 IMPORTS LIMPOS E ORGANIZADOS
-import time, json, platform, uuid, sqlite3, socket, urllib.request, concurrent.futures
+import time, json, platform, uuid, sqlite3, socket, urllib.request, concurrent.futures, ipaddress
 from datetime import datetime
 from flask import Flask, request, Response, render_template_string, jsonify
 import speedtest 
@@ -52,6 +52,7 @@ VERSAO_AGENTE = "2.1.0"
 TELEMETRIA_INTERVALO = max(3, int(os.environ.get("NOC_TELEMETRIA_INTERVALO", "5")))
 WATCHDOG_INTERVALO = max(10, int(os.environ.get("NOC_WATCHDOG_INTERVALO", "15")))
 SCAN_REDE_INTERVALO = max(30, int(os.environ.get("NOC_SCAN_REDE_INTERVALO", "60")))
+MAX_NETWORK_SCAN_HOSTS = max(64, min(2048, int(os.environ.get("NOC_MAX_SCAN_HOSTS", "512"))))
 SENSOR_API_KEY = os.environ.get("NOC_SENSOR_API_KEY", "").strip()
 
 
@@ -119,29 +120,132 @@ def get_mac():
     mac = uuid.getnode()
     return ':'.join(("%012X" % mac)[i:i+2] for i in range(0, 12, 2))
 
-def get_network_info():
-    meu_ip = "127.0.0.1"
-    gateway = "Desconhecido"
+def _rede_scan_segura(cidr, ip_local):
+    """Mantém o CIDR real, mas limita descoberta ativa em redes muito grandes."""
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(('8.8.8.8', 80))
-        meu_ip = s.getsockname()[0]
-        s.close()
-    except: pass
+        rede = ipaddress.ip_network(cidr, strict=False)
+        hosts = max(0, rede.num_addresses - 2)
+        if hosts <= MAX_NETWORK_SCAN_HOSTS:
+            return rede, False
+        # Em redes maiores, varre apenas o /24 onde o sensor está, evitando
+        # milhares de pings a cada ciclo. O CIDR real continua sendo reportado.
+        limitada = ipaddress.ip_network(f"{ip_local}/24", strict=False)
+        return limitada, True
+    except Exception:
+        return None, False
 
+
+def get_network_context():
+    contexto = {
+        "ip": "127.0.0.1",
+        "gateway": "Desconhecido",
+        "interface": "Desconhecida",
+        "mac_interface": "",
+        "netmask": "",
+        "cidr": "",
+        "link_speed_mbps": 0,
+        "interface_up": False,
+        "scan_rede": "",
+        "scan_limitado": False,
+    }
+
+    # Descobre a rota default e a interface realmente usada para sair da rede.
     try:
         if IS_WIN:
-            saida = subprocess.check_output("route print 0.0.0.0", shell=True, universal_newlines=True, creationflags=C_FLAGS, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            for linha in saida.split('\n'):
+            saida = subprocess.check_output(
+                "route print 0.0.0.0",
+                shell=True,
+                universal_newlines=True,
+                creationflags=C_FLAGS,
+                stdin=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            candidatos = []
+            for linha in saida.splitlines():
                 partes = linha.split()
-                if len(partes) >= 3 and partes[0] == '0.0.0.0':
-                    gateway = partes[2]
-                    break
+                if len(partes) >= 5 and partes[0] == "0.0.0.0" and partes[1] == "0.0.0.0":
+                    try:
+                        candidatos.append((int(partes[4]), partes[2], partes[3]))
+                    except Exception:
+                        candidatos.append((999999, partes[2], partes[3]))
+            if candidatos:
+                _, contexto["gateway"], contexto["ip"] = sorted(candidatos, key=lambda x: x[0])[0]
         else:
-            saida = subprocess.check_output("ip route | grep default", shell=True, universal_newlines=True, stdin=subprocess.DEVNULL)
-            gateway = saida.split()[2]
-    except: pass
-    return meu_ip, gateway
+            saida = subprocess.check_output(
+                ["ip", "-j", "route", "show", "default"],
+                universal_newlines=True,
+                stdin=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            )
+            rotas = json.loads(saida or "[]")
+            if rotas:
+                rota = sorted(rotas, key=lambda r: r.get("metric", 0))[0]
+                contexto["gateway"] = rota.get("gateway") or "Desconhecido"
+                contexto["interface"] = rota.get("dev") or "Desconhecida"
+                if rota.get("prefsrc"):
+                    contexto["ip"] = rota["prefsrc"]
+    except Exception:
+        pass
+
+    # Fallback confiável para o IP efetivamente usado na rota externa.
+    if contexto["ip"] == "127.0.0.1":
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            contexto["ip"] = s.getsockname()[0]
+            s.close()
+        except Exception:
+            pass
+
+    if psutil:
+        try:
+            addrs = psutil.net_if_addrs()
+            stats = psutil.net_if_stats()
+
+            # No Windows a tabela de rotas fornece IP, não o nome da interface.
+            if contexto["interface"] == "Desconhecida":
+                for nome_if, lista in addrs.items():
+                    if any(a.family == socket.AF_INET and a.address == contexto["ip"] for a in lista):
+                        contexto["interface"] = nome_if
+                        break
+
+            lista = addrs.get(contexto["interface"], [])
+            for addr in lista:
+                if addr.family == socket.AF_INET and (addr.address == contexto["ip"] or contexto["ip"] == "127.0.0.1"):
+                    contexto["ip"] = addr.address
+                    contexto["netmask"] = addr.netmask or ""
+                familia = getattr(addr.family, "name", str(addr.family))
+                if familia in ("AF_LINK", "AF_PACKET") and addr.address:
+                    contexto["mac_interface"] = addr.address.replace("-", ":").upper()
+
+            st = stats.get(contexto["interface"])
+            if st:
+                contexto["interface_up"] = bool(st.isup)
+                contexto["link_speed_mbps"] = int(st.speed or 0)
+        except Exception:
+            pass
+
+    try:
+        if contexto["ip"] != "127.0.0.1" and contexto["netmask"]:
+            rede = ipaddress.ip_network(f'{contexto["ip"]}/{contexto["netmask"]}', strict=False)
+            contexto["cidr"] = str(rede)
+        elif contexto["ip"] != "127.0.0.1":
+            contexto["cidr"] = str(ipaddress.ip_network(f'{contexto["ip"]}/24', strict=False))
+    except Exception:
+        contexto["cidr"] = ""
+
+    rede_scan, limitado = _rede_scan_segura(contexto["cidr"], contexto["ip"])
+    if rede_scan:
+        contexto["scan_rede"] = str(rede_scan)
+        contexto["scan_limitado"] = limitado
+
+    return contexto
+
+
+def get_network_info():
+    contexto = get_network_context()
+    return contexto["ip"], contexto["gateway"]
 
 def ping_silencioso(ip):
     try:
@@ -160,29 +264,29 @@ def ping_silencioso(ip):
     except Exception:
         pass
 
-def varredura_profunda_arp(ip_gateway):
-    try:
-        base_ip = ".".join(ip_gateway.split('.')[:-1])
-        threads = []
-        for i in range(1, 255):
-            ip_alvo = f"{base_ip}.{i}"
-            t = threading.Thread(target=ping_silencioso, args=(ip_alvo,))
-            threads.append(t)
-            t.start()
-        for t in threads: t.join()
-    except: pass
+def get_topologia_arp(contexto_rede, forcar_varredura=False):
+    """Descobre vizinhos L2 no escopo seguro e separa 'sem ICMP' de 'offline'."""
+    meu_ip = contexto_rede.get("ip", "127.0.0.1")
+    interface = contexto_rede.get("interface", "Desconhecida")
+    cidr_real = contexto_rede.get("cidr", "")
+    scan_rede = contexto_rede.get("scan_rede") or cidr_real
 
-def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
-    if forcar_varredura and gateway_ip != "Desconhecido":
+    try:
+        rede_real = ipaddress.ip_network(cidr_real, strict=False) if cidr_real else None
+        rede_scan = ipaddress.ip_network(scan_rede, strict=False) if scan_rede else None
+    except Exception:
+        rede_real = None
+        rede_scan = None
+
+    if forcar_varredura and rede_scan:
         try:
-            base_ip = ".".join(gateway_ip.split('.')[:-1])
+            alvos = [str(ip) for ip in rede_scan.hosts() if str(ip) != meu_ip]
             with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
-                list(executor.map(ping_silencioso, [f"{base_ip}.{i}" for i in range(1, 255)]))
+                list(executor.map(ping_silencioso, alvos))
         except Exception:
             pass
 
-    dispositivos_temp = []
-    prefixo_rede = '.'.join(meu_ip.split('.')[:-1]) + '.'
+    encontrados = {}
 
     try:
         if IS_WIN:
@@ -194,22 +298,28 @@ def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
                 stdin=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            for linha in saida.split('\n'):
+            for linha in saida.splitlines():
                 partes = linha.split()
-                if len(partes) >= 2 and '.' in partes[0] and ('-' in partes[1] or ':' in partes[1]):
-                    ip = partes[0]
-                    mac = partes[1].replace('-', ':').upper()
-                    if ip.startswith(prefixo_rede) and not ip.endswith(".255"):
-                        dispositivos_temp.append({
-                            "ip": ip,
-                            "mac": mac,
-                            "nome": "Desconhecido",
-                            "fabricante": "Desconhecido",
-                        })
+                if len(partes) < 2 or "." not in partes[0] or ("-" not in partes[1] and ":" not in partes[1]):
+                    continue
+                ip = partes[0]
+                try:
+                    ip_obj = ipaddress.ip_address(ip)
+                    if rede_real and ip_obj not in rede_real:
+                        continue
+                except Exception:
+                    continue
+                mac = partes[1].replace("-", ":").upper()
+                encontrados[ip] = {
+                    "ip": ip, "mac": mac, "nome": "Desconhecido",
+                    "fabricante": "Desconhecido", "neighbor_state": "ARP"
+                }
         else:
-            # Linux moderno: ip neigh é mais estável que tentar interpretar arp -a.
+            comando = ["ip", "neigh", "show"]
+            if interface and interface != "Desconhecida":
+                comando += ["dev", interface]
             saida = subprocess.check_output(
-                ["ip", "neigh", "show"],
+                comando,
                 universal_newlines=True,
                 stdin=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -220,56 +330,43 @@ def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
                 if len(partes) < 3:
                     continue
                 ip = partes[0]
-                if not ip.startswith(prefixo_rede) or ip.endswith(".255"):
-                    continue
                 try:
+                    ip_obj = ipaddress.ip_address(ip)
+                    if rede_real and ip_obj not in rede_real:
+                        continue
                     idx = partes.index("lladdr")
-                    mac = partes[idx + 1].replace('-', ':').upper()
+                    mac = partes[idx + 1].replace("-", ":").upper()
                 except (ValueError, IndexError):
                     continue
-                dispositivos_temp.append({
-                    "ip": ip,
-                    "mac": mac,
-                    "nome": "Desconhecido",
-                    "fabricante": "Desconhecido",
-                })
+                except Exception:
+                    continue
+                estado_vizinho = partes[-1].upper() if partes else "UNKNOWN"
+                encontrados[ip] = {
+                    "ip": ip, "mac": mac, "nome": "Desconhecido",
+                    "fabricante": "Desconhecido", "neighbor_state": estado_vizinho
+                }
     except Exception:
         pass
 
     def checar_status(d):
-        comando = (
-            ['ping', '-n', '1', '-w', '500', d['ip']]
-            if IS_WIN
-            else ['ping', '-c', '1', '-W', '1', d['ip']]
-        )
-        try:
-            saida = subprocess.check_output(
-                comando,
-                stderr=subprocess.STDOUT,
-                stdin=subprocess.DEVNULL,
-                creationflags=C_FLAGS,
-                timeout=2,
-            ).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
-            texto = saida.lower()
-            if 'unreachable' in texto or 'inacessível' in texto or 'esgotado' in texto:
-                d['status'] = 'offline'
-            elif '<1ms' in saida or 'ttl=' in texto or '1 received' in texto or '1 recebidos' in texto:
-                d['status'] = 'online'
-            else:
-                match = re.search(r'(?:time|tempo)[=<]?([0-9.]+)', texto)
-                d['status'] = 'online' if match else 'offline'
-        except Exception:
-            d['status'] = 'offline'
+        latencia = ping(d["ip"])
+        d["latencia"] = latencia
+        if latencia > 0:
+            d["status"] = "online"
+        else:
+            # O equipamento está/esteve presente na tabela ARP/neighbor, mas não
+            # respondeu ICMP. Não é tecnicamente correto chamá-lo de offline.
+            d["status"] = "sem_icmp"
         return d
 
     dispositivos = []
-    if dispositivos_temp:
+    if encontrados:
         with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-            futures = [executor.submit(checar_status, d) for d in dispositivos_temp]
+            futures = [executor.submit(checar_status, d) for d in encontrados.values()]
             for future in concurrent.futures.as_completed(futures):
                 dispositivos.append(future.result())
 
-    return dispositivos
+    return sorted(dispositivos, key=lambda d: tuple(int(p) for p in d["ip"].split(".")))
 
 def ping(host):
     param = '-n' if IS_WIN else '-c'
@@ -497,25 +594,72 @@ def acordar_pc(macaddress):
     except: pass
 
 def executar_scan_loop(mac, url_central, gateway_ip):
-    """ Busca Ativa por Loops L2 (Tempestade de Broadcast) """
+    """Heurística de anomalia L2. Não confirma loop nem tempestade de broadcast."""
     try:
-        req = urllib.request.Request(url_central.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "🔍 Scan de Loop Iniciado", "gravidade": "Aviso", "detalhes": "Injetando pacotes de estresse na rede local para medir a taxa de reflexão do Switch..."}]}).encode('utf-8'), headers=api_headers(), method='POST')
+        req = urllib.request.Request(
+            url_central.replace('report_data', 'alertas_ia'),
+            data=json.dumps({"mac_id": mac, "alertas": [{
+                "tipo": "🔍 Análise de Tráfego L2 Iniciada",
+                "gravidade": "Aviso",
+                "detalhes": "Executando uma heurística de variação de tráfego no sensor. O resultado não confirma loop ou broadcast storm."
+            }]}).encode('utf-8'),
+            headers=api_headers(), method='POST'
+        )
         urllib.request.urlopen(req, timeout=3)
-        if not psutil or gateway_ip == "Desconhecido": return
-        net_start = psutil.net_io_counters(); time.sleep(2); net_mid = psutil.net_io_counters()
-        bytes_base = net_mid.bytes_recv - net_start.bytes_recv
-        for _ in range(30): threading.Thread(target=ping_silencioso, args=(gateway_ip,), daemon=True).start()
+        if not psutil or gateway_ip == "Desconhecido":
+            return
+
+        contexto = get_network_context()
+        iface = contexto.get("interface")
+        por_iface = psutil.net_io_counters(pernic=True)
+        if not iface or iface not in por_iface:
+            return
+
+        net_start = por_iface[iface]
+        time.sleep(2)
+        net_mid = psutil.net_io_counters(pernic=True).get(iface)
+        if not net_mid:
+            return
+        bytes_base = max(0, net_mid.bytes_recv - net_start.bytes_recv)
+
+        for _ in range(30):
+            threading.Thread(target=ping_silencioso, args=(gateway_ip,), daemon=True).start()
         time.sleep(3)
-        net_end = psutil.net_io_counters()
-        bytes_stress = net_end.bytes_recv - net_mid.bytes_recv
-        if bytes_stress > (bytes_base * 5) and bytes_stress > 2_000_000:
-            msg = f"⚠️ ATENÇÃO: LOOP L2 CONFIRMADO! O Switch refletiu um volume absurdo de tráfego ({round(bytes_stress/1_000_000, 2)} MB). Isole os cabos!"
-            grav = "Crítica"
+
+        net_end = psutil.net_io_counters(pernic=True).get(iface)
+        if not net_end:
+            return
+        bytes_stress = max(0, net_end.bytes_recv - net_mid.bytes_recv)
+
+        if bytes_stress > max(bytes_base * 5, 2_000_000):
+            msg = (
+                f"⚠️ Anomalia de tráfego observada na interface {iface}: "
+                f"{round(bytes_stress/1_000_000, 2)} MB recebidos durante o teste. "
+                "Pode haver tráfego excessivo, mas é necessário validar no switch "
+                "(contadores, STP, MAC flapping ou captura) antes de concluir loop L2."
+            )
+            grav = "Alerta"
         else:
-            msg = f"✅ Rede Limpa. Nenhum Loop de Reflexão ou Tempestade de Broadcast detectada."
+            msg = (
+                f"✅ Nenhuma anomalia relevante observada na interface {iface} durante a heurística. "
+                "Este teste não exclui loops intermitentes ou tráfego fora da visibilidade do sensor."
+            )
             grav = "OK"
-        urllib.request.urlopen(urllib.request.Request(url_central.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Resultado: Scan de Loop", "gravidade": grav, "detalhes": msg}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
-    except: pass
+
+        urllib.request.urlopen(
+            urllib.request.Request(
+                url_central.replace('report_data', 'alertas_ia'),
+                data=json.dumps({"mac_id": mac, "alertas": [{
+                    "tipo": "Resultado: Análise de Tráfego L2",
+                    "gravidade": grav,
+                    "detalhes": msg
+                }]}).encode('utf-8'),
+                headers=api_headers(), method='POST'
+            ),
+            timeout=5
+        )
+    except Exception:
+        pass
 
 def executar_flush_dns():
     if IS_WIN:
@@ -589,9 +733,8 @@ def loop_telemetria():
     central_indisponivel = False
     
     
-    if psutil:
-        last_net = psutil.net_io_counters()
-        last_net_time = time.time()
+    last_net = {}
+    last_net_time = time.time()
     tempo_inicio_cpu_alta = 0
     tempo_inicio_ram_alta = 0
 
@@ -605,6 +748,11 @@ def loop_telemetria():
             if agora - ultima_verificacao_update > 21600:  # a cada 6h
                 threading.Thread(target=verificar_atualizacao, args=(mac,), daemon=True).start()
                 ultima_verificacao_update = agora
+
+            rede = get_network_context()
+            meu_ip = rede["ip"]
+            gateway_ip = rede["gateway"]
+            interface_rede = rede["interface"]
 
             cpu = psutil.cpu_percent(interval=None) if psutil else 0.0
             ram = psutil.virtual_memory().percent if psutil else 0.0
@@ -634,13 +782,19 @@ def loop_telemetria():
                 tempo_inicio_ram_alta = 0
                 ALARMES_DISPARADOS["uso_ram"] = False
 
+            # Tráfego da interface de rede usada pelo sensor, não do host inteiro.
             net_up = 0.0; net_down = 0.0
-            if psutil:
-                current_net = psutil.net_io_counters()
+            if psutil and interface_rede and interface_rede != "Desconhecida":
+                por_iface = psutil.net_io_counters(pernic=True)
+                current_net = por_iface.get(interface_rede)
+                previous_net = last_net.get(interface_rede)
                 time_diff = agora - last_net_time if (agora - last_net_time) > 0 else 1
-                net_up = round(((current_net.bytes_sent - last_net.bytes_sent) * 8 / 1_000_000) / time_diff, 2)
-                net_down = round(((current_net.bytes_recv - last_net.bytes_recv) * 8 / 1_000_000) / time_diff, 2)
-                last_net = current_net; last_net_time = agora
+                if current_net and previous_net:
+                    net_up = round(max(0, current_net.bytes_sent - previous_net.bytes_sent) * 8 / 1_000_000 / time_diff, 2)
+                    net_down = round(max(0, current_net.bytes_recv - previous_net.bytes_recv) * 8 / 1_000_000 / time_diff, 2)
+                if current_net:
+                    last_net = {interface_rede: current_net}
+                last_net_time = agora
 
             portas_alvo = {80: "HTTP", 443: "HTTPS", 3306: "MySQL", 5432: "Postgres", 3389: "RDP"}
             portas_abertas = []
@@ -680,11 +834,10 @@ def loop_telemetria():
                     log_local_event("Auto-Cura", f"Falhou ao executar Flush DNS/Renew IP: {e}", "Crítica")
                 ultimo_reparo_wan = agora
 
-            meu_ip, gateway_ip = get_network_info()
             ping_gw = ping(gateway_ip) if gateway_ip != "Desconhecido" else 0
             
             forcar_varredura = (agora - ultima_varredura > SCAN_REDE_INTERVALO)
-            dispositivos = get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=forcar_varredura)
+            dispositivos = get_topologia_arp(rede, forcar_varredura=forcar_varredura)
             if forcar_varredura: ultima_varredura = agora
 
             # 🌪️ MÓDULO STORM WATCH
@@ -697,7 +850,14 @@ def loop_telemetria():
             if gw_mac_atual: MAC_GATEWAY_CONHECIDO = gw_mac_atual
 
             if (ping_gw == 0 or ping_gw > 500) and net_down > 15.0 and net_up < 2.0:
-                alertas_rede.append({"tipo": "🌪️ Tempestade de Broadcast", "gravidade": "Crítica", "detalhes": f"Inundação L2 detectada ({net_down} Mbps de lixo)."})
+                alertas_rede.append({
+                    "tipo": "⚠️ Anomalia de Tráfego Local",
+                    "gravidade": "Alerta",
+                    "detalhes": (
+                        f"A interface {interface_rede} recebeu {net_down} Mbps enquanto a latência do gateway estava degradada. "
+                        "É uma heurística do sensor e não confirma tempestade de broadcast ou loop L2."
+                    )
+                })
 
             if alertas_rede:
                 try: urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": alertas_rede}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
@@ -705,8 +865,26 @@ def loop_telemetria():
                     log_local_event("Alerta de Rede", f"Detectou {[a['tipo'] for a in alertas_rede]} mas falhou ao reportar à central: {e}", "Crítica")
 
             dados_sensores["cpu"] = cpu; dados_sensores["ram"] = ram; dados_sensores["disco"] = disco; dados_sensores["temp"] = cpu_temp; dados_sensores["gpu_temp"] = gpu_temp; dados_sensores["net_down"] = net_down; dados_sensores["net_up"] = net_up; dados_sensores["portas"] = str_portas; dados_sensores["meu_ip"] = meu_ip; dados_sensores["gateway_ip"] = gateway_ip; dados_sensores["ping_gateway"] = ping_gw; dados_sensores["pings"] = pings; dados_sensores["topologia"] = dispositivos
+            dados_sensores["interface"] = interface_rede; dados_sensores["rede_cidr"] = rede.get("cidr", ""); dados_sensores["mac_interface"] = rede.get("mac_interface", "")
 
-            payload = { "mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", "ip_local": meu_ip, "ip_gateway": gateway_ip, "cpu_usage": cpu, "ram_usage": ram, "disco": disco, "temp": cpu_temp, "gpu_temp": gpu_temp, "ping_gateway": ping_gw, "ping_global": json.dumps(pings), "net_up": net_up, "net_down": net_down, "portas": str_portas, "so_nome": SO_INFO["nome"], "so_versao": SO_INFO["versao"], "so_arquitetura": SO_INFO["arquitetura"] }
+            payload = {
+                "mac_id": mac, "nome_local": f"NOC Sensor ({os_name})",
+                "ip_local": meu_ip, "ip_gateway": gateway_ip,
+                "cpu_usage": cpu, "ram_usage": ram, "disco": disco,
+                "temp": cpu_temp, "gpu_temp": gpu_temp,
+                "ping_gateway": ping_gw, "ping_global": json.dumps(pings),
+                "net_up": net_up, "net_down": net_down, "portas": str_portas,
+                "so_nome": SO_INFO["nome"], "so_versao": SO_INFO["versao"],
+                "so_arquitetura": SO_INFO["arquitetura"],
+                "interface_nome": interface_rede,
+                "interface_mac": rede.get("mac_interface", ""),
+                "rede_mascara": rede.get("netmask", ""),
+                "rede_cidr": rede.get("cidr", ""),
+                "link_speed_mbps": rede.get("link_speed_mbps", 0),
+                "interface_up": rede.get("interface_up", False),
+                "scan_rede": rede.get("scan_rede", ""),
+                "scan_limitado": rede.get("scan_limitado", False)
+            }
             
             espera_remota = TELEMETRIA_INTERVALO
             try:
