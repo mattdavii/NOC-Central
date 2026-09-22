@@ -1,7 +1,11 @@
 from flask import Flask, jsonify, request, render_template, session, redirect, url_for, flash, send_from_directory
 from werkzeug.security import check_password_hash, generate_password_hash
-from flask_socketio import SocketIO 
+from flask_socketio import SocketIO
 import database
+import notifications
+from location import parse_location, save_location
+from version import CENTRAL_VERSION, WINDOWS_BINARY_VERSION
+from urllib.parse import urlsplit
 import urllib.request, json
 import os
 import jwt
@@ -24,8 +28,10 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
 if not os.environ.get("FLASK_SECRET_KEY"):
     print("⚠️ FLASK_SECRET_KEY ausente: usando chave efêmera. Configure-a no Railway.")
 
-SOCKETIO_ALLOWED_ORIGINS = os.environ.get("SOCKETIO_ALLOWED_ORIGINS", "*")
-socketio = SocketIO(app, cors_allowed_origins=SOCKETIO_ALLOWED_ORIGINS, async_mode='gevent') 
+SOCKETIO_ALLOWED_ORIGINS = os.environ.get("SOCKETIO_ALLOWED_ORIGINS") or None
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', MAX_CONTENT_LENGTH=1024 * 1024)
+
+socketio = SocketIO(app, cors_allowed_origins=SOCKETIO_ALLOWED_ORIGINS, async_mode='gevent')
 
 # ==========================================
 # ⚡ TRADUTOR DE SQL (SQLITE <-> POSTGRES)
@@ -71,76 +77,12 @@ def exigir_sensor_ou_sessao():
         return erro
     return None
 
-def enviar_telegram(mensagem, cliente_id=None):
-    """Envia Telegram com diagnóstico explícito e fallback para o bot master."""
-    token_final = (TELEGRAM_BOT_TOKEN or "").strip()
-    chat_id_final = (TELEGRAM_CHAT_ID or "").strip()
-    origem = "master"
-
-    if cliente_id:
-        conn = database.get_db()
-        try:
-            cliente = db_execute(
-                conn,
-                "SELECT telegram_token, telegram_chat_id FROM clientes WHERE id = ?",
-                (cliente_id,),
-            ).fetchone()
-            if cliente:
-                tg_token = (cliente["telegram_token"] or "").strip()
-                tg_chat = (cliente["telegram_chat_id"] or "").strip()
-                if tg_token and tg_chat:
-                    token_final = tg_token
-                    chat_id_final = tg_chat
-                    origem = f"cliente:{cliente_id}"
-        except Exception as e:
-            print(f"⚠️ Telegram: falha ao buscar credenciais do cliente {cliente_id}: {e}")
-        finally:
-            conn.close()
-
-    if not token_final or token_final == "SEU_TOKEN_AQUI":
-        msg = f"Telegram não configurado ({origem}): token ausente."
-        print(f"⚠️ {msg}")
-        return {"ok": False, "erro": msg, "origem": origem}
-
-    if not chat_id_final:
-        msg = f"Telegram não configurado ({origem}): chat_id ausente."
-        print(f"⚠️ {msg}")
-        return {"ok": False, "erro": msg, "origem": origem}
-
-    url = f"https://api.telegram.org/bot{token_final}/sendMessage"
-    payload = json.dumps(
-        {"chat_id": chat_id_final, "text": mensagem, "parse_mode": "HTML"}
-    ).encode("utf-8")
-
-    try:
-        req = urllib.request.Request(
-            url,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            resposta = json.loads(resp.read().decode("utf-8"))
-        if not resposta.get("ok"):
-            msg = resposta.get("description", "Telegram rejeitou a mensagem.")
-            print(f"⚠️ Telegram ({origem}): {msg}")
-            return {"ok": False, "erro": msg, "origem": origem}
-        print(f"✅ Telegram entregue ({origem}).")
-        return {"ok": True, "origem": origem}
-    except urllib.error.HTTPError as e:
-        try:
-            corpo = e.read().decode("utf-8", errors="ignore")
-            detalhe = json.loads(corpo).get("description", corpo)
-        except Exception:
-            detalhe = str(e)
-        print(f"⚠️ Erro Telegram HTTP ({origem}): {detalhe}")
-        return {"ok": False, "erro": detalhe, "origem": origem}
-    except Exception as e:
-        print(f"⚠️ Erro Telegram ({origem}): {e}")
-        return {"ok": False, "erro": str(e), "origem": origem}
+def enviar_telegram(mensagem, cliente_id=None, conn=None):
+    return notifications.enqueue(mensagem, cliente_id, conn=conn)
 
 
 @app.route("/api/v2/testar_telegram/<int:cliente_id>", methods=["POST"])
+@app.route("/api/v2/status_telegram/<int:cliente_id>", methods=["GET"])
 def testar_telegram(cliente_id):
     if "user_id" not in session or session.get("role") not in [
         "Administrador Master", "Cliente", "Administrador Cliente"
@@ -164,132 +106,123 @@ def testar_telegram(cliente_id):
             conn.close()
 
     destino = None if cliente_id == 0 else cliente_id
-    resultado = enviar_telegram(
-        "✅ <b>TESTE NOC CENTRAL</b>\n\nIntegração com Telegram funcionando corretamente.",
-        cliente_id=destino,
-    )
-    return jsonify(resultado), (200 if resultado.get("ok") else 502)
+    if request.method == 'GET':
+        return jsonify(notifications.status(destino, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID))
+    token, chat, source = notifications.credentials(destino, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
+    resultado = notifications.deliver(token, chat, '✅ <b>TESTE NOC CENTRAL</b>\nIntegração de notificações.')
+    resultado['origem'] = source
+    notifications.record_status(source, resultado)
+    return jsonify(resultado), (200 if resultado['ok'] else 502)
 
-# =========================================================
-# INICIALIZAÇÃO E AUTO-CURA DO BANCO DE DADOS
-# =========================================================
+# Migrations are explicit and fail fast instead of serving against a partial schema.
+database.init_db()
+conn = database.get_db()
 try:
-    database.init_db() 
-    conn = database.get_db()
-    
-    admin = conn.execute("SELECT * FROM clientes WHERE usuario = 'admin'").fetchone()
-    if not admin:
-        senha_inicial = os.environ.get("ADMIN_SENHA_INICIAL")
-        if not senha_inicial:
-            senha_inicial = secrets.token_urlsafe(18)
-            print("⚠️ ADMIN_SENHA_INICIAL ausente. Senha temporária gerada para o primeiro admin:")
-            print(f"   {senha_inicial}")
-        senha_inicial_hash = generate_password_hash(senha_inicial)
-        conn.execute(
-            "INSERT INTO clientes (usuario, senha, role) VALUES ('admin', ?, 'Administrador Master')",
-            (senha_inicial_hash,),
-        )
+    if not conn.execute("SELECT id FROM clientes WHERE usuario='admin'").fetchone():
+        initial_password = os.environ.get('ADMIN_SENHA_INICIAL')
+        if not initial_password:
+            raise RuntimeError('Configure ADMIN_SENHA_INICIAL para criar o primeiro administrador.')
+        conn.execute("INSERT INTO clientes (usuario, senha, role, ativo) VALUES ('admin', ?, 'Administrador Master', 1)",
+                     (generate_password_hash(initial_password),))
         conn.commit()
-
-    colunas_sensores = [
-        "last_seen TIMESTAMP", "ip_gateway TEXT", "ultima_rota TEXT", 
-        "download REAL", "upload REAL", "alerta_reconhecido INTEGER DEFAULT 1", 
-        "disco REAL", "net_up REAL", "net_down REAL", "portas TEXT", 
-        "em_manutencao INTEGER DEFAULT 0", "cliente_id INTEGER", "gpu_temp REAL",
-        "memoria_alerta TEXT DEFAULT 'ONLINE'", "so_nome TEXT", "so_versao TEXT",
-        "so_arquitetura TEXT", "interface_nome TEXT", "interface_mac TEXT",
-        "rede_mascara TEXT", "rede_cidr TEXT", "link_speed_mbps REAL",
-        "interface_up BOOLEAN", "scan_rede TEXT", "scan_limitado BOOLEAN"
-    ]
-    for col in colunas_sensores:
-        try: conn.execute(f"ALTER TABLE sensores ADD COLUMN {col}"); conn.commit()
-        except: 
-            try: conn.execute("ROLLBACK") 
-            except: pass
-
-    colunas_clientes = ["nome TEXT", "cliente_pai_id INTEGER", "ativo INTEGER DEFAULT 1", "logo_url TEXT", "telegram_token TEXT", "telegram_chat_id TEXT"]
-    for col in colunas_clientes:
-        try: conn.execute(f"ALTER TABLE clientes ADD COLUMN {col}"); conn.commit()
-        except: 
-            try: conn.execute("ROLLBACK")
-            except: pass
-
-    try:
-        conn.execute('''CREATE TABLE IF NOT EXISTS servicos_os (id SERIAL PRIMARY KEY, sensor_mac TEXT, nome_servico TEXT, descricao TEXT, status TEXT DEFAULT 'ONLINE')''')
-        conn.commit()
-    except: pass
-
-    try:
-        conn.execute('''CREATE TABLE IF NOT EXISTS historico_pings (id SERIAL PRIMARY KEY, sensor_mac TEXT, google INTEGER, cloudflare INTEGER, aws INTEGER, quad9 INTEGER, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-        conn.commit()
-    except: pass
-
-    try:
-        conn.execute('''CREATE TABLE IF NOT EXISTS historico_telemetria (id SERIAL PRIMARY KEY, sensor_mac TEXT, download REAL, upload REAL, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-        conn.commit()
-    except: pass
-
-    try:
-        if os.environ.get("DATABASE_URL"):
-            conn.execute('''CREATE TABLE IF NOT EXISTS comandos_pendentes (
-                id SERIAL PRIMARY KEY,
-                sensor_mac TEXT NOT NULL,
-                comando TEXT NOT NULL,
-                criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )''')
-            conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (
-                id SERIAL PRIMARY KEY,
-                sensor_mac TEXT,
-                tipo_evento TEXT,
-                gravidade TEXT,
-                detalhes TEXT,
-                data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )''')
-        else:
-            conn.execute('''CREATE TABLE IF NOT EXISTS comandos_pendentes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sensor_mac TEXT NOT NULL,
-                comando TEXT NOT NULL,
-                criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )''')
-            conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sensor_mac TEXT,
-                tipo_evento TEXT,
-                gravidade TEXT,
-                detalhes TEXT,
-                data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )''')
-        conn.commit()
-
-        for indice_sql in [
-            "CREATE INDEX IF NOT EXISTS idx_comandos_sensor_id ON comandos_pendentes(sensor_mac, id)",
-            "CREATE INDEX IF NOT EXISTS idx_sensores_cliente ON sensores(cliente_id)",
-            "CREATE INDEX IF NOT EXISTS idx_logs_sensor_id ON logs_ia(sensor_mac, id)",
-            "CREATE INDEX IF NOT EXISTS idx_historico_telemetria_sensor_id ON historico_telemetria(sensor_mac, id)",
-        ]:
-            try:
-                conn.execute(indice_sql)
-                conn.commit()
-            except Exception as idx_err:
-                try: conn.execute("ROLLBACK")
-                except: pass
-                print(f"⚠️ Índice não criado: {idx_err}")
-    except Exception as e:
-        try: conn.execute("ROLLBACK")
-        except: pass
-        print(f"⚠️ Aviso ao criar filas/índices: {e}")
-
-    try:
-        conn.execute("UPDATE clientes SET role = 'Administrador Master' WHERE usuario = 'admin'")
-        conn.commit()
-    except:
-        try: conn.execute("ROLLBACK")
-        except: pass
-
+finally:
     conn.close()
-    print("✅ Banco de Dados sincronizado!")
-except Exception as e: print(f"⚠️ Aviso na inicialização do banco: {e}")
+
+
+def _telegram_worker():
+    while True:
+        try:
+            notifications.process_one(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
+        except Exception:
+            app.logger.exception('Falha no processamento da fila Telegram')
+        time.sleep(1)
+
+if os.environ.get('DISABLE_BACKGROUND_GUARDIAN', '0') != '1':
+    threading.Thread(target=_telegram_worker, name='noc-telegram', daemon=True).start()
+
+
+@app.context_processor
+def product_context():
+    return {'central_version': CENTRAL_VERSION}
+
+
+@socketio.on('connect')
+def socket_connect(auth=None):
+    return bool(session.get('user_id'))
+
+
+def tenant_id(conn):
+    if session.get('role') == 'Cliente':
+        return session['user_id']
+    row = conn.execute('SELECT cliente_pai_id FROM clientes WHERE id=?', (session['user_id'],)).fetchone()
+    return row['cliente_pai_id'] if row else None
+
+
+@app.before_request
+def validate_json_body():
+    if request.is_json and not isinstance(request.get_json(silent=True), dict):
+        return jsonify(error='Objeto JSON válido obrigatório.'), 400
+
+
+@app.before_request
+def enforce_tenant_scope():
+    if not session.get('user_id'):
+        return None
+    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
+        origin = request.headers.get('Origin')
+        if origin and urlsplit(origin).netloc != request.host:
+            return jsonify(error='Origem não autorizada.'), 403
+    conn = database.get_db()
+    try:
+        current = conn.execute('SELECT ativo FROM clientes WHERE id=?', (session['user_id'],)).fetchone()
+        if not current or current['ativo'] == 0:
+            session.clear()
+            return jsonify(error='Sessão inválida.'), 401
+        master = session.get('role') in ('Administrador Master', 'Operador Master')
+        tenant = None if master else tenant_id(conn)
+        args = request.view_args or {}
+        data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return jsonify(error='Objeto JSON obrigatório.'), 400
+        if any(k in data and (not isinstance(data[k], str) or not 1 <= len(data[k]) <= 80) for k in ('mac_id', 'sensor_mac')):
+            return jsonify(error='Identificador do sensor inválido.'), 400
+        mac = args.get('mac_id') or args.get('mac_sensor') or args.get('mac') or data.get('mac_id') or data.get('sensor_mac')
+        if mac and not master:
+            row = conn.execute('SELECT cliente_id FROM sensores WHERE mac_id=?', (mac,)).fetchone()
+            if not row or tenant is None or row['cliente_id'] != tenant:
+                return jsonify(error='Acesso negado ao sensor.'), 403
+        # Endpoints that refer to a child record must match both sensor and owner.
+        id_tables = {'reportar_latencia_custom': 'ips_custom', 'reportar_latencia_energia': 'ips_energia',
+                     'reportar_status_servico': 'servicos_os', 'del_ips_energia': 'ips_energia',
+                     'del_servico_os': 'servicos_os', 'crud_ips': 'ips_custom'}
+        if request.endpoint in id_tables:
+            record_id = args.get('id_ip') or args.get('id_srv') or data.get('id')
+            row = conn.execute(f"SELECT sensor_mac FROM {id_tables[request.endpoint]} WHERE id=?", (record_id,)).fetchone()
+            if not row or (mac and row['sensor_mac'] != mac):
+                return jsonify(error='Registro não encontrado.'), 404
+            if not master:
+                owner = conn.execute('SELECT cliente_id FROM sensores WHERE mac_id=?', (row['sensor_mac'],)).fetchone()
+                if not owner or tenant is None or owner['cliente_id'] != tenant:
+                    return jsonify(error='Acesso negado.'), 403
+        if 'id_user' in args and not master:
+            row = conn.execute('SELECT id, cliente_pai_id FROM clientes WHERE id=?', (args['id_user'],)).fetchone()
+            if not row or tenant is None or not (row['id'] == tenant or row['cliente_pai_id'] == tenant):
+                return jsonify(error='Acesso negado ao usuário.'), 403
+        if request.endpoint == 'criar_usuario' and not master:
+            if data.get('role') not in ('Administrador Cliente', 'Operador Cliente'):
+                return jsonify(error='Perfil não autorizado.'), 403
+    finally:
+        conn.close()
+
+
+@app.route('/healthz')
+def healthz():
+    conn = database.get_db()
+    try:
+        conn.execute('SELECT 1').fetchone()
+        return jsonify(status='ok', central_version=CENTRAL_VERSION)
+    finally:
+        conn.close()
 
 SPEEDTEST_REQUESTS = set()
 TRACEROUTE_REQUESTS = set()
@@ -373,11 +306,11 @@ def verificar_quedas_global(conn, force=False):
     caidos = []
     is_postgres = bool(os.environ.get('DATABASE_URL'))
     condicao = "last_seen < NOW() - INTERVAL '60 seconds'" if is_postgres else "last_seen < datetime('now', '-60 seconds')"
-    
+
     try:
         # Puxa os sensores que acabaram de cair
         caidos = conn.execute(f"SELECT mac_id, nome_local, cliente_id FROM sensores WHERE status = 'online' AND em_manutencao = 0 AND (memoria_alerta = 'ONLINE' OR memoria_alerta IS NULL) AND {condicao}").fetchall()
-        
+
         # Altera para OFFLINE na memória IMEDIATAMENTE (evita spam no Telegram)
         conn.execute(f"UPDATE sensores SET status = 'offline', memoria_alerta = 'OFFLINE', alerta_reconhecido = 0 WHERE status = 'online' AND em_manutencao = 0 AND {condicao}")
         conn.commit()
@@ -391,11 +324,12 @@ def verificar_quedas_global(conn, force=False):
             mac = c['mac_id'] if hasattr(c, 'keys') else c[0]
             nome = c['nome_local'] if hasattr(c, 'keys') else c[1]
             cid = c['cliente_id'] if hasattr(c, 'keys') else c[2]
-            
+
             db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder.')", (mac,))
             conn.commit()
-            
-            enviar_telegram(f"🚨 <b>QUEDA CRÍTICA DETECTADA</b>\n\n🏢 <b>Host:</b> {html.escape(str(nome))}\n🆔 <b>MAC:</b> {html.escape(str(mac))}\n❌ <b>Status:</b> OFFLINE TOTAL", cliente_id=cid)
+
+            enviar_telegram(f"🚨 <b>QUEDA CRÍTICA DETECTADA</b>\n\n🏢 <b>Host:</b> {html.escape(str(nome))}\n🆔 <b>MAC:</b> {html.escape(str(mac))}\n❌ <b>Status:</b> OFFLINE TOTAL", cliente_id=cid, conn=conn)
+            conn.commit()
         except Exception as err:
             print(f"Erro ao emitir alerta de queda: {err}")
 
@@ -434,8 +368,15 @@ def login():
         conn = database.get_db()
         try:
             user = db_execute(conn, "SELECT * FROM clientes WHERE usuario = ?", (usuario_digitado,)).fetchone()
-            
-            if user and (str(user['senha']).strip() == senha_digitada or check_password_hash(str(user['senha']).strip(), senha_digitada)):
+
+            stored_password = str(user['senha']) if user else ''
+            is_hashed = stored_password.startswith(('scrypt:', 'pbkdf2:'))
+            authenticated = check_password_hash(stored_password, senha_digitada) if is_hashed else hmac.compare_digest(stored_password, senha_digitada)
+            if user and dict(user).get('ativo', 1) and authenticated:
+                if not is_hashed:
+                    conn.execute('UPDATE clientes SET senha=? WHERE id=?', (generate_password_hash(senha_digitada), user['id']))
+                    conn.commit()
+                session.clear()
                 session['logged_in'] = True; session['usuario'] = user['usuario']; session['role'] = user['role']
                 session['user_id'] = user['id']; session['logo_cliente'] = dict(user).get('logo_url', '')
                 return redirect(url_for('index'))
@@ -453,7 +394,10 @@ def logout(): session.clear(); return redirect(url_for('login'))
 def ack_alerta():
     if 'usuario' not in session: return jsonify({"error": "Acesso Negado"}), 403
     conn = database.get_db()
-    conn.execute("UPDATE sensores SET alerta_reconhecido = 1 WHERE status = 'offline'")
+    if session.get('role') in ('Administrador Master', 'Operador Master'):
+        conn.execute("UPDATE sensores SET alerta_reconhecido=1 WHERE status='offline'")
+    else:
+        conn.execute("UPDATE sensores SET alerta_reconhecido=1 WHERE status='offline' AND cliente_id=?", (tenant_id(conn),))
     db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES ('SISTEMA', 'Acknowledge (Ciente)', 'Aviso', ?)", (f"Operador {session['usuario']} silenciou o alarme.",))
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
@@ -484,17 +428,20 @@ def painel_sensor(mac_id):
 def report_data():
     auth_error = exigir_sensor_ou_sessao()
     if auth_error: return auth_error
-    global AUTO_SPEEDTEST_DONE 
+    global AUTO_SPEEDTEST_DONE
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get('mac_id'), str) or not 1 <= len(data['mac_id']) <= 80:
+        return jsonify(error='mac_id obrigatório (até 80 caracteres).'), 400
+    conn = None
     try:
-        data = request.json
         mac = data.get('mac_id')
         ip_display = data.get('ip_local')
-        
+
         conn = database.get_db()
-        
+
         # ⚡ CRON EMBUTIDO: Toda vez que chegar dado de qualquer sensor, a nuvem caça os caídos
         verificar_quedas_global(conn)
-        
+
         try:
             from datetime import datetime
             agora_hora = datetime.now().hour
@@ -504,46 +451,54 @@ def report_data():
                 enfileirar_comando(mac, "run_speedtest", conn=conn)
                 AUTO_SPEEDTEST_DONE.add(f"{mac}_{hoje_id}")
                 if len(AUTO_SPEEDTEST_DONE) > 500: AUTO_SPEEDTEST_DONE.clear()
-        except: pass
+        except Exception: app.logger.exception('Falha em operação auxiliar')
 
         sensor = db_execute(conn, "SELECT * FROM sensores WHERE mac_id = ?", (mac,)).fetchone()
-        
+
         if sensor:
-            sensor_dict = dict(sensor) 
-            
+            sensor_dict = dict(sensor)
+
             estado_anterior = sensor_dict.get('memoria_alerta', 'ONLINE')
-            
+
             if estado_anterior == 'OFFLINE' or sensor_dict.get('status') == 'offline':
                 try:
                     db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Conexão Restaurada', 'Aviso', 'O sensor restabeleceu a comunicação com a rede')", (mac,))
-                    enviar_telegram(f"✅ <b>CONEXÃO RESTAURADA</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor_dict.get('nome_local', mac)))}\n🌐 <b>Status:</b> ONLINE", cliente_id=sensor_dict.get('cliente_id'))
-                except: pass
+                    enviar_telegram(f"✅ <b>CONEXÃO RESTAURADA</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor_dict.get('nome_local', mac)))}\n🌐 <b>Status:</b> ONLINE", cliente_id=sensor_dict.get('cliente_id'), conn=conn)
+                except Exception: app.logger.exception('Falha em operação auxiliar')
 
-            db_execute(conn, '''UPDATE sensores SET 
+            db_execute(conn, '''UPDATE sensores SET
                 ip_sensor = ?, cpu_usage = ?, ram_usage = ?, temp = ?, gpu_temp = ?,
                 status = 'online', memoria_alerta = 'ONLINE', ping_gateway = ?, ping_global = ?,
                 ip_gateway = ?, last_seen = CURRENT_TIMESTAMP,
                 disco = ?, net_up = ?, net_down = ?, portas = ?
-                WHERE mac_id = ?''', 
-                (ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
-                 data.get('temp'), data.get('gpu_temp'), data.get('ping_gateway'), 
+                WHERE mac_id = ?''',
+                (ip_display, data.get('cpu_usage'), data.get('ram_usage'),
+                 data.get('temp'), data.get('gpu_temp'), data.get('ping_gateway'),
                  data.get('ping_global'), data.get('ip_gateway'),
-                 data.get('disco'), data.get('net_up'), data.get('net_down'), data.get('portas'), 
+                 data.get('disco'), data.get('net_up'), data.get('net_down'), data.get('portas'),
                  mac))
             conn.commit()
         else:
-            db_execute(conn, '''INSERT INTO sensores 
-                (mac_id, nome_local, ip_sensor, cpu_usage, ram_usage, temp, gpu_temp, status, memoria_alerta, lat, lon, ping_gateway, ping_global, ip_gateway, last_seen, alerta_reconhecido, em_manutencao) 
-                VALUES (?, 'Novo Sensor', ?, ?, ?, ?, ?, 'online', 'ONLINE', -14.235, -51.925, ?, ?, ?, CURRENT_TIMESTAMP, 1, 0)''', 
-                (mac, ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
-                 data.get('temp'), data.get('gpu_temp'), data.get('ping_gateway'), 
+            db_execute(conn, '''INSERT INTO sensores
+                (mac_id, nome_local, ip_sensor, cpu_usage, ram_usage, temp, gpu_temp, status, memoria_alerta, lat, lon, ping_gateway, ping_global, ip_gateway, last_seen, alerta_reconhecido, em_manutencao)
+                VALUES (?, 'Novo Sensor', ?, ?, ?, ?, ?, 'online', 'ONLINE', NULL, NULL, ?, ?, ?, CURRENT_TIMESTAMP, 1, 0)''',
+                (mac, ip_display, data.get('cpu_usage'), data.get('ram_usage'),
+                 data.get('temp'), data.get('gpu_temp'), data.get('ping_gateway'),
                  data.get('ping_global'), data.get('ip_gateway')))
             conn.commit()
-            enviar_telegram(f"🎉 <b>NOVO SENSOR REGISTRADO</b>\n\n🖥️ <b>MAC:</b> {html.escape(str(mac))}\n🌐 <b>IP:</b> {html.escape(str(ip_display))}")
+            enviar_telegram(f"🎉 <b>NOVO SENSOR REGISTRADO</b>\n\n🖥️ <b>MAC:</b> {html.escape(str(mac))}\n🌐 <b>IP:</b> {html.escape(str(ip_display))}", conn=conn)
+
+        if data.get('location_source') == 'ip' and data.get('latitude') is not None:
+            try:
+                loc = parse_location(data)
+                save_location(conn, mac, loc, protect_precise=True)
+            except ValueError:
+                app.logger.warning('Sensor reportou localização aproximada inválida')
 
         # Metadados de plataforma/rede são opcionais para manter compatibilidade
         # com agentes antigos. COALESCE preserva o último valor conhecido.
         db_execute(conn, '''UPDATE sensores SET
+            disco = COALESCE(?, disco), net_up = COALESCE(?, net_up), net_down = COALESCE(?, net_down), portas = COALESCE(?, portas),
             so_nome = COALESCE(?, so_nome),
             so_versao = COALESCE(?, so_versao),
             so_arquitetura = COALESCE(?, so_arquitetura),
@@ -554,12 +509,14 @@ def report_data():
             link_speed_mbps = COALESCE(?, link_speed_mbps),
             interface_up = COALESCE(?, interface_up),
             scan_rede = COALESCE(?, scan_rede),
-            scan_limitado = COALESCE(?, scan_limitado)
+            scan_limitado = COALESCE(?, scan_limitado),
+            agent_version = COALESCE(?, agent_version)
             WHERE mac_id = ?''',
-            (data.get('so_nome'), data.get('so_versao'), data.get('so_arquitetura'),
+            (data.get('disco'), data.get('net_up'), data.get('net_down'), data.get('portas'),
+             data.get('so_nome'), data.get('so_versao'), data.get('so_arquitetura'),
              data.get('interface_nome'), data.get('interface_mac'), data.get('rede_mascara'),
              data.get('rede_cidr'), data.get('link_speed_mbps'), data.get('interface_up'),
-             data.get('scan_rede'), data.get('scan_limitado'), mac))
+             data.get('scan_rede'), data.get('scan_limitado'), data.get('agent_version'), mac))
         conn.commit()
 
         try:
@@ -582,10 +539,15 @@ def report_data():
         comando = consumir_comando(conn, mac)
         conn.close()
 
-        socketio.emit('atualizacao_global', {'mac_id': mac})
+        socketio.emit('atualizacao_global', {})
         return jsonify({"status": "OK", "command": comando})
 
-    except Exception as e: return jsonify({"status": "error", "command": "none", "erro_backend": str(e)}), 200
+    except Exception:
+        app.logger.exception('Falha ao receber telemetria')
+        return jsonify(status='error', command='none', error='Falha temporária ao persistir telemetria.'), 503
+    finally:
+        if conn:
+            conn.close()
 
 # ==========================================
 # ⏰ ROTA DO CRON (PARA O UPTIMEROBOT)
@@ -622,12 +584,12 @@ def gerar_token_local(mac):
 # 🔄 VERSÃO DO AGENTE (PARA O AUTO-UPDATE)
 # ==========================================
 # Atualize os dois valores abaixo toda vez que compilar e publicar uma nova versão do agente.
-VERSAO_AGENTE_ATUAL = "2.1.0"
+VERSAO_AGENTE_ATUAL = WINDOWS_BINARY_VERSION
 URL_DOWNLOAD_AGENTE = "https://noc-central.up.railway.app/static/downloads/agente_v2.exe"
 
 @app.route('/api/v2/agent_versao')
 def agent_versao():
-    return jsonify({"versao": VERSAO_AGENTE_ATUAL, "url_download": URL_DOWNLOAD_AGENTE})
+    return jsonify({"versao": VERSAO_AGENTE_ATUAL, "url_download": URL_DOWNLOAD_AGENTE, "central_version": CENTRAL_VERSION, "source_version": CENTRAL_VERSION})
 
 # ==========================================
 # 🔌 ROTAS: ENERGIA E SERVIÇOS DO SO
@@ -637,8 +599,6 @@ def gerenciar_ips_energia(mac_id):
     auth_error = exigir_sensor_ou_sessao()
     if auth_error: return auth_error
     conn = database.get_db()
-    try: conn.execute('''CREATE TABLE IF NOT EXISTS ips_energia (id SERIAL PRIMARY KEY, sensor_mac TEXT, ip TEXT, descricao TEXT, latencia INTEGER DEFAULT 0)''')
-    except: pass
     if request.method == 'POST':
         data = request.json
         db_execute(conn, "INSERT INTO ips_energia (sensor_mac, ip, descricao) VALUES (?, ?, ?)", (mac_id, data['ip'], data['descricao']))
@@ -703,6 +663,8 @@ def reportar_status_servico():
 def enviar_comando_energia(mac_id):
     if 'user_id' not in session or session.get('role') != 'Administrador Master': return jsonify({"error": "Acesso Negado"}), 403
     comando = request.json.get('comando')
+    if comando not in ('reboot', 'shutdown', 'flush_dns', 'scan_loop', 'top_processos', 'run_speedtest', 'run_traceroute', 'update_agent'):
+        return jsonify(error='Comando inválido.'), 400
     enfileirar_comando(mac_id, comando)
     return jsonify({"status": "Comando enfileirado"})
 
@@ -710,10 +672,10 @@ def enviar_comando_energia(mac_id):
 def enviar_comando_remoto(mac_id):
     if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     comando = request.json.get('comando')
+    if comando not in ('reboot', 'shutdown', 'flush_dns', 'scan_loop', 'top_processos', 'run_speedtest', 'run_traceroute', 'update_agent'):
+        return jsonify(error='Comando inválido.'), 400
     enfileirar_comando(mac_id, comando)
     conn = database.get_db()
-    try: conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (id SERIAL PRIMARY KEY, sensor_mac TEXT, tipo_evento TEXT, gravidade TEXT, detalhes TEXT, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    except: pass
     db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Comando Remoto', 'Aviso', ?)", (mac_id, f"Operador {session['usuario']} enviou o comando: {comando}"))
     conn.commit(); conn.close()
     return jsonify({"status": "Comando enfileirado."})
@@ -723,11 +685,11 @@ def enviar_wol_remoto(mac_sensor):
     if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     mac_alvo = request.json.get('mac_alvo')
     nome_alvo = request.json.get('nome_alvo', 'Dispositivo')
-    
+
     enfileirar_comando(mac_sensor, f"wol:{mac_alvo}")
-    
+
     conn = database.get_db()
-    db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Comando Remoto', 'Aviso', ?)", 
+    db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Comando Remoto', 'Aviso', ?)",
                  (mac_sensor, f"Operador disparou Magic Packet (Wake-on-LAN) para ligar o dispositivo: {nome_alvo} ({mac_alvo})"))
     conn.commit()
     conn.close()
@@ -740,7 +702,7 @@ def enviar_wol_remoto(mac_sensor):
 def obter_graficos_ping(mac_id):
     if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     conn = database.get_db()
-    try: registros = db_execute(conn, "SELECT google, cloudflare, aws, quad9, to_char(data_hora - INTERVAL '3 hours', 'HH24:MI:SS') as hora FROM historico_pings WHERE sensor_mac = ? ORDER BY id DESC LIMIT 30", (mac_id,)).fetchall()
+    try: registros = db_execute(conn, "SELECT google, cloudflare, aws, quad9, data_hora as hora FROM historico_pings WHERE sensor_mac = ? ORDER BY id DESC LIMIT 30", (mac_id,)).fetchall()
     except: registros = []
     conn.close()
     registros.reverse()
@@ -750,20 +712,31 @@ def obter_graficos_ping(mac_id):
 def registrar_sensor():
     auth_error = exigir_sensor_ou_sessao()
     if auth_error: return auth_error
-    data = request.json; conn = database.get_db()
-    sensor = db_execute(conn, "SELECT mac_id FROM sensores WHERE mac_id = ?", (data['mac_id'],)).fetchone()
-    if not sensor:
-        db_execute(conn, "INSERT INTO sensores (mac_id, cliente_id, nome_local, lat, lon) VALUES (?, 1, ?, ?, ?)", (data['mac_id'], data.get('nome_local', 'Sensor Novo'), data.get('lat', -14.235), data.get('lon', -51.925)))
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data.get('mac_id'), str) or not 1 <= len(data['mac_id']) <= 80:
+        return jsonify(error='mac_id obrigatório.'), 400
+    try:
+        loc = parse_location(data, default_source='legacy')
+        if loc['latitude'] == -14.235 and loc['longitude'] == -51.925 and loc['location_source'] == 'legacy':
+            loc = parse_location({})
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+    conn = database.get_db()
+    try:
+        conn.execute("INSERT INTO sensores (mac_id, nome_local) VALUES (?, ?) ON CONFLICT(mac_id) DO NOTHING", (data['mac_id'], data.get('nome_local', 'Sensor Novo')))
+        if loc['latitude'] is not None:
+            save_location(conn, data['mac_id'], loc, protect_precise=True)
         conn.commit()
-    conn.close()
-    return jsonify({"status": "OK"})
+    finally:
+        conn.close()
+    return jsonify(status='OK')
 
 @app.route('/api/v2/telemetria_instantanea', methods=['POST'])
 def telemetria_instantanea():
     auth_error = exigir_sensor_ou_sessao()
     if auth_error: return auth_error
     data = request.json; mac_id = data['mac_id']; run_st = mac_id in SPEEDTEST_REQUESTS
-    if run_st: SPEEDTEST_REQUESTS.remove(mac_id) 
+    if run_st: SPEEDTEST_REQUESTS.remove(mac_id)
     conn = database.get_db()
     db_execute(conn, "UPDATE sensores SET status = 'online', cpu_usage = ?, ram_usage = ?, temp = ?, ping_gateway = ?, ip_sensor = ?, ip_gateway = ?, last_seen = CURRENT_TIMESTAMP WHERE mac_id = ?", (data.get('cpu'), data.get('ram'), data.get('temp', 0), data.get('ping_gw'), data.get('ip_sensor'), data.get('ip_gateway'), mac_id))
     conn.commit(); conn.close()
@@ -787,19 +760,9 @@ def atualizar_dispositivos():
     sensor_data = db_execute(conn, "SELECT ip_gateway FROM sensores WHERE mac_id = ?", (sensor_mac,)).fetchone()
     ip_gw = sensor_data['ip_gateway'] if sensor_data else None
 
-    try: conn.execute('''CREATE TABLE IF NOT EXISTS dispositivos (id SERIAL PRIMARY KEY, sensor_mac TEXT, ip TEXT, mac TEXT, fabricante TEXT, nome_custom TEXT, status TEXT DEFAULT 'offline')'''); conn.commit()
-    except: pass
-    
-    try: conn.execute("ALTER TABLE dispositivos ADD COLUMN status TEXT DEFAULT 'offline'"); conn.commit()
-    except: pass
-    try: conn.execute("ALTER TABLE dispositivos ADD COLUMN latencia REAL"); conn.commit()
-    except: pass
-    try: conn.execute("ALTER TABLE dispositivos ADD COLUMN neighbor_state TEXT"); conn.commit()
-    except: pass
 
-    try: conn.execute("CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)"); conn.commit()
-    except: pass
-    
+
+
     nomes_salvos = {row['mac']: row['nome'] for row in conn.execute("SELECT mac, nome FROM nomes_conhecidos").fetchall()}
 
     db_execute(conn, "DELETE FROM dispositivos WHERE sensor_mac = ?", (sensor_mac,))
@@ -821,8 +784,6 @@ def atualizar_dispositivos():
 def renomear_dispositivo():
     if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     data = request.json; conn = database.get_db()
-    try: conn.execute("CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)"); conn.commit()
-    except: pass
     try:
         existe = db_execute(conn, "SELECT mac FROM nomes_conhecidos WHERE mac = ?", (data['mac'],)).fetchone()
         if existe: db_execute(conn, "UPDATE nomes_conhecidos SET nome = ? WHERE mac = ?", (data['nome'], data['mac']))
@@ -841,9 +802,7 @@ def alertas_ia():
     data = request.json
     mac = data.get('mac_id', 'Desconhecido')
     conn = database.get_db()
-    try: conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (id SERIAL PRIMARY KEY, sensor_mac TEXT, tipo_evento TEXT, gravidade TEXT, detalhes TEXT, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    except: pass
-    
+
     sensor = db_execute(conn, "SELECT nome_local, cliente_id FROM sensores WHERE mac_id = ?", (mac,)).fetchone()
     nome_sensor = sensor['nome_local'] if sensor else mac
     cid = sensor['cliente_id'] if sensor else None
@@ -852,9 +811,9 @@ def alertas_ia():
         db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, ?, ?, ?)", (mac, alerta['tipo'], alerta['gravidade'], alerta['detalhes']))
         if alerta['gravidade'] == 'Crítica':
             icone = "🔥" if "Superaquecimento" in alerta['tipo'] else ("🌪️" if "Tempestade" in alerta['tipo'] else "🖥️")
-            enviar_telegram(f"🚨 <b>ALERTA CRÍTICO</b>\n\n{icone} <b>Sensor:</b> {html.escape(str(nome_sensor))}\n⚠️ <b>Evento:</b> {html.escape(str(alerta['tipo']))}\n❌ <b>Detalhe:</b> {html.escape(str(alerta['detalhes']))}", cliente_id=cid)
+            enviar_telegram(f"🚨 <b>ALERTA CRÍTICO</b>\n\n{icone} <b>Sensor:</b> {html.escape(str(nome_sensor))}\n⚠️ <b>Evento:</b> {html.escape(str(alerta['tipo']))}\n❌ <b>Detalhe:</b> {html.escape(str(alerta['detalhes']))}", cliente_id=cid, conn=conn)
         elif alerta['gravidade'] == 'OK' and ('Restaurad' in alerta['tipo']):
-            enviar_telegram(f"✅ <b>SISTEMA NORMALIZADO</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(nome_sensor))}\n🟢 <b>Evento:</b> {html.escape(str(alerta['tipo']))}\nℹ️ <b>Detalhe:</b> {html.escape(str(alerta['detalhes']))}", cliente_id=cid)
+            enviar_telegram(f"✅ <b>SISTEMA NORMALIZADO</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(nome_sensor))}\n🟢 <b>Evento:</b> {html.escape(str(alerta['tipo']))}\nℹ️ <b>Detalhe:</b> {html.escape(str(alerta['detalhes']))}", cliente_id=cid, conn=conn)
 
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
@@ -865,10 +824,10 @@ def api_mapa_sensores():
     role = session.get('role'); user_id = session.get('user_id')
     conn = database.get_db()
 
-    verificar_quedas_global(conn) 
+    verificar_quedas_global(conn)
 
     try:
-        query_base = "SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, s.ram_usage, s.net_down, s.net_up, s.alerta_reconhecido, s.em_manutencao, s.ping_global, s.so_nome, s.so_versao, s.so_arquitetura, s.interface_nome, s.interface_mac, s.rede_cidr, s.link_speed_mbps, s.scan_rede, s.scan_limitado, c.nome as cliente_nome FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id"
+        query_base = "SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, s.ram_usage, s.net_down, s.net_up, s.alerta_reconhecido, s.em_manutencao, s.ping_global, s.so_nome, s.so_versao, s.so_arquitetura, s.interface_nome, s.interface_mac, s.rede_cidr, s.link_speed_mbps, s.scan_rede, s.scan_limitado, s.location_source, s.accuracy_m, s.agent_version, c.nome as cliente_nome FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id"
         if role in ['Administrador Master', 'Operador Master']: sensores = conn.execute(query_base).fetchall()
         elif role == 'Cliente': sensores = db_execute(conn, query_base + " WHERE s.cliente_id = ?", (user_id,)).fetchall()
         else:
@@ -884,9 +843,9 @@ def api_mapa_sensores():
 def get_sensor_data(mac_id):
     if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     conn = database.get_db()
-    
-    verificar_quedas_global(conn) 
-    
+
+    verificar_quedas_global(conn)
+
     sensor = db_execute(conn, "SELECT * FROM sensores WHERE mac_id = ?", (mac_id,)).fetchone()
     conn.close()
     if sensor: return jsonify(dict(sensor))
@@ -895,10 +854,25 @@ def get_sensor_data(mac_id):
 @app.route('/api/v2/configurar_sensor', methods=['POST'])
 def configurar_sensor():
     if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
-    data = request.json; conn = database.get_db()
-    db_execute(conn, "UPDATE sensores SET nome_local = ?, lat = ?, lon = ? WHERE mac_id = ?", (data['nome'], data['lat'], data['lon'], data['mac_id']))
-    conn.commit(); conn.close()
-    return jsonify({"status": "OK"})
+    data = request.get_json(silent=True) or {}
+    try:
+        location = parse_location(data) if any(k in data for k in ('lat', 'lon', 'latitude', 'longitude')) else None
+        name = str(data.get('nome', '')).strip()
+        if not isinstance(data.get('mac_id'), str) or not data['mac_id']:
+            raise ValueError('Identificador do sensor obrigatório.')
+        if not name or len(name) > 160:
+            raise ValueError('Nome obrigatório, até 160 caracteres.')
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+    conn = database.get_db()
+    try:
+        conn.execute('UPDATE sensores SET nome_local=? WHERE mac_id=?', (name, data['mac_id']))
+        if location is not None:
+            save_location(conn, data['mac_id'], location)
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify(status='OK')
 
 @app.route('/api/v2/solicitar_speedtest/<mac_id>', methods=['POST'])
 def solicitar_speedtest(mac_id):
@@ -914,19 +888,15 @@ def reportar_velocidade():
         data = request.json
         mac = data.get('mac_id')
         conn = database.get_db()
-        
-        try:
-            conn.execute('''CREATE TABLE IF NOT EXISTS historico_telemetria (id SERIAL PRIMARY KEY, sensor_mac TEXT, download REAL, upload REAL, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-            conn.commit()
-        except: pass
-        
+
+
         db_execute(conn, "UPDATE sensores SET download = ?, upload = ? WHERE mac_id = ?", (data['down'], data['up'], mac))
         db_execute(conn, "INSERT INTO historico_telemetria (sensor_mac, download, upload) VALUES (?, ?, ?)", (mac, data['down'], data['up']))
-        
+
         conn.commit()
         conn.close()
-        
-        socketio.emit('atualizacao_global', {'mac_id': mac})
+
+        socketio.emit('atualizacao_global', {})
         return jsonify({"status": "OK"})
     except Exception as e:
         print(f"Erro ao salvar Speedtest: {e}")
@@ -946,8 +916,6 @@ def gerenciar_ips(mac_id):
     auth_error = exigir_sensor_ou_sessao()
     if auth_error: return auth_error
     conn = database.get_db()
-    try: conn.execute('''CREATE TABLE IF NOT EXISTS ips_custom (id SERIAL PRIMARY KEY, sensor_mac TEXT, ip TEXT, descricao TEXT, latencia INTEGER DEFAULT 0)''')
-    except: pass
     if request.method == 'POST':
         data = request.json
         db_execute(conn, "INSERT INTO ips_custom (sensor_mac, ip, descricao) VALUES (?, ?, ?)", (mac_id, data['ip'], data['descricao']))
@@ -981,12 +949,10 @@ def historico_alertas(mac_id):
     if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     data_filtro = request.args.get('data')
     conn = database.get_db()
-    try: conn.execute('''CREATE TABLE IF NOT EXISTS logs_ia (id SERIAL PRIMARY KEY, sensor_mac TEXT, tipo_evento TEXT, gravidade TEXT, detalhes TEXT, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    except: pass
-    query = "SELECT id, sensor_mac, tipo_evento, gravidade, detalhes, to_char(data_hora - INTERVAL '3 hours', 'DD/MM/YYYY HH24:MI:SS') as data_hora FROM logs_ia WHERE sensor_mac = ?"
+    query = "SELECT id, sensor_mac, tipo_evento, gravidade, detalhes, data_hora FROM logs_ia WHERE sensor_mac = ?"
     params = [mac_id]
-    if data_filtro: query += " AND DATE(data_hora) = %s"; params.append(data_filtro)
-    logs = db_execute(conn, query + " ORDER BY id DESC", params).fetchall()
+    if data_filtro: query += " AND DATE(data_hora) = ?"; params.append(data_filtro)
+    logs = db_execute(conn, query + " ORDER BY id DESC LIMIT 1000", params).fetchall()
     conn.close()
     return jsonify([dict(l) for l in logs])
 
@@ -1012,13 +978,13 @@ def gerenciar_usuarios():
         clientes_pais = conn.execute("SELECT id, nome FROM clientes WHERE role = 'Cliente'").fetchall()
     else:
         if session['role'] == 'Cliente': tenant_id = session['user_id']
-        else: 
+        else:
             user_info = db_execute(conn, "SELECT cliente_pai_id FROM clientes WHERE id = ?", (session['user_id'],)).fetchone()
             tenant_id = user_info['cliente_pai_id']
         usuarios = db_execute(conn, "SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id FROM clientes WHERE cliente_pai_id = ? ORDER BY id DESC", (tenant_id,)).fetchall()
-        clientes_pais = [] 
+        clientes_pais = []
     conn.close()
-    return render_template('usuarios.html', usuarios=[dict(u) for u in usuarios], role_atual=session['role'], clientes_pais=[dict(c) for c in clientes_pais])
+    return render_template('usuarios.html', usuarios=[dict(u) for u in usuarios], role_atual=session['role'], telegram_tenant=locals().get('tenant_id', 0), clientes_pais=[dict(c) for c in clientes_pais])
 
 @app.route('/api/v2/usuarios', methods=['POST'])
 def criar_usuario():
@@ -1029,12 +995,12 @@ def criar_usuario():
     tg_token = data.get('telegram_token', '')
     tg_chat = data.get('telegram_chat_id', '')
     conn = database.get_db()
-    if session['role'] == 'Cliente': cliente_pai = session['user_id'] 
+    if session['role'] == 'Cliente': cliente_pai = session['user_id']
     elif session['role'] == 'Administrador Cliente':
         user_info = db_execute(conn, "SELECT cliente_pai_id FROM clientes WHERE id = ?", (session['user_id'],)).fetchone()
         cliente_pai = user_info['cliente_pai_id']
     else:
-        cliente_pai = data.get('cliente_pai') 
+        cliente_pai = data.get('cliente_pai')
         if not cliente_pai or cliente_pai == "null": cliente_pai = None
     try:
         db_execute(conn, "INSERT INTO clientes (nome, usuario, senha, role, cliente_pai_id, ativo, logo_url, telegram_token, telegram_chat_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)", (data['nome'], data['usuario'], senha_hash, data['role'], cliente_pai, logo_url, tg_token, tg_chat))
@@ -1146,12 +1112,16 @@ def reportar_rota():
 def logs_globais():
     if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
     conn = database.get_db()
-    try: logs = conn.execute('''SELECT l.tipo_evento, l.gravidade, l.detalhes, to_char(l.data_hora - INTERVAL '3 hours', 'DD/MM HH24:MI:SS') as hora, s.nome_local FROM logs_ia l LEFT JOIN sensores s ON l.sensor_mac = s.mac_id ORDER BY l.id DESC LIMIT 50''').fetchall()
-    except:
-        try: logs = conn.execute("SELECT tipo_evento, gravidade, detalhes, to_char(data_hora - INTERVAL '3 hours', 'DD/MM HH24:MI:SS') as hora, sensor_mac as nome_local FROM logs_ia ORDER BY id DESC LIMIT 50").fetchall()
-        except: logs = []
-    conn.close()
-    return jsonify([dict(l) for l in logs])
+    try:
+        sql = "SELECT l.tipo_evento, l.gravidade, l.detalhes, l.data_hora as hora, s.nome_local FROM logs_ia l LEFT JOIN sensores s ON l.sensor_mac=s.mac_id"
+        params = ()
+        if session.get('role') not in ('Administrador Master', 'Operador Master'):
+            sql += ' WHERE s.cliente_id=?'
+            params = (tenant_id(conn),)
+        logs = conn.execute(sql + ' ORDER BY l.id DESC LIMIT 50', params).fetchall()
+        return jsonify([dict(row) for row in logs])
+    finally:
+        conn.close()
 
 @app.route('/api/v2/solicitar_update/<mac_id>', methods=['POST'])
 def solicitar_update(mac_id):
@@ -1184,28 +1154,28 @@ def debug_db():
 @app.route('/relatorio/<mac_id>')
 def gerar_relatorio(mac_id):
     if 'user_id' not in session: return redirect(url_for('login'))
-    
+
     tipo_filtro = request.args.get('tipo', 'ultimos')
     data_inicio = request.args.get('inicio', '')
     data_fim = request.args.get('fim', '')
 
     conn = database.get_db()
     sensor = db_execute(conn, "SELECT s.*, c.nome as cliente_nome, c.logo_url FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id WHERE s.mac_id = ?", (mac_id,)).fetchone()
-    
+
     if not sensor:
         conn.close(); return "Sensor não encontrado", 404
 
     # Monta a Query Baseada no Filtro Escolhido
     periodo_str = "Últimos 30 eventos detectados"
-    
+
     try:
         import os
         is_postgres = bool(os.environ.get('DATABASE_URL'))
-        
+
         # Sintaxe adaptável para SQLite ou Postgres
         if is_postgres: query_logs = "SELECT tipo_evento, gravidade, detalhes, to_char(data_hora - INTERVAL '3 hours', 'DD/MM/YYYY HH24:MI') as data_hora FROM logs_ia WHERE sensor_mac = %s"
         else: query_logs = "SELECT tipo_evento, gravidade, detalhes, strftime('%d/%m/%Y %H:%M', data_hora, '-3 hours') as data_hora FROM logs_ia WHERE sensor_mac = ?"
-        
+
         params = [mac_id]
 
         if tipo_filtro == 'dia' and data_inicio:
@@ -1214,7 +1184,7 @@ def gerar_relatorio(mac_id):
             params.append(data_inicio)
             data_formatada = datetime.strptime(data_inicio, '%Y-%m-%d').strftime('%d/%m/%Y')
             periodo_str = f"Eventos do dia {data_formatada}"
-            
+
         elif tipo_filtro == 'periodo' and data_inicio and data_fim:
             if is_postgres: query_logs += " AND DATE(data_hora - INTERVAL '3 hours') BETWEEN %s AND %s"
             else: query_logs += " AND date(data_hora, '-3 hours') BETWEEN ? AND ?"
@@ -1226,7 +1196,7 @@ def gerar_relatorio(mac_id):
         query_logs += " ORDER BY id DESC"
         if tipo_filtro == 'ultimos': query_logs += " LIMIT 30"
         else: query_logs += " LIMIT 1000" # Limite de segurança para PDFs mensais
-        
+
         logs = conn.execute(query_logs, params).fetchall()
     except Exception as e:
         print("Erro relatorio:", e)
@@ -1234,11 +1204,10 @@ def gerar_relatorio(mac_id):
 
     try: dispositivos = db_execute(conn, "SELECT ip, mac, fabricante, nome_custom, status FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
     except: dispositivos = []
-    
+
     conn.close()
-    
-    from datetime import datetime
+
     return render_template('relatorio.html', sensor=dict(sensor), logs=[dict(l) for l in logs], dispositivos=[dict(d) for d in dispositivos], data_emissao=datetime.now().strftime('%d/%m/%Y às %H:%M'), periodo_str=periodo_str)
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=10000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=10000, debug=False)

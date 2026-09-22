@@ -4,6 +4,8 @@ import threading
 import subprocess
 import re 
 import struct
+import itertools
+import logging
 
 # 🛡️ TRUQUE ANTI-CRASH DO PYINSTALLER (--noconsole)
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")
@@ -47,7 +49,7 @@ URL_CENTRAL = os.environ.get(
     "https://noc-central.up.railway.app/api/v2/report_data",
 ).strip()
 PORTA_LOCAL = int(os.environ.get("NOC_LOCAL_PORT", "10000"))
-VERSAO_AGENTE = "2.1.0"
+VERSAO_AGENTE = "2.2.0-rc1"
 
 TELEMETRIA_INTERVALO = max(3, int(os.environ.get("NOC_TELEMETRIA_INTERVALO", "5")))
 WATCHDOG_INTERVALO = max(10, int(os.environ.get("NOC_WATCHDOG_INTERVALO", "15")))
@@ -124,12 +126,15 @@ def _rede_scan_segura(cidr, ip_local):
     """Mantém o CIDR real, mas limita descoberta ativa em redes muito grandes."""
     try:
         rede = ipaddress.ip_network(cidr, strict=False)
-        hosts = max(0, rede.num_addresses - 2)
+        if rede.version != 4:
+            return None, False
+        hosts = rede.num_addresses if rede.prefixlen >= 31 else rede.num_addresses - 2
         if hosts <= MAX_NETWORK_SCAN_HOSTS:
             return rede, False
         # Em redes maiores, varre apenas o /24 onde o sensor está, evitando
         # milhares de pings a cada ciclo. O CIDR real continua sendo reportado.
-        limitada = ipaddress.ip_network(f"{ip_local}/24", strict=False)
+        prefix = max(24, 32 - (MAX_NETWORK_SCAN_HOSTS + 2).bit_length() + 1)
+        limitada = ipaddress.ip_network(f"{ip_local}/{prefix}", strict=False)
         return limitada, True
     except Exception:
         return None, False
@@ -230,8 +235,6 @@ def get_network_context():
         if contexto["ip"] != "127.0.0.1" and contexto["netmask"]:
             rede = ipaddress.ip_network(f'{contexto["ip"]}/{contexto["netmask"]}', strict=False)
             contexto["cidr"] = str(rede)
-        elif contexto["ip"] != "127.0.0.1":
-            contexto["cidr"] = str(ipaddress.ip_network(f'{contexto["ip"]}/24', strict=False))
     except Exception:
         contexto["cidr"] = ""
 
@@ -280,7 +283,7 @@ def get_topologia_arp(contexto_rede, forcar_varredura=False):
 
     if forcar_varredura and rede_scan:
         try:
-            alvos = [str(ip) for ip in rede_scan.hosts() if str(ip) != meu_ip]
+            alvos = [str(ip) for ip in itertools.islice((ip for ip in rede_scan.hosts() if str(ip) != meu_ip), MAX_NETWORK_SCAN_HOSTS)]
             with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
                 list(executor.map(ping_silencioso, alvos))
         except Exception:
@@ -305,7 +308,7 @@ def get_topologia_arp(contexto_rede, forcar_varredura=False):
                 ip = partes[0]
                 try:
                     ip_obj = ipaddress.ip_address(ip)
-                    if rede_real and ip_obj not in rede_real:
+                    if ip_obj.version != 4 or ip_obj.is_multicast or not rede_real or ip_obj not in rede_real:
                         continue
                 except Exception:
                     continue
@@ -332,7 +335,7 @@ def get_topologia_arp(contexto_rede, forcar_varredura=False):
                 ip = partes[0]
                 try:
                     ip_obj = ipaddress.ip_address(ip)
-                    if rede_real and ip_obj not in rede_real:
+                    if ip_obj.version != 4 or ip_obj.is_multicast or not rede_real or ip_obj not in rede_real:
                         continue
                     idx = partes.index("lladdr")
                     mac = partes[idx + 1].replace("-", ":").upper()
@@ -356,7 +359,7 @@ def get_topologia_arp(contexto_rede, forcar_varredura=False):
         else:
             # O equipamento está/esteve presente na tabela ARP/neighbor, mas não
             # respondeu ICMP. Não é tecnicamente correto chamá-lo de offline.
-            d["status"] = "sem_icmp"
+            d["status"] = "desconhecido" if d.get('neighbor_state') in ('FAILED', 'INCOMPLETE', 'UNKNOWN') else "sem_icmp"
         return d
 
     dispositivos = []
@@ -372,9 +375,11 @@ def ping(host):
     param = '-n' if IS_WIN else '-c'
     timeout_param = '-w' if IS_WIN else '-W'
     timeout_val = '1000' if IS_WIN else '1'
-    comando = f"ping {param} 1 {timeout_param} {timeout_val} {host}"
+    if not isinstance(host, str) or not re.fullmatch(r'[A-Za-z0-9_.:-]+', host) or host.startswith('-'):
+        return 0
+    comando = ['ping', param, '1', timeout_param, timeout_val, host]
     try:
-        saida = subprocess.check_output(comando, shell=True, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
+        saida = subprocess.check_output(comando, shell=False, timeout=4, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
         if 'unreachable' in saida.lower() or 'inacessível' in saida.lower() or 'esgotado' in saida.lower() or 'timed out' in saida.lower() or 'falha' in saida.lower():
             return 0
         if '<1ms' in saida: return 1
@@ -501,7 +506,12 @@ def verificar_atualizacao(mac):
 
         versao_nova = info.get('versao')
         url_download = info.get('url_download')
-        if not versao_nova or versao_nova == VERSAO_AGENTE or not url_download:
+        def version_key(value):
+            match = re.fullmatch(r'(\d+)\.(\d+)\.(\d+)(?:-rc(\d+))?', value or '')
+            if not match:
+                return (0, 0, 0, 0)
+            return tuple(map(int, match.group(1, 2, 3))) + (int(match[4]) if match[4] else 999999,)
+        if not versao_nova or version_key(versao_nova) <= version_key(VERSAO_AGENTE) or not url_download:
             return
 
         log_local_event("Atualização", f"Nova versão disponível: {versao_nova} (atual: {VERSAO_AGENTE})", "Aviso")
@@ -721,7 +731,25 @@ def executar_admin_linux(acao, alvo=None):
 # ==========================================
 # 📡 MOTOR 1: TELEMETRIA E AUTO-CURA WAN
 # ==========================================
+def get_approximate_location():
+    if os.environ.get('NOC_IP_GEOLOCATION', '0') != '1':
+        return {}
+    try:
+        with urllib.request.urlopen('https://ipwho.is/', timeout=4) as response:
+            data = json.load(response)
+        if data.get('success') is not True:
+            return {}
+        lat, lon = float(data['latitude']), float(data['longitude'])
+        if not -90 <= lat <= 90 or not -180 <= lon <= 180:
+            return {}
+        return {'latitude': lat, 'longitude': lon, 'location_source': 'ip'}
+    except (OSError, ValueError, KeyError, TypeError):
+        logging.getLogger(__name__).warning('Localização por IP indisponível; sensor permanece sem coordenadas.')
+        return {}
+
+
 def loop_telemetria():
+    approximate_location = get_approximate_location()
     global dados_sensores, MAC_GATEWAY_CONHECIDO, ALARMES_DISPARADOS
     mac = get_mac()
     os_name = platform.system()
@@ -734,7 +762,7 @@ def loop_telemetria():
     
     
     last_net = {}
-    last_net_time = time.time()
+    last_net_time = time.monotonic()
     tempo_inicio_cpu_alta = 0
     tempo_inicio_ram_alta = 0
 
@@ -788,13 +816,14 @@ def loop_telemetria():
                 por_iface = psutil.net_io_counters(pernic=True)
                 current_net = por_iface.get(interface_rede)
                 previous_net = last_net.get(interface_rede)
-                time_diff = agora - last_net_time if (agora - last_net_time) > 0 else 1
+                network_now = time.monotonic()
+                time_diff = max(0.001, network_now - last_net_time)
                 if current_net and previous_net:
                     net_up = round(max(0, current_net.bytes_sent - previous_net.bytes_sent) * 8 / 1_000_000 / time_diff, 2)
                     net_down = round(max(0, current_net.bytes_recv - previous_net.bytes_recv) * 8 / 1_000_000 / time_diff, 2)
                 if current_net:
                     last_net = {interface_rede: current_net}
-                last_net_time = agora
+                last_net_time = network_now
 
             portas_alvo = {80: "HTTP", 443: "HTTPS", 3306: "MySQL", 5432: "Postgres", 3389: "RDP"}
             portas_abertas = []
@@ -868,7 +897,8 @@ def loop_telemetria():
             dados_sensores["interface"] = interface_rede; dados_sensores["rede_cidr"] = rede.get("cidr", ""); dados_sensores["mac_interface"] = rede.get("mac_interface", "")
 
             payload = {
-                "mac_id": mac, "nome_local": f"NOC Sensor ({os_name})",
+                "mac_id": mac, "agent_version": VERSAO_AGENTE, "nome_local": f"NOC Sensor ({os_name})",
+                **approximate_location,
                 "ip_local": meu_ip, "ip_gateway": gateway_ip,
                 "cpu_usage": cpu, "ram_usage": ram, "disco": disco,
                 "temp": cpu_temp, "gpu_temp": gpu_temp,
@@ -908,7 +938,7 @@ def loop_telemetria():
                     elif comando == "scan_loop": 
                         threading.Thread(target=executar_scan_loop, args=(mac, URL_CENTRAL, gateway_ip), daemon=True).start()
                     elif comando and comando.startswith("wol:"): 
-                        mac_pc_desligado = comando.split(":")[1]
+                        mac_pc_desligado = comando.split(":", 1)[1]
                         acordar_pc(mac_pc_desligado)
                     elif comando == "top_processos":
                     
@@ -1050,26 +1080,26 @@ def loop_watchdog_local():
                 
                 try:
                     if IS_WIN:
-                        out = subprocess.check_output(f'sc query "{nome_srv}"', shell=True, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL)
+                        out = subprocess.check_output(['sc', 'query', nome_srv], shell=False, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL)
                         if "RUNNING" in out: status_atual = 'ONLINE'
                     else:
-                        out = subprocess.check_output(f'systemctl is-active "{nome_srv}"', shell=True, universal_newlines=True, stderr=subprocess.DEVNULL)
-                        if "active" in out.strip().lower(): status_atual = 'ONLINE'
+                        out = subprocess.check_output(['systemctl', 'is-active', nome_srv], shell=False, universal_newlines=True, stderr=subprocess.DEVNULL)
+                        if out.strip().lower() == "active": status_atual = 'ONLINE'
                 except: pass
 
                 if status_atual == 'OFFLINE':
                     try:
                         if IS_WIN:
-                            subprocess.call(f'net start "{nome_srv}"', shell=True, creationflags=C_FLAGS, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                            subprocess.call(['net', 'start', nome_srv], shell=False, creationflags=C_FLAGS, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         else:
                             executar_admin_linux("start-service", nome_srv)
                         time.sleep(2)
                         if IS_WIN:
-                            out = subprocess.check_output(f'sc query "{nome_srv}"', shell=True, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL)
+                            out = subprocess.check_output(['sc', 'query', nome_srv], shell=False, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL)
                             if "RUNNING" in out: status_atual = 'ONLINE (Recuperado)'
                         else:
-                            out = subprocess.check_output(f'systemctl is-active "{nome_srv}"', shell=True, universal_newlines=True, stderr=subprocess.DEVNULL)
-                            if "active" in out.strip().lower(): status_atual = 'ONLINE (Recuperado)'
+                            out = subprocess.check_output(['systemctl', 'is-active', nome_srv], shell=False, universal_newlines=True, stderr=subprocess.DEVNULL)
+                            if out.strip().lower() == "active": status_atual = 'ONLINE (Recuperado)'
                     except: pass
 
                 cache_alvos['SRV_'+nome_srv] = {'status': status_atual}
