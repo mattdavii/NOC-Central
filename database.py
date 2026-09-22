@@ -110,7 +110,10 @@ def init_db():
             cpu_usage REAL, ram_usage REAL, temp REAL, status TEXT,
             lat REAL, lon REAL, ping_gateway REAL, ping_global TEXT,
             ip_gateway TEXT, last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            so_nome TEXT, so_versao TEXT, so_arquitetura TEXT
+            so_nome TEXT, so_versao TEXT, so_arquitetura TEXT,
+            interface_nome TEXT, interface_mac TEXT, rede_mascara TEXT,
+            rede_cidr TEXT, link_speed_mbps REAL, interface_up BOOLEAN,
+            scan_rede TEXT, scan_limitado BOOLEAN
         )
         """
     )
@@ -172,6 +175,14 @@ def init_db():
     _safe_execute(conn, "ALTER TABLE sensores ADD COLUMN so_nome TEXT")
     _safe_execute(conn, "ALTER TABLE sensores ADD COLUMN so_versao TEXT")
     _safe_execute(conn, "ALTER TABLE sensores ADD COLUMN so_arquitetura TEXT")
+    _safe_execute(conn, "ALTER TABLE sensores ADD COLUMN interface_nome TEXT")
+    _safe_execute(conn, "ALTER TABLE sensores ADD COLUMN interface_mac TEXT")
+    _safe_execute(conn, "ALTER TABLE sensores ADD COLUMN rede_mascara TEXT")
+    _safe_execute(conn, "ALTER TABLE sensores ADD COLUMN rede_cidr TEXT")
+    _safe_execute(conn, "ALTER TABLE sensores ADD COLUMN link_speed_mbps REAL")
+    _safe_execute(conn, "ALTER TABLE sensores ADD COLUMN interface_up BOOLEAN")
+    _safe_execute(conn, "ALTER TABLE sensores ADD COLUMN scan_rede TEXT")
+    _safe_execute(conn, "ALTER TABLE sensores ADD COLUMN scan_limitado BOOLEAN")
 
     # Índices para as consultas mais frequentes do dashboard e histórico.
     _safe_execute(
