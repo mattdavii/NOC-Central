@@ -195,18 +195,30 @@
                     <span id="status-local" class="status-pill pill-ok">ESTÁVEL</span>
                 </div>
                 <div class="data-row">
+                    <span><i class="fa-solid fa-ethernet" style="color:var(--blue); width: 20px;"></i> Interface:</span>
+                    <span id="rede-interface" style="font-family:'JetBrains Mono'; font-size:0.78em;">--</span>
+                </div>
+                <div class="data-row">
+                    <span><i class="fa-solid fa-diagram-project" style="color:var(--purple); width: 20px;"></i> Rede / CIDR:</span>
+                    <span id="rede-cidr" style="font-family:'JetBrains Mono'; font-size:0.78em;">--</span>
+                </div>
+                <div class="data-row">
+                    <span><i class="fa-solid fa-link" style="color:var(--yellow); width: 20px;"></i> Link do Sensor:</span>
+                    <span id="rede-link" style="font-family:'JetBrains Mono'; font-size:0.78em;">--</span>
+                </div>
+                <div class="data-row">
                     <span><i class="fa-solid fa-globe" style="color:var(--blue); width: 20px;"></i> Internet (WAN):</span> 
                     <span id="status-wan" class="status-pill pill-ok">ONLINE</span>
                 </div>
                 <div class="data-row" style="margin-top: 15px;">
-                    <span><i class="fa-solid fa-arrow-right-arrow-left" style="color:var(--yellow); width: 20px;"></i> Traf. Tempo Real:</span> 
+                    <span><i class="fa-solid fa-arrow-right-arrow-left" style="color:var(--yellow); width: 20px;"></i> Tráfego do Sensor:</span> 
                     <span style="font-family: 'JetBrains Mono'; font-size: 0.85em;">
                         <i class="fa-solid fa-arrow-down" style="color:var(--green)"></i> <span id="net-down-live">0.0</span> Mb &nbsp;
                         <i class="fa-solid fa-arrow-up" style="color:var(--red)"></i> <span id="net-up-live">0.0</span> Mb
                     </span>
                 </div>
                 <div class="data-row">
-                    <span><i class="fa-solid fa-door-open" style="color:var(--purple); width: 20px;"></i> Portas Abertas:</span> 
+                    <span><i class="fa-solid fa-door-open" style="color:var(--purple); width: 20px;"></i> Portas do Sensor:</span> 
                     <span id="portas-abertas" style="font-family: 'JetBrains Mono'; font-size: 0.75em; color: var(--blue);">Analisando...</span>
                 </div>
                 <div style="margin-top: auto; background: rgba(0,0,0,0.3); padding: 18px; border-radius: 8px; text-align: center; border: 1px solid var(--bg-input);">
@@ -235,7 +247,7 @@
                     </button>
                     
                     <button class="btn-acao" onclick="dispararComandoRemoto('scan_loop')" style="background: rgba(243,139,168,0.15); color: var(--red); border: 1px dashed var(--red);">
-                        <i class="fa-solid fa-hurricane"></i> Scan de Loop L2
+                        <i class="fa-solid fa-wave-square"></i> Analisar Tráfego L2
                     </button>
 
                     <button class="btn-acao" onclick="abrirModalRelatorio()" style="background: rgba(203,166,247,0.15); color: var(--purple); border: 1px solid var(--purple);">
@@ -639,6 +651,26 @@
                 if(document.getElementById('net-up-live')) document.getElementById('net-up-live').innerText = (data.net_up || 0).toFixed(1);
                 if(document.getElementById('portas-abertas')) document.getElementById('portas-abertas').innerText = data.portas || 'Nenhuma (Seguro)';
 
+                const ifaceEl = document.getElementById('rede-interface');
+                if (ifaceEl) {
+                    const iface = data.interface_nome || 'Não informada';
+                    const macIface = data.interface_mac ? ' • ' + data.interface_mac : '';
+                    ifaceEl.innerText = iface + macIface;
+                }
+                const cidrEl = document.getElementById('rede-cidr');
+                if (cidrEl) {
+                    let cidrTxt = data.rede_cidr || 'Não informado';
+                    if (data.scan_limitado && data.scan_rede) cidrTxt += ' • scan: ' + data.scan_rede;
+                    cidrEl.innerText = cidrTxt;
+                    cidrEl.title = data.scan_limitado ? 'A rede real é maior; a descoberta ativa foi limitada por segurança.' : 'CIDR detectado na interface ativa.';
+                }
+                const linkEl = document.getElementById('rede-link');
+                if (linkEl) {
+                    const speed = Number(data.link_speed_mbps || 0);
+                    const estado = data.interface_up === false ? 'DOWN' : 'UP';
+                    linkEl.innerText = (speed > 0 ? speed + ' Mbps' : 'Velocidade não informada') + ' • ' + estado;
+                }
+
                 if(data.ip_sensor) { document.getElementById('access-ip').innerText = data.ip_sensor; globalSensorIP = data.ip_sensor; }
                 if(data.ip_gateway) globalGatewayIP = data.ip_gateway;
 
@@ -647,12 +679,15 @@
                 const sLocal = document.getElementById('status-local');
                 if (pLocalEl) pLocalEl.innerText = pLocal + ' ms';
                 
-                if(pLocal === 0 || pLocal > 50) { 
-                    if(pLocalEl) pLocalEl.style.color = 'var(--red)'; 
-                    if(sLocal) { sLocal.innerText = "FALHA"; sLocal.className = "status-pill pill-fail"; } 
-                } else { 
-                    if(pLocalEl) pLocalEl.style.color = 'var(--green)'; 
-                    if(sLocal) { sLocal.innerText = "ESTÁVEL"; sLocal.className = "status-pill pill-ok"; } 
+                if(pLocal === 0) {
+                    if(pLocalEl) { pLocalEl.style.color = 'var(--yellow)'; pLocalEl.innerText = 'Sem resposta ICMP'; }
+                    if(sLocal) { sLocal.innerText = "SEM ICMP"; sLocal.className = "status-pill"; sLocal.style.color = 'var(--yellow)'; sLocal.style.borderColor = 'var(--yellow)'; }
+                } else if(pLocal > 50) {
+                    if(pLocalEl) pLocalEl.style.color = 'var(--yellow)';
+                    if(sLocal) { sLocal.innerText = "DEGRADADA"; sLocal.className = "status-pill"; sLocal.style.color = 'var(--yellow)'; sLocal.style.borderColor = 'var(--yellow)'; }
+                } else {
+                    if(pLocalEl) pLocalEl.style.color = 'var(--green)';
+                    if(sLocal) { sLocal.innerText = "ESTÁVEL"; sLocal.className = "status-pill pill-ok"; sLocal.style.color = ''; sLocal.style.borderColor = ''; }
                 }
 
                 let internetOk = false;
@@ -797,14 +832,17 @@
                     if(d.ip === globalGatewayIP || d.ip === globalSensorIP) return;
                     
                     let nome = d.nome_custom || d.fabricante;
-                    let cor_fundo = d.status === 'online' ? '#a6e3a1' : '#f38ba8';
-                    let status_txt = d.status === 'online' ? 'ON' : 'OFF';
+                    let cor_fundo = '#f38ba8';
+                    let status_txt = 'OFF';
+                    if (d.status === 'online') { cor_fundo = '#a6e3a1'; status_txt = 'ON'; }
+                    else if (d.status === 'sem_icmp') { cor_fundo = '#f9e2af'; status_txt = 'SEM ICMP'; }
+                    else if (d.status === 'desconhecido') { cor_fundo = '#9399b2'; status_txt = '?'; }
 
                     nodes.add({ 
                         id: d.ip, 
                         rawName: nome,
                         label: `💻 ${nome} [${status_txt}]\n${d.ip}`, 
-                        title: `MAC: ${d.mac}\nClique para ver Opções`, 
+                        title: `MAC: ${d.mac}\nLatência ICMP: ${d.latencia || 0} ms\nVizinho: ${d.neighbor_state || 'N/D'}\nClique para ver Opções`, 
                         mac: d.mac, 
                         shape: 'box',
                         color: { background: cor_fundo, border: cor_fundo },
