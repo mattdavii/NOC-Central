@@ -1,18 +1,50 @@
 name: CI
-
 on:
   push:
     branches: ["main", "work/**"]
   pull_request:
-
+  workflow_dispatch:
 jobs:
-  python-syntax:
+  test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        database: [sqlite, postgres]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: noc_test
+          POSTGRES_PASSWORD: noc_test
+          POSTGRES_DB: noc_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: ${{ matrix.database == 'postgres' && 'postgresql://noc_test:noc_test@localhost:5432/noc_test' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Compile Python sources
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-agente.txt pytest
+      - name: Compile and run regression tests
         run: |
-          python -m py_compile app.py database.py agente_v2.py sensor_simulador.py
+          python -m py_compile app.py database.py notifications.py location.py version.py agente_v2.py sensor_simulador.py
+          python -m pytest -q
+      - name: Production startup smoke test
+        env:
+          ADMIN_SENHA_INICIAL: test-bootstrap-only
+          DISABLE_BACKGROUND_GUARDIAN: "1"
+          FLASK_SECRET_KEY: test-only
+        run: |
+          gunicorn app:app --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --bind 127.0.0.1:8000 --no-control-socket &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID"' EXIT
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8000/healthz > /tmp/health.json; then break; fi
+            sleep 1
+          done
+          python -c "import json; assert json.load(open('/tmp/health.json'))['central_version'] == '2.2.0-rc1'"
