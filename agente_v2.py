@@ -1305,8 +1305,10 @@ def index():
             <div class="card card-net">
                 <h3><span><i class="fa-solid fa-shield-heart"></i> Integridade da Rede</span></h3>
                 <div class="data-row"><span><i class="fa-solid fa-network-wired" style="color:var(--green)"></i> Gateway (<span id="gw-ip">--</span>):</span> <span id="status-local" class="pill-ok">ESTÁVEL</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-ethernet" style="color:var(--blue)"></i> Interface:</span> <span id="iface-local" style="font-family:'JetBrains Mono'; font-size:0.75em;">--</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-diagram-project" style="color:var(--purple)"></i> Rede / CIDR:</span> <span id="cidr-local" style="font-family:'JetBrains Mono'; font-size:0.75em;">--</span></div>
                 <div class="data-row"><span><i class="fa-solid fa-globe" style="color:var(--blue)"></i> Internet (WAN):</span> <span id="status-wan" class="pill-ok">ONLINE</span></div>
-                <div class="data-row"><span><i class="fa-solid fa-door-open" style="color:var(--purple)"></i> Portas:</span> <span id="portas-text" style="font-family: 'JetBrains Mono'; font-size: 0.75em; color: var(--text-muted);">--</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-door-open" style="color:var(--purple)"></i> Portas do Sensor:</span> <span id="portas-text" style="font-family: 'JetBrains Mono'; font-size: 0.75em; color: var(--text-muted);">--</span></div>
                 <div style="margin-top: auto; background: rgba(0,0,0,0.3); padding: 18px; border-radius: 8px; text-align: center; border: 1px solid var(--bg-input);">
                     <div style="font-size: 0.75em; color: var(--text-muted);">Latência Sensor ➔ Gateway</div>
                     <div id="ping-local" class="highlight" style="color: var(--green);">0 ms</div>
@@ -1314,14 +1316,14 @@ def index():
             </div>
 
             <div class="card card-speed">
-                <h3><span><i class="fa-solid fa-arrow-right-arrow-left"></i> Tráfego em Tempo Real</span></h3>
+                <h3><span><i class="fa-solid fa-arrow-right-arrow-left"></i> Tráfego da Interface do Sensor</span></h3>
                 <div style="flex-grow: 1; display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-top: 10px;">
                     <div class="speed-box" style="flex: 1;">
-                        <div style="font-size: 0.75em; color: var(--text-muted); letter-spacing: 1px;"><i class="fa-solid fa-arrow-down" style="color:var(--green)"></i> DOWNLOAD</div>
+                        <div style="font-size: 0.75em; color: var(--text-muted); letter-spacing: 1px;"><i class="fa-solid fa-arrow-down" style="color:var(--green)"></i> RX</div>
                         <div id="live-down" class="speed-val" style="color: var(--green); text-shadow: 0 0 15px rgba(166,227,161,0.4);">0.0</div><span style="font-size: 0.6em; color: var(--text-muted);">Mbps</span>
                     </div>
                     <div class="speed-box" style="flex: 1;">
-                        <div style="font-size: 0.75em; color: var(--text-muted); letter-spacing: 1px;"><i class="fa-solid fa-arrow-up" style="color:var(--red)"></i> UPLOAD</div>
+                        <div style="font-size: 0.75em; color: var(--text-muted); letter-spacing: 1px;"><i class="fa-solid fa-arrow-up" style="color:var(--red)"></i> TX</div>
                         <div id="live-up" class="speed-val" style="color: var(--red); text-shadow: 0 0 15px rgba(243,139,168,0.4);">0.0</div><span style="font-size: 0.6em; color: var(--text-muted);">Mbps</span>
                     </div>
                 </div>
@@ -1437,12 +1439,15 @@ def index():
                     if(document.getElementById('portas-text')) document.getElementById('portas-text').innerText = data.portas || 'Nenhuma';
                     if(document.getElementById('live-down')) document.getElementById('live-down').innerText = data.net_down || '0.0';
                     if(document.getElementById('live-up')) document.getElementById('live-up').innerText = data.net_up || '0.0';
+                    if(document.getElementById('iface-local')) document.getElementById('iface-local').innerText = (data.interface || 'N/D') + (data.mac_interface ? ' • ' + data.mac_interface : '');
+                    if(document.getElementById('cidr-local')) document.getElementById('cidr-local').innerText = data.rede_cidr || 'N/D';
 
                     document.getElementById('gw-ip').innerText = data.gateway_ip;
                     const pl = data.ping_gateway;
-                    document.getElementById('ping-local').innerText = pl + ' ms';
-                    if(pl === 0 || pl > 100) { document.getElementById('status-local').className = "pill-fail"; document.getElementById('status-local').innerText = "FALHA"; }
-                    else { document.getElementById('status-local').className = "pill-ok"; document.getElementById('status-local').innerText = "ESTÁVEL"; }
+                    document.getElementById('ping-local').innerText = pl > 0 ? pl + ' ms' : 'Sem resposta ICMP';
+                    if(pl === 0) { document.getElementById('status-local').className = ""; document.getElementById('status-local').style.color = 'var(--yellow)'; document.getElementById('status-local').innerText = "SEM ICMP"; }
+                    else if(pl > 50) { document.getElementById('status-local').className = ""; document.getElementById('status-local').style.color = 'var(--yellow)'; document.getElementById('status-local').innerText = "DEGRADADA"; }
+                    else { document.getElementById('status-local').className = "pill-ok"; document.getElementById('status-local').style.color = ''; document.getElementById('status-local').innerText = "ESTÁVEL"; }
                     if(data.pings.Google === 0 && data.pings.Cloudflare === 0) { document.getElementById('status-wan').className = "pill-fail"; document.getElementById('status-wan').innerText = "OFFLINE"; }
                     else { document.getElementById('status-wan').className = "pill-ok"; document.getElementById('status-wan').innerText = "ONLINE"; }
                     document.getElementById('pg-google').innerText = data.pings.Google + ' ms'; document.getElementById('pg-cf').innerText = data.pings.Cloudflare + ' ms';
@@ -1488,7 +1493,9 @@ def index():
                     let oHtml = '';
                     data.topologia.forEach(t => {
                         if(t.ip === data.gateway_ip || t.ip === data.meu_ip) return;
-                        oHtml += `<div class="t-card"><div class="t-ip">${t.ip}</div><div class="t-mac">${t.mac}</div><div class="t-name">${t.nome} <button onclick="renomearTopo('${t.mac}','${t.nome}')" style="background:none; border:none; color:var(--yellow); cursor:pointer;" title="Renomear"><i class="fa-solid fa-pen-to-square"></i></button> <button onclick="monitorarIP('${t.ip}', '${t.nome}')" style="background:none; border:none; color:var(--blue); cursor:pointer;" title="Adicionar ao Watchdog"><i class="fa-solid fa-eye"></i></button></div></div>`;
+                        const estadoTopo = t.status === 'online' ? 'ON' : (t.status === 'sem_icmp' ? 'SEM ICMP' : 'N/D');
+                        const corTopo = t.status === 'online' ? 'var(--green)' : (t.status === 'sem_icmp' ? 'var(--yellow)' : 'var(--text-muted)');
+                        oHtml += `<div class="t-card"><div class="t-ip">${t.ip}</div><div class="t-mac">${t.mac}</div><div style="font-size:0.7em;color:${corTopo};margin-bottom:5px;">${estadoTopo}${t.latencia ? ' • ' + t.latencia + ' ms' : ''}</div><div class="t-name">${t.nome} <button onclick="renomearTopo('${t.mac}','${t.nome}')" style="background:none; border:none; color:var(--yellow); cursor:pointer;" title="Renomear"><i class="fa-solid fa-pen-to-square"></i></button> <button onclick="monitorarIP('${t.ip}', '${t.nome}')" style="background:none; border:none; color:var(--blue); cursor:pointer;" title="Adicionar ao Watchdog"><i class="fa-solid fa-eye"></i></button></div></div>`;
                     });
                     document.getElementById('diag-gateway').innerHTML = gHtml; document.getElementById('diag-outros').innerHTML = oHtml;
 
