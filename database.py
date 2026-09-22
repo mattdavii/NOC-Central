@@ -109,7 +109,8 @@ def init_db():
             mac_id TEXT PRIMARY KEY, nome_local TEXT, ip_sensor TEXT,
             cpu_usage REAL, ram_usage REAL, temp REAL, status TEXT,
             lat REAL, lon REAL, ping_gateway REAL, ping_global TEXT,
-            ip_gateway TEXT, last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ip_gateway TEXT, last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            so_nome TEXT, so_versao TEXT, so_arquitetura TEXT
         )
         """
     )
@@ -168,6 +169,9 @@ def init_db():
     # Migrações compatíveis com bancos existentes.
     _safe_execute(conn, "ALTER TABLE clientes ADD COLUMN logo_url TEXT DEFAULT ''")
     _safe_execute(conn, "ALTER TABLE sensores ADD COLUMN cliente_nome TEXT DEFAULT 'Cliente Padrão'")
+    _safe_execute(conn, "ALTER TABLE sensores ADD COLUMN so_nome TEXT")
+    _safe_execute(conn, "ALTER TABLE sensores ADD COLUMN so_versao TEXT")
+    _safe_execute(conn, "ALTER TABLE sensores ADD COLUMN so_arquitetura TEXT")
 
     # Índices para as consultas mais frequentes do dashboard e histórico.
     _safe_execute(
