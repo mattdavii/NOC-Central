@@ -66,6 +66,39 @@ uwIDAQAB
 IS_WIN = platform.system().lower() == 'windows'
 C_FLAGS = subprocess.CREATE_NO_WINDOW if IS_WIN else 0
 
+
+def get_os_info():
+    """Retorna informações normalizadas do sistema operacional para a Central."""
+    sistema = platform.system() or "Desconhecido"
+    arquitetura = platform.machine() or "Desconhecida"
+    nome = sistema
+    versao = platform.release() or platform.version() or ""
+
+    if sistema == "Linux":
+        try:
+            release_info = platform.freedesktop_os_release()
+            nome = release_info.get("PRETTY_NAME") or release_info.get("NAME") or sistema
+            versao = release_info.get("VERSION_ID") or platform.release() or ""
+        except Exception:
+            nome = sistema
+            versao = platform.release() or platform.version() or ""
+    elif sistema == "Windows":
+        try:
+            release, version, _csd, _ptype = platform.win32_ver()
+            nome = f"Windows {release}".strip() if release else "Windows"
+            versao = version or platform.version() or ""
+        except Exception:
+            nome = "Windows"
+            versao = platform.version() or platform.release() or ""
+    elif sistema == "Darwin":
+        nome = "macOS"
+        versao = platform.mac_ver()[0] or platform.release() or ""
+
+    return {"nome": nome, "versao": versao, "arquitetura": arquitetura}
+
+
+SO_INFO = get_os_info()
+
 app = Flask(__name__)
 
 dados_sensores = { "cpu": 0, "ram": 0, "disco": 0, "temp": 0.0, "gpu_temp": 0.0, "net_down": 0, "net_up": 0, "portas": "", "meu_ip": "Detectando...", "gateway_ip": "Detectando...", "ping_gateway": 0, "pings": {"Google":0, "Cloudflare":0, "AWS":0, "Quad9":0}, "topologia": [], "logs": [], "custom_ips": [], "energia_ips": [] }
@@ -665,7 +698,7 @@ def loop_telemetria():
 
             dados_sensores["cpu"] = cpu; dados_sensores["ram"] = ram; dados_sensores["disco"] = disco; dados_sensores["temp"] = cpu_temp; dados_sensores["gpu_temp"] = gpu_temp; dados_sensores["net_down"] = net_down; dados_sensores["net_up"] = net_up; dados_sensores["portas"] = str_portas; dados_sensores["meu_ip"] = meu_ip; dados_sensores["gateway_ip"] = gateway_ip; dados_sensores["ping_gateway"] = ping_gw; dados_sensores["pings"] = pings; dados_sensores["topologia"] = dispositivos
 
-            payload = { "mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", "ip_local": meu_ip, "ip_gateway": gateway_ip, "cpu_usage": cpu, "ram_usage": ram, "disco": disco, "temp": cpu_temp, "gpu_temp": gpu_temp, "ping_gateway": ping_gw, "ping_global": json.dumps(pings), "net_up": net_up, "net_down": net_down, "portas": str_portas }
+            payload = { "mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", "ip_local": meu_ip, "ip_gateway": gateway_ip, "cpu_usage": cpu, "ram_usage": ram, "disco": disco, "temp": cpu_temp, "gpu_temp": gpu_temp, "ping_gateway": ping_gw, "ping_global": json.dumps(pings), "net_up": net_up, "net_down": net_down, "portas": str_portas, "so_nome": SO_INFO["nome"], "so_versao": SO_INFO["versao"], "so_arquitetura": SO_INFO["arquitetura"] }
             
             espera_remota = TELEMETRIA_INTERVALO
             try:
