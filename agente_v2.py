@@ -14,10 +14,19 @@ if sys.stdin is None:  sys.stdin = open(os.devnull, "r")
 import time, json, platform, uuid, sqlite3, socket, urllib.request, concurrent.futures
 from datetime import datetime
 from flask import Flask, request, Response, render_template_string, jsonify
-import pystray
-from PIL import Image, ImageDraw
 import speedtest 
 import jwt
+
+# A bandeja gráfica só existe no agente Windows. Importar pystray no Linux
+# headless/systemd tenta conectar ao X11 antes do agente iniciar e derruba o serviço.
+IS_WIN = platform.system().lower() == 'windows'
+if IS_WIN:
+    import pystray
+    from PIL import Image, ImageDraw
+else:
+    pystray = None
+    Image = None
+    ImageDraw = None
 
 # 🛡️ Fix de SSL do PyInstaller: aponta explicitamente pro bundle de certificados do certifi
 # (em vez de desligar a verificação, que abriria brecha pra MITM em toda chamada HTTPS do agente)
@@ -63,7 +72,6 @@ ZCz37+OAze6+j0iMi18ECCRG3dTpaXw9X5FxrJ9X0O/hm/RTYqOUTKisDLoohhux
 uwIDAQAB
 -----END PUBLIC KEY-----"""
 
-IS_WIN = platform.system().lower() == 'windows'
 C_FLAGS = subprocess.CREATE_NO_WINDOW if IS_WIN else 0
 
 
