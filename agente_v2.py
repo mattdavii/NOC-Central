@@ -77,7 +77,7 @@ def get_os_info():
     if sistema == "Linux":
         try:
             release_info = platform.freedesktop_os_release()
-            nome = release_info.get("PRETTY_NAME") or release_info.get("NAME") or sistema
+            nome = release_info.get("NAME") or release_info.get("PRETTY_NAME") or sistema
             versao = release_info.get("VERSION_ID") or platform.release() or ""
         except Exception:
             nome = sistema
