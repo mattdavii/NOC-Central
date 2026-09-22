@@ -119,6 +119,7 @@
             <div style="font-size: 1.3em; font-weight: bold; color: var(--blue); display: flex; align-items: center;">
                 <i class="fa-solid fa-server" style="margin-right: 10px;"></i> {{ sensor.nome_local }}
                 <span style="font-size: 0.6em; color: var(--text-muted); margin-left: 12px; font-weight: normal; font-family: 'JetBrains Mono', monospace; border-left: 1px solid var(--border); padding-left: 12px;">MAC: {{ sensor.mac_id }}</span>
+                <span id="sensor-os" style="font-size: 0.6em; color: var(--text-muted); margin-left: 12px; font-weight: normal; font-family: 'JetBrains Mono', monospace; border-left: 1px solid var(--border); padding-left: 12px;" title="Arquitetura: {{ sensor.so_arquitetura or 'Não informada' }}">SO: {{ sensor.so_nome or 'Não informado' }}{% if sensor.so_versao %} {{ sensor.so_versao }}{% endif %}</span>
             </div>
         </div>
         <div style="font-size: 0.9em; color: var(--text-muted);"><i class="fa-solid fa-wifi"></i> Acesso Local: <strong style="color: var(--blue);" id="access-ip">--</strong>:10000</div>
@@ -616,6 +617,13 @@
                     }
                 }
                 
+                const soEl = document.getElementById('sensor-os');
+                if (soEl) {
+                    const soTexto = (data.so_nome || 'Não informado') + (data.so_versao ? ' ' + data.so_versao : '');
+                    soEl.innerText = 'SO: ' + soTexto;
+                    soEl.title = 'Arquitetura: ' + (data.so_arquitetura || 'Não informada');
+                }
+
                 document.getElementById('cpu-text').innerText = data.cpu_usage + '%';
                 document.getElementById('cpu-fill').style.width = data.cpu_usage + '%';
                 document.getElementById('ram-text').innerText = data.ram_usage + '%';
