@@ -1,19 +1,5 @@
-const CACHE_NAME = 'noc-cache-v1';
-
-// Opcional: Arquivos para manter em cache
-const urlsToCache = ['/'];
-
-self.addEventListener('install', event => {
-    event.waitUntil(
-        caches.open(CACHE_NAME).then(cache => {
-            return cache.addAll(urlsToCache);
-        })
-    );
-});
-
-// Busca na rede primeiro, se falhar tenta o cache (ideal para dashboards ao vivo)
-self.addEventListener('fetch', event => {
-    event.respondWith(
-        fetch(event.request).catch(() => caches.match(event.request))
-    );
-});
+// Operational data must never be replayed from an offline cache as live state.
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', event => event.waitUntil(
+    caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('noc-cache-')).map(key => caches.delete(key)))).then(() => self.clients.claim())
+));
