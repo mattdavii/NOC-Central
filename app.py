@@ -197,7 +197,9 @@ try:
         "disco REAL", "net_up REAL", "net_down REAL", "portas TEXT", 
         "em_manutencao INTEGER DEFAULT 0", "cliente_id INTEGER", "gpu_temp REAL",
         "memoria_alerta TEXT DEFAULT 'ONLINE'", "so_nome TEXT", "so_versao TEXT",
-        "so_arquitetura TEXT"
+        "so_arquitetura TEXT", "interface_nome TEXT", "interface_mac TEXT",
+        "rede_mascara TEXT", "rede_cidr TEXT", "link_speed_mbps REAL",
+        "interface_up BOOLEAN", "scan_rede TEXT", "scan_limitado BOOLEAN"
     ]
     for col in colunas_sensores:
         try: conn.execute(f"ALTER TABLE sensores ADD COLUMN {col}"); conn.commit()
@@ -521,26 +523,44 @@ def report_data():
                 ip_sensor = ?, cpu_usage = ?, ram_usage = ?, temp = ?, gpu_temp = ?,
                 status = 'online', memoria_alerta = 'ONLINE', ping_gateway = ?, ping_global = ?,
                 ip_gateway = ?, last_seen = CURRENT_TIMESTAMP,
-                disco = ?, net_up = ?, net_down = ?, portas = ?,
-                so_nome = ?, so_versao = ?, so_arquitetura = ?
+                disco = ?, net_up = ?, net_down = ?, portas = ?
                 WHERE mac_id = ?''', 
                 (ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
                  data.get('temp'), data.get('gpu_temp'), data.get('ping_gateway'), 
                  data.get('ping_global'), data.get('ip_gateway'),
-                 data.get('disco'), data.get('net_up'), data.get('net_down'), data.get('portas'),
-                 data.get('so_nome'), data.get('so_versao'), data.get('so_arquitetura'),
+                 data.get('disco'), data.get('net_up'), data.get('net_down'), data.get('portas'), 
                  mac))
             conn.commit()
         else:
             db_execute(conn, '''INSERT INTO sensores 
-                (mac_id, nome_local, ip_sensor, cpu_usage, ram_usage, temp, gpu_temp, status, memoria_alerta, lat, lon, ping_gateway, ping_global, ip_gateway, last_seen, alerta_reconhecido, em_manutencao, so_nome, so_versao, so_arquitetura) 
-                VALUES (?, 'Novo Sensor', ?, ?, ?, ?, ?, 'online', 'ONLINE', -14.235, -51.925, ?, ?, ?, CURRENT_TIMESTAMP, 1, 0, ?, ?, ?)''', 
+                (mac_id, nome_local, ip_sensor, cpu_usage, ram_usage, temp, gpu_temp, status, memoria_alerta, lat, lon, ping_gateway, ping_global, ip_gateway, last_seen, alerta_reconhecido, em_manutencao) 
+                VALUES (?, 'Novo Sensor', ?, ?, ?, ?, ?, 'online', 'ONLINE', -14.235, -51.925, ?, ?, ?, CURRENT_TIMESTAMP, 1, 0)''', 
                 (mac, ip_display, data.get('cpu_usage'), data.get('ram_usage'), 
                  data.get('temp'), data.get('gpu_temp'), data.get('ping_gateway'), 
-                 data.get('ping_global'), data.get('ip_gateway'), data.get('so_nome'),
-                 data.get('so_versao'), data.get('so_arquitetura')))
+                 data.get('ping_global'), data.get('ip_gateway')))
             conn.commit()
             enviar_telegram(f"🎉 <b>NOVO SENSOR REGISTRADO</b>\n\n🖥️ <b>MAC:</b> {html.escape(str(mac))}\n🌐 <b>IP:</b> {html.escape(str(ip_display))}")
+
+        # Metadados de plataforma/rede são opcionais para manter compatibilidade
+        # com agentes antigos. COALESCE preserva o último valor conhecido.
+        db_execute(conn, '''UPDATE sensores SET
+            so_nome = COALESCE(?, so_nome),
+            so_versao = COALESCE(?, so_versao),
+            so_arquitetura = COALESCE(?, so_arquitetura),
+            interface_nome = COALESCE(?, interface_nome),
+            interface_mac = COALESCE(?, interface_mac),
+            rede_mascara = COALESCE(?, rede_mascara),
+            rede_cidr = COALESCE(?, rede_cidr),
+            link_speed_mbps = COALESCE(?, link_speed_mbps),
+            interface_up = COALESCE(?, interface_up),
+            scan_rede = COALESCE(?, scan_rede),
+            scan_limitado = COALESCE(?, scan_limitado)
+            WHERE mac_id = ?''',
+            (data.get('so_nome'), data.get('so_versao'), data.get('so_arquitetura'),
+             data.get('interface_nome'), data.get('interface_mac'), data.get('rede_mascara'),
+             data.get('rede_cidr'), data.get('link_speed_mbps'), data.get('interface_up'),
+             data.get('scan_rede'), data.get('scan_limitado'), mac))
+        conn.commit()
 
         try:
             # Estado atual continua sendo atualizado a cada batimento, mas o histórico
@@ -772,6 +792,10 @@ def atualizar_dispositivos():
     
     try: conn.execute("ALTER TABLE dispositivos ADD COLUMN status TEXT DEFAULT 'offline'"); conn.commit()
     except: pass
+    try: conn.execute("ALTER TABLE dispositivos ADD COLUMN latencia REAL"); conn.commit()
+    except: pass
+    try: conn.execute("ALTER TABLE dispositivos ADD COLUMN neighbor_state TEXT"); conn.commit()
+    except: pass
 
     try: conn.execute("CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)"); conn.commit()
     except: pass
@@ -782,8 +806,13 @@ def atualizar_dispositivos():
     for disp in data.get('lista', []):
         nome = nomes_salvos.get(disp['mac'])
         if not nome: nome = "Gateway / Roteador" if disp['ip'] == ip_gw else "Desconhecido"
-        status_disp = disp.get('status', 'offline')
-        db_execute(conn, "INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, nome_custom, status) VALUES (?, ?, ?, ?, ?, ?)", (sensor_mac, disp['ip'], disp['mac'], disp['fabricante'], nome, status_disp))
+        status_disp = disp.get('status', 'desconhecido')
+        db_execute(
+            conn,
+            "INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, nome_custom, status, latencia, neighbor_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (sensor_mac, disp['ip'], disp['mac'], disp.get('fabricante', 'Desconhecido'), nome,
+             status_disp, disp.get('latencia'), disp.get('neighbor_state'))
+        )
     conn.commit()
     conn.close()
     return jsonify({"status": "OK"})
@@ -839,7 +868,7 @@ def api_mapa_sensores():
     verificar_quedas_global(conn) 
 
     try:
-        query_base = "SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, s.ram_usage, s.net_down, s.net_up, s.alerta_reconhecido, s.em_manutencao, s.ping_global, s.so_nome, s.so_versao, s.so_arquitetura, c.nome as cliente_nome FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id"
+        query_base = "SELECT s.mac_id, s.nome_local, s.status, s.lat, s.lon, s.cpu_usage, s.ram_usage, s.net_down, s.net_up, s.alerta_reconhecido, s.em_manutencao, s.ping_global, s.so_nome, s.so_versao, s.so_arquitetura, s.interface_nome, s.interface_mac, s.rede_cidr, s.link_speed_mbps, s.scan_rede, s.scan_limitado, c.nome as cliente_nome FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id"
         if role in ['Administrador Master', 'Operador Master']: sensores = conn.execute(query_base).fetchall()
         elif role == 'Cliente': sensores = db_execute(conn, query_base + " WHERE s.cliente_id = ?", (user_id,)).fetchall()
         else:
