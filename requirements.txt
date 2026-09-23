@@ -6,3 +6,4 @@ gunicorn==26.2.0
 gevent==25.9.1
 gevent-websocket==0.10.1
 PyJWT[crypto]==2.7.0
+packaging==26.3
