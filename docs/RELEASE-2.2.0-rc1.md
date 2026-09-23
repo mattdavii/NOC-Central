@@ -44,3 +44,9 @@ Telegram não oferece idempotência de sendMessage: timeout após envio ou queda
 Modo legado sem chave deixa endpoints de ingestão sem autenticação; é risco conhecido mantido por compatibilidade, não habilitar a chave sem rollout. REST usa chave compartilhada quando ativada, não identidade individual por sensor. O agente local e a aplicação ainda possuem rotinas legadas com tratamento amplo de erros; revisão incremental não equivale a reescrita ou garantia de ausência de vulnerabilidades. CDN/mapa depende de serviços externos. Validar Windows em máquina física e Linux no Mini PC, além de testes simulados.
 
 Referências: [Telegram Bot API](https://core.telegram.org/bots/api#making-requests), [Geolocation API](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation/getCurrentPosition).
+
+## Evidências da preparação
+
+33 testes passaram localmente e nos dois bancos do [CI da branch](https://github.com/mattdavii/NOC-Central/actions/runs/35801166230), incluindo o startup Gunicorn. Chromium desktop e mobile foram verificados sem erros de JavaScript e sem overflow horizontal. Captura simulada de geolocalização e persistência de precisão funcionaram. A página de usuários exibiu o diagnóstico de Telegram não configurado no ambiente de teste.
+
+O workflow publica a tag imutável `v2.2.0-rc1` somente após os testes da main passarem. Se a tag já existir, não a move. A validação do deploy real e a entrega Telegram com as credenciais de produção são etapas externas aos testes automatizados; não são inferidas a partir do CI.

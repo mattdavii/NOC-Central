@@ -48,3 +48,24 @@ jobs:
             sleep 1
           done
           python -c "import json; assert json.load(open('/tmp/health.json'))['central_version'] == '2.2.0-rc1'"
+  tag-rc1:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Publish immutable release candidate tag after tests
+        run: |
+          if git show-ref --verify --quiet refs/tags/v2.2.0-rc1; then
+            echo 'v2.2.0-rc1 already exists; never moving a published version.'
+            exit 0
+          fi
+          python -c "from version import CENTRAL_VERSION; assert CENTRAL_VERSION == '2.2.0-rc1'"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a v2.2.0-rc1 -m 'NOC Central 2.2.0-rc1' "$GITHUB_SHA"
+          git push origin refs/tags/v2.2.0-rc1
