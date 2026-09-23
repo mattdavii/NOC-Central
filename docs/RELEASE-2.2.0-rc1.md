@@ -50,3 +50,9 @@ Referências: [Telegram Bot API](https://core.telegram.org/bots/api#making-reque
 33 testes passaram localmente e nos dois bancos do [CI da branch](https://github.com/mattdavii/NOC-Central/actions/runs/35801166230), incluindo o startup Gunicorn. Chromium desktop e mobile foram verificados sem erros de JavaScript e sem overflow horizontal. Captura simulada de geolocalização e persistência de precisão funcionaram. A página de usuários exibiu o diagnóstico de Telegram não configurado no ambiente de teste.
 
 O workflow publica a tag imutável `v2.2.0-rc1` somente após os testes da main passarem. Se a tag já existir, não a move. A validação do deploy real e a entrega Telegram com as credenciais de produção são etapas externas aos testes automatizados; não são inferidas a partir do CI.
+
+## Correção de inicialização no Railway
+
+O primeiro deploy de `612fbf7` falhou porque o worker gevent do Gunicorn importava `packaging`, ausente na instalação de produção. A dependência agora é explícita. O smoke test do CI cria um ambiente isolado contendo somente `requirements.txt`, evitando que dependências do pytest ocultem falhas de produção. Validação local: instalação limpa, `pip check`, inicialização real do Gunicorn e `/healthz` retornando `2.2.0-rc1`.
+
+A tag publicada `v2.2.0-rc1` permanece imutável em `612fbf7`; a Central deve ser implantada pela `main` com esta correção posterior. O agente Linux da tag não é afetado. Não há nova migração nem alteração de autenticação nesta correção.

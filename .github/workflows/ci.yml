@@ -40,7 +40,10 @@ jobs:
           DISABLE_BACKGROUND_GUARDIAN: "1"
           FLASK_SECRET_KEY: test-only
         run: |
-          gunicorn app:app --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --bind 127.0.0.1:8000 --no-control-socket &
+          python -m venv "$RUNNER_TEMP/noc-runtime"
+          "$RUNNER_TEMP/noc-runtime/bin/pip" install -r requirements.txt
+          "$RUNNER_TEMP/noc-runtime/bin/pip" check
+          "$RUNNER_TEMP/noc-runtime/bin/gunicorn" app:app --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --bind 127.0.0.1:8000 --no-control-socket &
           SERVER_PID=$!
           trap 'kill "$SERVER_PID"' EXIT
           for attempt in $(seq 1 20); do
