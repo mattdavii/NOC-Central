@@ -4,6 +4,8 @@ import threading
 import subprocess
 import re 
 import struct
+import itertools
+import logging
 
 # 🛡️ TRUQUE ANTI-CRASH DO PYINSTALLER (--noconsole)
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")
@@ -11,13 +13,22 @@ if sys.stderr is None: sys.stderr = open(os.devnull, "w")
 if sys.stdin is None:  sys.stdin = open(os.devnull, "r")
 
 # 📦 IMPORTS LIMPOS E ORGANIZADOS
-import time, json, platform, uuid, sqlite3, socket, urllib.request, concurrent.futures
+import time, json, platform, uuid, sqlite3, socket, urllib.request, concurrent.futures, ipaddress
 from datetime import datetime
 from flask import Flask, request, Response, render_template_string, jsonify
-import pystray
-from PIL import Image, ImageDraw
 import speedtest 
 import jwt
+
+# A bandeja gráfica só existe no agente Windows. Importar pystray no Linux
+# headless/systemd tenta conectar ao X11 antes do agente iniciar e derruba o serviço.
+IS_WIN = platform.system().lower() == 'windows'
+if IS_WIN:
+    import pystray
+    from PIL import Image, ImageDraw
+else:
+    pystray = None
+    Image = None
+    ImageDraw = None
 
 # 🛡️ Fix de SSL do PyInstaller: aponta explicitamente pro bundle de certificados do certifi
 # (em vez de desligar a verificação, que abriria brecha pra MITM em toda chamada HTTPS do agente)
@@ -33,9 +44,25 @@ except ImportError: psutil = None
 # ==========================================
 # ⚙️ CONFIGURAÇÃO DO AGENTE
 # ==========================================
-URL_CENTRAL = "https://noc-central.up.railway.app/api/v2/report_data"
-PORTA_LOCAL = 10000
-VERSAO_AGENTE = "2.1.0"
+URL_CENTRAL = os.environ.get(
+    "NOC_CENTRAL_URL",
+    "https://noc-central.up.railway.app/api/v2/report_data",
+).strip()
+PORTA_LOCAL = int(os.environ.get("NOC_LOCAL_PORT", "10000"))
+VERSAO_AGENTE = "2.2.0-rc1"
+
+TELEMETRIA_INTERVALO = max(3, int(os.environ.get("NOC_TELEMETRIA_INTERVALO", "5")))
+WATCHDOG_INTERVALO = max(10, int(os.environ.get("NOC_WATCHDOG_INTERVALO", "15")))
+SCAN_REDE_INTERVALO = max(30, int(os.environ.get("NOC_SCAN_REDE_INTERVALO", "60")))
+MAX_NETWORK_SCAN_HOSTS = max(64, min(2048, int(os.environ.get("NOC_MAX_SCAN_HOSTS", "512"))))
+SENSOR_API_KEY = os.environ.get("NOC_SENSOR_API_KEY", "").strip()
+
+
+def api_headers():
+    headers = {"Content-Type": "application/json"}
+    if SENSOR_API_KEY:
+        headers["X-NOC-Sensor-Key"] = SENSOR_API_KEY
+    return headers
 
 # Chave pública RSA usada para verificar o token JWT emitido pela central (a privada nunca sai do servidor)
 CHAVE_PUBLICA_JWT = """-----BEGIN PUBLIC KEY-----
@@ -48,8 +75,40 @@ ZCz37+OAze6+j0iMi18ECCRG3dTpaXw9X5FxrJ9X0O/hm/RTYqOUTKisDLoohhux
 uwIDAQAB
 -----END PUBLIC KEY-----"""
 
-IS_WIN = platform.system().lower() == 'windows'
 C_FLAGS = subprocess.CREATE_NO_WINDOW if IS_WIN else 0
+
+
+def get_os_info():
+    """Retorna informações normalizadas do sistema operacional para a Central."""
+    sistema = platform.system() or "Desconhecido"
+    arquitetura = platform.machine() or "Desconhecida"
+    nome = sistema
+    versao = platform.release() or platform.version() or ""
+
+    if sistema == "Linux":
+        try:
+            release_info = platform.freedesktop_os_release()
+            nome = release_info.get("NAME") or release_info.get("PRETTY_NAME") or sistema
+            versao = release_info.get("VERSION_ID") or platform.release() or ""
+        except Exception:
+            nome = sistema
+            versao = platform.release() or platform.version() or ""
+    elif sistema == "Windows":
+        try:
+            release, version, _csd, _ptype = platform.win32_ver()
+            nome = f"Windows {release}".strip() if release else "Windows"
+            versao = version or platform.version() or ""
+        except Exception:
+            nome = "Windows"
+            versao = platform.version() or platform.release() or ""
+    elif sistema == "Darwin":
+        nome = "macOS"
+        versao = platform.mac_ver()[0] or platform.release() or ""
+
+    return {"nome": nome, "versao": versao, "arquitetura": arquitetura}
+
+
+SO_INFO = get_os_info()
 
 app = Flask(__name__)
 
@@ -63,107 +122,270 @@ def get_mac():
     mac = uuid.getnode()
     return ':'.join(("%012X" % mac)[i:i+2] for i in range(0, 12, 2))
 
-def get_network_info():
-    meu_ip = "127.0.0.1"
-    gateway = "Desconhecido"
+def _rede_scan_segura(cidr, ip_local):
+    """Mantém o CIDR real, mas limita descoberta ativa em redes muito grandes."""
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(('8.8.8.8', 80))
-        meu_ip = s.getsockname()[0]
-        s.close()
-    except: pass
+        rede = ipaddress.ip_network(cidr, strict=False)
+        if rede.version != 4:
+            return None, False
+        hosts = rede.num_addresses if rede.prefixlen >= 31 else rede.num_addresses - 2
+        if hosts <= MAX_NETWORK_SCAN_HOSTS:
+            return rede, False
+        # Em redes maiores, varre apenas o /24 onde o sensor está, evitando
+        # milhares de pings a cada ciclo. O CIDR real continua sendo reportado.
+        prefix = max(24, 32 - (MAX_NETWORK_SCAN_HOSTS + 2).bit_length() + 1)
+        limitada = ipaddress.ip_network(f"{ip_local}/{prefix}", strict=False)
+        return limitada, True
+    except Exception:
+        return None, False
+
+
+def get_network_context():
+    contexto = {
+        "ip": "127.0.0.1",
+        "gateway": "Desconhecido",
+        "interface": "Desconhecida",
+        "mac_interface": "",
+        "netmask": "",
+        "cidr": "",
+        "link_speed_mbps": 0,
+        "interface_up": False,
+        "scan_rede": "",
+        "scan_limitado": False,
+    }
+
+    # Descobre a rota default e a interface realmente usada para sair da rede.
+    try:
+        if IS_WIN:
+            saida = subprocess.check_output(
+                "route print 0.0.0.0",
+                shell=True,
+                universal_newlines=True,
+                creationflags=C_FLAGS,
+                stdin=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            candidatos = []
+            for linha in saida.splitlines():
+                partes = linha.split()
+                if len(partes) >= 5 and partes[0] == "0.0.0.0" and partes[1] == "0.0.0.0":
+                    try:
+                        candidatos.append((int(partes[4]), partes[2], partes[3]))
+                    except Exception:
+                        candidatos.append((999999, partes[2], partes[3]))
+            if candidatos:
+                _, contexto["gateway"], contexto["ip"] = sorted(candidatos, key=lambda x: x[0])[0]
+        else:
+            saida = subprocess.check_output(
+                ["ip", "-j", "route", "show", "default"],
+                universal_newlines=True,
+                stdin=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            )
+            rotas = json.loads(saida or "[]")
+            if rotas:
+                rota = sorted(rotas, key=lambda r: r.get("metric", 0))[0]
+                contexto["gateway"] = rota.get("gateway") or "Desconhecido"
+                contexto["interface"] = rota.get("dev") or "Desconhecida"
+                if rota.get("prefsrc"):
+                    contexto["ip"] = rota["prefsrc"]
+    except Exception:
+        pass
+
+    # Fallback confiável para o IP efetivamente usado na rota externa.
+    if contexto["ip"] == "127.0.0.1":
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            contexto["ip"] = s.getsockname()[0]
+            s.close()
+        except Exception:
+            pass
+
+    if psutil:
+        try:
+            addrs = psutil.net_if_addrs()
+            stats = psutil.net_if_stats()
+
+            # No Windows a tabela de rotas fornece IP, não o nome da interface.
+            if contexto["interface"] == "Desconhecida":
+                for nome_if, lista in addrs.items():
+                    if any(a.family == socket.AF_INET and a.address == contexto["ip"] for a in lista):
+                        contexto["interface"] = nome_if
+                        break
+
+            lista = addrs.get(contexto["interface"], [])
+            for addr in lista:
+                if addr.family == socket.AF_INET and (addr.address == contexto["ip"] or contexto["ip"] == "127.0.0.1"):
+                    contexto["ip"] = addr.address
+                    contexto["netmask"] = addr.netmask or ""
+                familia = getattr(addr.family, "name", str(addr.family))
+                if familia in ("AF_LINK", "AF_PACKET") and addr.address:
+                    contexto["mac_interface"] = addr.address.replace("-", ":").upper()
+
+            st = stats.get(contexto["interface"])
+            if st:
+                contexto["interface_up"] = bool(st.isup)
+                contexto["link_speed_mbps"] = int(st.speed or 0)
+        except Exception:
+            pass
+
+    try:
+        if contexto["ip"] != "127.0.0.1" and contexto["netmask"]:
+            rede = ipaddress.ip_network(f'{contexto["ip"]}/{contexto["netmask"]}', strict=False)
+            contexto["cidr"] = str(rede)
+    except Exception:
+        contexto["cidr"] = ""
+
+    rede_scan, limitado = _rede_scan_segura(contexto["cidr"], contexto["ip"])
+    if rede_scan:
+        contexto["scan_rede"] = str(rede_scan)
+        contexto["scan_limitado"] = limitado
+
+    return contexto
+
+
+def get_network_info():
+    contexto = get_network_context()
+    return contexto["ip"], contexto["gateway"]
+
+def ping_silencioso(ip):
+    try:
+        if IS_WIN:
+            comando = ['ping', '-n', '1', '-w', '500', ip]
+        else:
+            comando = ['ping', '-c', '1', '-W', '1', ip]
+        subprocess.call(
+            comando,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            creationflags=C_FLAGS,
+            timeout=2,
+        )
+    except Exception:
+        pass
+
+def get_topologia_arp(contexto_rede, forcar_varredura=False):
+    """Descobre vizinhos L2 no escopo seguro e separa 'sem ICMP' de 'offline'."""
+    meu_ip = contexto_rede.get("ip", "127.0.0.1")
+    interface = contexto_rede.get("interface", "Desconhecida")
+    cidr_real = contexto_rede.get("cidr", "")
+    scan_rede = contexto_rede.get("scan_rede") or cidr_real
+
+    try:
+        rede_real = ipaddress.ip_network(cidr_real, strict=False) if cidr_real else None
+        rede_scan = ipaddress.ip_network(scan_rede, strict=False) if scan_rede else None
+    except Exception:
+        rede_real = None
+        rede_scan = None
+
+    if forcar_varredura and rede_scan:
+        try:
+            alvos = [str(ip) for ip in itertools.islice((ip for ip in rede_scan.hosts() if str(ip) != meu_ip), MAX_NETWORK_SCAN_HOSTS)]
+            with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
+                list(executor.map(ping_silencioso, alvos))
+        except Exception:
+            pass
+
+    encontrados = {}
 
     try:
         if IS_WIN:
-            saida = subprocess.check_output("route print 0.0.0.0", shell=True, universal_newlines=True, creationflags=C_FLAGS, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            for linha in saida.split('\n'):
+            saida = subprocess.check_output(
+                "arp -a",
+                shell=True,
+                universal_newlines=True,
+                creationflags=C_FLAGS,
+                stdin=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            for linha in saida.splitlines():
                 partes = linha.split()
-                if len(partes) >= 3 and partes[0] == '0.0.0.0':
-                    gateway = partes[2]
-                    break
-        else:
-            saida = subprocess.check_output("ip route | grep default", shell=True, universal_newlines=True, stdin=subprocess.DEVNULL)
-            gateway = saida.split()[2]
-    except: pass
-    return meu_ip, gateway
-
-def ping_silencioso(ip):
-    param = '-n' if IS_WIN else '-c'
-    try: subprocess.call(['ping', param, '1', '-w', '500', ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, creationflags=C_FLAGS)
-    except: pass
-
-def varredura_profunda_arp(ip_gateway):
-    try:
-        base_ip = ".".join(ip_gateway.split('.')[:-1])
-        threads = []
-        for i in range(1, 255):
-            ip_alvo = f"{base_ip}.{i}"
-            t = threading.Thread(target=ping_silencioso, args=(ip_alvo,))
-            threads.append(t)
-            t.start()
-        for t in threads: t.join()
-    except: pass
-
-def get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=False):
-    if forcar_varredura and gateway_ip != "Desconhecido":
-        try:
-            base_ip = ".".join(gateway_ip.split('.')[:-1])
-            threads = [threading.Thread(target=ping_silencioso, args=(f"{base_ip}.{i}",)) for i in range(1, 255)]
-            for t in threads: t.start()
-            for t in threads: t.join()
-        except: pass
-        
-    dispositivos_temp = []
-    prefixo_rede = '.'.join(meu_ip.split('.')[:-1]) + '.'
-    try:
-        saida = subprocess.check_output("arp -a", shell=True, universal_newlines=True, creationflags=C_FLAGS, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        for linha in saida.split('\n'):
-            partes = linha.split()
-            if len(partes) >= 2 and '.' in partes[0] and ('-' in partes[1] or ':' in partes[1]):
+                if len(partes) < 2 or "." not in partes[0] or ("-" not in partes[1] and ":" not in partes[1]):
+                    continue
                 ip = partes[0]
-                mac = partes[1].replace('-', ':').upper()
-                if ip.startswith(prefixo_rede) and not ip.endswith(".255"): 
-                    dispositivos_temp.append({"ip": ip, "mac": mac, "nome": "Desconhecido", "fabricante": "Desconhecido"})
-    except: pass
+                try:
+                    ip_obj = ipaddress.ip_address(ip)
+                    if ip_obj.version != 4 or ip_obj.is_multicast or not rede_real or ip_obj not in rede_real:
+                        continue
+                except Exception:
+                    continue
+                mac = partes[1].replace("-", ":").upper()
+                encontrados[ip] = {
+                    "ip": ip, "mac": mac, "nome": "Desconhecido",
+                    "fabricante": "Desconhecido", "neighbor_state": "ARP"
+                }
+        else:
+            comando = ["ip", "neigh", "show"]
+            if interface and interface != "Desconhecida":
+                comando += ["dev", interface]
+            saida = subprocess.check_output(
+                comando,
+                universal_newlines=True,
+                stdin=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            )
+            for linha in saida.splitlines():
+                partes = linha.split()
+                if len(partes) < 3:
+                    continue
+                ip = partes[0]
+                try:
+                    ip_obj = ipaddress.ip_address(ip)
+                    if ip_obj.version != 4 or ip_obj.is_multicast or not rede_real or ip_obj not in rede_real:
+                        continue
+                    idx = partes.index("lladdr")
+                    mac = partes[idx + 1].replace("-", ":").upper()
+                except (ValueError, IndexError):
+                    continue
+                except Exception:
+                    continue
+                estado_vizinho = partes[-1].upper() if partes else "UNKNOWN"
+                encontrados[ip] = {
+                    "ip": ip, "mac": mac, "nome": "Desconhecido",
+                    "fabricante": "Desconhecido", "neighbor_state": estado_vizinho
+                }
+    except Exception:
+        pass
 
-    # ⚡ TESTE CONCORRENTE BLINDADO CONTRA O WINDOWS
     def checar_status(d):
-        param = '-n' if IS_WIN else '-c'
-        comando = ['ping', param, '1', '-w', '500', d['ip']] if IS_WIN else ['ping', param, '1', '-W', '1', d['ip']]
-        try:
-            saida = subprocess.check_output(comando, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
-            if 'unreachable' in saida.lower() or 'inacessível' in saida.lower() or 'esgotado' in saida.lower():
-                d['status'] = 'offline'
-            elif '<1ms' in saida or 'ttl=' in saida.lower():
-                d['status'] = 'online'
-            else:
-                match = re.search(r'(?:time|tempo)[=<](\d+)', saida.lower())
-                d['status'] = 'online' if match else 'offline'
-        except:
-            d['status'] = 'offline'
+        latencia = ping(d["ip"])
+        d["latencia"] = latencia
+        if latencia > 0:
+            d["status"] = "online"
+        else:
+            # O equipamento está/esteve presente na tabela ARP/neighbor, mas não
+            # respondeu ICMP. Não é tecnicamente correto chamá-lo de offline.
+            d["status"] = "desconhecido" if d.get('neighbor_state') in ('FAILED', 'INCOMPLETE', 'UNKNOWN') else "sem_icmp"
         return d
 
     dispositivos = []
-    if dispositivos_temp:
+    if encontrados:
         with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-            futures = [executor.submit(checar_status, d) for d in dispositivos_temp]
+            futures = [executor.submit(checar_status, d) for d in encontrados.values()]
             for future in concurrent.futures.as_completed(futures):
                 dispositivos.append(future.result())
 
-    return dispositivos
+    return sorted(dispositivos, key=lambda d: tuple(int(p) for p in d["ip"].split(".")))
 
 def ping(host):
     param = '-n' if IS_WIN else '-c'
     timeout_param = '-w' if IS_WIN else '-W'
     timeout_val = '1000' if IS_WIN else '1'
-    comando = f"ping {param} 1 {timeout_param} {timeout_val} {host}"
+    if not isinstance(host, str) or not re.fullmatch(r'[A-Za-z0-9_.:-]+', host) or host.startswith('-'):
+        return 0
+    comando = ['ping', param, '1', timeout_param, timeout_val, host]
     try:
-        saida = subprocess.check_output(comando, shell=True, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
+        saida = subprocess.check_output(comando, shell=False, timeout=4, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
         if 'unreachable' in saida.lower() or 'inacessível' in saida.lower() or 'esgotado' in saida.lower() or 'timed out' in saida.lower() or 'falha' in saida.lower():
             return 0
         if '<1ms' in saida: return 1
-        match = re.search(r'(?:time|tempo)[=<](\d+)', saida.lower())
-        if match: return int(match.group(1))
+        match = re.search(r'(?:time|tempo)\s*[=<]\s*(\d+(?:[.,]\d+)?)', saida.lower())
+        # Preserve sub-millisecond replies; zero is reserved for failed pings.
+        if match: return float(match.group(1).replace(',', '.')) or 1
         if 'ttl=' in saida.lower(): return 1
         return 0
     except: return 0
@@ -174,40 +396,82 @@ def ping(host):
 def ler_temperaturas():
     cpu_t = 0.0
     gpu_t = 0.0
-    
-    # 1. TENTATIVA HARDCORE: OpenHardwareMonitor (Se o cliente instalou)
+
+    # Windows: OpenHardwareMonitor, quando disponível.
     if IS_WIN:
         try:
             cmd_ohm = 'powershell -Command "(Get-WmiObject -Namespace root\\OpenHardwareMonitor -Class Sensor -ErrorAction Stop | Where-Object { $_.SensorType -eq \'Temperature\' -and ($_.Name -match \'CPU Package\' -or $_.Name -match \'CPU Core\') } | Measure-Object -Property Value -Average).Average"'
-            out = subprocess.check_output(cmd_ohm, shell=True, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL).strip()
+            out = subprocess.check_output(
+                cmd_ohm,
+                shell=True,
+                universal_newlines=True,
+                creationflags=C_FLAGS,
+                stderr=subprocess.DEVNULL,
+            ).strip()
             if out and out != "0":
                 cpu_t = round(float(out.replace(',', '.')), 1)
-        except: pass
+        except Exception:
+            pass
 
-    # 2. TENTATIVA NATIVA PYTHON (Linux/Mac/Alguns Windows)
-    if cpu_t == 0.0 and hasattr(psutil, "sensors_temperatures"):
+    # Linux/Mac: psutil expõe lm-sensors. Suporta Intel, AMD e amdgpu.
+    if psutil and hasattr(psutil, "sensors_temperatures"):
         try:
-            st = psutil.sensors_temperatures()
-            for name, entries in st.items():
-                if "coretemp" in name.lower() or "cpu" in name.lower(): cpu_t = round(entries[0].current, 1)
-        except: pass
+            sensores = psutil.sensors_temperatures() or {}
+            prioridades_cpu = ("k10temp", "zenpower", "coretemp", "cpu", "acpitz")
+            for chave in prioridades_cpu:
+                for nome, entries in sensores.items():
+                    if chave in nome.lower() and entries:
+                        candidatos = [e.current for e in entries if getattr(e, "current", None) is not None]
+                        candidatos = [t for t in candidatos if 0 < t < 130]
+                        if candidatos:
+                            cpu_t = round(max(candidatos), 1)
+                            break
+                if cpu_t:
+                    break
 
-    # 3. TENTATIVA WMI DO WINDOWS (Placas-mãe amigáveis)
+            for nome, entries in sensores.items():
+                if "amdgpu" in nome.lower() and entries:
+                    candidatos = [e.current for e in entries if getattr(e, "current", None) is not None]
+                    candidatos = [t for t in candidatos if 0 < t < 130]
+                    if candidatos:
+                        gpu_t = round(max(candidatos), 1)
+                        break
+        except Exception:
+            pass
+
+    # Fallback WMI do Windows.
     if IS_WIN and cpu_t == 0.0:
         try:
             cmd = 'powershell -Command "Get-WmiObject MSAcpi_ThermalZoneTemperature -Namespace root/wmi -ErrorAction Stop | Select -ExpandProperty CurrentTemperature"'
-            out = subprocess.check_output(cmd, shell=True, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL).strip()
+            out = subprocess.check_output(
+                cmd,
+                shell=True,
+                universal_newlines=True,
+                creationflags=C_FLAGS,
+                stderr=subprocess.DEVNULL,
+            ).strip()
             if out:
                 kelvin_raw = float(out.split('\n')[0])
                 celsius = (kelvin_raw / 10.0) - 273.15
-                if 20 < celsius < 120: cpu_t = round(celsius, 1)
-        except: pass
+                if 20 < celsius < 120:
+                    cpu_t = round(celsius, 1)
+        except Exception:
+            pass
 
-    # LEITURA DA GPU (Nvidia)
-    try:
-        out = subprocess.check_output('nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader', shell=True, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL).strip()
-        if out: gpu_t = float(out.split('\n')[0])
-    except: pass
+    # NVIDIA, em qualquer SO com nvidia-smi instalado.
+    if gpu_t == 0.0:
+        try:
+            out = subprocess.check_output(
+                'nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader',
+                shell=True,
+                universal_newlines=True,
+                creationflags=C_FLAGS,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+            if out:
+                gpu_t = float(out.split('\n')[0])
+        except Exception:
+            pass
 
     return cpu_t, gpu_t
 
@@ -242,7 +506,12 @@ def verificar_atualizacao(mac):
 
         versao_nova = info.get('versao')
         url_download = info.get('url_download')
-        if not versao_nova or versao_nova == VERSAO_AGENTE or not url_download:
+        def version_key(value):
+            match = re.fullmatch(r'(\d+)\.(\d+)\.(\d+)(?:-rc(\d+))?', value or '')
+            if not match:
+                return (0, 0, 0, 0)
+            return tuple(map(int, match.group(1, 2, 3))) + (int(match[4]) if match[4] else 999999,)
+        if not versao_nova or version_key(versao_nova) <= version_key(VERSAO_AGENTE) or not url_download:
             return
 
         log_local_event("Atualização", f"Nova versão disponível: {versao_nova} (atual: {VERSAO_AGENTE})", "Aviso")
@@ -276,7 +545,7 @@ def executar_speedtest(mac, url_central):
     d, u = 0.0, 0.0
     erro_principal = ""
     try:
-        st = speedtest.Speedtest(secure=False)
+        st = speedtest.Speedtest(secure=True)
         st.get_best_server()
         d = st.download(threads=8) / 1_000_000
         u = st.upload(threads=8) / 1_000_000
@@ -293,7 +562,7 @@ def executar_speedtest(mac, url_central):
             try:
                 url_log = url_central.replace('report_data', 'alertas_ia')
                 alerta = [{"tipo": "Falha de Speedtest", "gravidade": "Aviso", "detalhes": f"Ookla: {erro_principal} | Tele2: {str(e2)}"}]
-                req_log = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": alerta}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+                req_log = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": alerta}).encode('utf-8'), headers=api_headers(), method='POST')
                 urllib.request.urlopen(req_log, timeout=5)
             except:
                 log_local_event("Speedtest", f"Falha total: Ookla={erro_principal} | Tele2={str(e2)} | e não conseguiu nem reportar à central (sem internet?)", "Crítica")
@@ -302,7 +571,7 @@ def executar_speedtest(mac, url_central):
     try:
         payload = {"mac_id": mac, "down": round(d, 2), "up": round(u, 2)}
         url_speed = url_central.replace('report_data', 'reportar_velocidade')
-        req = urllib.request.Request(url_speed, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+        req = urllib.request.Request(url_speed, data=json.dumps(payload).encode('utf-8'), headers=api_headers(), method='POST')
         urllib.request.urlopen(req, timeout=10)
     except:
         log_local_event("Speedtest", f"Medição OK ({round(d,1)}down/{round(u,1)}up Mbps) mas falhou ao reportar à central", "Alerta")
@@ -313,7 +582,7 @@ def executar_traceroute(mac, url_central):
         resultado = subprocess.check_output(cmd, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, timeout=40, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
         payload = {"mac_id": mac, "rota": resultado}
         url_trace = url_central.replace('report_data', 'reportar_rota')
-        req = urllib.request.Request(url_trace, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+        req = urllib.request.Request(url_trace, data=json.dumps(payload).encode('utf-8'), headers=api_headers(), method='POST')
         urllib.request.urlopen(req, timeout=10)
     except Exception as e:
         log_local_event("Traceroute", f"Falhou ao executar ou reportar: {e}", "Alerta")
@@ -335,30 +604,152 @@ def acordar_pc(macaddress):
     except: pass
 
 def executar_scan_loop(mac, url_central, gateway_ip):
-    """ Busca Ativa por Loops L2 (Tempestade de Broadcast) """
+    """Heurística de anomalia L2. Não confirma loop nem tempestade de broadcast."""
     try:
-        req = urllib.request.Request(url_central.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "🔍 Scan de Loop Iniciado", "gravidade": "Aviso", "detalhes": "Injetando pacotes de estresse na rede local para medir a taxa de reflexão do Switch..."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+        req = urllib.request.Request(
+            url_central.replace('report_data', 'alertas_ia'),
+            data=json.dumps({"mac_id": mac, "alertas": [{
+                "tipo": "🔍 Análise de Tráfego L2 Iniciada",
+                "gravidade": "Aviso",
+                "detalhes": "Executando uma heurística de variação de tráfego no sensor. O resultado não confirma loop ou broadcast storm."
+            }]}).encode('utf-8'),
+            headers=api_headers(), method='POST'
+        )
         urllib.request.urlopen(req, timeout=3)
-        if not psutil or gateway_ip == "Desconhecido": return
-        net_start = psutil.net_io_counters(); time.sleep(2); net_mid = psutil.net_io_counters()
-        bytes_base = net_mid.bytes_recv - net_start.bytes_recv
-        for _ in range(30): threading.Thread(target=ping_silencioso, args=(gateway_ip,), daemon=True).start()
+        if not psutil or gateway_ip == "Desconhecido":
+            return
+
+        contexto = get_network_context()
+        iface = contexto.get("interface")
+        por_iface = psutil.net_io_counters(pernic=True)
+        if not iface or iface not in por_iface:
+            return
+
+        net_start = por_iface[iface]
+        time.sleep(2)
+        net_mid = psutil.net_io_counters(pernic=True).get(iface)
+        if not net_mid:
+            return
+        bytes_base = max(0, net_mid.bytes_recv - net_start.bytes_recv)
+
+        for _ in range(30):
+            threading.Thread(target=ping_silencioso, args=(gateway_ip,), daemon=True).start()
         time.sleep(3)
-        net_end = psutil.net_io_counters()
-        bytes_stress = net_end.bytes_recv - net_mid.bytes_recv
-        if bytes_stress > (bytes_base * 5) and bytes_stress > 2_000_000:
-            msg = f"⚠️ ATENÇÃO: LOOP L2 CONFIRMADO! O Switch refletiu um volume absurdo de tráfego ({round(bytes_stress/1_000_000, 2)} MB). Isole os cabos!"
-            grav = "Crítica"
+
+        net_end = psutil.net_io_counters(pernic=True).get(iface)
+        if not net_end:
+            return
+        bytes_stress = max(0, net_end.bytes_recv - net_mid.bytes_recv)
+
+        if bytes_stress > max(bytes_base * 5, 2_000_000):
+            msg = (
+                f"⚠️ Anomalia de tráfego observada na interface {iface}: "
+                f"{round(bytes_stress/1_000_000, 2)} MB recebidos durante o teste. "
+                "Pode haver tráfego excessivo, mas é necessário validar no switch "
+                "(contadores, STP, MAC flapping ou captura) antes de concluir loop L2."
+            )
+            grav = "Alerta"
         else:
-            msg = f"✅ Rede Limpa. Nenhum Loop de Reflexão ou Tempestade de Broadcast detectada."
+            msg = (
+                f"✅ Nenhuma anomalia relevante observada na interface {iface} durante a heurística. "
+                "Este teste não exclui loops intermitentes ou tráfego fora da visibilidade do sensor."
+            )
             grav = "OK"
-        urllib.request.urlopen(urllib.request.Request(url_central.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Resultado: Scan de Loop", "gravidade": grav, "detalhes": msg}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
-    except: pass
+
+        urllib.request.urlopen(
+            urllib.request.Request(
+                url_central.replace('report_data', 'alertas_ia'),
+                data=json.dumps({"mac_id": mac, "alertas": [{
+                    "tipo": "Resultado: Análise de Tráfego L2",
+                    "gravidade": grav,
+                    "detalhes": msg
+                }]}).encode('utf-8'),
+                headers=api_headers(), method='POST'
+            ),
+            timeout=5
+        )
+    except Exception:
+        pass
+
+def executar_flush_dns():
+    if IS_WIN:
+        return subprocess.call(
+            "ipconfig /flushdns",
+            shell=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=C_FLAGS,
+        ) == 0
+
+    comandos = [
+        ["resolvectl", "flush-caches"],
+        ["sudo", "-n", "resolvectl", "flush-caches"],
+        ["sudo", "-n", "systemd-resolve", "--flush-caches"],
+    ]
+    for comando in comandos:
+        try:
+            if subprocess.run(
+                comando,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+            ).returncode == 0:
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def executar_admin_linux(acao, alvo=None):
+    """Executa apenas ações administrativas pré-definidas, sem prompt de senha."""
+    if IS_WIN:
+        return False
+
+    wrapper = "/usr/local/sbin/minipc-admin"
+    if os.path.isfile(wrapper) and os.access(wrapper, os.X_OK):
+        cmd = ["sudo", "-n", wrapper, acao]
+        if alvo:
+            cmd.append(alvo)
+    else:
+        if acao == "reboot":
+            cmd = ["sudo", "-n", "reboot"]
+        elif acao == "start-service" and alvo:
+            cmd = ["sudo", "-n", "systemctl", "start", alvo]
+        else:
+            return False
+    try:
+        return subprocess.run(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=20,
+        ).returncode == 0
+    except Exception:
+        return False
+
 
 # ==========================================
 # 📡 MOTOR 1: TELEMETRIA E AUTO-CURA WAN
 # ==========================================
+def get_approximate_location():
+    if os.environ.get('NOC_IP_GEOLOCATION', '0') != '1':
+        return {}
+    try:
+        with urllib.request.urlopen('https://ipwho.is/', timeout=4) as response:
+            data = json.load(response)
+        if data.get('success') is not True:
+            return {}
+        lat, lon = float(data['latitude']), float(data['longitude'])
+        if not -90 <= lat <= 90 or not -180 <= lon <= 180:
+            return {}
+        return {'latitude': lat, 'longitude': lon, 'location_source': 'ip'}
+    except (OSError, ValueError, KeyError, TypeError):
+        logging.getLogger(__name__).warning('Localização por IP indisponível; sensor permanece sem coordenadas.')
+        return {}
+
+
 def loop_telemetria():
+    approximate_location = get_approximate_location()
     global dados_sensores, MAC_GATEWAY_CONHECIDO, ALARMES_DISPARADOS
     mac = get_mac()
     os_name = platform.system()
@@ -370,9 +761,8 @@ def loop_telemetria():
     central_indisponivel = False
     
     
-    if psutil:
-        last_net = psutil.net_io_counters()
-        last_net_time = time.time()
+    last_net = {}
+    last_net_time = time.monotonic()
     tempo_inicio_cpu_alta = 0
     tempo_inicio_ram_alta = 0
 
@@ -386,6 +776,11 @@ def loop_telemetria():
             if agora - ultima_verificacao_update > 21600:  # a cada 6h
                 threading.Thread(target=verificar_atualizacao, args=(mac,), daemon=True).start()
                 ultima_verificacao_update = agora
+
+            rede = get_network_context()
+            meu_ip = rede["ip"]
+            gateway_ip = rede["gateway"]
+            interface_rede = rede["interface"]
 
             cpu = psutil.cpu_percent(interval=None) if psutil else 0.0
             ram = psutil.virtual_memory().percent if psutil else 0.0
@@ -415,13 +810,20 @@ def loop_telemetria():
                 tempo_inicio_ram_alta = 0
                 ALARMES_DISPARADOS["uso_ram"] = False
 
+            # Tráfego da interface de rede usada pelo sensor, não do host inteiro.
             net_up = 0.0; net_down = 0.0
-            if psutil:
-                current_net = psutil.net_io_counters()
-                time_diff = agora - last_net_time if (agora - last_net_time) > 0 else 1
-                net_up = round(((current_net.bytes_sent - last_net.bytes_sent) * 8 / 1_000_000) / time_diff, 2)
-                net_down = round(((current_net.bytes_recv - last_net.bytes_recv) * 8 / 1_000_000) / time_diff, 2)
-                last_net = current_net; last_net_time = agora
+            if psutil and interface_rede and interface_rede != "Desconhecida":
+                por_iface = psutil.net_io_counters(pernic=True)
+                current_net = por_iface.get(interface_rede)
+                previous_net = last_net.get(interface_rede)
+                network_now = time.monotonic()
+                time_diff = max(0.001, network_now - last_net_time)
+                if current_net and previous_net:
+                    net_up = round(max(0, current_net.bytes_sent - previous_net.bytes_sent) * 8 / 1_000_000 / time_diff, 2)
+                    net_down = round(max(0, current_net.bytes_recv - previous_net.bytes_recv) * 8 / 1_000_000 / time_diff, 2)
+                if current_net:
+                    last_net = {interface_rede: current_net}
+                last_net_time = network_now
 
             portas_alvo = {80: "HTTP", 443: "HTTPS", 3306: "MySQL", 5432: "Postgres", 3389: "RDP"}
             portas_abertas = []
@@ -449,22 +851,22 @@ def loop_telemetria():
                         subprocess.call("ipconfig /flushdns", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
                         subprocess.call("ipconfig /renew", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
                     else:
-                        subprocess.call("sudo systemd-resolve --flush-caches", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    log_local_event("Auto-Cura", "Queda de DNS/WAN detectada. O Agente executou Flush DNS e Renew IP.", "Aviso")
+                        if not executar_flush_dns():
+                            raise RuntimeError("não foi possível limpar o cache DNS sem interação")
+                    log_local_event("Auto-Cura", "Queda de DNS/WAN detectada. O Agente executou limpeza de DNS.", "Aviso")
                     try:
                         url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
-                        urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "⚙️ Sistema de Auto-Cura", "gravidade": "Aviso", "detalhes": "Agente executou script de Flush DNS localmente."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
+                        urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "⚙️ Sistema de Auto-Cura", "gravidade": "Aviso", "detalhes": "Agente executou script de Flush DNS localmente."}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
                     except Exception as e:
                         log_local_event("Auto-Cura", f"Flush DNS rodou, mas falhou ao reportar à central: {e}", "Alerta")
                 except Exception as e:
                     log_local_event("Auto-Cura", f"Falhou ao executar Flush DNS/Renew IP: {e}", "Crítica")
                 ultimo_reparo_wan = agora
 
-            meu_ip, gateway_ip = get_network_info()
             ping_gw = ping(gateway_ip) if gateway_ip != "Desconhecido" else 0
             
-            forcar_varredura = (agora - ultima_varredura > 20)
-            dispositivos = get_topologia_arp(meu_ip, gateway_ip, forcar_varredura=forcar_varredura)
+            forcar_varredura = (agora - ultima_varredura > SCAN_REDE_INTERVALO)
+            dispositivos = get_topologia_arp(rede, forcar_varredura=forcar_varredura)
             if forcar_varredura: ultima_varredura = agora
 
             # 🌪️ MÓDULO STORM WATCH
@@ -477,33 +879,66 @@ def loop_telemetria():
             if gw_mac_atual: MAC_GATEWAY_CONHECIDO = gw_mac_atual
 
             if (ping_gw == 0 or ping_gw > 500) and net_down > 15.0 and net_up < 2.0:
-                alertas_rede.append({"tipo": "🌪️ Tempestade de Broadcast", "gravidade": "Crítica", "detalhes": f"Inundação L2 detectada ({net_down} Mbps de lixo)."})
+                alertas_rede.append({
+                    "tipo": "⚠️ Anomalia de Tráfego Local",
+                    "gravidade": "Alerta",
+                    "detalhes": (
+                        f"A interface {interface_rede} recebeu {net_down} Mbps enquanto a latência do gateway estava degradada. "
+                        "É uma heurística do sensor e não confirma tempestade de broadcast ou loop L2."
+                    )
+                })
 
             if alertas_rede:
-                try: urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": alertas_rede}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
+                try: urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": alertas_rede}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
                 except Exception as e:
                     log_local_event("Alerta de Rede", f"Detectou {[a['tipo'] for a in alertas_rede]} mas falhou ao reportar à central: {e}", "Crítica")
 
             dados_sensores["cpu"] = cpu; dados_sensores["ram"] = ram; dados_sensores["disco"] = disco; dados_sensores["temp"] = cpu_temp; dados_sensores["gpu_temp"] = gpu_temp; dados_sensores["net_down"] = net_down; dados_sensores["net_up"] = net_up; dados_sensores["portas"] = str_portas; dados_sensores["meu_ip"] = meu_ip; dados_sensores["gateway_ip"] = gateway_ip; dados_sensores["ping_gateway"] = ping_gw; dados_sensores["pings"] = pings; dados_sensores["topologia"] = dispositivos
+            dados_sensores["interface"] = interface_rede; dados_sensores["rede_cidr"] = rede.get("cidr", ""); dados_sensores["mac_interface"] = rede.get("mac_interface", "")
 
-            payload = { "mac_id": mac, "nome_local": f"NOC Sensor ({os_name})", "ip_local": meu_ip, "ip_gateway": gateway_ip, "cpu_usage": cpu, "ram_usage": ram, "disco": disco, "temp": cpu_temp, "gpu_temp": gpu_temp, "ping_gateway": ping_gw, "ping_global": json.dumps(pings), "net_up": net_up, "net_down": net_down, "portas": str_portas }
+            payload = {
+                "mac_id": mac, "agent_version": VERSAO_AGENTE, "nome_local": f"NOC Sensor ({os_name})",
+                **approximate_location,
+                "ip_local": meu_ip, "ip_gateway": gateway_ip,
+                "cpu_usage": cpu, "ram_usage": ram, "disco": disco,
+                "temp": cpu_temp, "gpu_temp": gpu_temp,
+                "ping_gateway": ping_gw, "ping_global": json.dumps(pings),
+                "net_up": net_up, "net_down": net_down, "portas": str_portas,
+                "so_nome": SO_INFO["nome"], "so_versao": SO_INFO["versao"],
+                "so_arquitetura": SO_INFO["arquitetura"],
+                "interface_nome": interface_rede,
+                "interface_mac": rede.get("mac_interface", ""),
+                "rede_mascara": rede.get("netmask", ""),
+                "rede_cidr": rede.get("cidr", ""),
+                "link_speed_mbps": rede.get("link_speed_mbps", 0),
+                "interface_up": rede.get("interface_up", False),
+                "scan_rede": rede.get("scan_rede", ""),
+                "scan_limitado": rede.get("scan_limitado", False)
+            }
             
-            espera_remota = 3
+            espera_remota = TELEMETRIA_INTERVALO
             try:
-                req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+                req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers=api_headers(), method='POST')
                 with urllib.request.urlopen(req, timeout=5) as response:
                     res_data = json.loads(response.read().decode('utf-8'))
                     comando = res_data.get("command")
-                    espera_remota = res_data.get("intervalo", 3) 
+                    espera_remota = max(TELEMETRIA_INTERVALO, int(res_data.get("intervalo", TELEMETRIA_INTERVALO))) 
 
-                    if comando == "reboot": subprocess.call("shutdown /r /t 0" if IS_WIN else "sudo reboot", shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
+                    if comando == "reboot":
+                        if IS_WIN:
+                            subprocess.call("shutdown /r /t 0", shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
+                        elif not executar_admin_linux("reboot"):
+                            log_local_event("Comando Remoto", "Reboot negado: sudo não interativo/wrapper não autorizado.", "Crítica")
                     elif comando == "run_speedtest": threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
                     elif comando == "run_traceroute": threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
-                    elif comando == "flush_dns": subprocess.call("ipconfig /flushdns" if IS_WIN else "sudo systemd-resolve --flush-caches", shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
+                    elif comando == "update_agent": threading.Thread(target=verificar_atualizacao, args=(mac,), daemon=True).start()
+                    elif comando == "flush_dns":
+                        if not executar_flush_dns():
+                            log_local_event("Comando Remoto", "Falha ao limpar cache DNS.", "Alerta")
                     elif comando == "scan_loop": 
                         threading.Thread(target=executar_scan_loop, args=(mac, URL_CENTRAL, gateway_ip), daemon=True).start()
                     elif comando and comando.startswith("wol:"): 
-                        mac_pc_desligado = comando.split(":")[1]
+                        mac_pc_desligado = comando.split(":", 1)[1]
                         acordar_pc(mac_pc_desligado)
                     elif comando == "top_processos":
                     
@@ -513,12 +948,12 @@ def loop_telemetria():
                                 num_cores = psutil.cpu_count() or 1
                                 procs = sorted(psutil.process_iter(['name', 'cpu_percent']), key=lambda p: p.info.get('cpu_percent') or 0, reverse=True)[:5]
                                 lista_procs = " | ".join([f"{p.info['name']} ({round((p.info.get('cpu_percent') or 0) / num_cores, 1)}%)" for p in procs])
-                                urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Diagnóstico", "gravidade": "Aviso", "detalhes": lista_procs}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                                urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Diagnóstico", "gravidade": "Aviso", "detalhes": lista_procs}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                             except Exception as e:
                                 log_local_event("Diagnóstico Remoto", f"top_processos falhou: {e}", "Alerta")
                 
                 if forcar_varredura:
-                    try: urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'atualizar_dispositivos'), data=json.dumps({"mac_id": mac, "lista": dispositivos}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                    try: urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'atualizar_dispositivos'), data=json.dumps({"mac_id": mac, "lista": dispositivos}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                     except Exception as e:
                         log_local_event("Topologia", f"Falha ao reportar dispositivos à central: {e}", "Alerta")
 
@@ -554,7 +989,7 @@ def loop_watchdog_local():
         try:
             # ----- 1. WATCHDOG REDE E ENERGIA (NUVEM) -----
             try:
-                req = urllib.request.Request(url_get, method='GET')
+                req = urllib.request.Request(url_get, headers=api_headers(), method='GET')
                 with urllib.request.urlopen(req, timeout=5) as response: alvos_nuvem = json.loads(response.read().decode('utf-8'))
                 if central_indisponivel_watchdog:
                     log_local_event("Conectividade Central", "Watchdog: conexão com a central RESTABELECIDA.", "OK")
@@ -566,7 +1001,7 @@ def loop_watchdog_local():
                     central_indisponivel_watchdog = True
 
             try:
-                req_e = urllib.request.Request(url_get_energia, method='GET')
+                req_e = urllib.request.Request(url_get_energia, headers=api_headers(), method='GET')
                 with urllib.request.urlopen(req_e, timeout=5) as response: alvos_energia = json.loads(response.read().decode('utf-8'))
             except: alvos_energia = []
 
@@ -577,32 +1012,32 @@ def loop_watchdog_local():
 
             for alvo in alvos_nuvem:
                 ip = alvo['ip']; desc = alvo['descricao']; latencia = ping(ip); ta_online = latencia > 0
-                try: urllib.request.urlopen(urllib.request.Request(url_report, data=json.dumps({"id": alvo['id'], "latencia": latencia}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                try: urllib.request.urlopen(urllib.request.Request(url_report, data=json.dumps({"id": alvo['id'], "latencia": latencia}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                 except: pass
                 
                 estado_anterior = cache_alvos.get(ip, {}).get('online', True)
                 if ta_online and not estado_anterior:
-                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Alvo Restaurado", "gravidade": "OK", "detalhes": f"{desc} ({ip}) voltou."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Alvo Restaurado", "gravidade": "OK", "detalhes": f"{desc} ({ip}) voltou."}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                     except Exception as e:
                         log_local_event("Alvo Restaurado", f"{desc} ({ip}) voltou mas falhou ao reportar: {e}", "Alerta")
                 elif not ta_online and estado_anterior:
-                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Queda de Alvo", "gravidade": "Crítica", "detalhes": f"{desc} ({ip}) parou!"}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Queda de Alvo", "gravidade": "Crítica", "detalhes": f"{desc} ({ip}) parou!"}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                     except Exception as e:
                         log_local_event("Queda de Alvo", f"{desc} ({ip}) caiu mas falhou ao reportar: {e}", "Crítica")
                 cache_alvos[ip] = {'online': ta_online, 'latencia': latencia}
 
             for alvo in alvos_energia:
                 ip = alvo['ip']; desc = alvo['descricao']; latencia = ping(ip); ta_online = latencia > 0
-                try: urllib.request.urlopen(urllib.request.Request(url_report_energia, data=json.dumps({"id": alvo['id'], "latencia": latencia}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                try: urllib.request.urlopen(urllib.request.Request(url_report_energia, data=json.dumps({"id": alvo['id'], "latencia": latencia}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                 except: pass
                 
                 estado_anterior = cache_alvos.get('ENERGIA_'+ip, {}).get('online', True)
                 if ta_online and not estado_anterior:
-                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Energia Restaurada", "gravidade": "OK", "detalhes": f"Energia em {desc} ({ip})."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Energia Restaurada", "gravidade": "OK", "detalhes": f"Energia em {desc} ({ip})."}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                     except Exception as e:
                         log_local_event("Energia Restaurada", f"Energia em {desc} ({ip}) voltou mas falhou ao reportar: {e}", "Alerta")
                 elif not ta_online and estado_anterior:
-                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Queda de Energia", "gravidade": "Crítica", "detalhes": f"FALTA DE ENERGIA em {desc} ({ip})!"}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=5)
+                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Queda de Energia", "gravidade": "Crítica", "detalhes": f"FALTA DE ENERGIA em {desc} ({ip})!"}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                     except Exception as e:
                         log_local_event("Queda de Energia", f"Falta de energia em {desc} ({ip}) mas falhou ao reportar: {e}", "Crítica")
                 cache_alvos['ENERGIA_'+ip] = {'online': ta_online, 'latencia': latencia}
@@ -625,7 +1060,7 @@ def loop_watchdog_local():
 
             # ----- 2. AUTO-CURA DE SERVIÇOS DO SO -----
             try:
-                req = urllib.request.Request(url_get_srv, method='GET')
+                req = urllib.request.Request(url_get_srv, headers=api_headers(), method='GET')
                 with urllib.request.urlopen(req, timeout=5) as response: servicos_nuvem = json.loads(response.read().decode('utf-8'))
             except: servicos_nuvem = []
 
@@ -645,47 +1080,49 @@ def loop_watchdog_local():
                 
                 try:
                     if IS_WIN:
-                        out = subprocess.check_output(f'sc query "{nome_srv}"', shell=True, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL)
+                        out = subprocess.check_output(['sc', 'query', nome_srv], shell=False, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL)
                         if "RUNNING" in out: status_atual = 'ONLINE'
                     else:
-                        out = subprocess.check_output(f'systemctl is-active "{nome_srv}"', shell=True, universal_newlines=True, stderr=subprocess.DEVNULL)
-                        if "active" in out.strip().lower(): status_atual = 'ONLINE'
+                        out = subprocess.check_output(['systemctl', 'is-active', nome_srv], shell=False, universal_newlines=True, stderr=subprocess.DEVNULL)
+                        if out.strip().lower() == "active": status_atual = 'ONLINE'
                 except: pass
 
                 if status_atual == 'OFFLINE':
                     try:
-                        if IS_WIN: subprocess.call(f'net start "{nome_srv}"', shell=True, creationflags=C_FLAGS, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        else: subprocess.call(f'sudo systemctl start "{nome_srv}"', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        if IS_WIN:
+                            subprocess.call(['net', 'start', nome_srv], shell=False, creationflags=C_FLAGS, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        else:
+                            executar_admin_linux("start-service", nome_srv)
                         time.sleep(2)
                         if IS_WIN:
-                            out = subprocess.check_output(f'sc query "{nome_srv}"', shell=True, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL)
+                            out = subprocess.check_output(['sc', 'query', nome_srv], shell=False, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL)
                             if "RUNNING" in out: status_atual = 'ONLINE (Recuperado)'
                         else:
-                            out = subprocess.check_output(f'systemctl is-active "{nome_srv}"', shell=True, universal_newlines=True, stderr=subprocess.DEVNULL)
-                            if "active" in out.strip().lower(): status_atual = 'ONLINE (Recuperado)'
+                            out = subprocess.check_output(['systemctl', 'is-active', nome_srv], shell=False, universal_newlines=True, stderr=subprocess.DEVNULL)
+                            if out.strip().lower() == "active": status_atual = 'ONLINE (Recuperado)'
                     except: pass
 
                 cache_alvos['SRV_'+nome_srv] = {'status': status_atual}
 
                 if not is_local:
-                    try: urllib.request.urlopen(urllib.request.Request(url_report_srv, data=json.dumps({"id": id_srv, "status": status_atual}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
+                    try: urllib.request.urlopen(urllib.request.Request(url_report_srv, data=json.dumps({"id": id_srv, "status": status_atual}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
                     except: pass
                     
                     estado_anterior = cache_alvos.get('SRV_ANT_'+nome_srv, 'ONLINE')
                     if 'ONLINE' in status_atual and estado_anterior == 'OFFLINE':
                         msg = f"O serviço {desc_srv} ({nome_srv}) foi religado pela Auto-Cura." if "Recuperado" in status_atual else f"O serviço {desc_srv} foi restaurado."
-                        try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Serviço Restaurado", "gravidade": "OK", "detalhes": msg}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
+                        try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Serviço Restaurado", "gravidade": "OK", "detalhes": msg}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
                         except Exception as e:
                             log_local_event("Serviço Restaurado", f"{msg} mas falhou ao reportar: {e}", "Alerta")
                     elif status_atual == 'OFFLINE' and estado_anterior != 'OFFLINE':
-                        try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Falha de Serviço Crítico", "gravidade": "Crítica", "detalhes": f"O serviço {desc_srv} parou! Requer intervenção."}]}).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST'), timeout=3)
+                        try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Falha de Serviço Crítico", "gravidade": "Crítica", "detalhes": f"O serviço {desc_srv} parou! Requer intervenção."}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
                         except Exception as e:
                             log_local_event("Falha de Serviço Crítico", f"{desc_srv} parou mas falhou ao reportar: {e}", "Crítica")
                     cache_alvos['SRV_ANT_'+nome_srv] = status_atual
 
         except Exception as e:
             log_local_event("Erro Loop Watchdog", f"Iteração falhou por completo: {e}", "Crítica")
-        time.sleep(5)
+        time.sleep(WATCHDOG_INTERVALO)
 
 # ==========================================
 # 🖥️ MOTOR 2: PAINEL WEB LOCAL (FOREGROUND)
@@ -898,8 +1335,10 @@ def index():
             <div class="card card-net">
                 <h3><span><i class="fa-solid fa-shield-heart"></i> Integridade da Rede</span></h3>
                 <div class="data-row"><span><i class="fa-solid fa-network-wired" style="color:var(--green)"></i> Gateway (<span id="gw-ip">--</span>):</span> <span id="status-local" class="pill-ok">ESTÁVEL</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-ethernet" style="color:var(--blue)"></i> Interface:</span> <span id="iface-local" style="font-family:'JetBrains Mono'; font-size:0.75em;">--</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-diagram-project" style="color:var(--purple)"></i> Rede / CIDR:</span> <span id="cidr-local" style="font-family:'JetBrains Mono'; font-size:0.75em;">--</span></div>
                 <div class="data-row"><span><i class="fa-solid fa-globe" style="color:var(--blue)"></i> Internet (WAN):</span> <span id="status-wan" class="pill-ok">ONLINE</span></div>
-                <div class="data-row"><span><i class="fa-solid fa-door-open" style="color:var(--purple)"></i> Portas:</span> <span id="portas-text" style="font-family: 'JetBrains Mono'; font-size: 0.75em; color: var(--text-muted);">--</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-door-open" style="color:var(--purple)"></i> Portas do Sensor:</span> <span id="portas-text" style="font-family: 'JetBrains Mono'; font-size: 0.75em; color: var(--text-muted);">--</span></div>
                 <div style="margin-top: auto; background: rgba(0,0,0,0.3); padding: 18px; border-radius: 8px; text-align: center; border: 1px solid var(--bg-input);">
                     <div style="font-size: 0.75em; color: var(--text-muted);">Latência Sensor ➔ Gateway</div>
                     <div id="ping-local" class="highlight" style="color: var(--green);">0 ms</div>
@@ -907,14 +1346,14 @@ def index():
             </div>
 
             <div class="card card-speed">
-                <h3><span><i class="fa-solid fa-arrow-right-arrow-left"></i> Tráfego em Tempo Real</span></h3>
+                <h3><span><i class="fa-solid fa-arrow-right-arrow-left"></i> Tráfego da Interface do Sensor</span></h3>
                 <div style="flex-grow: 1; display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-top: 10px;">
                     <div class="speed-box" style="flex: 1;">
-                        <div style="font-size: 0.75em; color: var(--text-muted); letter-spacing: 1px;"><i class="fa-solid fa-arrow-down" style="color:var(--green)"></i> DOWNLOAD</div>
+                        <div style="font-size: 0.75em; color: var(--text-muted); letter-spacing: 1px;"><i class="fa-solid fa-arrow-down" style="color:var(--green)"></i> RX</div>
                         <div id="live-down" class="speed-val" style="color: var(--green); text-shadow: 0 0 15px rgba(166,227,161,0.4);">0.0</div><span style="font-size: 0.6em; color: var(--text-muted);">Mbps</span>
                     </div>
                     <div class="speed-box" style="flex: 1;">
-                        <div style="font-size: 0.75em; color: var(--text-muted); letter-spacing: 1px;"><i class="fa-solid fa-arrow-up" style="color:var(--red)"></i> UPLOAD</div>
+                        <div style="font-size: 0.75em; color: var(--text-muted); letter-spacing: 1px;"><i class="fa-solid fa-arrow-up" style="color:var(--red)"></i> TX</div>
                         <div id="live-up" class="speed-val" style="color: var(--red); text-shadow: 0 0 15px rgba(243,139,168,0.4);">0.0</div><span style="font-size: 0.6em; color: var(--text-muted);">Mbps</span>
                     </div>
                 </div>
@@ -1030,12 +1469,15 @@ def index():
                     if(document.getElementById('portas-text')) document.getElementById('portas-text').innerText = data.portas || 'Nenhuma';
                     if(document.getElementById('live-down')) document.getElementById('live-down').innerText = data.net_down || '0.0';
                     if(document.getElementById('live-up')) document.getElementById('live-up').innerText = data.net_up || '0.0';
+                    if(document.getElementById('iface-local')) document.getElementById('iface-local').innerText = (data.interface || 'N/D') + (data.mac_interface ? ' • ' + data.mac_interface : '');
+                    if(document.getElementById('cidr-local')) document.getElementById('cidr-local').innerText = data.rede_cidr || 'N/D';
 
                     document.getElementById('gw-ip').innerText = data.gateway_ip;
                     const pl = data.ping_gateway;
-                    document.getElementById('ping-local').innerText = pl + ' ms';
-                    if(pl === 0 || pl > 100) { document.getElementById('status-local').className = "pill-fail"; document.getElementById('status-local').innerText = "FALHA"; }
-                    else { document.getElementById('status-local').className = "pill-ok"; document.getElementById('status-local').innerText = "ESTÁVEL"; }
+                    document.getElementById('ping-local').innerText = pl > 0 ? pl + ' ms' : 'Sem resposta ICMP';
+                    if(pl === 0) { document.getElementById('status-local').className = ""; document.getElementById('status-local').style.color = 'var(--yellow)'; document.getElementById('status-local').innerText = "SEM ICMP"; }
+                    else if(pl > 50) { document.getElementById('status-local').className = ""; document.getElementById('status-local').style.color = 'var(--yellow)'; document.getElementById('status-local').innerText = "DEGRADADA"; }
+                    else { document.getElementById('status-local').className = "pill-ok"; document.getElementById('status-local').style.color = ''; document.getElementById('status-local').innerText = "ESTÁVEL"; }
                     if(data.pings.Google === 0 && data.pings.Cloudflare === 0) { document.getElementById('status-wan').className = "pill-fail"; document.getElementById('status-wan').innerText = "OFFLINE"; }
                     else { document.getElementById('status-wan').className = "pill-ok"; document.getElementById('status-wan').innerText = "ONLINE"; }
                     document.getElementById('pg-google').innerText = data.pings.Google + ' ms'; document.getElementById('pg-cf').innerText = data.pings.Cloudflare + ' ms';
@@ -1081,7 +1523,9 @@ def index():
                     let oHtml = '';
                     data.topologia.forEach(t => {
                         if(t.ip === data.gateway_ip || t.ip === data.meu_ip) return;
-                        oHtml += `<div class="t-card"><div class="t-ip">${t.ip}</div><div class="t-mac">${t.mac}</div><div class="t-name">${t.nome} <button onclick="renomearTopo('${t.mac}','${t.nome}')" style="background:none; border:none; color:var(--yellow); cursor:pointer;" title="Renomear"><i class="fa-solid fa-pen-to-square"></i></button> <button onclick="monitorarIP('${t.ip}', '${t.nome}')" style="background:none; border:none; color:var(--blue); cursor:pointer;" title="Adicionar ao Watchdog"><i class="fa-solid fa-eye"></i></button></div></div>`;
+                        const estadoTopo = t.status === 'online' ? 'ON' : (t.status === 'sem_icmp' ? 'SEM ICMP' : 'N/D');
+                        const corTopo = t.status === 'online' ? 'var(--green)' : (t.status === 'sem_icmp' ? 'var(--yellow)' : 'var(--text-muted)');
+                        oHtml += `<div class="t-card"><div class="t-ip">${t.ip}</div><div class="t-mac">${t.mac}</div><div style="font-size:0.7em;color:${corTopo};margin-bottom:5px;">${estadoTopo}${t.latencia ? ' • ' + t.latencia + ' ms' : ''}</div><div class="t-name">${t.nome} <button onclick="renomearTopo('${t.mac}','${t.nome}')" style="background:none; border:none; color:var(--yellow); cursor:pointer;" title="Renomear"><i class="fa-solid fa-pen-to-square"></i></button> <button onclick="monitorarIP('${t.ip}', '${t.nome}')" style="background:none; border:none; color:var(--blue); cursor:pointer;" title="Adicionar ao Watchdog"><i class="fa-solid fa-eye"></i></button></div></div>`;
                     });
                     document.getElementById('diag-gateway').innerHTML = gHtml; document.getElementById('diag-outros').innerHTML = oHtml;
 
@@ -1129,8 +1573,22 @@ def run_tray():
 if __name__ == "__main__":
     try:
         init_local_db()
-        threading.Thread(target=lambda: app.run(host='0.0.0.0', port=PORTA_LOCAL, debug=False, use_reloader=False), daemon=True).start()
+        threading.Thread(
+            target=lambda: app.run(host='0.0.0.0', port=PORTA_LOCAL, debug=False, use_reloader=False),
+            daemon=True,
+        ).start()
         threading.Thread(target=loop_telemetria, daemon=True).start()
         threading.Thread(target=loop_watchdog_local, daemon=True).start()
-        run_tray() 
-    except Exception as e: pass
+
+        if IS_WIN:
+            run_tray()
+        else:
+            # Modo headless/systemd: mantém o processo principal vivo sem depender
+            # de X11, bandeja do sistema ou sessão gráfica.
+            print(f"✅ NOC Sensor Linux {VERSAO_AGENTE} ativo.")
+            threading.Event().wait()
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"❌ Falha fatal do NOC Sensor: {e}")
+        raise

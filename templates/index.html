@@ -81,8 +81,10 @@
         .btn-logout:hover { color: var(--red); }
         ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: var(--bg-base); } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; } ::-webkit-scrollbar-thumb:hover { background: var(--blue); }
     </style>
+<link rel="stylesheet" href="/static/product.css?v=2.2.0-rc1">
 </head>
 <body>
+<div class="product-bar"><strong>NOC Central</strong><span>Central {{ central_version }}</span></div>
     <audio id="alarme-critico" src="https://assets.mixkit.co/active_storage/sfx/991/991-preview.mp3" preload="auto"></audio>
     <nav class="navbar">
         <div class="navbar-brand">
@@ -115,12 +117,12 @@
                 <div class="clock-item" style="border-left: 1px solid var(--border); padding-left: 20px;"><div class="clock-label" style="color: var(--green);"><i class="fa-solid fa-location-dot"></i> BRASÍLIA</div><div id="clk-br" class="clock-time" style="color: var(--green);">--:--:--</div></div>
             </div>
 
-            <h4 style="margin: 10px 0 5px 0; color: var(--text-muted); font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px;"><i class="fa-solid fa-globe"></i> Disponibilidade do Backbone (Uptime Global)</h4>
+            <h4 style="margin: 10px 0 5px 0; color: var(--text-muted); font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px;"><i class="fa-solid fa-globe"></i> Visão operacional · sensores e conectividade</h4>
             <div class="global-grid">
-                <div class="g-card"><i class="fa-brands fa-google"></i> Google <div class="ms" style="color: var(--green);">99.99%</div></div>
-                <div class="g-card"><i class="fa-solid fa-cloud"></i> Cloudflare <div class="ms" style="color: var(--green);">100%</div></div>
-                <div class="g-card"><i class="fa-brands fa-aws"></i> AWS Amazon <div class="ms" style="color: var(--green);">99.95%</div></div>
-                <div class="g-card"><i class="fa-solid fa-shield-halved"></i> DNS Quad9 <div class="ms" style="color: var(--green);">100%</div></div>
+                <div class="g-card"><i class="fa-brands fa-google"></i> Google <div class="ms" style="color: var(--green);">Sem medição</div></div>
+                <div class="g-card"><i class="fa-solid fa-cloud"></i> Cloudflare <div class="ms" style="color: var(--green);">Sem medição</div></div>
+                <div class="g-card"><i class="fa-brands fa-aws"></i> AWS Amazon <div class="ms" style="color: var(--green);">Sem medição</div></div>
+                <div class="g-card"><i class="fa-solid fa-shield-halved"></i> DNS Quad9 <div class="ms" style="color: var(--green);">Sem medição</div></div>
                 <a href="https://downdetector.com.br/" target="_blank" class="btn-down"><i class="fa-solid fa-tower-broadcast"></i> Downdetector</a>
             </div>
 
@@ -130,7 +132,7 @@
                 <div class="kpi-card kpi-offline"><i class="fa-solid fa-triangle-exclamation kpi-icon"></i><div class="kpi-dados"><h4>Falhas Críticas</h4><span id="kpi-off">0</span></div></div>
             </div>
 
-            <div class="map-wrapper" id="container-mapa"><div id="mapa"></div></div>
+            <p class="help-text">O mapa exibe apenas sensores com localização informada. Coordenadas por IP são aproximadas.</p><div class="map-wrapper" id="container-mapa"><div id="mapa"></div></div>
             
             <div class="terminal-wrapper">
                 <div class="terminal-header"><span><i class="fa-solid fa-terminal"></i> Eventos Globais</span><button onclick="document.getElementById('terminal-logs').innerHTML='';" style="background:var(--bg-input); border:1px solid var(--border); color:var(--text-main); border-radius:4px; cursor:pointer; padding:4px 10px;"><i class="fa-solid fa-eraser"></i> Limpar</button></div>
@@ -164,6 +166,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.1/socket.io.min.js"></script>
 
     <script>
+        function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
         function filtrarSensores() {
             let termo = document.getElementById('filtro-pesquisa').value.toLowerCase();
             let cards = document.querySelectorAll('.sensor-card');
@@ -189,7 +193,7 @@
 
         // 🛡️ MAPA
         const map = L.map('mapa').setView([-14.235, -51.925], 4); 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap', maxZoom: 18 }).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap', maxZoom: 18 }).addTo(map);
         
         let layerSensores;
         try {
@@ -210,7 +214,7 @@
                     return; 
                 }
 
-                const sensores = data.sensores || [];
+                const sensores = (data.sensores || []).map(sensor => Object.fromEntries(Object.entries(sensor).map(([key,value]) => [key, typeof value === 'string' ? escapeHtml(value) : value])));
                 const statusFiltro = document.getElementById('filtro-status').value; 
 
                 let htmlSidebar = '';
@@ -241,12 +245,14 @@
                         badgeStyle = 'background: rgba(249,226,175,0.1); color: var(--yellow); border: 1px solid var(--yellow);';
                     }
 
-                    let lat = parseFloat(s.lat) || -14.235; let lon = parseFloat(s.lon) || -51.925;
+                    let lat = s.lat == null ? NaN : Number(s.lat); let lon = s.lon == null ? NaN : Number(s.lon);
                     let customIcon = L.divIcon({ className: '', html: `<div style="background-color: ${corBase}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #11111b; box-shadow: 0 0 10px ${corBase};"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
-                    L.marker([lat, lon], {icon: customIcon}).addTo(layerSensores).bindPopup(`<h4>${s.nome_local || 'Desconhecido'}</h4><div style="font-size: 0.8em; margin-bottom:10px;">Status: <b style="color:${corBase}">${statusText}</b></div><a href="/sensor/${s.mac_id}" style="color:var(--blue);">Ver Sensor</a>`);
+                    if (Number.isFinite(lat) && Number.isFinite(lon)) L.marker([lat, lon], {icon: customIcon}).addTo(layerSensores).bindPopup(`<h4>${s.nome_local || 'Desconhecido'}</h4><div style="font-size: 0.8em;">Status: <b style="color:${corBase}">${statusText}</b></div><div style="font-size: 0.8em; margin-bottom:10px;">SO: <b>${s.so_nome || 'Não informado'}${s.so_versao ? ' ' + s.so_versao : ''}</b></div><a href="/sensor/${s.mac_id}" style="color:var(--blue);">Ver Sensor</a>`);
 
                     let clienteNome = s.cliente_nome || 'Cliente Padrão';
-                    let termoBusca = `${s.nome_local} ${s.mac_id} ${clienteNome}`;
+                    let soNome = s.so_nome || 'Não informado';
+                    let soCompleto = soNome + (s.so_versao ? ` ${s.so_versao}` : '');
+                    let termoBusca = `${s.nome_local} ${s.mac_id} ${clienteNome} ${soCompleto} ${s.so_arquitetura || ''} ${s.interface_nome || ''} ${s.rede_cidr || ''}`;
 
                     // Valores padronizados
                     let cpuVal = s.cpu_usage || 0;
@@ -261,6 +267,8 @@
                                     <div class="s-title">${s.nome_local || 'Sensor'}</div>
                                     <div class="s-mac">${s.mac_id}</div>
                                     <div class="s-cliente"><i class="fa-solid fa-building"></i> ${clienteNome}</div>
+                                    <div class="s-cliente" title="${s.so_arquitetura || ''}"><i class="fa-solid fa-desktop"></i> ${soCompleto}</div>
+                                    <div class="s-cliente"><i class="fa-solid fa-ethernet"></i> ${s.interface_nome || 'Interface N/D'}${s.rede_cidr ? ' • ' + s.rede_cidr : ''}</div>
                                 </div>
                                 <span class="status-badge ${badgeClass}" style="${badgeStyle}">${statusText}</span>
                             </div>
@@ -271,8 +279,8 @@
                                     <div style="flex: 1;"><i class="fa-solid fa-memory"></i> RAM: <strong>${ramVal}%</strong></div>
                                 </div>
                                 <div style="display: flex; gap: 15px;">
-                                    <div style="flex: 1;"><i class="fa-solid fa-arrow-down" style="color:var(--green)"></i> <strong>${downVal}</strong> Mb</div>
-                                    <div style="flex: 1;"><i class="fa-solid fa-arrow-up" style="color:var(--red)"></i> <strong>${upVal}</strong> Mb</div>
+                                    <div style="flex: 1;" title="RX da interface do sensor"><i class="fa-solid fa-arrow-down" style="color:var(--green)"></i> RX <strong>${downVal}</strong> Mb/s</div>
+                                    <div style="flex: 1;" title="TX da interface do sensor"><i class="fa-solid fa-arrow-up" style="color:var(--red)"></i> TX <strong>${upVal}</strong> Mb/s</div>
                                 </div>
                             </div>
                             
@@ -297,7 +305,7 @@
             try {
                 const res = await fetch('/api/v2/logs_globais'); const logs = await res.json();
                 let html = '';
-                logs.forEach(l => { let cor = l.gravidade === 'Crítica' ? 'var(--red)' : (l.gravidade === 'OK' ? 'var(--green)' : 'var(--yellow)'); html += `<div style="margin-bottom:6px; border-bottom:1px dashed #1e1e2e; padding-bottom:4px;"><span style="color:#6c7086;">[${l.hora}]</span> <span style="color:var(--blue); font-weight:bold;">[${l.nome_local || 'S/N'}]</span> <span style="color:${cor}; font-weight:bold;">${l.tipo_evento}</span>: <span style="color:var(--text-main);">${l.detalhes}</span></div>`; });
+                logs.forEach(l => { let cor = l.gravidade === 'Crítica' ? 'var(--red)' : (l.gravidade === 'OK' ? 'var(--green)' : 'var(--yellow)'); html += `<div style="margin-bottom:6px; border-bottom:1px dashed #1e1e2e; padding-bottom:4px;"><span style="color:#6c7086;">[${escapeHtml(l.hora)}]</span> <span style="color:var(--blue); font-weight:bold;">[${l.nome_local || 'S/N'}]</span> <span style="color:${cor}; font-weight:bold;">${escapeHtml(l.tipo_evento)}</span>: <span style="color:var(--text-main);">${escapeHtml(l.detalhes)}</span></div>`; });
                 if(html) document.getElementById('terminal-logs').innerHTML = html;
             } catch(e) {}
         }
@@ -372,25 +380,24 @@
         carregarSensores(); 
         carregarLogsGlobais();
 
-        // ⚡ O Loop Infinito a cada 15 Segundos
-        setInterval(() => {
-            carregarSensores();
-            carregarLogsGlobais();
-        }, 15000);
+        // Polling é apenas fallback. O tempo real fica a cargo do Socket.IO.
+        setInterval(carregarSensores, 30000);
+        setInterval(carregarLogsGlobais, 30000);
 
         try {
-            const socket = io(); 
-            let aguardandoSocket = false; // ⚡ A nossa trava de inteligência
+            const socket = io();
+            let aguardandoSocket = false;
             
-            socket.on('atualizacao_global', function(msg) { 
-                // Se receber 50 avisos do Agente, ele ignora e só recarrega a tela a cada 3 segundos
+            socket.on('atualizacao_global', function(msg) {
+                // Consolida vários batimentos dos sensores em uma atualização visual.
+                // Logs globais continuam no polling de 30 s para não consultar o banco
+                // a cada pacote de telemetria.
                 if(!aguardandoSocket) {
                     aguardandoSocket = true;
                     setTimeout(() => {
-                        carregarSensores(); 
-                        carregarLogsGlobais();
+                        carregarSensores();
                         aguardandoSocket = false;
-                    }, 3000); 
+                    }, 5000);
                 }
             });
             
