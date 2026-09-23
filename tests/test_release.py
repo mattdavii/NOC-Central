@@ -130,3 +130,29 @@ def test_partial_tenant_configuration(client):
 def test_cross_origin(client,login):
     login()
     assert client.post('/api/v2/ack_alerta',headers={'Origin':'https://evil.test'}).status_code==403
+
+
+def test_user_insert_after_fixture_sequence(client,login):
+    login()
+    response=client.post('/api/v2/usuarios',json={'nome':'New client','usuario':'new-client','senha':'test-only','role':'Cliente'})
+    assert response.status_code==200 and response.json['status']=='OK'
+
+
+def test_migrate_legacy_coordinates_and_reapply(tmp_path,monkeypatch):
+    import sqlite3
+    path=str(tmp_path/'legacy.db')
+    conn=sqlite3.connect(path)
+    conn.execute('CREATE TABLE sensores (mac_id TEXT PRIMARY KEY, nome_local TEXT, ip_sensor TEXT, cpu_usage REAL, ram_usage REAL, temp REAL, status TEXT, lat REAL, lon REAL, ping_gateway REAL, ping_global TEXT)')
+    conn.execute("INSERT INTO sensores(mac_id,lat,lon) VALUES ('placeholder',-14.235,-51.925),('equator',0,0)")
+    conn.commit();conn.close()
+    monkeypatch.setattr(database,'DATABASE_URL','')
+    monkeypatch.setenv('NOC_DB_PATH',path)
+    database.init_db();database.init_db()
+    conn=database.get_db()
+    placeholder=conn.execute("SELECT * FROM sensores WHERE mac_id='placeholder'").fetchone()
+    equator=conn.execute("SELECT * FROM sensores WHERE mac_id='equator'").fetchone()
+    assert placeholder['lat'] is None and placeholder['latitude'] is None
+    assert equator['latitude']==0 and equator['location_source']=='legacy'
+    assert equator['location_updated_at'] is None
+    assert conn.execute('SELECT COUNT(*) n FROM location_migration_backup').fetchone()['n']==2
+    conn.close()
