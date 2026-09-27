@@ -156,3 +156,35 @@ def test_migrate_legacy_coordinates_and_reapply(tmp_path,monkeypatch):
     assert equator['location_updated_at'] is None
     assert conn.execute('SELECT COUNT(*) n FROM location_migration_backup').fetchone()['n']==2
     conn.close()
+
+
+@pytest.mark.parametrize('parameters', [[], 'invalid', {'retry_after': 'invalid'}, {'retry_after': None}, {'retry_after': float('inf')}])
+def test_telegram_malformed_retry_does_not_hide_permanent_error(parameters):
+    with patch('urllib.request.urlopen', return_value=Response({'ok': False, 'error_code': 403, 'description': 'Forbidden', 'parameters': parameters})):
+        result = tg.deliver('SECRET', '1', 'test')
+    assert result['code'] == 'permissions'
+    assert result['transient'] is False
+    assert result['retry_after'] == 2
+
+
+@pytest.mark.parametrize('kind,expected', [('dns', 'dns'), ('tls', 'tls'), ('timeout', 'timeout'), ('connection', 'connection')])
+def test_telegram_network_diagnostics_redact_secrets(kind, expected):
+    import socket
+    import ssl
+    errors = {'dns': socket.gaierror('SECRET'), 'tls': ssl.SSLError('SECRET'),
+              'timeout': TimeoutError('SECRET'), 'connection': ConnectionResetError('SECRET')}
+    with patch('urllib.request.urlopen', side_effect=urllib.error.URLError(errors[kind])):
+        result = tg.deliver('SECRET', '1', 'test')
+    assert result['code'] == expected
+    assert result['transient'] is True
+    assert 'SECRET' not in str(result)
+
+
+def test_queue_malformed_retry_is_terminal(client):
+    tg.enqueue('invalid-response-permanent')
+    with patch('urllib.request.urlopen', return_value=Response({'ok': False, 'error_code': 403, 'parameters': ['unexpected']})):
+        assert tg.process_one('SECRET', '1')
+    conn = database.get_db()
+    row = conn.execute("SELECT state, attempts FROM telegram_outbox WHERE message='invalid-response-permanent'").fetchone()
+    conn.close()
+    assert row['state'] == 'failed' and row['attempts'] == 1
