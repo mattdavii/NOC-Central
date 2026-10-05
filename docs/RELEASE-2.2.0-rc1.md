@@ -56,3 +56,13 @@ O workflow publica a tag imutável `v2.2.0-rc1` somente após os testes da main 
 O primeiro deploy de `612fbf7` falhou porque o worker gevent do Gunicorn importava `packaging`, ausente na instalação de produção. A dependência agora é explícita. O smoke test do CI cria um ambiente isolado contendo somente `requirements.txt`, evitando que dependências do pytest ocultem falhas de produção. Validação local: instalação limpa, `pip check`, inicialização real do Gunicorn e `/healthz` retornando `2.2.0-rc1`.
 
 A tag publicada `v2.2.0-rc1` permanece imutável em `612fbf7`; a Central deve ser implantada pela `main` com esta correção posterior. O agente Linux da tag não é afetado. Não há nova migração nem alteração de autenticação nesta correção.
+
+## Revisão de diagnóstico Telegram — 27/09/2026
+
+Falhas de DNS, TLS, timeout e conexão agora têm códigos e orientações separados, sem registrar URLs ou tokens. Metadados `parameters`/`retry_after` malformados usam intervalo seguro de dois segundos e preservam a classificação original da falha; um erro permanente de permissão não volta para a fila por causa desses metadados. O limite continua em três tentativas para falhas transitórias.
+
+Validação local: 43 testes passaram, incluindo dez cenários novos de erros de rede e respostas malformadas. Não há nova migração nem alteração de autenticação dos sensores. A entrega real permanece dependente do teste administrativo no destino configurado.
+
+### Configuração de sessão no Railway
+
+No serviço NOC-Central, em Variables, configurar uma `FLASK_SECRET_KEY` aleatória e permanente; pode ser gerada localmente com `python3 -c "import secrets; print(secrets.token_hex(32))"`. Manter esse valor fora do Git e do chat. Aplicar a configuração reinicia o serviço e invalida as sessões anteriores uma vez. Não alterar `NOC_SENSOR_API_KEY` durante essa operação. Depois do deploy, verificar `/healthz`, entrar novamente e usar o botão Testar Telegram.

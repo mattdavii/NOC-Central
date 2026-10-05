@@ -2,6 +2,8 @@
 import hashlib
 import json
 import logging
+import socket
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -60,12 +62,28 @@ def deliver(token, chat, message):
             code, hint = 'unavailable', 'Telegram temporariamente indisponível.'
         else:
             code, hint = 'rejected', 'Telegram rejeitou a mensagem.'
-        retry = max(1, min(86400, int((body.get('parameters') or {}).get('retry_after', 2))))
+        parameters = body.get('parameters')
+        parameters = parameters if isinstance(parameters, dict) else {}
+        try:
+            retry = max(1, min(86400, int(parameters.get('retry_after', 2))))
+        except (ValueError, TypeError, OverflowError):
+            retry = 2
         return dict(ok=False, code=code, erro=f'{hint} {description}', http_status=status,
                     transient=status == 429 or status >= 500, retry_after=retry)
-    except (urllib.error.URLError, TimeoutError, OSError):
-        # Exception strings may contain the URL and bot token.
-        return dict(ok=False, code='network', erro='Falha de DNS, TLS, conexão ou timeout ao Telegram. Entrega não confirmada.', transient=True, retry_after=2)
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        # Inspect types only: exception strings can expose the URL and bot token.
+        reason = error.reason if isinstance(error, urllib.error.URLError) else error
+        if isinstance(reason, socket.gaierror):
+            code, detail = 'dns', 'Não foi possível resolver o endereço do Telegram.'
+        elif isinstance(reason, ssl.SSLError):
+            code, detail = 'tls', 'Falha na conexão segura TLS com o Telegram. Verifique certificados e relógio do servidor.'
+        elif isinstance(reason, TimeoutError):
+            code, detail = 'timeout', 'Tempo limite excedido ao contatar o Telegram.'
+        elif isinstance(reason, ConnectionError):
+            code, detail = 'connection', 'Conexão com o Telegram recusada ou interrompida.'
+        else:
+            code, detail = 'network', 'Falha de rede ao contatar o Telegram.'
+        return dict(ok=False, code=code, erro=detail + ' Entrega não confirmada.', transient=True, retry_after=2)
     except (ValueError, TypeError):
         return dict(ok=False, code='invalid_response', erro='Resposta inválida da API Telegram.', transient=True, retry_after=2)
 
