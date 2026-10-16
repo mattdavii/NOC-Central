@@ -66,4 +66,28 @@ Na Central, confira `Agente 2.2.0-rc1`, horário do último contato, IP/CIDR/int
 
 Fallback aproximado por IP é opcional: adicione `NOC_IP_GEOLOCATION=1` a `/etc/default/noc-sensor` e reinicie. Isso consulta o provedor ipwho.is a partir do Mini PC. Não substitui uma localização manual/do navegador. Sem essa opção, não há consulta externa de geolocalização.
 
-Não ative `NOC_SENSOR_API_KEY` na Central antes de atualizar todos os agentes Windows. Para rollback do Mini PC, selecione a branch `rollback/linux-...` criada acima, reinstale `requirements-agente.txt` e reinicie o mesmo serviço.
+## Credencial individual do Mini PC
+
+Na Central, abra **Sensores**, clique em **Gerar chave** no Mini PC e copie o valor exibido uma única vez. No Mini PC:
+
+```bash
+sudoedit /etc/default/noc-sensor
+```
+
+Adicione uma linha, sem aspas nem espaços ao redor de `=`:
+
+```text
+NOC_SENSOR_API_KEY=CHAVE_COPIADA_DA_CENTRAL
+```
+
+Salve e valide sem imprimir a chave nos logs:
+
+```bash
+sudo systemctl restart noc-sensor.service
+sudo systemctl is-active noc-sensor.service
+journalctl -u noc-sensor.service -n 80 --no-pager
+```
+
+Confirme na Central que o último contato continua atualizando. Repita para cada Linux e Windows antes de definir `NOC_SENSOR_AUTH_REQUIRED=1` no Railway. Gerar a chave não bloqueia agentes antigos enquanto essa variável permanecer `0`.
+
+Para rollback do Mini PC, selecione a branch `rollback/linux-...` criada acima, reinstale `requirements-agente.txt` e reinicie o mesmo serviço. Se a credencial precisar ser removida, apague somente a linha `NOC_SENSOR_API_KEY` de `/etc/default/noc-sensor`, reinicie o serviço e mantenha a Central em modo de compatibilidade até corrigir o sensor.

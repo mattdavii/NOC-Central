@@ -7,9 +7,11 @@ import subprocess
 import re
 import threading
 import json
+import os
 import speedtest # Requer: pip install speedtest-cli
 
-CENTRAL_URL = "http://localhost:10000"
+CENTRAL_URL = os.environ.get('NOC_CENTRAL_BASE_URL', 'http://localhost:10000').rstrip('/')
+SENSOR_API_KEY = os.environ.get('NOC_SENSOR_API_KEY', '').strip()
 MANUAL_SPEEDTEST = False # Variável global para receber ordem da central
 
 # ==========================================
@@ -18,6 +20,12 @@ MANUAL_SPEEDTEST = False # Variável global para receber ordem da central
 
 def get_mac_address():
     return ':'.join(['{:02x}'.format((uuid.getnode() >> ele) & 0xff) for ele in range(0, 8*6, 8)][::-1])
+
+def central_headers(mac):
+    headers = {'X-NOC-Sensor-ID': mac}
+    if SENSOR_API_KEY:
+        headers['X-NOC-Sensor-Key'] = SENSOR_API_KEY
+    return headers
 
 def get_geo_location():
     try:
@@ -131,7 +139,7 @@ def thread_instantanea(mac, meu_ip, ip_gateway):
             "ip_sensor": meu_ip, "ip_gateway": ip_gateway
         }
         try:
-            res = requests.post(f"{CENTRAL_URL}/api/v2/telemetria_instantanea", json=payload)
+            res = requests.post(f"{CENTRAL_URL}/api/v2/telemetria_instantanea", json=payload, headers=central_headers(mac))
             # Se a Central disser que há um teste na fila, ativa a flag!
             if res.json().get("run_speedtest"): 
                 MANUAL_SPEEDTEST = True
@@ -152,7 +160,7 @@ def thread_velocidade(mac):
                 st.get_best_server()
                 down = st.download() / 1_000_000
                 up = st.upload() / 1_000_000
-                requests.post(f"{CENTRAL_URL}/api/v2/reportar_velocidade", json={"mac_id": mac, "down": round(down, 2), "up": round(up, 2)})
+                requests.post(f"{CENTRAL_URL}/api/v2/reportar_velocidade", json={"mac_id": mac, "down": round(down, 2), "up": round(up, 2)}, headers=central_headers(mac))
                 print(f"✅ Velocidade real: ↓{down:.1f} Mbps | ↑{up:.1f} Mbps")
             except Exception as e: 
                 print(f"❌ Erro no Speedtest real: {e}")
@@ -173,7 +181,7 @@ def thread_global(mac):
             "Quad9": ping_rapido("9.9.9.9")
         }
         try: 
-            requests.post(f"{CENTRAL_URL}/api/v2/telemetria_global", json={"mac_id": mac, "pings": json.dumps(pings), "tracert": ""})
+            requests.post(f"{CENTRAL_URL}/api/v2/telemetria_global", json={"mac_id": mac, "pings": json.dumps(pings), "tracert": ""}, headers=central_headers(mac))
         except: pass
         time.sleep(60)
 
@@ -181,11 +189,11 @@ def thread_ips_custom(mac):
     """ Busca os IPs que o usuário cadastrou no Dashboard e testa a latência a cada 10s """
     while True:
         try:
-            res = requests.get(f"{CENTRAL_URL}/api/v2/ips_customizados/{mac}")
+            res = requests.get(f"{CENTRAL_URL}/api/v2/ips_customizados/{mac}", headers=central_headers(mac))
             ips = res.json()
             for item in ips:
                 lat = ping_rapido(item['ip'])
-                requests.post(f"{CENTRAL_URL}/api/v2/reportar_latencia_custom", json={"id": item['id'], "latencia": lat})
+                requests.post(f"{CENTRAL_URL}/api/v2/reportar_latencia_custom", json={"id": item['id'], "latencia": lat, "mac_id": mac}, headers=central_headers(mac))
         except: pass
         time.sleep(10)
 
@@ -202,7 +210,7 @@ def simular_sensor():
     print(f"🔹 IP: {meu_ip} | Gateway: {ip_gateway} | MAC: {mac}")
     
     # ZTP: Auto-Registro na Central
-    requests.post(f"{CENTRAL_URL}/api/v2/registrar_sensor", json={"mac_id": mac, "lat": lat, "lon": lon, "nome_local": "Cobaia Windows"})
+    requests.post(f"{CENTRAL_URL}/api/v2/registrar_sensor", json={"mac_id": mac, "lat": lat, "lon": lon, "nome_local": "Cobaia Windows"}, headers=central_headers(mac))
     
     # Inicia Inteligência Artificial
     ia = MotorIA(ip_gateway)
@@ -217,7 +225,7 @@ def simular_sensor():
     while True:
         print("🔍 IA executando varredura e diagnósticos...")
         lista_disp = scan_rede_local(base_ip)
-        try: requests.post(f"{CENTRAL_URL}/api/v2/atualizar_dispositivos", json={"mac_id": mac, "lista": lista_disp})
+        try: requests.post(f"{CENTRAL_URL}/api/v2/atualizar_dispositivos", json={"mac_id": mac, "lista": lista_disp}, headers=central_headers(mac))
         except: pass
         
         alertas = []
@@ -228,7 +236,7 @@ def simular_sensor():
         if alerta_router: alertas.append(alerta_router)
 
         if alertas:
-            try: requests.post(f"{CENTRAL_URL}/api/v2/alertas_ia", json={"mac_id": mac, "alertas": alertas})
+            try: requests.post(f"{CENTRAL_URL}/api/v2/alertas_ia", json={"mac_id": mac, "alertas": alertas}, headers=central_headers(mac))
             except: pass
 
         time.sleep(25) # A cada 25s ele escaneia a rede inteira

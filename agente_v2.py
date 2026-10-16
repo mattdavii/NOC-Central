@@ -6,6 +6,7 @@ import re
 import struct
 import itertools
 import logging
+import hashlib
 
 # 🛡️ TRUQUE ANTI-CRASH DO PYINSTALLER (--noconsole)
 if sys.stdout is None: sys.stdout = open(os.devnull, "w")
@@ -60,6 +61,7 @@ SENSOR_API_KEY = os.environ.get("NOC_SENSOR_API_KEY", "").strip()
 
 def api_headers():
     headers = {"Content-Type": "application/json"}
+    headers["X-NOC-Sensor-ID"] = get_mac()
     if SENSOR_API_KEY:
         headers["X-NOC-Sensor-Key"] = SENSOR_API_KEY
     return headers
@@ -506,12 +508,16 @@ def verificar_atualizacao(mac):
 
         versao_nova = info.get('versao')
         url_download = info.get('url_download')
+        sha256_esperado = str(info.get('sha256') or '').lower()
         def version_key(value):
             match = re.fullmatch(r'(\d+)\.(\d+)\.(\d+)(?:-rc(\d+))?', value or '')
             if not match:
                 return (0, 0, 0, 0)
             return tuple(map(int, match.group(1, 2, 3))) + (int(match[4]) if match[4] else 999999,)
         if not versao_nova or version_key(versao_nova) <= version_key(VERSAO_AGENTE) or not url_download:
+            return
+        if not url_download.startswith('https://') or not re.fullmatch(r'[0-9a-f]{64}', sha256_esperado):
+            log_local_event('Atualização', 'Artefato recusado: URL HTTPS ou SHA-256 ausente/inválido.', 'Crítica')
             return
 
         log_local_event("Atualização", f"Nova versão disponível: {versao_nova} (atual: {VERSAO_AGENTE})", "Aviso")
@@ -523,7 +529,24 @@ def verificar_atualizacao(mac):
 
         exe_atual = sys.executable
         exe_novo = exe_atual + ".novo"
-        urllib.request.urlretrieve(url_download, exe_novo)
+        digest = hashlib.sha256()
+        total = 0
+        with urllib.request.urlopen(url_download, timeout=30) as response, open(exe_novo, 'wb') as output:
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > 150 * 1024 * 1024:
+                    raise ValueError('artefato excede o limite de 150 MB')
+                digest.update(chunk)
+                output.write(chunk)
+        if digest.hexdigest().lower() != sha256_esperado:
+            try:
+                os.remove(exe_novo)
+            except OSError:
+                pass
+            raise ValueError('SHA-256 do agente não corresponde ao publicado pela Central')
 
         bat_path = os.path.join(os.path.dirname(exe_atual), "_atualizar_noc_agente.bat")
         with open(bat_path, "w") as f:
@@ -1012,7 +1035,7 @@ def loop_watchdog_local():
 
             for alvo in alvos_nuvem:
                 ip = alvo['ip']; desc = alvo['descricao']; latencia = ping(ip); ta_online = latencia > 0
-                try: urllib.request.urlopen(urllib.request.Request(url_report, data=json.dumps({"id": alvo['id'], "latencia": latencia}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
+                try: urllib.request.urlopen(urllib.request.Request(url_report, data=json.dumps({"id": alvo['id'], "latencia": latencia, "mac_id": mac}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                 except: pass
                 
                 estado_anterior = cache_alvos.get(ip, {}).get('online', True)
@@ -1028,7 +1051,7 @@ def loop_watchdog_local():
 
             for alvo in alvos_energia:
                 ip = alvo['ip']; desc = alvo['descricao']; latencia = ping(ip); ta_online = latencia > 0
-                try: urllib.request.urlopen(urllib.request.Request(url_report_energia, data=json.dumps({"id": alvo['id'], "latencia": latencia}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
+                try: urllib.request.urlopen(urllib.request.Request(url_report_energia, data=json.dumps({"id": alvo['id'], "latencia": latencia, "mac_id": mac}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
                 except: pass
                 
                 estado_anterior = cache_alvos.get('ENERGIA_'+ip, {}).get('online', True)
@@ -1105,7 +1128,7 @@ def loop_watchdog_local():
                 cache_alvos['SRV_'+nome_srv] = {'status': status_atual}
 
                 if not is_local:
-                    try: urllib.request.urlopen(urllib.request.Request(url_report_srv, data=json.dumps({"id": id_srv, "status": status_atual}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
+                    try: urllib.request.urlopen(urllib.request.Request(url_report_srv, data=json.dumps({"id": id_srv, "status": status_atual, "mac_id": mac}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
                     except: pass
                     
                     estado_anterior = cache_alvos.get('SRV_ANT_'+nome_srv, 'ONLINE')

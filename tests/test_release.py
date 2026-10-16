@@ -22,6 +22,8 @@ def test_legacy_report_and_migration(client, login):
     database.init_db();database.init_db()
     assert client.get('/api/v2/sensor_data/AA:01').json['cpu_usage']==15
     assert client.get('/api/v2/agent_versao').json['versao']=='2.1.0'
+    assert client.get('/api/v2/agent_versao').json['update_available'] is False
+    assert client.get('/api/v2/agent_versao').json['url_download']==''
     assert client.get('/healthz').json['central_version']=='2.2.0-rc1'
 
 
@@ -67,6 +69,120 @@ def test_ingest_validation_and_compatibility(client,monkeypatch):
     monkeypatch.setattr(central,'NOC_SENSOR_API_KEY','test-key')
     assert client.post('/api/v2/report_data',json={'mac_id':'keyless'}).status_code==401
     assert client.post('/api/v2/report_data',json={'mac_id':'keyed'},headers={'X-NOC-Sensor-Key':'test-key'}).status_code==200
+
+
+def test_individual_sensor_credential_rollout(client, login, monkeypatch):
+    monkeypatch.setattr(central, 'NOC_SENSOR_API_KEY', '')
+    monkeypatch.setattr(central, 'NOC_SENSOR_AUTH_REQUIRED', False)
+    assert client.post('/api/v2/report_data', json={'mac_id': 'linux-01'}).status_code == 200
+
+    login()
+    created = client.post('/api/v2/sensor_credential/linux-01')
+    assert created.status_code == 201
+    token = created.json['sensor_api_key']
+    assert len(token) >= 32 and created.json['key_prefix'] == token[:8]
+    conn = database.get_db()
+    stored = conn.execute('SELECT * FROM sensor_credentials WHERE sensor_mac=?', ('linux-01',)).fetchone()
+    conn.close()
+    assert stored['key_hash'] != token and stored['revoked_at'] is None
+    sensors_page = client.get('/sensores').get_data(as_text=True)
+    assert token not in sensors_page and created.json['key_prefix'] in sensors_page
+
+    # Provisionar a chave não derruba agentes Windows/Linux antigos.
+    with client.session_transaction() as browser_session:
+        browser_session.clear()
+    assert client.post('/api/v2/report_data', json={'mac_id': 'linux-01'}).status_code == 200
+
+    monkeypatch.setattr(central, 'NOC_SENSOR_AUTH_REQUIRED', True)
+    assert client.post('/api/v2/report_data', json={'mac_id': 'linux-01'}).status_code == 401
+    assert client.post('/api/v2/report_data', json={'mac_id': 'linux-01'}, headers={
+        'X-NOC-Sensor-ID': 'linux-01', 'X-NOC-Sensor-Key': 'wrong',
+    }).status_code == 401
+    assert client.post('/api/v2/report_data', json={'mac_id': 'linux-01'}, headers={
+        'X-NOC-Sensor-ID': 'linux-01', 'X-NOC-Sensor-Key': token,
+    }).status_code == 200
+    assert client.post('/api/v2/report_data', json={'mac_id': 'linux-01'}, headers={
+        'X-NOC-Sensor-ID': 'another-sensor', 'X-NOC-Sensor-Key': token,
+    }).status_code == 400
+
+    conn = database.get_db()
+    own_id = conn.execute(
+        "INSERT INTO ips_custom (sensor_mac, ip, descricao) VALUES ('linux-01', '10.0.0.1', 'own') RETURNING id"
+    ).fetchone()['id']
+    foreign_id = conn.execute(
+        "INSERT INTO ips_custom (sensor_mac, ip, descricao) VALUES ('windows-02', '10.0.0.2', 'foreign') RETURNING id"
+    ).fetchone()['id']
+    conn.commit(); conn.close()
+    auth_headers = {'X-NOC-Sensor-ID': 'linux-01', 'X-NOC-Sensor-Key': token}
+    assert client.post('/api/v2/reportar_latencia_custom', json={
+        'id': own_id, 'latencia': 2, 'mac_id': 'linux-01',
+    }, headers=auth_headers).status_code == 200
+    assert client.post('/api/v2/reportar_latencia_custom', json={
+        'id': foreign_id, 'latencia': 2, 'mac_id': 'linux-01',
+    }, headers=auth_headers).status_code == 403
+
+    login()
+    assert client.delete('/api/v2/sensor_credential/linux-01').status_code == 200
+    with client.session_transaction() as browser_session:
+        browser_session.clear()
+    assert client.post('/api/v2/report_data', json={'mac_id': 'linux-01'}, headers={
+        'X-NOC-Sensor-ID': 'linux-01', 'X-NOC-Sensor-Key': token,
+    }).status_code == 401
+
+
+def test_sensor_credential_is_master_only(client, login):
+    client.post('/api/v2/report_data', json={'mac_id': 'windows-01'})
+    login(2, 'Cliente')
+    assert client.post('/api/v2/sensor_credential/windows-01').status_code == 403
+
+
+def test_untrusted_sensor_text_is_rejected(client):
+    response = client.post('/api/v2/registrar_sensor', json={
+        'mac_id': 'malicious',
+        'nome_local': '<img src=x onerror=alert(1)>',
+    })
+    assert response.status_code == 400
+    response = client.post('/api/v2/alertas_ia', json={
+        'mac_id': 'malicious',
+        'alertas': [{'tipo': '<svg/onload=alert(1)>', 'gravidade': 'Crítica', 'detalhes': 'x'}],
+    })
+    assert response.status_code == 400
+
+
+def test_security_headers_and_tv_escaping(client, login):
+    response = client.get('/login')
+    assert response.headers['X-Frame-Options'] == 'DENY'
+    assert response.headers['X-Content-Type-Options'] == 'nosniff'
+    assert "frame-ancestors 'none'" in response.headers['Content-Security-Policy']
+    login()
+    tv = client.get('/tv').get_data(as_text=True)
+    assert 'function escapeHtml(value)' in tv
+    assert '${escapeHtml(s.nome_local' in tv
+    assert '${escapeHtml(l.detalhes)}' in tv
+
+
+def test_csrf_required_for_browser_mutations(monkeypatch):
+    previous = central.app.config['CSRF_PROTECT']
+    central.app.config['CSRF_PROTECT'] = True
+    try:
+        browser = central.app.test_client()
+        assert browser.get('/login').status_code == 200
+        with browser.session_transaction() as browser_session:
+            token = browser_session['_csrf_token']
+        assert browser.post('/login', data={'usuario': 'x', 'senha': 'x'}).status_code == 403
+        assert browser.post('/login', data={
+            'usuario': 'x', 'senha': 'x', '_csrf_token': token,
+        }).status_code == 200
+    finally:
+        central.app.config['CSRF_PROTECT'] = previous
+
+
+def test_duplicate_username_is_rejected(client, login):
+    login()
+    response = client.post('/api/v2/usuarios', json={
+        'nome': 'Duplicado', 'usuario': 'user2', 'senha': 'test-only', 'role': 'Cliente',
+    })
+    assert response.status_code == 409
 
 
 class Response:
