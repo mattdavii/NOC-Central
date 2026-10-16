@@ -15,6 +15,8 @@ import secrets
 import threading
 import time
 import urllib.error
+import re
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 # Chave privada RSA usada para assinar os tokens de acesso local do agente (agente_v2.py guarda só a pública)
@@ -29,7 +31,14 @@ if not os.environ.get("FLASK_SECRET_KEY"):
     print("⚠️ FLASK_SECRET_KEY ausente: usando chave efêmera. Configure-a no Railway.")
 
 SOCKETIO_ALLOWED_ORIGINS = os.environ.get("SOCKETIO_ALLOWED_ORIGINS") or None
-app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', MAX_CONTENT_LENGTH=1024 * 1024)
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=os.environ.get('SESSION_COOKIE_SECURE', '1') != '0',
+    MAX_CONTENT_LENGTH=1024 * 1024,
+    CSRF_PROTECT=os.environ.get('CSRF_PROTECT', '1') != '0',
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+)
 
 socketio = SocketIO(app, cors_allowed_origins=SOCKETIO_ALLOWED_ORIGINS, async_mode='gevent')
 
@@ -50,25 +59,166 @@ def db_execute(conn, sql, params=()):
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 
-# Autenticação progressiva dos sensores. Enquanto a variável estiver vazia,
-# mantém compatibilidade com agentes antigos. Depois de atualizar os agentes,
-# configure a mesma chave no Railway e nos sensores para ativar a proteção.
+# Autenticação progressiva dos sensores. Chaves individuais podem ser
+# provisionadas sem interromper agentes antigos; a exigência é ativada em etapa separada.
+# NOC_SENSOR_API_KEY na Central é apenas a opção compartilhada legada de transição.
 NOC_SENSOR_API_KEY = os.environ.get("NOC_SENSOR_API_KEY", "").strip()
+NOC_SENSOR_AUTH_REQUIRED = os.environ.get("NOC_SENSOR_AUTH_REQUIRED", "0").strip().lower() in ('1', 'true', 'yes', 'on')
 if not NOC_SENSOR_API_KEY:
     print("⚠️ NOC_SENSOR_API_KEY ausente: API de sensores em modo compatibilidade.")
+if not NOC_SENSOR_AUTH_REQUIRED:
+    print("ℹ️ Credenciais individuais de sensores em adoção gradual (não obrigatórias).")
 
 CRON_SECRET = os.environ.get("CRON_SECRET", "").strip()
+
+MUTATING_METHODS = {'POST', 'PUT', 'PATCH', 'DELETE'}
+ALLOWED_ROLES = {
+    'Administrador Master', 'Operador Master', 'Cliente',
+    'Administrador Cliente', 'Operador Cliente',
+}
+
+
+def bounded_text(value, field, *, maximum=160, minimum=1, allow_empty=False):
+    """Normaliza texto externo e rejeita HTML/controles como defesa adicional."""
+    if value is None and allow_empty:
+        return ''
+    if not isinstance(value, str):
+        raise ValueError(f'{field} inválido.')
+    value = value.strip()
+    if allow_empty and not value:
+        return ''
+    if not minimum <= len(value) <= maximum:
+        raise ValueError(f'{field} deve ter entre {minimum} e {maximum} caracteres.')
+    if any(ord(char) < 32 for char in value) or '<' in value or '>' in value:
+        raise ValueError(f'{field} contém caracteres não permitidos.')
+    return value
+
+
+def bounded_secret(value, field, *, maximum=256, minimum=8):
+    if not isinstance(value, str) or not minimum <= len(value) <= maximum:
+        raise ValueError(f'{field} deve ter entre {minimum} e {maximum} caracteres.')
+    if any(ord(char) < 32 for char in value):
+        raise ValueError(f'{field} contém caracteres não permitidos.')
+    return value
+
+
+def get_csrf_token():
+    token = session.get('_csrf_token')
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session['_csrf_token'] = token
+    return token
+
+
+@app.before_request
+def enforce_csrf():
+    if not app.config.get('CSRF_PROTECT') or request.method not in MUTATING_METHODS:
+        return None
+    # Sensores não usam sessão de navegador. A transição Linux/Windows continua
+    # compatível e é protegida separadamente pela credencial do agente.
+    browser_request = bool(session.get('user_id')) or request.endpoint == 'login'
+    if not browser_request:
+        return None
+    expected = session.get('_csrf_token')
+    supplied = request.headers.get('X-CSRF-Token') or request.form.get('_csrf_token', '')
+    if not expected or not supplied or not hmac.compare_digest(expected, supplied):
+        return jsonify(error='Token de segurança ausente ou inválido.'), 403
+    return None
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'DENY')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    response.headers.setdefault('Permissions-Policy', 'geolocation=(self), camera=(), microphone=()')
+    response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    response.headers.setdefault(
+        'Content-Security-Policy',
+        "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; "
+        "form-action 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net "
+        "https://unpkg.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' "
+        "https://fonts.googleapis.com https://unpkg.com https://cdnjs.cloudflare.com; "
+        "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
+        "img-src 'self' data: https:; "
+        "media-src 'self' https://assets.mixkit.co; connect-src 'self' https://api.ipify.org wss:"
+    )
+    return response
+
+
+def _sensor_request_identity():
+    """Resolve o sensor sem confiar em uma única origem manipulável."""
+    args = request.view_args or {}
+    data = request.get_json(silent=True) if request.is_json else {}
+    data = data if isinstance(data, dict) else {}
+    candidates = [
+        request.headers.get('X-NOC-Sensor-ID'),
+        args.get('mac_id'), args.get('mac_sensor'), args.get('mac'),
+        data.get('mac_id'), data.get('sensor_mac'),
+    ]
+    identities = {value.strip() for value in candidates if isinstance(value, str) and value.strip()}
+    if len(identities) > 1:
+        return None, (jsonify(error='Identificadores de sensor divergentes.'), 400)
+    if not identities:
+        return None, None
+    identity = identities.pop()
+    if len(identity) > 80 or any(ord(char) < 32 for char in identity) or '<' in identity or '>' in identity:
+        return None, (jsonify(error='Identificador do sensor inválido.'), 400)
+    return identity, None
+
+
+def _sensor_child_scope_error(conn, sensor_id):
+    """Impede uma credencial individual de alterar registros de outro sensor."""
+    child_tables = {
+        'reportar_latencia_custom': 'ips_custom',
+        'reportar_latencia_energia': 'ips_energia',
+        'reportar_status_servico': 'servicos_os',
+    }
+    table = child_tables.get(request.endpoint)
+    if not table:
+        return None
+    data = request.get_json(silent=True) or {}
+    record_id = data.get('id') if isinstance(data, dict) else None
+    if not isinstance(record_id, int):
+        return jsonify(error='Identificador do registro inválido.'), 400
+    row = conn.execute(f'SELECT sensor_mac FROM {table} WHERE id=?', (record_id,)).fetchone()
+    if not row:
+        return jsonify(error='Registro não encontrado.'), 404
+    if row['sensor_mac'] != sensor_id:
+        return jsonify(error='Registro pertence a outro sensor.'), 403
+    return None
 
 
 def validar_sensor_ou_sessao():
     if session.get("user_id"):
         return None
-    if not NOC_SENSOR_API_KEY:
-        return None
     fornecida = request.headers.get("X-NOC-Sensor-Key", "")
-    if fornecida and hmac.compare_digest(fornecida, NOC_SENSOR_API_KEY):
-        return None
-    return jsonify({"error": "Sensor não autenticado"}), 401
+    sensor_id, identity_error = _sensor_request_identity()
+    if identity_error:
+        return identity_error
+    if fornecida:
+        # A chave compartilhada continua aceita durante a migração dos agentes.
+        if NOC_SENSOR_API_KEY and hmac.compare_digest(fornecida, NOC_SENSOR_API_KEY):
+            return None
+        if sensor_id:
+            conn = database.get_db()
+            try:
+                credential = conn.execute(
+                    'SELECT key_hash FROM sensor_credentials WHERE sensor_mac=? AND revoked_at IS NULL',
+                    (sensor_id,),
+                ).fetchone()
+                supplied_hash = hashlib.sha256(fornecida.encode('utf-8')).hexdigest()
+                if credential and hmac.compare_digest(str(credential['key_hash']), supplied_hash):
+                    scope_error = _sensor_child_scope_error(conn, sensor_id)
+                    return scope_error
+            finally:
+                conn.close()
+        # Uma chave apresentada, mas inválida, nunca cai silenciosamente no modo legado.
+        return jsonify({"error": "Sensor não autenticado"}), 401
+    if NOC_SENSOR_API_KEY or NOC_SENSOR_AUTH_REQUIRED:
+        return jsonify({"error": "Sensor não autenticado"}), 401
+    # Modo legado explicitamente preservado até a conclusão do rollout Windows/Linux.
+    return None
 
 
 def exigir_sensor_ou_sessao():
@@ -143,7 +293,7 @@ if os.environ.get('DISABLE_BACKGROUND_GUARDIAN', '0') != '1':
 
 @app.context_processor
 def product_context():
-    return {'central_version': CENTRAL_VERSION}
+    return {'central_version': CENTRAL_VERSION, 'csrf_token': get_csrf_token}
 
 
 @socketio.on('connect')
@@ -220,7 +370,10 @@ def healthz():
     conn = database.get_db()
     try:
         conn.execute('SELECT 1').fetchone()
-        return jsonify(status='ok', central_version=CENTRAL_VERSION)
+        return jsonify(
+            status='ok', central_version=CENTRAL_VERSION,
+            sensor_auth_required=NOC_SENSOR_AUTH_REQUIRED,
+        )
     finally:
         conn.close()
 
@@ -379,15 +532,19 @@ def login():
                 session.clear()
                 session['logged_in'] = True; session['usuario'] = user['usuario']; session['role'] = user['role']
                 session['user_id'] = user['id']; session['logo_cliente'] = dict(user).get('logo_url', '')
+                session['_csrf_token'] = secrets.token_urlsafe(32)
+                session.permanent = True
                 return redirect(url_for('index'))
             else:
                 erro = "Usuário ou senha incorretos!"
-        except Exception as e: erro = f"Erro interno: {e}"
+        except Exception:
+            app.logger.exception('Falha no processo de autenticação')
+            erro = 'Não foi possível autenticar agora. Tente novamente.'
         finally: conn.close()
 
     return render_template('login.html', erro=erro)
 
-@app.route('/logout')
+@app.route('/logout', methods=['POST'])
 def logout(): session.clear(); return redirect(url_for('login'))
 
 @app.route('/api/v2/ack_alerta', methods=['POST'])
@@ -585,11 +742,24 @@ def gerar_token_local(mac):
 # ==========================================
 # Atualize os dois valores abaixo toda vez que compilar e publicar uma nova versão do agente.
 VERSAO_AGENTE_ATUAL = WINDOWS_BINARY_VERSION
-URL_DOWNLOAD_AGENTE = "https://noc-central.up.railway.app/static/downloads/agente_v2.exe"
+URL_DOWNLOAD_AGENTE = os.environ.get('WINDOWS_AGENT_URL', '').strip()
+WINDOWS_AGENT_SHA256 = os.environ.get('WINDOWS_AGENT_SHA256', '').strip().lower()
 
 @app.route('/api/v2/agent_versao')
 def agent_versao():
-    return jsonify({"versao": VERSAO_AGENTE_ATUAL, "url_download": URL_DOWNLOAD_AGENTE, "central_version": CENTRAL_VERSION, "source_version": CENTRAL_VERSION})
+    artifact_ready = bool(
+        URL_DOWNLOAD_AGENTE.startswith('https://')
+        and re.fullmatch(r'[0-9a-f]{64}', WINDOWS_AGENT_SHA256)
+    )
+    return jsonify({
+        "versao": VERSAO_AGENTE_ATUAL,
+        "url_download": URL_DOWNLOAD_AGENTE if artifact_ready else '',
+        "sha256": WINDOWS_AGENT_SHA256 if artifact_ready else '',
+        "update_available": artifact_ready,
+        "platform": "windows",
+        "central_version": CENTRAL_VERSION,
+        "source_version": CENTRAL_VERSION,
+    })
 
 # ==========================================
 # 🔌 ROTAS: ENERGIA E SERVIÇOS DO SO
@@ -601,7 +771,13 @@ def gerenciar_ips_energia(mac_id):
     conn = database.get_db()
     if request.method == 'POST':
         data = request.json
-        db_execute(conn, "INSERT INTO ips_energia (sensor_mac, ip, descricao) VALUES (?, ?, ?)", (mac_id, data['ip'], data['descricao']))
+        try:
+            ip = bounded_text(data.get('ip'), 'IP', maximum=64)
+            descricao = bounded_text(data.get('descricao'), 'Descrição', maximum=160)
+        except ValueError as error:
+            conn.close()
+            return jsonify(error=str(error)), 400
+        db_execute(conn, "INSERT INTO ips_energia (sensor_mac, ip, descricao) VALUES (?, ?, ?)", (mac_id, ip, descricao))
         conn.commit()
     ips = db_execute(conn, "SELECT * FROM ips_energia WHERE sensor_mac = ? ORDER BY id DESC", (mac_id,)).fetchall()
     conn.close()
@@ -632,7 +808,13 @@ def gerenciar_servicos_os(mac_id):
     conn = database.get_db()
     if request.method == 'POST':
         data = request.json
-        db_execute(conn, "INSERT INTO servicos_os (sensor_mac, nome_servico, descricao) VALUES (?, ?, ?)", (mac_id, data['nome_servico'], data['descricao']))
+        try:
+            nome_servico = bounded_text(data.get('nome_servico'), 'Serviço', maximum=160)
+            descricao = bounded_text(data.get('descricao'), 'Descrição', maximum=160)
+        except ValueError as error:
+            conn.close()
+            return jsonify(error=str(error)), 400
+        db_execute(conn, "INSERT INTO servicos_os (sensor_mac, nome_servico, descricao) VALUES (?, ?, ?)", (mac_id, nome_servico, descricao))
         conn.commit()
     srvs = db_execute(conn, "SELECT * FROM servicos_os WHERE sensor_mac = ? ORDER BY id DESC", (mac_id,)).fetchall()
     conn.close()
@@ -683,8 +865,11 @@ def enviar_comando_remoto(mac_id):
 @app.route('/api/v2/enviar_wol/<mac_sensor>', methods=['POST'])
 def enviar_wol_remoto(mac_sensor):
     if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
-    mac_alvo = request.json.get('mac_alvo')
-    nome_alvo = request.json.get('nome_alvo', 'Dispositivo')
+    try:
+        mac_alvo = bounded_text(request.json.get('mac_alvo'), 'MAC de destino', maximum=80)
+        nome_alvo = bounded_text(request.json.get('nome_alvo', 'Dispositivo'), 'Nome do dispositivo', maximum=160)
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
 
     enfileirar_comando(mac_sensor, f"wol:{mac_alvo}")
 
@@ -716,6 +901,7 @@ def registrar_sensor():
     if not isinstance(data.get('mac_id'), str) or not 1 <= len(data['mac_id']) <= 80:
         return jsonify(error='mac_id obrigatório.'), 400
     try:
+        nome_local = bounded_text(data.get('nome_local', 'Sensor Novo'), 'Nome do sensor', maximum=160)
         loc = parse_location(data, default_source='legacy')
         if loc['latitude'] == -14.235 and loc['longitude'] == -51.925 and loc['location_source'] == 'legacy':
             loc = parse_location({})
@@ -723,7 +909,7 @@ def registrar_sensor():
         return jsonify(error=str(error)), 400
     conn = database.get_db()
     try:
-        conn.execute("INSERT INTO sensores (mac_id, nome_local) VALUES (?, ?) ON CONFLICT(mac_id) DO NOTHING", (data['mac_id'], data.get('nome_local', 'Sensor Novo')))
+        conn.execute("INSERT INTO sensores (mac_id, nome_local) VALUES (?, ?) ON CONFLICT(mac_id) DO NOTHING", (data['mac_id'], nome_local))
         if loc['latitude'] is not None:
             save_location(conn, data['mac_id'], loc, protect_precise=True)
         conn.commit()
@@ -756,6 +942,24 @@ def atualizar_dispositivos():
     auth_error = exigir_sensor_ou_sessao()
     if auth_error: return auth_error
     data = request.json; sensor_mac = data.get('mac_id')
+    lista = data.get('lista', [])
+    if not isinstance(lista, list) or len(lista) > 2048:
+        return jsonify(error='Lista de dispositivos inválida ou acima do limite.'), 400
+    normalized_devices = []
+    try:
+        for item in lista:
+            if not isinstance(item, dict):
+                raise ValueError('Dispositivo inválido.')
+            normalized_devices.append({
+                'ip': bounded_text(item.get('ip'), 'IP', maximum=64),
+                'mac': bounded_text(item.get('mac'), 'MAC', maximum=80),
+                'fabricante': bounded_text(item.get('fabricante', 'Desconhecido'), 'Fabricante', maximum=160),
+                'status': bounded_text(item.get('status', 'desconhecido'), 'Status', maximum=32),
+                'neighbor_state': bounded_text(item.get('neighbor_state', ''), 'Estado L2', maximum=64, allow_empty=True),
+                'latencia': item.get('latencia'),
+            })
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
     conn = database.get_db()
     sensor_data = db_execute(conn, "SELECT ip_gateway FROM sensores WHERE mac_id = ?", (sensor_mac,)).fetchone()
     ip_gw = sensor_data['ip_gateway'] if sensor_data else None
@@ -766,7 +970,7 @@ def atualizar_dispositivos():
     nomes_salvos = {row['mac']: row['nome'] for row in conn.execute("SELECT mac, nome FROM nomes_conhecidos").fetchall()}
 
     db_execute(conn, "DELETE FROM dispositivos WHERE sensor_mac = ?", (sensor_mac,))
-    for disp in data.get('lista', []):
+    for disp in normalized_devices:
         nome = nomes_salvos.get(disp['mac'])
         if not nome: nome = "Gateway / Roteador" if disp['ip'] == ip_gw else "Desconhecido"
         status_disp = disp.get('status', 'desconhecido')
@@ -783,15 +987,23 @@ def atualizar_dispositivos():
 @app.route('/api/v2/renomear_dispositivo', methods=['POST'])
 def renomear_dispositivo():
     if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
-    data = request.json; conn = database.get_db()
+    data = request.json
     try:
-        existe = db_execute(conn, "SELECT mac FROM nomes_conhecidos WHERE mac = ?", (data['mac'],)).fetchone()
-        if existe: db_execute(conn, "UPDATE nomes_conhecidos SET nome = ? WHERE mac = ?", (data['nome'], data['mac']))
-        else: db_execute(conn, "INSERT INTO nomes_conhecidos (mac, nome) VALUES (?, ?)", (data['mac'], data['nome']))
-        db_execute(conn, "UPDATE dispositivos SET nome_custom = ? WHERE mac = ? AND sensor_mac = ?", (data['nome'], data['mac'], data['sensor_mac']))
+        device_mac = bounded_text(data.get('mac'), 'MAC', maximum=80)
+        device_name = bounded_text(data.get('nome'), 'Nome', maximum=160)
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+    conn = database.get_db()
+    try:
+        existe = db_execute(conn, "SELECT mac FROM nomes_conhecidos WHERE mac = ?", (device_mac,)).fetchone()
+        if existe: db_execute(conn, "UPDATE nomes_conhecidos SET nome = ? WHERE mac = ?", (device_name, device_mac))
+        else: db_execute(conn, "INSERT INTO nomes_conhecidos (mac, nome) VALUES (?, ?)", (device_mac, device_name))
+        db_execute(conn, "UPDATE dispositivos SET nome_custom = ? WHERE mac = ? AND sensor_mac = ?", (device_name, device_mac, data['sensor_mac']))
         conn.commit()
-    except:
-        pass
+    except Exception:
+        app.logger.exception('Falha ao renomear dispositivo')
+        conn.close()
+        return jsonify(error='Não foi possível renomear o dispositivo.'), 500
     conn.close()
     return jsonify({"status": "OK"})
 
@@ -801,13 +1013,28 @@ def alertas_ia():
     if auth_error: return auth_error
     data = request.json
     mac = data.get('mac_id', 'Desconhecido')
+    alertas = data.get('alertas', [])
+    if not isinstance(alertas, list) or len(alertas) > 50:
+        return jsonify(error='Lista de alertas inválida ou acima do limite.'), 400
+    normalized_alerts = []
+    try:
+        for alerta in alertas:
+            if not isinstance(alerta, dict):
+                raise ValueError('Alerta inválido.')
+            normalized_alerts.append({
+                'tipo': bounded_text(alerta.get('tipo'), 'Tipo do alerta', maximum=160),
+                'gravidade': bounded_text(alerta.get('gravidade'), 'Gravidade', maximum=32),
+                'detalhes': bounded_text(alerta.get('detalhes'), 'Detalhes', maximum=1000),
+            })
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
     conn = database.get_db()
 
     sensor = db_execute(conn, "SELECT nome_local, cliente_id FROM sensores WHERE mac_id = ?", (mac,)).fetchone()
     nome_sensor = sensor['nome_local'] if sensor else mac
     cid = sensor['cliente_id'] if sensor else None
 
-    for alerta in data.get('alertas', []):
+    for alerta in normalized_alerts:
         db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, ?, ?, ?)", (mac, alerta['tipo'], alerta['gravidade'], alerta['detalhes']))
         if alerta['gravidade'] == 'Crítica':
             icone = "🔥" if "Superaquecimento" in alerta['tipo'] else ("🌪️" if "Tempestade" in alerta['tipo'] else "🖥️")
@@ -857,11 +1084,9 @@ def configurar_sensor():
     data = request.get_json(silent=True) or {}
     try:
         location = parse_location(data) if any(k in data for k in ('lat', 'lon', 'latitude', 'longitude')) else None
-        name = str(data.get('nome', '')).strip()
+        name = bounded_text(data.get('nome'), 'Nome', maximum=160)
         if not isinstance(data.get('mac_id'), str) or not data['mac_id']:
             raise ValueError('Identificador do sensor obrigatório.')
-        if not name or len(name) > 160:
-            raise ValueError('Nome obrigatório, até 160 caracteres.')
     except ValueError as error:
         return jsonify(error=str(error)), 400
     conn = database.get_db()
@@ -918,7 +1143,13 @@ def gerenciar_ips(mac_id):
     conn = database.get_db()
     if request.method == 'POST':
         data = request.json
-        db_execute(conn, "INSERT INTO ips_custom (sensor_mac, ip, descricao) VALUES (?, ?, ?)", (mac_id, data['ip'], data['descricao']))
+        try:
+            ip = bounded_text(data.get('ip'), 'IP', maximum=64)
+            descricao = bounded_text(data.get('descricao'), 'Descrição', maximum=160)
+        except ValueError as error:
+            conn.close()
+            return jsonify(error=str(error)), 400
+        db_execute(conn, "INSERT INTO ips_custom (sensor_mac, ip, descricao) VALUES (?, ?, ?)", (mac_id, ip, descricao))
         conn.commit()
     ips = db_execute(conn, "SELECT * FROM ips_custom WHERE sensor_mac = ? ORDER BY id DESC", (mac_id,)).fetchall()
     conn.close()
@@ -931,7 +1162,13 @@ def crud_ips(mac_id, id_ip):
     if request.method == 'DELETE': db_execute(conn, "DELETE FROM ips_custom WHERE id = ?", (id_ip,))
     elif request.method == 'PUT':
         data = request.json
-        db_execute(conn, "UPDATE ips_custom SET ip = ?, descricao = ? WHERE id = ?", (data['ip'], data['descricao'], id_ip))
+        try:
+            ip = bounded_text(data.get('ip'), 'IP', maximum=64)
+            descricao = bounded_text(data.get('descricao'), 'Descrição', maximum=160)
+        except ValueError as error:
+            conn.close()
+            return jsonify(error=str(error)), 400
+        db_execute(conn, "UPDATE ips_custom SET ip = ?, descricao = ? WHERE id = ?", (ip, descricao, id_ip))
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
 
@@ -990,10 +1227,23 @@ def gerenciar_usuarios():
 def criar_usuario():
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return jsonify({"error": "Acesso Negado"}), 403
     data = request.json
-    senha_hash = generate_password_hash(data['senha'])
-    logo_url = data.get('logo_url', '')
-    tg_token = data.get('telegram_token', '')
-    tg_chat = data.get('telegram_chat_id', '')
+    try:
+        nome = bounded_text(data.get('nome'), 'Nome', maximum=160)
+        usuario = bounded_text(data.get('usuario'), 'Usuário', maximum=80)
+        if not re.fullmatch(r'[A-Za-z0-9._@-]+', usuario):
+            raise ValueError('Usuário deve usar apenas letras, números, ponto, hífen, @ ou underscore.')
+        senha = bounded_secret(data.get('senha'), 'Senha')
+        role = bounded_text(data.get('role'), 'Perfil', maximum=40)
+        if role not in ALLOWED_ROLES:
+            raise ValueError('Perfil inválido.')
+        logo_url = bounded_text(data.get('logo_url', ''), 'URL do logo', maximum=500, allow_empty=True)
+        if logo_url and urlsplit(logo_url).scheme not in ('http', 'https'):
+            raise ValueError('URL do logo deve usar HTTP ou HTTPS.')
+        tg_token = bounded_text(data.get('telegram_token', ''), 'Token Telegram', maximum=256, allow_empty=True)
+        tg_chat = bounded_text(data.get('telegram_chat_id', ''), 'Chat Telegram', maximum=128, allow_empty=True)
+    except ValueError as error:
+        return jsonify(error=str(error), status='Erro de validação'), 400
+    senha_hash = generate_password_hash(senha)
     conn = database.get_db()
     if session['role'] == 'Cliente': cliente_pai = session['user_id']
     elif session['role'] == 'Administrador Cliente':
@@ -1003,9 +1253,13 @@ def criar_usuario():
         cliente_pai = data.get('cliente_pai')
         if not cliente_pai or cliente_pai == "null": cliente_pai = None
     try:
-        db_execute(conn, "INSERT INTO clientes (nome, usuario, senha, role, cliente_pai_id, ativo, logo_url, telegram_token, telegram_chat_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)", (data['nome'], data['usuario'], senha_hash, data['role'], cliente_pai, logo_url, tg_token, tg_chat))
+        if db_execute(conn, 'SELECT id FROM clientes WHERE usuario = ?', (usuario,)).fetchone():
+            return jsonify(error='Usuário já existe.', status='Erro: Usuário já existe'), 409
+        db_execute(conn, "INSERT INTO clientes (nome, usuario, senha, role, cliente_pai_id, ativo, logo_url, telegram_token, telegram_chat_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)", (nome, usuario, senha_hash, role, cliente_pai, logo_url, tg_token, tg_chat))
         conn.commit(); status = "OK"
-    except Exception as e: status = "Erro: Usuário já existe"
+    except Exception:
+        app.logger.exception('Falha ao criar usuário')
+        return jsonify(error='Não foi possível criar o usuário.', status='Erro'), 500
     finally: conn.close()
     return jsonify({"status": status})
 
@@ -1023,7 +1277,12 @@ def toggle_user_status(id_user):
 @app.route('/api/v2/usuarios/<int:id_user>/senha', methods=['POST'])
 def alterar_senha_user(id_user):
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return jsonify({"error": "Acesso Negado"}), 403
-    data = request.json; nova_senha = generate_password_hash(data['senha'])
+    data = request.json
+    try:
+        senha = bounded_secret(data.get('senha'), 'Senha')
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+    nova_senha = generate_password_hash(senha)
     conn = database.get_db()
     db_execute(conn, "UPDATE clientes SET senha = ? WHERE id = ?", (nova_senha, id_user))
     conn.commit(); conn.close()
@@ -1033,11 +1292,28 @@ def alterar_senha_user(id_user):
 def editar_usuario_info(id_user):
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return jsonify({"error": "Acesso Negado"}), 403
     data = request.json
+    try:
+        nome = bounded_text(data.get('nome'), 'Nome', maximum=160)
+        usuario = bounded_text(data.get('usuario'), 'Usuário', maximum=80)
+        if not re.fullmatch(r'[A-Za-z0-9._@-]+', usuario):
+            raise ValueError('Usuário inválido.')
+        logo_url = bounded_text(data.get('logo_url', ''), 'URL do logo', maximum=500, allow_empty=True)
+        if logo_url and urlsplit(logo_url).scheme not in ('http', 'https'):
+            raise ValueError('URL do logo deve usar HTTP ou HTTPS.')
+        tg_token = bounded_text(data.get('telegram_token', ''), 'Token Telegram', maximum=256, allow_empty=True)
+        tg_chat = bounded_text(data.get('telegram_chat_id', ''), 'Chat Telegram', maximum=128, allow_empty=True)
+    except ValueError as error:
+        return jsonify(error=str(error), status='Erro de validação'), 400
     conn = database.get_db()
     try:
-        db_execute(conn, "UPDATE clientes SET nome = ?, usuario = ?, logo_url = ?, telegram_token = ?, telegram_chat_id = ? WHERE id = ?", (data.get('nome'), data.get('usuario'), data.get('logo_url', ''), data.get('telegram_token', ''), data.get('telegram_chat_id', ''), id_user))
+        existing = db_execute(conn, 'SELECT id FROM clientes WHERE usuario = ? AND id <> ?', (usuario, id_user)).fetchone()
+        if existing:
+            return jsonify(error='Login já está em uso.', status='Erro: Login já está em uso.'), 409
+        db_execute(conn, "UPDATE clientes SET nome = ?, usuario = ?, logo_url = ?, telegram_token = ?, telegram_chat_id = ? WHERE id = ?", (nome, usuario, logo_url, tg_token, tg_chat, id_user))
         conn.commit(); status = "OK"
-    except: status = "Erro: Login já está em uso."
+    except Exception:
+        app.logger.exception('Falha ao editar usuário')
+        return jsonify(error='Não foi possível editar o usuário.', status='Erro'), 500
     finally: conn.close()
     return jsonify({"status": status})
 
@@ -1054,10 +1330,54 @@ def deletar_usuario(id_user):
 def gerenciar_sensores():
     if 'user_id' not in session or session.get('role') != 'Administrador Master': return "Acesso Negado.", 403
     conn = database.get_db()
-    sensores = conn.execute('''SELECT s.mac_id, s.nome_local, s.status, s.ip_sensor, s.cliente_id, c.nome as cliente_nome FROM sensores s LEFT JOIN clientes c ON s.cliente_id = c.id ORDER BY s.cliente_id ASC''').fetchall()
+    sensores = conn.execute('''SELECT s.mac_id, s.nome_local, s.status, s.ip_sensor, s.cliente_id,
+        c.nome as cliente_nome, sc.key_prefix,
+        CASE WHEN sc.key_hash IS NOT NULL AND sc.revoked_at IS NULL THEN 1 ELSE 0 END AS credential_active
+        FROM sensores s
+        LEFT JOIN clientes c ON s.cliente_id = c.id
+        LEFT JOIN sensor_credentials sc ON sc.sensor_mac = s.mac_id
+        ORDER BY s.cliente_id ASC''').fetchall()
     clientes = conn.execute("SELECT id, nome FROM clientes WHERE role IN ('Cliente', 'Administrador Master')").fetchall()
     conn.close()
     return render_template('sensores.html', sensores=[dict(s) for s in sensores], clientes=[dict(c) for c in clientes])
+
+
+@app.route('/api/v2/sensor_credential/<mac_id>', methods=['POST', 'DELETE'])
+def sensor_credential(mac_id):
+    if 'user_id' not in session or session.get('role') != 'Administrador Master':
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        sensor = conn.execute('SELECT mac_id FROM sensores WHERE mac_id=?', (mac_id,)).fetchone()
+        if not sensor:
+            return jsonify(error='Sensor não encontrado.'), 404
+        if request.method == 'DELETE':
+            conn.execute(
+                'UPDATE sensor_credentials SET revoked_at=CURRENT_TIMESTAMP WHERE sensor_mac=? AND revoked_at IS NULL',
+                (mac_id,),
+            )
+            conn.commit()
+            return jsonify(status='OK', active=False)
+
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
+        prefix = token[:8]
+        conn.execute('''INSERT INTO sensor_credentials
+            (sensor_mac, key_hash, key_prefix, created_at, revoked_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP, NULL)
+            ON CONFLICT(sensor_mac) DO UPDATE SET
+                key_hash=excluded.key_hash,
+                key_prefix=excluded.key_prefix,
+                created_at=CURRENT_TIMESTAMP,
+                revoked_at=NULL''', (mac_id, token_hash, prefix))
+        conn.commit()
+        return jsonify(
+            status='OK', active=True, sensor_mac=mac_id, key_prefix=prefix,
+            sensor_api_key=token,
+            warning='Esta chave será exibida somente uma vez.',
+        ), 201
+    finally:
+        conn.close()
 
 @app.route('/api/v2/alocar_sensor', methods=['POST'])
 def alocar_sensor():
@@ -1089,6 +1409,7 @@ def renomear_sensor():
 def deletar_sensor(mac_id):
     if 'user_id' not in session or session.get('role') != 'Administrador Master': return jsonify({"error": "Acesso Negado"}), 403
     conn = database.get_db()
+    db_execute(conn, "DELETE FROM sensor_credentials WHERE sensor_mac = ?", (mac_id,))
     db_execute(conn, "DELETE FROM sensores WHERE mac_id = ?", (mac_id,))
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})

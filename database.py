@@ -113,6 +113,14 @@ def init_db():
         conn.execute(f"CREATE TABLE IF NOT EXISTS clientes (id {identity}, usuario TEXT, senha TEXT, role TEXT)")
         ensure_columns(conn, 'sensores', SENSOR_COLUMNS)
         ensure_columns(conn, 'clientes', CLIENT_COLUMNS)
+        duplicate_user = conn.execute(
+            'SELECT usuario, COUNT(*) AS total FROM clientes '
+            'WHERE usuario IS NOT NULL GROUP BY usuario HAVING COUNT(*) > 1 LIMIT 1'
+        ).fetchone()
+        if duplicate_user is None:
+            conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_clientes_usuario_unique ON clientes (usuario)')
+        else:
+            print('⚠️ Existem usuários duplicados; índice único será criado após saneamento dos dados.')
         tables = {
             'servicos_os': "sensor_mac TEXT, nome_servico TEXT, descricao TEXT, status TEXT DEFAULT 'ONLINE'",
             'historico_pings': 'sensor_mac TEXT, google REAL, cloudflare REAL, aws REAL, quad9 REAL, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
@@ -127,6 +135,13 @@ def init_db():
             conn.execute(f'CREATE TABLE IF NOT EXISTS {table} (id {identity}, {definition})')
         ensure_columns(conn, 'dispositivos', ["status TEXT DEFAULT 'desconhecido'", 'latencia REAL', 'neighbor_state TEXT'])
         conn.execute('CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)')
+        conn.execute('''CREATE TABLE IF NOT EXISTS sensor_credentials (
+            sensor_mac TEXT PRIMARY KEY,
+            key_hash TEXT NOT NULL,
+            key_prefix TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            revoked_at TIMESTAMP
+        )''')
         conn.execute('CREATE TABLE IF NOT EXISTS telegram_outbox (event_key TEXT PRIMARY KEY, message TEXT NOT NULL, client_id INTEGER, attempts INTEGER NOT NULL, next_at DOUBLE PRECISION NOT NULL, expires_at DOUBLE PRECISION NOT NULL, state TEXT NOT NULL, result TEXT)')
         conn.execute('CREATE TABLE IF NOT EXISTS telegram_status (destination TEXT PRIMARY KEY, result TEXT, last_attempt DOUBLE PRECISION, last_success DOUBLE PRECISION, last_failure DOUBLE PRECISION)')
         for table, cols in [('sensores','status,last_seen'),('sensores','cliente_id'),('logs_ia','sensor_mac,id'),('historico_pings','sensor_mac,id'),('historico_telemetria','sensor_mac,id'),('comandos_pendentes','sensor_mac,id'),('telegram_outbox','state,next_at')]:
@@ -139,6 +154,8 @@ def init_db():
             conn.execute('UPDATE sensores SET lat=NULL, lon=NULL WHERE ABS(lat + 14.235) < 0.00001 AND ABS(lon + 51.925) < 0.00001')
             conn.execute("UPDATE sensores SET latitude=lat, longitude=lon, location_source='legacy' WHERE lat BETWEEN -90 AND 90 AND lon BETWEEN -180 AND 180 AND latitude IS NULL")
             conn.execute("INSERT INTO schema_migrations (version) VALUES ('2.2.0-rc1')")
+        if not conn.execute("SELECT version FROM schema_migrations WHERE version='2.2.0-sensor-auth'").fetchone():
+            conn.execute("INSERT INTO schema_migrations (version) VALUES ('2.2.0-sensor-auth')")
         conn.commit()
     except Exception:
         conn.rollback()

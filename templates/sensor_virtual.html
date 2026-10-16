@@ -2,6 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>NOC - Uplink Sensor Virtual</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -19,6 +20,7 @@
 <link rel="stylesheet" href="/static/product.css?v=2.2.0-rc1">
 </head>
 <body>
+<script src="/static/security.js?v=2.2.0-rc1"></script>
 <div class="product-bar"><strong>NOC Central</strong><span>Central {{ central_version }}</span></div>
 
     <div class="terminal">
@@ -47,7 +49,7 @@
 
         // Gera um MAC Address Falso e Único para essa sessão (Formato DEMO:XX:XX)
         const mac_virtual = "DM:" + Math.random().toString(16).substr(2, 2) + ":" + Math.random().toString(16).substr(2, 2) + ":" + Math.random().toString(16).substr(2, 2);
-        let myLat = -14.235, myLon = -51.925; // Default Brasil
+        let myLat = null, myLon = null;
         let publicIp = "127.0.0.1";
 
         let loopId = null; // Variável para guardar o "coração" do sensor
@@ -66,7 +68,7 @@
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (pos) => { myLat = pos.coords.latitude; myLon = pos.coords.longitude; log(`Sinal GPS travado: ${myLat.toFixed(4)}, ${myLon.toFixed(4)}`, "ok"); },
-                    (err) => { log("Permissão de GPS negada. Usando localização padrão.", "err"); }
+                    (err) => { log("Localização indisponível. O sensor virtual seguirá sem coordenadas.", "err"); }
                 );
             }
 
@@ -97,11 +99,15 @@
                 ram_usage: ram,
                 temp: temp,
                 status: "online",
-                lat: myLat,
-                lon: myLon,
                 ping_gateway: Math.floor(Math.random() * 5) + 1,
                 ping_global: JSON.stringify(pings)
             };
+            if (myLat !== null && myLon !== null) {
+                payload.latitude = myLat;
+                payload.longitude = myLon;
+                payload.accuracy_m = null;
+                payload.location_source = 'manual';
+            }
 
             try {
                 const response = await fetch('/api/v2/report_data', {

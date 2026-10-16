@@ -2,6 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>NOC Ultimate - {{ sensor.nome_local }}</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -425,6 +426,7 @@
         </div>
     </div>
 
+    <script src="/static/security.js?v=2.2.0-rc1"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.1/socket.io.min.js"></script>
 
     <script>
@@ -538,7 +540,7 @@
 
         function desenharTraceroute(rawText) {
             if (!rawText || rawText.includes("Nenhum teste") || rawText.includes("Executando salto")) {
-                return `<div style="text-align:center; color: var(--text-muted); padding: 20px; font-style: italic;">${rawText || "Sem dados."}</div>`;
+                return `<div style="text-align:center; color: var(--text-muted); padding: 20px; font-style: italic;">${escapeHtml(rawText || "Sem dados.")}</div>`;
             }
 
             const linhas = rawText.split('\n');
@@ -550,7 +552,7 @@
                 if (!l) return;
 
                 if (l.match(/^[A-Za-z]/)) {
-                     html += `<div style="font-size: 0.85em; color: var(--text-muted); border-bottom: 1px dashed var(--border); padding-bottom: 5px; margin-bottom: 5px;">${l}</div>`;
+                     html += `<div style="font-size: 0.85em; color: var(--text-muted); border-bottom: 1px dashed var(--border); padding-bottom: 5px; margin-bottom: 5px;">${escapeHtml(l)}</div>`;
                      return;
                 }
 
@@ -580,10 +582,10 @@
                             <div style="display: flex; align-items: center; gap: 15px;">
                                 <span style="background: var(--bg-input); color: var(--text-main); font-weight: bold; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 0.85em;">${hopNum}</span>
                                 <i class="fa-solid ${isTimeout ? 'fa-shield-virus' : 'fa-server'}" style="color: ${cardColor}; font-size: 1.2em;"></i>
-                                <span style="font-family: 'JetBrains Mono', monospace; font-weight: bold; color: ${isTimeout ? 'var(--red)' : 'var(--text-main)'}; font-size: 1.1em;">${ip}</span>
+                                <span style="font-family: 'JetBrains Mono', monospace; font-weight: bold; color: ${isTimeout ? 'var(--red)' : 'var(--text-main)'}; font-size: 1.1em;">${escapeHtml(ip)}</span>
                             </div>
                             <div style="font-family: 'JetBrains Mono', monospace; color: var(--text-muted); font-size: 0.9em; text-align: right;">
-                                ${latencia}
+                                ${isTimeout ? latencia : escapeHtml(latencia)}
                             </div>
                         </div>
                     `;
@@ -928,7 +930,7 @@
                 let cor = item.latencia === 0 ? 'var(--red)' : 'var(--green)';
                 let latText = item.latencia === 0 ? 'FALHA' : item.latencia + ' ms';
                 html += `<div style="background:var(--bg-input); padding:8px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; border-left:4px solid ${cor};">
-                    <div><b style="color:var(--blue); font-size:1.1em;">${escapeHtml(item.descricao)}</b><br><small style="color:var(--text-muted); font-family:monospace;">${item.ip}</small></div>
+                        <div><b style="color:var(--blue); font-size:1.1em;">${escapeHtml(item.descricao)}</b><br><small style="color:var(--text-muted); font-family:monospace;">${escapeHtml(item.ip)}</small></div>
                     <div style="display:flex; align-items:center; gap:12px;"><b style="color:${cor};">${latText}</b>
                     <button onclick="excluirIP(${item.id})" style="background:none; border:none; color:var(--text-muted); cursor:pointer;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-muted)'"><i class="fa-solid fa-trash"></i></button></div></div>`;
             });
@@ -946,7 +948,7 @@
                 html += `<div style="background:var(--bg-input); padding:10px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; border-left:4px solid ${cor};">
                     <div style="display:flex; align-items:center; gap:12px;">
                         <i class="fa-solid ${icone}" style="color:${cor}; font-size:1.5em;"></i>
-                        <div><b style="color:var(--text-main); font-size:1.1em;">${escapeHtml(item.descricao)}</b><br><small style="color:var(--text-muted); font-family:monospace;">${item.ip}</small></div>
+                        <div><b style="color:var(--text-main); font-size:1.1em;">${escapeHtml(item.descricao)}</b><br><small style="color:var(--text-muted); font-family:monospace;">${escapeHtml(item.ip)}</small></div>
                     </div>
                     <div style="display:flex; align-items:center; gap:15px;">
                         <b style="color:${cor}; letter-spacing:1px; font-size:0.9em;">${statusText}</b>
@@ -965,8 +967,8 @@
                 let cor = isOnline ? 'var(--green)' : 'var(--red)';
                 let icone = isOnline ? 'fa-check-circle' : 'fa-triangle-exclamation';
                 html += `<div style="background:var(--bg-input); padding:8px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; border-left:4px solid ${cor};">
-                    <div><b style="color:var(--purple); font-size:1.1em;">${escapeHtml(item.descricao)}</b><br><small style="color:var(--text-muted); font-family:monospace;">${item.nome_servico}</small></div>
-                    <div style="display:flex; align-items:center; gap:12px;"><i class="fa-solid ${icone}" style="color:${cor}; font-size:1.2em;" title="${item.status}"></i>
+                    <div><b style="color:var(--purple); font-size:1.1em;">${escapeHtml(item.descricao)}</b><br><small style="color:var(--text-muted); font-family:monospace;">${escapeHtml(item.nome_servico)}</small></div>
+                    <div style="display:flex; align-items:center; gap:12px;"><i class="fa-solid ${icone}" style="color:${cor}; font-size:1.2em;" title="${escapeHtml(item.status)}"></i>
                     <button onclick="excluirServicoOS(${item.id})" style="background:none; border:none; color:var(--text-muted); cursor:pointer;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-muted)'"><i class="fa-solid fa-trash"></i></button></div></div>`;
             });
             document.getElementById('lista-servicos-os').innerHTML = html || '<div style="text-align:center; padding:15px; color:var(--text-muted);">Nenhum serviço monitorado.</div>';

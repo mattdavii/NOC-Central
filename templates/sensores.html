@@ -2,6 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>NOC - Gestão de Sensores</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -43,6 +44,7 @@
 <link rel="stylesheet" href="/static/product.css?v=2.2.0-rc1">
 </head>
 <body>
+<script src="/static/security.js?v=2.2.0-rc1"></script>
 <div class="product-bar"><strong>NOC Central</strong><span>Central {{ central_version }}</span></div>
 
     <nav class="navbar">
@@ -54,17 +56,17 @@
         <div class="card">
             <h3><i class="fa-solid fa-satellite-dish"></i> Sensores na Rede (ZTP - Zero Touch Provisioning)</h3>
             <table>
-                <thead><tr><th>Sensor / Local</th><th>Endereço MAC</th><th>IP Atual</th><th>Status</th><th>Cliente Dono (Alocação)</th><th>Ação</th></tr></thead>
+                <thead><tr><th>Sensor / Local</th><th>Endereço MAC</th><th>IP Atual</th><th>Status</th><th>Autenticação</th><th>Cliente Dono (Alocação)</th><th>Ação</th></tr></thead>
                 <tbody>
                     {% for s in sensores %}
                     <tr class="{% if not s.cliente_id %}alerta-novo{% endif %}">
                         <td>
                             <strong>{{ s.nome_local }}</strong>
                             {% if session.get('role') == 'Administrador Master' %}
-                            <button class="edit-btn" onclick="renomearSensor('{{ s.mac_id }}', '{{ s.nome_local }}')" title="Renomear Sensor">
+                            <button class="edit-btn" onclick='renomearSensor({{ s.mac_id|tojson }}, {{ s.nome_local|tojson }})' title="Renomear Sensor">
                                 <i class="fa-solid fa-pen-to-square"></i>
                             </button>
-                            <button class="edit-btn" onclick="excluirSensor('{{ s.mac_id }}')" title="Excluir Sensor" style="color: var(--red);">
+                            <button class="edit-btn" onclick='excluirSensor({{ s.mac_id|tojson }})' title="Excluir Sensor" style="color: var(--red);">
                                 <i class="fa-solid fa-trash"></i>
                             </button>
                             {% endif %}
@@ -76,6 +78,13 @@
                             {% else %}<span class="status-badge b-off">OFFLINE</span>{% endif %}
                         </td>
                         <td>
+                            {% if s.credential_active %}
+                                <span class="status-badge b-on" title="Prefixo: {{ s.key_prefix }}">✅ CHAVE {{ s.key_prefix }}…</span>
+                            {% else %}
+                                <span class="status-badge b-off">⚠️ LEGADO</span>
+                            {% endif %}
+                        </td>
+                        <td>
                             <select id="cliente-{{ s.mac_id | replace(':', '') }}">
                                 <option value="null">-- Desvinculado (Sem Dono) --</option>
                                 {% for c in clientes %}
@@ -84,8 +93,12 @@
                             </select>
                         </td>
                         <td>
-                            <button class="action-btn" onclick="vincularSensor('{{ s.mac_id }}')"><i class="fa-solid fa-link"></i> Salvar Vínculo</button>
-                            <button class="action-btn" onclick="acessoLocal('{{ s.mac_id }}', '{{ s.ip_sensor }}')" title="Gerar acesso ao painel local deste site (válido por 1h)"><i class="fa-solid fa-key"></i> Acesso Local</button>
+                            <button class="action-btn" onclick='vincularSensor({{ s.mac_id|tojson }})'><i class="fa-solid fa-link"></i> Salvar Vínculo</button>
+                            <button class="action-btn" onclick='acessoLocal({{ s.mac_id|tojson }}, {{ s.ip_sensor|tojson }})' title="Gerar acesso ao painel local deste site (válido por 1h)"><i class="fa-solid fa-key"></i> Acesso Local</button>
+                            <button class="action-btn" onclick='gerarCredencial({{ s.mac_id|tojson }})' title="Gerar ou substituir a chave individual do agente"><i class="fa-solid fa-shield-halved"></i> Gerar chave</button>
+                            {% if s.credential_active %}
+                            <button class="action-btn" onclick='revogarCredencial({{ s.mac_id|tojson }})' style="background: var(--red);" title="Revogar a chave individual"><i class="fa-solid fa-ban"></i> Revogar</button>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -106,6 +119,32 @@
             } catch (e) {
                 alert('Erro ao gerar acesso local: ' + e);
             }
+        }
+
+        async function gerarCredencial(mac) {
+            if (!confirm('Gerar uma nova chave para este sensor? A chave anterior, se existir, deixará de funcionar.')) return;
+            const res = await fetch(`/api/v2/sensor_credential/${encodeURIComponent(mac)}`, { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) {
+                alert('Erro ao gerar chave: ' + (data.error || res.status));
+                return;
+            }
+            prompt(
+                'CHAVE EXIBIDA UMA ÚNICA VEZ.\n\nConfigure NOC_SENSOR_API_KEY no agente Linux ou Windows e reinicie o serviço:',
+                data.sensor_api_key
+            );
+            window.location.reload();
+        }
+
+        async function revogarCredencial(mac) {
+            if (!confirm('Revogar a chave individual deste sensor?')) return;
+            const res = await fetch(`/api/v2/sensor_credential/${encodeURIComponent(mac)}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (!res.ok) {
+                alert('Erro ao revogar chave: ' + (data.error || res.status));
+                return;
+            }
+            window.location.reload();
         }
 
         async function vincularSensor(mac) {

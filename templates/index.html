@@ -2,6 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="manifest" href="/static/manifest.json">
     <meta name="theme-color" content="#0b0b13">
     <title>NOC Central - Dashboard Operacional</title>
@@ -103,7 +104,10 @@
             <button id="btn-ack" onclick="reconhecerAlertas()" style="display: none; background: var(--red); color: white; border: none; padding: 8px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-right: 20px; box-shadow: 0 0 15px var(--red); animation: blink 1s infinite;"><i class="fa-solid fa-triangle-exclamation"></i> ESTOU CIENTE</button>
             <button onclick="toggleTelao()" style="background: rgba(203, 166, 247, 0.2); color: var(--purple); border: 1px solid var(--purple); padding: 8px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s;"><i class="fa-solid fa-tv"></i> Telão</button>
             <span style="color: var(--text-muted); font-size: 0.9em; margin-left: 10px; padding-left: 15px; border-left: 1px solid var(--border);">Operador: <strong style="color: var(--text-main);">{{ session.usuario }}</strong></span>
-            <a href="/logout" class="btn-logout"><i class="fa-solid fa-right-from-bracket"></i> Sair</a>
+            <form method="POST" action="/logout" style="display:inline;">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn-logout" style="background:none;border:0;cursor:pointer;"><i class="fa-solid fa-right-from-bracket"></i> Sair</button>
+            </form>
         </div>
     </nav>
 
@@ -161,6 +165,7 @@
 
     <div id="ptr-indicator"><i class="fa-solid fa-arrow-down" id="ptr-icon"></i></div>
 
+    <script src="/static/security.js?v=2.2.0-rc1"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.1/socket.io.min.js"></script>
@@ -210,7 +215,7 @@
                 const data = await response.json();
 
                 if (data.error_sql) {
-                    document.getElementById('sensor-list').innerHTML = `<div style="background: rgba(243,139,168,0.2); border: 2px solid var(--red); color: var(--text-main); padding: 15px; margin: 15px; border-radius: 8px;"><b style="color: var(--red);">❌ ERRO SQL:</b><br><br>${data.error_sql}</div>`;
+                    document.getElementById('sensor-list').innerHTML = `<div style="background: rgba(243,139,168,0.2); border: 2px solid var(--red); color: var(--text-main); padding: 15px; margin: 15px; border-radius: 8px;"><b style="color: var(--red);">❌ Falha ao carregar sensores.</b><br><br>${escapeHtml(data.error_sql)}</div>`;
                     return; 
                 }
 
@@ -305,7 +310,7 @@
             try {
                 const res = await fetch('/api/v2/logs_globais'); const logs = await res.json();
                 let html = '';
-                logs.forEach(l => { let cor = l.gravidade === 'Crítica' ? 'var(--red)' : (l.gravidade === 'OK' ? 'var(--green)' : 'var(--yellow)'); html += `<div style="margin-bottom:6px; border-bottom:1px dashed #1e1e2e; padding-bottom:4px;"><span style="color:#6c7086;">[${escapeHtml(l.hora)}]</span> <span style="color:var(--blue); font-weight:bold;">[${l.nome_local || 'S/N'}]</span> <span style="color:${cor}; font-weight:bold;">${escapeHtml(l.tipo_evento)}</span>: <span style="color:var(--text-main);">${escapeHtml(l.detalhes)}</span></div>`; });
+                logs.forEach(l => { let cor = l.gravidade === 'Crítica' ? 'var(--red)' : (l.gravidade === 'OK' ? 'var(--green)' : 'var(--yellow)'); html += `<div style="margin-bottom:6px; border-bottom:1px dashed #1e1e2e; padding-bottom:4px;"><span style="color:#6c7086;">[${escapeHtml(l.hora)}]</span> <span style="color:var(--blue); font-weight:bold;">[${escapeHtml(l.nome_local || 'S/N')}]</span> <span style="color:${cor}; font-weight:bold;">${escapeHtml(l.tipo_evento)}</span>: <span style="color:var(--text-main);">${escapeHtml(l.detalhes)}</span></div>`; });
                 if(html) document.getElementById('terminal-logs').innerHTML = html;
             } catch(e) {}
         }
