@@ -62,6 +62,8 @@ O primeiro deploy de `612fbf7` falhou porque o worker gevent do Gunicorn importa
 
 A tag publicada `v2.2.0-rc1` permanece imutável em `612fbf7`; a Central deve ser implantada pela `main` com esta correção posterior. O agente Linux da tag não é afetado. Não há nova migração nem alteração de autenticação nesta correção.
 
+O hardening de plataforma e a autenticação individual posterior estão no commit imutável `e5537ed24da09add6b3b541e03fe89c1577a1344`. Para atualizar o agente Linux com esse conjunto, use esse SHA completo; não use apenas a tag anterior. A versão exibida continua `2.2.0-rc1` por compatibilidade, sem mover a tag publicada.
+
 ## Revisão de diagnóstico Telegram — 27/09/2026
 
 Falhas de DNS, TLS, timeout e conexão agora têm códigos e orientações separados, sem registrar URLs ou tokens. Metadados `parameters`/`retry_after` malformados usam intervalo seguro de dois segundos e preservam a classificação original da falha; um erro permanente de permissão não volta para a fila por causa desses metadados. O limite continua em três tentativas para falhas transitórias.

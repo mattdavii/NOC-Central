@@ -50,8 +50,8 @@ Se houver alterações locais, preserve/revise-as antes de prosseguir. Não use 
 
 ```bash
 git branch "rollback/linux-$(date -u +%Y%m%dT%H%M%SZ)" HEAD
-git fetch origin tag v2.2.0-rc1
-git switch --detach v2.2.0-rc1
+git fetch origin e5537ed24da09add6b3b541e03fe89c1577a1344
+git switch --detach e5537ed24da09add6b3b541e03fe89c1577a1344
 .venv/bin/python -m pip install -r requirements-agente.txt
 .venv/bin/python -m py_compile agente_v2.py
 sudo systemctl restart noc-sensor.service
@@ -60,7 +60,7 @@ sudo systemctl status noc-sensor.service --no-pager
 journalctl -u noc-sensor.service -n 80 --no-pager
 ```
 
-A tag deve estar publicada antes desses comandos. As próximas atualizações podem usar `bash linux/update.sh v2.2.0-rc1`, que também preserva uma branch de rollback. Não reinstale o serviço nem apague bancos locais. `/etc/default/noc-sensor` é preservado.
+O SHA acima é o commit imutável validado pelo CI que contém o hardening posterior ao RC original. A tag `v2.2.0-rc1` permanece imutável no primeiro RC e, sozinha, não contém essas correções. Depois que esse commit estiver em uso, `linux/update.sh` também aceitará tags ou um SHA completo nas próximas atualizações. Não reinstale o serviço nem apague bancos locais. `/etc/default/noc-sensor` é preservado.
 
 Na Central, confira `Agente 2.2.0-rc1`, horário do último contato, IP/CIDR/interface, MAC, velocidade, RX/TX e dispositivos SEM ICMP. Acesse Configurações do sensor pelo celular no local e capture a localização; revise a precisão e salve. A Central deve ser acessada por HTTPS.
 
