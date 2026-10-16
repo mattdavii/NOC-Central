@@ -11,6 +11,7 @@ import os
 import jwt
 import html
 import hmac
+import math
 import secrets
 import threading
 import time
@@ -1045,6 +1046,68 @@ def alertas_ia():
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
 
+CONNECTIVITY_TARGETS = ('Google', 'Cloudflare', 'AWS', 'Quad9')
+
+
+def resumir_conectividade(sensores):
+    """Consolida pings reais dos sensores online sem transformar falha em 0 ms."""
+    amostras = {alvo: [] for alvo in CONNECTIVITY_TARGETS}
+    sem_icmp = {alvo: 0 for alvo in CONNECTIVITY_TARGETS}
+
+    for sensor in sensores:
+        if str(sensor.get('status') or '').lower() != 'online':
+            continue
+        pings = sensor.get('ping_global')
+        if isinstance(pings, str):
+            try:
+                pings = json.loads(pings)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+        if not isinstance(pings, dict):
+            continue
+
+        for alvo in CONNECTIVITY_TARGETS:
+            valor = pings.get(alvo)
+            if isinstance(valor, bool):
+                continue
+            try:
+                latencia = float(valor)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(latencia) or latencia < 0:
+                continue
+            if latencia == 0:
+                sem_icmp[alvo] += 1
+            else:
+                amostras[alvo].append(latencia)
+
+    resumo = {}
+    for alvo in CONNECTIVITY_TARGETS:
+        valores = amostras[alvo]
+        if valores:
+            resumo[alvo] = {
+                'status': 'measured',
+                'latency_ms': round(sum(valores) / len(valores), 1),
+                'sample_count': len(valores),
+                'no_icmp_count': sem_icmp[alvo],
+            }
+        elif sem_icmp[alvo]:
+            resumo[alvo] = {
+                'status': 'no_icmp',
+                'latency_ms': None,
+                'sample_count': 0,
+                'no_icmp_count': sem_icmp[alvo],
+            }
+        else:
+            resumo[alvo] = {
+                'status': 'unavailable',
+                'latency_ms': None,
+                'sample_count': 0,
+                'no_icmp_count': 0,
+            }
+    return resumo
+
+
 @app.route('/api/v2/mapa_sensores')
 def api_mapa_sensores():
     if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 401
@@ -1061,10 +1124,18 @@ def api_mapa_sensores():
             user_info = db_execute(conn, "SELECT cliente_pai_id FROM clientes WHERE id = ?", (user_id,)).fetchone()
             if user_info and user_info['cliente_pai_id']: sensores = db_execute(conn, query_base + " WHERE s.cliente_id = ?", (user_info['cliente_pai_id'],)).fetchall()
             else: sensores = []
+        sensores_serializados = [dict(s) for s in sensores]
         conn.close()
-        return jsonify({"sensores": [dict(s) for s in sensores]})
+        return jsonify({
+            "sensores": sensores_serializados,
+            "connectivity": resumir_conectividade(sensores_serializados),
+        })
     except Exception as e:
-        conn.close(); return jsonify({"error_sql": str(e), "sensores": []})
+        conn.close(); return jsonify({
+            "error_sql": str(e),
+            "sensores": [],
+            "connectivity": resumir_conectividade([]),
+        })
 
 @app.route('/api/v2/sensor_data/<mac_id>', methods=['GET'])
 def get_sensor_data(mac_id):

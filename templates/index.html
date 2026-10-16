@@ -40,6 +40,7 @@
         .g-card { background: linear-gradient(145deg, var(--bg-card) 0%, #11111b 100%); border: 1px solid var(--border); border-radius: 8px; padding: 15px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.3);}
         .g-card i { font-size: 1.5em; color: var(--text-muted); margin-bottom: 8px; display: block;}
         .g-card .ms { font-family: 'JetBrains Mono', monospace; font-size: 1.3em; font-weight: bold; margin-top: 5px;}
+        .g-card .sample { color: var(--text-muted); display: block; font-size: 0.68em; margin-top: 6px; min-height: 1em; }
         .btn-down { background: rgba(243,139,168,0.1); color: var(--red); border: 1px solid var(--red); padding: 10px; border-radius: 8px; text-decoration: none; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 0.85em; transition: 0.3s;}
         .btn-down:hover { background: var(--red); color: white; box-shadow: 0 0 15px var(--red); }
         .btn-down i { font-size: 1.5em; margin-bottom: 5px;}
@@ -123,10 +124,10 @@
 
             <h4 style="margin: 10px 0 5px 0; color: var(--text-muted); font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px;"><i class="fa-solid fa-globe"></i> Visão operacional · sensores e conectividade</h4>
             <div class="global-grid">
-                <div class="g-card"><i class="fa-brands fa-google"></i> Google <div class="ms" style="color: var(--green);">Sem medição</div></div>
-                <div class="g-card"><i class="fa-solid fa-cloud"></i> Cloudflare <div class="ms" style="color: var(--green);">Sem medição</div></div>
-                <div class="g-card"><i class="fa-brands fa-aws"></i> AWS Amazon <div class="ms" style="color: var(--green);">Sem medição</div></div>
-                <div class="g-card"><i class="fa-solid fa-shield-halved"></i> DNS Quad9 <div class="ms" style="color: var(--green);">Sem medição</div></div>
+                <div class="g-card"><i class="fa-brands fa-google"></i> Google <div class="ms" id="global-google">Sem medição</div><small class="sample" id="global-google-sample">Aguardando sensor online</small></div>
+                <div class="g-card"><i class="fa-solid fa-cloud"></i> Cloudflare <div class="ms" id="global-cloudflare">Sem medição</div><small class="sample" id="global-cloudflare-sample">Aguardando sensor online</small></div>
+                <div class="g-card"><i class="fa-brands fa-aws"></i> AWS Amazon <div class="ms" id="global-aws">Sem medição</div><small class="sample" id="global-aws-sample">Aguardando sensor online</small></div>
+                <div class="g-card"><i class="fa-solid fa-shield-halved"></i> DNS Quad9 <div class="ms" id="global-quad9">Sem medição</div><small class="sample" id="global-quad9-sample">Aguardando sensor online</small></div>
                 <a href="https://downdetector.com.br/" target="_blank" class="btn-down"><i class="fa-solid fa-tower-broadcast"></i> Downdetector</a>
             </div>
 
@@ -182,6 +183,35 @@
             });
         }
 
+        const ALVOS_CONECTIVIDADE = {
+            Google: 'google', Cloudflare: 'cloudflare', AWS: 'aws', Quad9: 'quad9'
+        };
+
+        function atualizarMedicoesGlobais(resumo) {
+            Object.entries(ALVOS_CONECTIVIDADE).forEach(([alvo, id]) => {
+                const medicao = resumo[alvo] || {};
+                const valor = document.getElementById(`global-${id}`);
+                const detalhe = document.getElementById(`global-${id}-sample`);
+                const quantidade = Number(medicao.sample_count) || 0;
+                const semIcmp = Number(medicao.no_icmp_count) || 0;
+
+                if (medicao.status === 'measured' && Number.isFinite(Number(medicao.latency_ms))) {
+                    const latencia = Number(medicao.latency_ms);
+                    valor.innerText = `${latencia.toFixed(1)} ms`;
+                    valor.style.color = latencia <= 80 ? 'var(--green)' : (latencia <= 150 ? 'var(--yellow)' : 'var(--red)');
+                    detalhe.innerText = `Média de ${quantidade} sensor${quantidade === 1 ? '' : 'es'}${semIcmp ? ` · ${semIcmp} sem ICMP` : ''}`;
+                } else if (medicao.status === 'no_icmp') {
+                    valor.innerText = 'Sem resposta';
+                    valor.style.color = 'var(--red)';
+                    detalhe.innerText = `${semIcmp} sensor${semIcmp === 1 ? '' : 'es'} sem resposta ICMP`;
+                } else {
+                    valor.innerText = 'Sem medição';
+                    valor.style.color = 'var(--text-muted)';
+                    detalhe.innerText = 'Aguardando sensor online';
+                }
+            });
+        }
+
         function atualizarRelogios() {
             const agora = new Date();
             document.getElementById('clk-br').innerText = agora.toLocaleTimeString('pt-BR', {timeZone: 'America/Sao_Paulo'});
@@ -218,6 +248,8 @@
                     document.getElementById('sensor-list').innerHTML = `<div style="background: rgba(243,139,168,0.2); border: 2px solid var(--red); color: var(--text-main); padding: 15px; margin: 15px; border-radius: 8px;"><b style="color: var(--red);">❌ Falha ao carregar sensores.</b><br><br>${escapeHtml(data.error_sql)}</div>`;
                     return; 
                 }
+
+                atualizarMedicoesGlobais(data.connectivity || {});
 
                 const sensores = (data.sensores || []).map(sensor => Object.fromEntries(Object.entries(sensor).map(([key,value]) => [key, typeof value === 'string' ? escapeHtml(value) : value])));
                 const statusFiltro = document.getElementById('filtro-status').value; 
