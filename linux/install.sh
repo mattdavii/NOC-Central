@@ -39,7 +39,7 @@ fi
 echo "==> Instalando serviço systemd..."
 sudo tee "${SERVICE_FILE}" >/dev/null <<EOF
 [Unit]
-Description=NOC Central Sensor
+Description=NexoPulse Edge Sensor
 After=network-online.target
 Wants=network-online.target
 
@@ -66,7 +66,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now noc-sensor.service
 
 echo
-echo "✅ NOC Sensor instalado e iniciado."
+echo "✅ NexoPulse Edge instalado e iniciado."
 echo "Status: sudo systemctl status noc-sensor --no-pager"
 echo "Logs:   journalctl -u noc-sensor -f"
 echo "Config: ${ENV_FILE}"

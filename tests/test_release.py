@@ -2,6 +2,7 @@ import io
 import json
 import time
 import urllib.error
+from pathlib import Path
 from unittest.mock import patch
 import pytest
 import database
@@ -65,6 +66,51 @@ def test_login_version_is_beside_credentials(client):
     assert '<div class="login-header">' in page
     assert '<span class="version-badge">v2.2.0-rc1</span>' in page
     assert '<div class="product-bar">' not in page
+
+
+def test_nexopulse_brand_is_local_and_consistent(client, login):
+    login_page = client.get('/login').get_data(as_text=True)
+    assert '<title>NexoPulse Central - Acesso</title>' in login_page
+    assert 'NETWORK INTELLIGENCE &amp; MONITORING' in login_page
+    assert '/static/brand/nexopulse-logo-dark.png' in login_page
+
+    manifest = client.get('/static/manifest.json').json
+    assert manifest['name'] == 'NexoPulse Central'
+    assert manifest['short_name'] == 'NexoPulse'
+    assert all(icon['src'].startswith('/static/icons/nexopulse-') for icon in manifest['icons'])
+
+    login()
+    for route in ('/', '/tv', '/sensores', '/usuarios'):
+        page = client.get(route)
+        assert page.status_code == 200
+        html = page.get_data(as_text=True)
+        assert 'NexoPulse' in html
+        assert '/static/brand/' in html
+
+    root = Path(__file__).resolve().parents[1]
+    for template in (
+        'index.html', 'login.html', 'sensor.html', 'sensores.html',
+        'usuarios.html', 'tv.html', 'sensor_virtual.html', 'relatorio.html',
+    ):
+        central.app.jinja_env.get_template(template)
+        source = (root / 'templates' / template).read_text(encoding='utf-8')
+        assert 'name="viewport"' in source
+
+    product_css = (root / 'static/product.css').read_text(encoding='utf-8')
+    assert 'html[data-theme="light"]' in product_css
+    assert '@media(max-width:480px)' in product_css
+
+    for relative in (
+        'static/brand/nexopulse-logo-dark.png',
+        'static/brand/nexopulse-logo-light.png',
+        'static/brand/nexopulse-symbol.png',
+        'static/icons/nexopulse-192.png',
+        'static/icons/nexopulse-512.png',
+        'static/icons/nexopulse-maskable-192.png',
+        'static/icons/nexopulse-maskable-512.png',
+        'static/favicon.png',
+    ):
+        assert (root / relative).stat().st_size > 1000
 
 
 def test_location_precision_and_old_agent(client,login):

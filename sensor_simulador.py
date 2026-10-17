@@ -206,7 +206,7 @@ def simular_sensor():
     lat, lon, cidade = get_geo_location()
     rede_local, ip_gateway, base_ip, meu_ip = get_local_network()
     
-    print(f"🚀 Iniciando NOC Sensor PRO (Enterprise Edition)")
+    print("🚀 Iniciando NexoPulse Edge (modo simulador)")
     print(f"🔹 IP: {meu_ip} | Gateway: {ip_gateway} | MAC: {mac}")
     
     # ZTP: Auto-Registro na Central
