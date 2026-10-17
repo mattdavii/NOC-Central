@@ -27,6 +27,46 @@ def test_legacy_report_and_migration(client, login):
     assert client.get('/healthz').json['central_version']=='2.2.0-rc1'
 
 
+def test_dashboard_uses_real_online_sensor_measurements(client, login):
+    first = {'Google': 10, 'Cloudflare': 20, 'AWS': 0, 'Quad9': 40}
+    second = {'Google': 30, 'Cloudflare': 0, 'AWS': 0, 'Quad9': 60}
+    stale = {'Google': 999, 'Cloudflare': 999, 'AWS': 999, 'Quad9': 999}
+    for mac, pings in (('linux-01', first), ('windows-01', second), ('offline-01', stale)):
+        response = client.post('/api/v2/report_data', json={
+            'mac_id': mac, 'ping_global': json.dumps(pings),
+        })
+        assert response.status_code == 200
+
+    conn = database.get_db()
+    conn.execute("UPDATE sensores SET status='offline' WHERE mac_id='offline-01'")
+    conn.commit(); conn.close()
+
+    login()
+    response = client.get('/api/v2/mapa_sensores')
+    assert response.status_code == 200
+    connectivity = response.json['connectivity']
+    assert connectivity['Google'] == {
+        'status': 'measured', 'latency_ms': 20.0,
+        'sample_count': 2, 'no_icmp_count': 0,
+    }
+    assert connectivity['Cloudflare'] == {
+        'status': 'measured', 'latency_ms': 20.0,
+        'sample_count': 1, 'no_icmp_count': 1,
+    }
+    assert connectivity['AWS'] == {
+        'status': 'no_icmp', 'latency_ms': None,
+        'sample_count': 0, 'no_icmp_count': 2,
+    }
+    assert connectivity['Quad9']['latency_ms'] == 50.0
+
+
+def test_login_version_is_beside_credentials(client):
+    page = client.get('/login').get_data(as_text=True)
+    assert '<div class="login-header">' in page
+    assert '<span class="version-badge">v2.2.0-rc1</span>' in page
+    assert '<div class="product-bar">' not in page
+
+
 def test_location_precision_and_old_agent(client,login):
     client.post('/api/v2/report_data',json={'mac_id':'A'})
     login()
