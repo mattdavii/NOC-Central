@@ -3,30 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#0b0b13">
-    <title>NOC - Login</title>
+    <meta name="theme-color" content="#082E56">
+    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <title>NexoPulse Central - Acesso</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { margin: 0; padding: 20px; box-sizing: border-box; font-family: 'Inter', sans-serif; background-color: #11111b; color: #cdd6f4; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .login-box { background: #1e1e2e; padding: 40px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 100%; max-width: 350px; border: 1px solid #45475a; }
-        .login-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
-        .login-box h2 { color: #89b4fa; margin: 0; font-size: 1.35em; }
-        .version-badge { color: #a6adc8; background: #181825; border: 1px solid #45475a; border-radius: 999px; padding: 5px 9px; font-size: 0.72em; font-weight: 700; white-space: nowrap; }
+        body { margin: 0; padding: 24px; box-sizing: border-box; font-family: 'Inter', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-image: radial-gradient(circle at 20% 15%, rgba(5,169,220,.14), transparent 32%), radial-gradient(circle at 85% 80%, rgba(5,168,140,.12), transparent 30%); }
+        .login-shell { width: 100%; max-width: 430px; }
+        .login-box { padding: 36px; border-radius: 18px; width: 100%; border: 1px solid var(--border); position: relative; overflow: hidden; }
+        .login-box::before { content: ''; position: absolute; inset: 0 0 auto; height: 3px; background: linear-gradient(90deg, var(--blue), var(--green)); }
+        .login-brand { display: flex; justify-content: center; margin-bottom: 18px; }
+        .login-brand img { width: 310px; max-width: 88%; height: auto; }
+        .login-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 22px 0 26px; padding-top: 20px; border-top: 1px solid var(--border); }
+        .login-box h1 { color: var(--text-main); margin: 0; font-size: 1.15em; }
+        .version-badge { color: var(--text-muted); background: var(--bg-input); border: 1px solid var(--border); border-radius: 999px; padding: 5px 9px; font-size: 0.72em; font-weight: 700; white-space: nowrap; }
+        .login-positioning { margin: 0; text-align: center; color: var(--text-muted); font-size: .78em; letter-spacing: .05em; }
+        .login-slogan { margin: 8px 0 0; text-align: center; color: var(--text-muted); font-size: .78em; }
         .input-group { margin-bottom: 20px; }
-        .input-group label { display: block; margin-bottom: 5px; color: #bac2de; font-size: 0.9em; }
-        .input-group input { width: 100%; padding: 10px; border: 1px solid #45475a; background: #313244; color: #cdd6f4; border-radius: 4px; box-sizing: border-box; }
-        .btn-login { width: 100%; padding: 12px; background: #89b4fa; color: #11111b; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 1em; transition: 0.3s; }
-        .btn-login:hover { background: #74c7ec; }
-        .flash-msg { background: #f38ba8; color: #11111b; padding: 10px; border-radius: 4px; text-align: center; margin-bottom: 20px; font-weight: bold; font-size: 0.9em; }
+        .input-group label { display: block; margin-bottom: 7px; color: var(--text-muted); font-size: 0.86em; font-weight: 600; }
+        .input-group input { width: 100%; padding: 13px 14px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-main); border-radius: 8px; box-sizing: border-box; }
+        .btn-login { width: 100%; padding: 13px; background: linear-gradient(90deg, var(--blue), var(--green)); color: #04111E; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 1em; transition: 0.2s; }
+        .btn-login:hover { filter: brightness(1.08); transform: translateY(-1px); }
+        .flash-msg { background: rgba(248,113,113,.16); color: var(--red); border: 1px solid rgba(248,113,113,.35); padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 20px; font-weight: bold; font-size: 0.9em; }
+        .login-tools { display:flex; justify-content:center; margin-top:18px; }
+        @media(max-width:520px) { .login-box { padding:28px 22px; } .login-header { align-items:flex-start; } }
     </style>
-<link rel="stylesheet" href="/static/product.css?v=2.2.0-rc1">
+<link rel="stylesheet" href="/static/product.css?v=nexopulse-1">
+<script src="/static/brand.js?v=nexopulse-1"></script>
 </head>
 <body>
-    <div class="login-box">
+    <main class="login-shell">
+      <div class="login-box">
+        <div class="login-brand">
+            <img class="brand-logo-dark" src="/static/brand/nexopulse-logo-dark.png" alt="NexoPulse">
+            <img class="brand-logo-light" src="/static/brand/nexopulse-logo-light.png" alt="NexoPulse">
+        </div>
+        <p class="login-positioning">NETWORK INTELLIGENCE &amp; MONITORING</p>
+        <p class="login-slogan">Sua rede tem um pulso. Nós damos visibilidade a ele.</p>
         <div class="login-header">
-            <h2><i class="fa-solid fa-shield-halved"></i> NOC Acesso</h2>
+            <h1><i class="fa-solid fa-shield-halved"></i> Acesso à Central</h1>
             <span class="version-badge">v{{ central_version }}</span>
         </div>
         
@@ -46,9 +64,11 @@
                 <label>Senha</label>
                 <input type="password" name="senha" required placeholder="••••••••">
             </div>
-            <button type="submit" class="btn-login">Entrar no Sistema</button>
+            <button type="submit" class="btn-login">Entrar na NexoPulse</button>
         </form>
-    </div>
+        <div class="login-tools"><button class="theme-toggle" type="button" onclick="NexoPulseTheme.toggle()" aria-label="Alternar tema"><i class="fa-solid fa-sun"></i><span>Alternar tema</span></button></div>
+      </div>
+    </main>
     <script>
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/static/sw.js')

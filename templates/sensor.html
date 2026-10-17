@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>NOC Ultimate - {{ sensor.nome_local }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#082E56">
+    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <title>NexoPulse Central - {{ sensor.nome_local }}</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -111,12 +114,13 @@
         .node-btn:hover { background: var(--blue); color: var(--bg-base); font-weight: bold; }
         .node-btn.btn-red:hover { background: var(--red); }
     </style>
-<link rel="stylesheet" href="/static/product.css?v=2.2.0-rc1">
+<link rel="stylesheet" href="/static/product.css?v=nexopulse-1">
+<script src="/static/brand.js?v=nexopulse-1"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
-<div class="product-bar"><strong>NOC Central</strong><span>Central {{ central_version }}</span></div>
+{% include '_brand_bar.html' %}
 
     <nav class="navbar">
         <div style="display: flex; align-items: center; gap: 15px;">
@@ -132,7 +136,7 @@
 
     <div class="container">
         <nav class="section-nav" aria-label="Seções do sensor"><a href="#host">Host</a><a href="#rede-local">Rede Local</a><a href="#wan">WAN</a><a href="#dispositivos">Dispositivos</a><a href="#incidentes">Incidentes</a><a href="#diagnosticos">Diagnósticos</a><a href="#location-editor">Configurações</a></nav>
-        <p class="help-text">Agente <span id="agent-version">{{ sensor.agent_version or 'Legado · versão não informada' }}</span> · RX/TX representam somente a interface do sensor.</p>
+        <p class="help-text">NexoPulse Edge <span id="agent-version">{{ sensor.agent_version or 'Legado · versão não informada' }}</span> · RX/TX representam somente a interface do sensor.</p>
 
         <div class="painel-grid">
             <div class="card card-hw" id="host">
@@ -835,7 +839,7 @@
                 }
 
                 if(globalSensorIP && globalGatewayIP) {
-                    nodes.add({ id: globalSensorIP, label: '🛡️ NOC Sensor\n'+globalSensorIP, shape: 'box', color: { background: '#a6e3a1', border: '#a6e3a1' }, font: {color: '#0b0b13', face: 'JetBrains Mono', bold: true} });
+                    nodes.add({ id: globalSensorIP, label: '🛡️ NexoPulse Edge\n'+globalSensorIP, shape: 'box', color: { background: '#05A88C', border: '#05A88C' }, font: {color: '#0B1728', face: 'JetBrains Mono', bold: true} });
                     edges.add({ from: globalGatewayIP, to: globalSensorIP, color: { color: '#a6e3a1' }, width: 2});
                 }
 

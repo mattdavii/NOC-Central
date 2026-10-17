@@ -920,7 +920,7 @@ def loop_telemetria():
             dados_sensores["interface"] = interface_rede; dados_sensores["rede_cidr"] = rede.get("cidr", ""); dados_sensores["mac_interface"] = rede.get("mac_interface", "")
 
             payload = {
-                "mac_id": mac, "agent_version": VERSAO_AGENTE, "nome_local": f"NOC Sensor ({os_name})",
+                "mac_id": mac, "agent_version": VERSAO_AGENTE, "nome_local": f"NexoPulse Edge ({os_name})",
                 **approximate_location,
                 "ip_local": meu_ip, "ip_gateway": gateway_ip,
                 "cpu_usage": cpu, "ram_usage": ram, "disco": disco,
@@ -1290,12 +1290,12 @@ def index():
     <html lang="pt-BR">
     <head>
         <meta charset="UTF-8">
-        <title>Acesso Local - NOC Sensor</title>
+        <title>Acesso Local - NexoPulse Edge</title>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <style>
-            :root { --bg-base: #0b0b13; --bg-card: #151521; --bg-input: #232334; --border: #36364a; --text-main: #cdd6f4; --text-muted: #9399b2; --blue: #89b4fa; --green: #a6e3a1; --red: #f38ba8; --yellow: #f9e2af; --purple: #cba6f7; }
+            :root { --bg-base: #0B1728; --bg-card: #12263D; --bg-input: #0E2035; --border: #29445F; --text-main: #E8F1FA; --text-muted: #94A3B8; --blue: #05A9DC; --green: #05A88C; --red: #F87171; --yellow: #FBBF24; --purple: #7DD3FC; }
             body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-base); color: var(--text-main); }
             .navbar { background: rgba(21,21,33,0.9); padding: 15px 30px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
             .container { padding: 30px; max-width: 1600px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; }
@@ -1329,7 +1329,7 @@ def index():
     </head>
     <body>
         <nav class="navbar">
-            <div style="font-size: 1.3em; font-weight: bold; color: var(--blue);"><i class="fa-solid fa-tower-broadcast"></i> NOC SENSOR LOCAL</div>
+            <div style="font-size: 1.3em; font-weight: bold; color: var(--blue);"><i class="fa-solid fa-tower-broadcast"></i> NEXOPULSE EDGE</div>
             <div style="color: var(--text-muted);"><i class="fa-solid fa-microchip"></i> MAC: <strong style="color:var(--text-main)" id="mac-id">--</strong></div>
         </nav>
         <div class="container">
@@ -1390,7 +1390,7 @@ def index():
                     <div style="display: flex; align-items: center; justify-content: center;">
                         <div id="diag-gateway"></div>
                         <div class="t-line-h" style="width: 60px;"></div>
-                        <div class="t-card t-sensor"><div class="t-ip" id="meu-ip">ESTE PC</div><div class="t-mac" id="topo-mac"></div><div class="t-name">SENSOR NOC</div></div>
+                        <div class="t-card t-sensor"><div class="t-ip" id="meu-ip">ESTE PC</div><div class="t-mac" id="topo-mac"></div><div class="t-name">NEXOPULSE EDGE</div></div>
                     </div>
                     <div class="t-line-v"></div>
                     <div class="t-line-h" style="width: 70%; max-width: 800px;"></div>
@@ -1589,8 +1589,8 @@ def on_quit(icon, item):
 
 def run_tray():
     image = create_image()
-    menu = pystray.Menu(pystray.MenuItem('Encerrar Sensor NOC', on_quit))
-    icon = pystray.Icon("NOC Sensor", image, "NOC Sensor (Ativo)", menu)
+    menu = pystray.Menu(pystray.MenuItem('Encerrar NexoPulse Edge', on_quit))
+    icon = pystray.Icon("NexoPulse Edge", image, "NexoPulse Edge (Ativo)", menu)
     icon.run()
 
 if __name__ == "__main__":
@@ -1608,10 +1608,10 @@ if __name__ == "__main__":
         else:
             # Modo headless/systemd: mantém o processo principal vivo sem depender
             # de X11, bandeja do sistema ou sessão gráfica.
-            print(f"✅ NOC Sensor Linux {VERSAO_AGENTE} ativo.")
+            print(f"✅ NexoPulse Edge Linux {VERSAO_AGENTE} ativo.")
             threading.Event().wait()
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        print(f"❌ Falha fatal do NOC Sensor: {e}")
+        print(f"❌ Falha fatal do NexoPulse Edge: {e}")
         raise

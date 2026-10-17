@@ -1,4 +1,4 @@
-# NOC Sensor no Linux
+# NexoPulse Edge no Linux
 
 O `agente_v2.py` pode rodar como serviço `systemd`, sem depender de sessão gráfica.
 
@@ -10,7 +10,7 @@ Na raiz do repositório:
 bash linux/install.sh
 ```
 
-O instalador cria um ambiente virtual, instala as dependências necessárias e registra o serviço `noc-sensor.service`.
+O instalador cria um ambiente virtual, instala as dependências necessárias e registra o NexoPulse Edge no serviço compatível `noc-sensor.service`.
 
 ## Operação
 

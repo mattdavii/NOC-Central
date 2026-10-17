@@ -1,15 +1,35 @@
 {
-  "name": "NOC Central PRO",
-  "short_name": "NOC",
+  "name": "NexoPulse Central",
+  "short_name": "NexoPulse",
+  "description": "Network Intelligence & Monitoring",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0b0b13",
-  "theme_color": "#0b0b13",
+  "background_color": "#0B1728",
+  "theme_color": "#082E56",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/2888/2888407.png",
+      "src": "/static/icons/nexopulse-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/nexopulse-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/nexopulse-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/static/icons/nexopulse-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

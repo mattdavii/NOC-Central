@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>NOC - Uplink Sensor Virtual</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#082E56">
+    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <title>NexoPulse Edge - Sensor Virtual</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -17,17 +20,18 @@
         .log-send { color: #89b4fa; }
         .btn-stop { background: #f38ba8; color: #000; border: none; padding: 8px 15px; font-family: inherit; font-weight: bold; cursor: pointer; border-radius: 4px; text-decoration: none;}
     </style>
-<link rel="stylesheet" href="/static/product.css?v=2.2.0-rc1">
+<link rel="stylesheet" href="/static/product.css?v=nexopulse-1">
+<script src="/static/brand.js?v=nexopulse-1"></script>
 </head>
 <body>
 <script src="/static/security.js?v=2.2.0-rc1"></script>
-<div class="product-bar"><strong>NOC Central</strong><span>Central {{ central_version }}</span></div>
+{% include '_brand_bar.html' %}
 
     <div class="terminal">
         <div class="header">
             <div>
                 <i class="fa-solid fa-satellite-dish" style="animation: pulse 2s infinite;"></i> 
-                <strong>UPLINK SENSOR VIRTUAL</strong><br>
+                <strong>NEXOPULSE EDGE · SENSOR VIRTUAL</strong><br>
                 <small style="color: #9399b2;">Operador: {{ nome_operador }}</small>
             </div>
             <div>
@@ -72,7 +76,7 @@
                 );
             }
 
-            log("Iniciando uplink com a Central NOC...", "ok");
+            log("Iniciando uplink com a NexoPulse Central...", "ok");
             // Salva o ID do loop para podermos "matar" ele depois
             loopId = setInterval(enviarTelemetria, 2000); 
         }

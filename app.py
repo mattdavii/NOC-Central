@@ -260,7 +260,7 @@ def testar_telegram(cliente_id):
     if request.method == 'GET':
         return jsonify(notifications.status(destino, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID))
     token, chat, source = notifications.credentials(destino, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
-    resultado = notifications.deliver(token, chat, '✅ <b>TESTE NOC CENTRAL</b>\nIntegração de notificações.')
+    resultado = notifications.deliver(token, chat, '✅ <b>TESTE NEXOPULSE CENTRAL</b>\nIntegração de notificações.')
     resultado['origem'] = source
     notifications.record_status(source, resultado)
     return jsonify(resultado), (200 if resultado['ok'] else 502)

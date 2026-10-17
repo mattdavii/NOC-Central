@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#0b0b13">
-    <title>NOC Central - Dashboard Operacional</title>
+    <meta name="theme-color" content="#082E56">
+    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <title>NexoPulse Central - Dashboard Operacional</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
@@ -83,19 +85,20 @@
         .btn-logout:hover { color: var(--red); }
         ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: var(--bg-base); } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; } ::-webkit-scrollbar-thumb:hover { background: var(--blue); }
     </style>
-<link rel="stylesheet" href="/static/product.css?v=2.2.0-rc1">
+<link rel="stylesheet" href="/static/product.css?v=nexopulse-1">
+<script src="/static/brand.js?v=nexopulse-1"></script>
 </head>
 <body>
-<div class="product-bar"><strong>NOC Central</strong><span>Central {{ central_version }}</span></div>
+{% include '_brand_bar.html' %}
     <audio id="alarme-critico" src="https://assets.mixkit.co/active_storage/sfx/991/991-preview.mp3" preload="auto"></audio>
     <nav class="navbar">
         <div class="navbar-brand">
             {% if session.logo_cliente %}
                 <img src="{{ session.logo_cliente }}" alt="Logo Cliente" style="height: 35px; border-radius: 4px; border: 1px solid var(--border); object-fit: contain;">
             {% else %}
-                <img src="https://raw.githubusercontent.com/mattdavii/NOC-Central/main/logos/logo_md.png" alt="Sua Empresa" style="height: 35px; border-radius: 4px; object-fit: contain;">
+                <img src="/static/brand/nexopulse-symbol.png" alt="NexoPulse" style="height: 38px; object-fit: contain;">
             {% endif %}
-            <span>NOC CENTRAL</span>
+            <span>CENTRAL DE OPERAÇÕES</span>
         </div>
         <div style="display: flex; gap: 20px; align-items: center;">
             {% if session.role == 'Administrador Master' %}

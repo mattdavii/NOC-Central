@@ -5,8 +5,9 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#0b0b13">
-    <title>NOC TV - Sala de Operações</title>
+    <meta name="theme-color" content="#082E56">
+    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <title>NexoPulse Central - Sala de Operações</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -100,13 +101,14 @@
         body.alert-mode { animation: bg-alert 2s infinite; }
         @keyframes bg-alert { 0%, 100% { background-color: var(--bg-base); } 50% { background-color: #2a0808; } }
     </style>
-<link rel="stylesheet" href="/static/product.css?v=2.2.0-rc1">
+<link rel="stylesheet" href="/static/product.css?v=nexopulse-1">
+<script src="/static/brand.js?v=nexopulse-1"></script>
 </head>
 <body>
-<div class="product-bar"><strong>NOC Central</strong><span>Central {{ central_version }}</span></div>
+{% include '_brand_bar.html' %}
 
     <div class="tv-header">
-        <div class="tv-logo"><i class="fa-solid fa-satellite-dish"></i> NOC TV</div>
+        <div class="tv-logo"><img src="/static/brand/nexopulse-symbol.png" alt="" style="height:54px; width:54px; object-fit:contain;"> Sala de Operações</div>
         
         <div class="tv-stats">
             <div class="stat-box">

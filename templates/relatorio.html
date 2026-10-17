@@ -2,7 +2,10 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Relatório Executivo - {{ sensor.nome_local }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#082E56">
+    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <title>NexoPulse - Relatório Executivo - {{ sensor.nome_local }}</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; color: #333; margin: 0; padding: 0; background: #eee; }
@@ -26,20 +29,21 @@
         .footer { text-align: center; margin-top: 50px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 20px; }
         @media print { body { background: #fff; } .a4-page { box-shadow: none; margin: 0; width: auto; min-height: auto; } }
     </style>
-<link rel="stylesheet" href="/static/product.css?v=2.2.0-rc1">
+<link rel="stylesheet" href="/static/product.css?v=nexopulse-1">
+<script src="/static/brand.js?v=nexopulse-1"></script>
 </head>
 <body>
-<div class="product-bar"><strong>NOC Central</strong><span>Central {{ central_version }}</span></div>
+{% include '_brand_bar.html' %}
     <div class="a4-page">
         <div class="header">
             <div>
-                <h1 class="title">Relatório de Saúde da Rede (NOC)</h1>
+                <h1 class="title">Relatório de Saúde da Rede</h1>
                 <div class="subtitle">Análise Técnica e Disponibilidade</div>
             </div>
             {% if sensor.logo_url %}
             <img src="{{ sensor.logo_url }}" alt="Logo do Cliente">
             {% else %}
-            <h2 style="color: #3b82f6; margin: 0;">NOC Central</h2>
+            <img src="/static/brand/nexopulse-logo-light.png" alt="NexoPulse">
             {% endif %}
         </div>
 
@@ -91,7 +95,7 @@
             </tbody>
         </table>
 
-        <h3 class="section-title">Mapeamento de Topologia (Devices Ativos)</h3>
+        <h3 class="section-title">Mapeamento de Topologia (Dispositivos Ativos)</h3>
         <table>
             <thead>
                 <tr>
@@ -115,7 +119,7 @@
         </table>
 
         <div class="footer">
-            Relatório gerado de forma autônoma pelo sistema NOC Central.<br>
+            Relatório gerado de forma autônoma pelo NexoPulse Central.<br>
             Este documento atesta os níveis de serviço (SLA) e a atuação da equipe de suporte técnico e auto-cura robótica.
         </div>
     </div>
