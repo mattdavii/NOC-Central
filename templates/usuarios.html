@@ -11,10 +11,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
 
-        body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-base); color: var(--text-main); padding: 30px; }
+        body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-base); color: var(--text-main); }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
-        .btn-voltar { text-decoration: none; color: var(--text-muted); font-size: 0.9em; transition: 0.2s; }
-        .btn-voltar:hover { color: var(--blue); }
 
         .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px; }
@@ -51,14 +49,17 @@
 <body>
 <script src="/static/security.js?v=2.2.0-rc1"></script>
 {% include '_brand_bar.html' %}
+<main class="page-main">
 
-    <div class="header">
+    <div class="page-head">
         <div>
-            <a href="/" class="btn-voltar"><i class="fa-solid fa-arrow-left"></i> Voltar ao Dashboard</a>
-            <h1 style="margin: 10px 0 0 0; color: var(--blue);"><i class="fa-solid fa-users-gear"></i> Gestão de Usuários</h1>
+            <h1><i class="fa-solid fa-users"></i> Usuários</h1>
+            <p>Clientes, operadores e as notificações do Telegram de cada um.</p>
         </div>
         {% if role_atual == 'Administrador Master' %}
-        <button class="btn-save" style="background:#229ED9; color:#04111E;" onclick="testarTelegramMaster()"><i class="fa-brands fa-telegram"></i> Testar Bot Master</button>
+        <div class="page-actions">
+            <button class="action-btn btn-secondary" onclick="testarTelegramMaster()"><i class="fa-brands fa-telegram"></i> Testar bot master</button>
+        </div>
         {% endif %}
     </div>
 
@@ -419,5 +420,6 @@
     </script>
 <div class="telegram-status" role="status" data-telegram-status="{{ 0 if session.role == 'Administrador Master' else telegram_tenant }}"></div>
 <script src="/static/telegram-status.js?v=2.2.0-rc1"></script>
+</main>
 </body>
 </html>

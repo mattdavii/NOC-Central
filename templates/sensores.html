@@ -12,7 +12,6 @@
     <style>
 
         body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: var(--bg-base); color: var(--text-main); }
-        .navbar { background: var(--overlay); padding: 15px 30px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 15px;}
         .container { padding: 30px; max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 25px; }
         
         .card { background: linear-gradient(145deg, var(--bg-card) 0%, var(--bg-base) 100%); border: 1px solid var(--border); border-radius: 12px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border-top: 4px solid var(--blue);}
@@ -48,16 +47,18 @@
 <script src="/static/security.js?v=2.2.0-rc1"></script>
 {% include '_brand_bar.html' %}
 
-    <nav class="navbar">
-        <button onclick="window.history.back()" style="background: var(--border); color: var(--text-main); padding: 8px 12px; border:none; border-radius:6px; cursor:pointer;"><i class="fa-solid fa-arrow-left"></i> Voltar</button>
-        <div style="font-size: 1.3em; font-weight: bold; color: var(--blue);"><i class="fa-solid fa-microchip"></i> GESTÃO NEXOPULSE EDGE</div>
-    </nav>
 
     <div class="container">
+        <div class="page-head">
+            <div>
+                <h1><i class="fa-solid fa-satellite-dish"></i> Sensores</h1>
+                <p>Agentes NexoPulse Edge que já se apresentaram à Central: vínculo com cliente, credenciais e acesso local.</p>
+            </div>
+        </div>
         <div class="card">
-            <h3><i class="fa-solid fa-satellite-dish"></i> Agentes Edge na Rede (ZTP - Zero Touch Provisioning)</h3>
+            <h3><i class="fa-solid fa-microchip"></i> Agentes na rede</h3>
             <table>
-                <thead><tr><th>Sensor / Local</th><th>Endereço MAC</th><th>IP Atual</th><th>Status</th><th>Autenticação</th><th>Cliente Dono (Alocação)</th><th>Ação</th></tr></thead>
+                <thead><tr><th>Sensor / Local</th><th>MAC</th><th>IP</th><th>Status</th><th>Autenticação</th><th>Cliente</th><th>Ações</th></tr></thead>
                 <tbody>
                     {% for s in sensores %}
                     <tr class="{% if not s.cliente_id %}alerta-novo{% endif %}">
@@ -73,7 +74,7 @@
                             {% endif %}
                         </td>
                         <td class="mac-text">{{ s.mac_id }}</td>
-                        <td style="color: var(--blue);">{{ s.ip_sensor }}</td>
+                        <td class="mono">{{ s.ip_sensor or '—' }}</td>
                         <td>
                             {% if s.status == 'online' %}<span class="status-badge b-on">ONLINE</span>
                             {% elif not s.status %}<span class="status-badge b-unknown" title="O sensor ainda não enviou o primeiro relatório">SEM DADOS</span>
@@ -95,9 +96,9 @@
                             </select>
                         </td>
                         <td>
-                            <button class="action-btn" onclick='vincularSensor({{ s.mac_id|tojson }})'><i class="fa-solid fa-link"></i> Salvar Vínculo</button>
-                            <button class="action-btn" onclick='acessoLocal({{ s.mac_id|tojson }}, {{ s.ip_sensor|tojson }})' title="Gerar acesso ao painel local deste site (válido por 1h)"><i class="fa-solid fa-key"></i> Acesso Local</button>
-                            <button class="action-btn" onclick='gerarCredencial({{ s.mac_id|tojson }})' title="Gerar ou substituir a chave individual do agente"><i class="fa-solid fa-shield-halved"></i> Gerar chave</button>
+                            <button class="action-btn btn-primary" onclick='vincularSensor({{ s.mac_id|tojson }})'><i class="fa-solid fa-link"></i> Salvar Vínculo</button>
+                            <button class="action-btn btn-secondary" onclick='acessoLocal({{ s.mac_id|tojson }}, {{ s.ip_sensor|tojson }})' title="Gerar acesso ao painel local deste site (válido por 1h)"><i class="fa-solid fa-key"></i> Acesso Local</button>
+                            <button class="action-btn btn-secondary" onclick='gerarCredencial({{ s.mac_id|tojson }})' title="Gerar ou substituir a chave individual do agente"><i class="fa-solid fa-shield-halved"></i> Gerar chave</button>
                             {% if s.credential_active %}
                             <button class="action-btn" onclick='revogarCredencial({{ s.mac_id|tojson }})' style="background: var(--red);" title="Revogar a chave individual"><i class="fa-solid fa-ban"></i> Revogar</button>
                             {% endif %}
