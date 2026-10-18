@@ -413,7 +413,7 @@ def enforce_tenant_scope():
 # ==========================================
 # 📦 PACOTE E INSTALADOR DO AGENTE
 # ==========================================
-ARQUIVOS_AGENTE = ['agente_v2.py', 'requirements-agente.txt', 'linux/install.sh', 'linux/nexopulse-admin',
+ARQUIVOS_AGENTE = ['agente_v2.py', 'host_metrics.py', 'requirements-agente.txt', 'linux/install.sh', 'linux/nexopulse-admin',
                    'linux/README.md', 'windows/instalar-nexopulse-wsl.ps1']
 
 
@@ -828,6 +828,13 @@ def report_data():
                 _ultimo_historico_ping[mac] = agora_hist
         except Exception as e:
             print(f"⚠️ Falha ao gravar histórico de ping: {e}")
+
+        if isinstance(data.get('host_info'), dict):
+            try:
+                atual = db_execute(conn, "SELECT nome_local, cliente_id, host_info, alertas_host FROM sensores WHERE mac_id = ?", (mac,)).fetchone()
+                processar_host_info(conn, mac, dict(atual) if atual else None, data['host_info'])
+            except Exception:
+                app.logger.exception('Falha ao processar métricas do host')
 
         comando = consumir_comando(conn, mac)
         conn.close()
@@ -1581,6 +1588,71 @@ def sensor_credential(mac_id):
         ), 201
     finally:
         conn.close()
+
+# ==========================================
+# 🩺 MÉTRICAS ESTENDIDAS DO HOST: guarda o último estado e alerta mudanças
+# ==========================================
+LIMITE_HOST_INFO = 32 * 1024
+
+
+def _problemas_host(info):
+    """Problemas atuais do host, por chave estável -> (gravidade, descrição)."""
+    problemas = {}
+    for d in info.get('discos') or []:
+        if isinstance(d, dict) and (d.get('percentual') or 0) >= 90:
+            problemas[f"disco:{d.get('ponto')}"] = ('Crítica', f"Disco {d.get('ponto')} em {d.get('percentual')}% ({d.get('usado_gb')} de {d.get('total_gb')} GB)")
+    sw = info.get('swap') or {}
+    if (sw.get('total_mb') or 0) > 0 and (sw.get('percentual') or 0) >= 80:
+        problemas['swap'] = ('Alerta', f"Swap em {sw.get('percentual')}%: memória quase esgotada")
+    for nome in info.get('servicos_falha') or []:
+        problemas[f"servico:{nome}"] = ('Alerta', f"Serviço com falha: {nome}")
+    for d in ((info.get('smart') or {}).get('discos') or []):
+        if isinstance(d, dict) and d.get('ok') is False:
+            problemas[f"smart:{d.get('dispositivo')}"] = ('Crítica', f"SMART reprova o disco {d.get('dispositivo')} ({d.get('modelo') or 'modelo desconhecido'})")
+    if (info.get('dns') or {}).get('ok') is False:
+        problemas['dns'] = ('Alerta', 'Resolução de DNS falhando na máquina')
+    if info.get('hora_sincronizada') is False:
+        problemas['hora'] = ('Aviso', 'Relógio da máquina sem sincronização (NTP)')
+    return problemas
+
+
+def processar_host_info(conn, mac, sensor, info):
+    if not isinstance(info, dict):
+        return
+    bruto = json.dumps(info, ensure_ascii=False)
+    if len(bruto) > LIMITE_HOST_INFO:
+        return
+    nome = html.escape(str((sensor or {}).get('nome_local') or mac))
+    cid = (sensor or {}).get('cliente_id')
+    try:
+        anterior = json.loads((sensor or {}).get('host_info') or '{}')
+    except ValueError:
+        anterior = {}
+    try:
+        ativos = set(json.loads((sensor or {}).get('alertas_host') or '[]'))
+    except ValueError:
+        ativos = set()
+
+    boot_novo = (info.get('sistema') or {}).get('boot_time')
+    boot_antigo = (anterior.get('sistema') or {}).get('boot_time')
+    if isinstance(boot_novo, int) and isinstance(boot_antigo, int) and abs(boot_novo - boot_antigo) > 120:
+        quando = datetime.fromtimestamp(boot_novo, timezone.utc).astimezone(timezone(timedelta(hours=-3))).strftime('%d/%m %H:%M')
+        db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Máquina reiniciada', 'Alerta', ?)", (mac, f'A máquina foi reiniciada ({quando}).'))
+        enviar_telegram(f"🔄 <b>MÁQUINA REINICIOU</b>\n\n🖥️ <b>Sensor:</b> {nome}\n🕒 <b>Ligou às:</b> {quando}", cliente_id=cid, conn=conn)
+
+    problemas = _problemas_host(info)
+    for chave in sorted(set(problemas) - ativos):
+        gravidade, texto = problemas[chave]
+        db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Saúde do host', ?, ?)", (mac, gravidade, texto))
+        icone = '🚨' if gravidade == 'Crítica' else '⚠️'
+        enviar_telegram(f"{icone} <b>SAÚDE DO HOST</b>\n\n🖥️ <b>Sensor:</b> {nome}\n{html.escape(texto)}", cliente_id=cid, conn=conn)
+    for chave in sorted(ativos - set(problemas)):
+        db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Saúde do host', 'Aviso', ?)", (mac, f"Normalizado: {chave.split(':', 1)[-1]}"))
+        enviar_telegram(f"✅ <b>HOST NORMALIZADO</b>\n\n🖥️ <b>Sensor:</b> {nome}\n🟢 {html.escape(chave.split(':', 1)[-1])}", cliente_id=cid, conn=conn)
+
+    db_execute(conn, 'UPDATE sensores SET host_info=?, alertas_host=? WHERE mac_id=?', (bruto, json.dumps(sorted(problemas)), mac))
+    conn.commit()
+
 
 # ==========================================
 # 🛠️ AÇÕES REMOTAS (Administrador Master, com senha e auditoria)

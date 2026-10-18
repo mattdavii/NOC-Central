@@ -133,11 +133,11 @@
     </nav>
 
     <div class="container">
-        <nav class="section-nav" aria-label="Seções do sensor"><a href="#host">Host</a><a href="#rede-local">Rede Local</a><a href="#wan">WAN</a><a href="#dispositivos">Dispositivos</a><a href="#incidentes">Incidentes</a><a href="#diagnosticos">Diagnósticos</a><a href="#location-editor">Configurações</a></nav>
+        <nav class="section-nav" aria-label="Seções do sensor"><a href="#host">Host</a><a href="#saude">Saúde</a><a href="#rede-local">Rede Local</a><a href="#wan">WAN</a><a href="#dispositivos">Dispositivos</a><a href="#incidentes">Incidentes</a><a href="#diagnosticos">Diagnósticos</a><a href="#location-editor">Configurações</a></nav>
         <p class="help-text">NexoPulse Edge <span id="agent-version">{{ sensor.agent_version or 'Legado · versão não informada' }}</span> · RX/TX representam somente a interface do sensor.</p>
 
         <div class="painel-grid">
-            <div class="card card-hw" id="host">
+            <div class="card card-hw card-stack" id="host">
                 <h3>
                     <span><i class="fa-solid fa-microchip"></i> Host</span>
                     <div style="display: flex; gap: 10px; align-items: center;">
@@ -147,32 +147,32 @@
                         <span id="badge-status" class="status-pill">--</span>
                     </div>
                 </h3>
-                <div class="data-row" style="margin-top:10px;">
-                    <div style="display: flex; gap: 15px; width: 100%;">
-                        <span style="flex: 1;"><i class="fa-solid fa-temperature-half" style="color:var(--yellow);"></i> CPU: <strong id="temp-text">-- °C</strong></span>
-                        <span style="flex: 1;"><i class="fa-solid fa-fire-flame-curved" style="color:var(--yellow);"></i> GPU: <strong id="gpu-text">-- °C</strong></span>
-                    </div>
+                <div class="host-chips">
+                    <span title="Tempo desde o último boot"><i class="fa-solid fa-clock"></i> <strong id="host-uptime">--</strong></span>
+                    <span title="Carga média em 1, 5 e 15 minutos"><i class="fa-solid fa-gauge"></i> <strong id="host-load">--</strong></span>
+                    <span><i class="fa-solid fa-temperature-half"></i> CPU <strong id="temp-text">-- °C</strong></span>
+                    <span><i class="fa-solid fa-fire-flame-curved"></i> GPU <strong id="gpu-text">-- °C</strong></span>
                 </div>
-                <div style="margin-bottom: 15px;">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--text-muted);">
-                        <span><i class="fa-solid fa-microchip" style="width: 20px;"></i> CPU</span> <strong id="cpu-text" style="color: var(--text-main);">0%</strong>
-                    </div>
+                <p class="host-boot" id="host-boot"></p>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-microchip"></i> CPU <small id="host-nucleos"></small></span><strong id="cpu-text">--</strong></div>
                     <div class="progress-bg"><div id="cpu-fill" class="progress-fill"></div></div>
+                    <div class="cores" id="host-cores"></div>
                 </div>
-                <div style="margin-bottom: auto;">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--text-muted);">
-                        <span><i class="fa-solid fa-memory" style="width: 20px;"></i> RAM</span> <strong id="ram-text" style="color: var(--text-main);">0%</strong>
-                    </div>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-memory"></i> RAM</span><strong id="ram-text">--</strong></div>
                     <div class="progress-bg"><div id="ram-fill" class="progress-fill"></div></div>
                 </div>
-                <div style="margin-bottom: auto; margin-top: 15px;">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--text-muted);">
-                        <span><i class="fa-solid fa-hard-drive" style="width: 20px;"></i> Disco</span> <strong id="disk-text" style="color: var(--text-main);">0%</strong>
-                    </div>
-                    <div class="progress-bg"><div id="disk-fill" class="progress-fill" style="background: var(--purple);"></div></div>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-right-left"></i> Swap</span><strong id="swap-text">--</strong></div>
+                    <div class="progress-bg"><div id="swap-fill" class="progress-fill" style="background: var(--purple);"></div></div>
                 </div>
-
-                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-hard-drive"></i> Discos</span><strong id="disk-text">--</strong></div>
+                    <div id="disk-fill" hidden></div>
+                    <div class="discos" id="host-discos"></div>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: auto;">
                     <button class="action-btn" onclick="enviarComandoEnergia('reboot')" style="background: color-mix(in srgb, var(--yellow) 20%, transparent); color: var(--yellow); flex: 1; border: 1px solid var(--yellow);"><i class="fa-solid fa-arrows-rotate"></i> Reiniciar Local</button>
                     <button class="action-btn" onclick="enviarComandoEnergia('shutdown')" style="background: color-mix(in srgb, var(--red) 20%, transparent); color: var(--red); flex: 1; border: 1px solid var(--red);"><i class="fa-solid fa-power-off"></i> Desligar</button>
                 </div>
@@ -234,6 +234,22 @@
                     <div style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Latência Sensor ➔ Gateway</div>
                     <div id="ping-local" class="highlight" style="color: var(--status-unknown); margin-top: 5px;">--</div>
                 </div>
+            </div>
+        </div>
+
+        <div class="painel-grid">
+            <div class="card card-stack" id="saude" style="border-top: 4px solid var(--status-ok);">
+                <h3><span><i class="fa-solid fa-heart-pulse"></i> Saúde do sistema</span></h3>
+                <ul class="saude-lista" id="saude-lista"><li class="hist-empty">Aguardando a primeira coleta do sensor…</li></ul>
+            </div>
+            <div class="card card-stack" style="border-top: 4px solid var(--blue);">
+                <h3><span><i class="fa-solid fa-network-wired"></i> Interfaces de rede</span></h3>
+                <div class="ifaces" id="host-ifaces"><div class="hist-empty">Aguardando a primeira coleta…</div></div>
+            </div>
+            <div class="card card-stack" style="border-top: 4px solid var(--purple);">
+                <h3><span><i class="fa-solid fa-list-ol"></i> Processos</span>
+                    <span class="seg" id="procs-modo"><button class="ativo" data-modo="cpu">CPU</button><button data-modo="memoria">Memória</button></span></h3>
+                <table class="procs"><thead><tr><th>Processo</th><th>PID</th><th>CPU</th><th>Mem.</th></tr></thead><tbody id="host-procs"><tr><td colspan="4" class="hist-empty">Aguardando…</td></tr></tbody></table>
             </div>
         </div>
 
@@ -693,8 +709,9 @@
                 document.getElementById('temp-text').innerText = (data.temp > 0 ? data.temp : '--') + ' °C';
                 if(document.getElementById('gpu-text')) document.getElementById('gpu-text').innerText = (data.gpu_temp != null ? data.gpu_temp : '--') + ' °C';
 
-                document.getElementById('disk-text').innerText = (data.disco || 0) + '%';
-                document.getElementById('disk-fill').style.width = (data.disco || 0) + '%';
+                if (!data.host_info) {  // com host_info, o host.js mostra todos os discos
+                    document.getElementById('disk-text').innerText = (data.disco || 0) + '%';
+                }
 
                 if(document.getElementById('net-down-live')) document.getElementById('net-down-live').innerText = (data.net_down || 0).toFixed(1);
                 if(document.getElementById('net-up-live')) document.getElementById('net-up-live').innerText = (data.net_up || 0).toFixed(1);
@@ -1088,5 +1105,6 @@
     </script>
 <script src="/static/location.js?v=2.2.0-rc1"></script>
 <script src="/static/acoes.js?v=2.2.0-rc1"></script>
+<script src="/static/host.js?v=2.2.0-rc1"></script>
 </body>
 </html>

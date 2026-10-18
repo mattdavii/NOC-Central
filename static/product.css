@@ -275,3 +275,51 @@ td .action-btn { padding:7px 11px; font-size:.82rem; }
 .modal-senha-box h4 { margin:0; font-size:1.05rem; }
 .modal-senha-erro { color:var(--status-crit); font-size:.85rem; min-height:1.2em; margin:0; }
 .modal-senha-acoes { display:flex; justify-content:flex-end; gap:8px; }
+/* Host e saúde do sistema (tela do sensor) */
+.host-chips { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:.82rem; color:var(--text-muted); }
+.host-chips i { width:14px; text-align:center; opacity:.8; }
+.host-chips strong { color:var(--text-main); }
+.host-boot { margin:-6px 0 0; font-size:.75rem; color:var(--text-muted); min-height:1em; }
+.metric { display:flex; flex-direction:column; gap:5px; }
+.metric-head { display:flex; justify-content:space-between; align-items:baseline; font-size:.85rem; color:var(--text-muted); }
+.metric-head i { width:18px; }
+.metric-head small { font-size:.75rem; }
+.metric-head strong { color:var(--text-main); font-variant-numeric:tabular-nums; }
+.progress-fill.nivel-ok { background:var(--blue); }
+.progress-fill.nivel-warn { background:var(--status-warn); }
+.progress-fill.nivel-crit { background:var(--status-crit); }
+.cores { display:flex; gap:3px; height:26px; align-items:flex-end; }
+.core { flex:1; height:100%; background:var(--bg-input); border-radius:3px; display:flex; align-items:flex-end; overflow:hidden; }
+.core i { display:block; width:100%; background:var(--blue); border-radius:3px; transition:height .4s; }
+.core.nivel-warn i { background:var(--status-warn); } .core.nivel-crit i { background:var(--status-crit); }
+.discos { display:flex; flex-direction:column; gap:8px; }
+.disco-head { display:flex; justify-content:space-between; gap:8px; font-size:.78rem; color:var(--text-muted); margin-bottom:4px; flex-wrap:wrap; }
+.disco-head strong { color:var(--text-main); }
+.saude-lista { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:2px; }
+.saude-item { display:grid; grid-template-columns:22px 1fr auto; gap:2px 10px; align-items:center; padding:9px 4px; border-bottom:1px solid color-mix(in srgb,var(--border) 60%,transparent); }
+.saude-item:last-child { border-bottom:0; }
+.saude-item > i { color:var(--text-muted); text-align:center; }
+.saude-rotulo { font-size:.88rem; }
+.saude-valor { font-size:.85rem; font-weight:600; text-align:right; }
+.saude-detalhe { grid-column:2 / -1; font-size:.75rem; color:var(--text-muted); }
+.estado-ok .saude-valor { color:var(--status-ok); }
+.estado-warn .saude-valor { color:var(--status-warn); }
+.estado-crit .saude-valor { color:var(--status-crit); }
+.estado-na .saude-valor { color:var(--text-muted); font-weight:400; }
+.ifaces { display:flex; flex-direction:column; gap:10px; }
+.iface { border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:var(--bg-input); }
+.iface.inativa { opacity:.55; }
+.iface-head { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.iface-head .mono { font-weight:600; margin-right:auto; }
+.iface-tag { font-size:.72rem; color:var(--text-muted); border:1px solid var(--border); border-radius:999px; padding:2px 8px; }
+.iface-tag.warn { color:var(--status-warn); border-color:var(--status-warn); }
+.iface-taxas { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:.8rem; font-variant-numeric:tabular-nums; }
+.txt-warn { color:var(--status-warn); } .txt-muted { color:var(--text-muted); }
+table.procs { width:100%; border-collapse:collapse; font-size:.82rem; }
+table.procs th { text-align:left; font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); font-weight:600; padding:0 6px 6px; }
+table.procs td { padding:7px 6px; border-top:1px solid color-mix(in srgb,var(--border) 60%,transparent); }
+table.procs td:first-child { max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+table.procs th:nth-child(n+3),table.procs td:nth-child(n+3) { text-align:right; font-variant-numeric:tabular-nums; }
+.seg { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+.seg button { background:none; border:0; color:var(--text-muted); padding:4px 10px; font-size:.75rem; cursor:pointer; }
+.seg button.ativo { background:color-mix(in srgb,var(--blue) 18%,transparent); color:var(--text-main); }

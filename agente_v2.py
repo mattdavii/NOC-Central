@@ -35,6 +35,11 @@ except Exception:
 try: import psutil
 except ImportError: psutil = None
 
+try:
+    import host_metrics
+except ImportError:
+    host_metrics = None
+
 # ==========================================
 # ⚙️ CONFIGURAÇÃO DO AGENTE
 # ==========================================
@@ -684,6 +689,37 @@ def executar_admin_linux(acao, alvo=None):
 
 
 # ==========================================
+# 🩺 MÉTRICAS ESTENDIDAS DO HOST (a cada 30 s, enviadas junto da telemetria)
+# ==========================================
+HOST_INFO_INTERVALO = max(15, int(os.environ.get("NOC_HOST_INFO_INTERVALO", "30")))
+_host_info_pendente = None
+_host_info_lock = threading.Lock()
+
+
+def loop_host_info():
+    global _host_info_pendente
+    if host_metrics is None:
+        return
+    host_metrics.coletar()  # primeira leitura só prepara as taxas de rede e de CPU
+    while True:
+        time.sleep(HOST_INFO_INTERVALO)
+        try:
+            info = host_metrics.coletar()
+        except Exception as e:
+            log_local_event("Métricas do host", f"Falha na coleta: {e}", "Alerta")
+            continue
+        with _host_info_lock:
+            _host_info_pendente = info
+
+
+def pegar_host_info():
+    global _host_info_pendente
+    with _host_info_lock:
+        info, _host_info_pendente = _host_info_pendente, None
+    return info
+
+
+# ==========================================
 # 🛠️ AÇÕES REMOTAS (só as desta lista; a Central nunca manda comando livre)
 # ==========================================
 ADMIN_HELPER = "/usr/local/sbin/nexopulse-admin"
@@ -962,8 +998,10 @@ def loop_telemetria():
             dados_sensores["cpu"] = cpu; dados_sensores["ram"] = ram; dados_sensores["disco"] = disco; dados_sensores["temp"] = cpu_temp; dados_sensores["gpu_temp"] = gpu_temp; dados_sensores["net_down"] = net_down; dados_sensores["net_up"] = net_up; dados_sensores["portas"] = str_portas; dados_sensores["meu_ip"] = meu_ip; dados_sensores["gateway_ip"] = gateway_ip; dados_sensores["ping_gateway"] = ping_gw; dados_sensores["pings"] = pings; dados_sensores["topologia"] = dispositivos
             dados_sensores["interface"] = interface_rede; dados_sensores["rede_cidr"] = rede.get("cidr", ""); dados_sensores["mac_interface"] = rede.get("mac_interface", "")
 
+            host_info = pegar_host_info()
             payload = {
                 "mac_id": mac, "agent_version": VERSAO_AGENTE, "nome_local": NOME_SENSOR,
+                **({"host_info": host_info} if host_info else {}),
                 **approximate_location,
                 "ip_local": meu_ip, "ip_gateway": gateway_ip,
                 "cpu_usage": cpu, "ram_usage": ram, "disco": disco,
@@ -1616,6 +1654,7 @@ if __name__ == "__main__":
             daemon=True,
         ).start()
         threading.Thread(target=loop_telemetria, daemon=True).start()
+        threading.Thread(target=loop_host_info, daemon=True).start()
         threading.Thread(target=loop_watchdog_local, daemon=True).start()
 
         # Modo headless/systemd: mantém o processo principal vivo sem depender
