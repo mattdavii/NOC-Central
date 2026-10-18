@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#082E56">
+    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <title>NexoPulse - Política de Privacidade</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/product.css?v=nexopulse-2">
+    <style>
+        body { margin: 0; background: var(--bg-base); color: var(--text-main); }
+        .policy { max-width: 760px; margin: 0 auto; padding: 40px 24px 64px; line-height: 1.65; }
+        .policy h1 { font-size: 1.8rem; margin: 0 0 6px; letter-spacing: -.01em; }
+        .policy .updated { color: var(--text-muted); font-size: .9rem; margin: 0 0 32px; }
+        .policy h2 { font-size: 1.1rem; margin: 32px 0 8px; }
+        .policy p, .policy li { color: var(--text-main); }
+        .policy ul { padding-left: 20px; }
+        .policy code { font-family: 'JetBrains Mono', monospace; font-size: .88em; }
+        .policy-footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: .9rem; }
+    </style>
+</head>
+<body>
+<script src="/static/brand.js?v=nexopulse-2"></script>
+{% set hide_nav = true %}
+{% include '_brand_bar.html' %}
+<main class="policy">
+    <h1>Política de Privacidade</h1>
+    <p class="updated">NexoPulse Central e NexoPulse Backup · atualizada em 18/10/2026</p>
+
+    <p>O NexoPulse é uma plataforma de monitoramento de redes. Esta página explica quais dados a
+    Central e os sensores NexoPulse Edge tratam, e como o NexoPulse Backup usa o Google Drive.</p>
+
+    <h2>Dados tratados pela Central</h2>
+    <ul>
+        <li><strong>Contas de acesso:</strong> nome, usuário, perfil e senha (guardada só como hash).</li>
+        <li><strong>Telemetria dos sensores:</strong> uso de CPU, memória e disco, temperaturas, latência,
+        velocidade de link, IP, MAC e nome da máquina onde o sensor está instalado.</li>
+        <li><strong>Dispositivos da rede monitorada:</strong> IP, MAC e fabricante dos equipamentos que o
+        sensor encontra na rede local, para mostrar a topologia e alertar quedas.</li>
+        <li><strong>Localização do sensor:</strong> só quando informada por quem instala, ou aproximada
+        pelo IP se essa opção estiver ativada.</li>
+        <li><strong>Notificações:</strong> identificadores do Telegram configurados por cada cliente.</li>
+    </ul>
+    <p>Esses dados são usados exclusivamente para operar o monitoramento e não são vendidos nem
+    compartilhados com terceiros.</p>
+
+    <h2>NexoPulse Backup e o Google Drive</h2>
+    <p>O NexoPulse Backup envia, uma vez por dia, uma cópia do banco de dados da plataforma para o
+    Google Drive do próprio administrador. Ele usa a permissão <code>drive.file</code> do Google, que dá
+    acesso <strong>somente aos arquivos que o próprio NexoPulse Backup cria</strong>; ele não lê, lista nem
+    altera nenhum outro arquivo do seu Drive.</p>
+    <p>As cópias ficam na pasta <code>NexoPulse/backups</code>, e as que têm mais de 30 dias são apagadas
+    automaticamente. O uso das informações recebidas das APIs do Google segue a
+    <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Política de Dados do Usuário dos Serviços de API do Google</a>,
+    incluindo os requisitos de uso limitado.</p>
+    <p>Você pode revogar esse acesso a qualquer momento em
+    <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a>.</p>
+
+    <h2>Armazenamento e segurança</h2>
+    <p>Os dados ficam no banco da plataforma, em servidor controlado pelo administrador, e trafegam
+    por conexões criptografadas (HTTPS e rede privada). O acesso à Central exige login.</p>
+
+    <h2>Seus direitos</h2>
+    <p>Você pode pedir acesso, correção ou exclusão dos seus dados ao administrador da sua conta
+    NexoPulse.</p>
+
+    <h2>Contato</h2>
+    <p>Dúvidas sobre esta política: use o e-mail de suporte exibido na tela de autorização do Google
+    ou fale com o administrador da plataforma.</p>
+
+    <p class="policy-footer"><a href="/">Voltar para a NexoPulse Central</a></p>
+</main>
+</body>
+</html>

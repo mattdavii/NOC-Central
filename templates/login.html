@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body { margin: 0; padding: 24px; box-sizing: border-box; font-family: 'Inter', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-image: radial-gradient(circle at 20% 15%, rgba(5,169,220,.14), transparent 32%), radial-gradient(circle at 85% 80%, rgba(5,168,140,.12), transparent 30%); }
+        .login-privacy { display: block; margin-top: 12px; text-align: center; font-size: .82rem; color: var(--text-muted); }
         .login-shell { width: 100%; max-width: 430px; }
         .login-box { padding: 36px; border-radius: 18px; width: 100%; border: 1px solid var(--border); position: relative; overflow: hidden; }
         .login-box::before { content: ''; position: absolute; inset: 0 0 auto; height: 3px; background: var(--brand-gradient); }
@@ -67,7 +68,7 @@
             </div>
             <button type="submit" class="btn-login">Entrar na NexoPulse</button>
         </form>
-        <div class="login-tools"><button class="theme-toggle" type="button" onclick="NexoPulseTheme.toggle()" aria-label="Alternar tema"><i class="fa-solid fa-sun" aria-hidden="true"></i><span>Alternar tema</span></button></div>
+        <div class="login-tools"><button class="theme-toggle" type="button" onclick="NexoPulseTheme.toggle()" aria-label="Alternar tema"><i class="fa-solid fa-sun" aria-hidden="true"></i><span>Alternar tema</span></button><a class="login-privacy" href="/privacidade">Política de privacidade</a></div>
       </div>
     </main>
 </body>

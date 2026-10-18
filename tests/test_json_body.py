@@ -31,3 +31,11 @@ def test_placeholder_name_is_replaced_but_custom_name_is_kept(client, login):
     login().post('/api/v2/configurar_sensor', json={'mac_id': 'AA:00:00:00:00:02', 'nome': 'Rack principal'})
     client.post('/api/v2/report_data', json={'mac_id': 'AA:00:00:00:00:02', 'nome_local': 'servidor-backup'})
     assert _nome('AA:00:00:00:00:02') == 'Rack principal'
+
+
+def test_privacy_page_is_public(client):
+    response = client.get('/privacidade')
+    assert response.status_code == 200
+    page = response.get_data(as_text=True)
+    assert 'drive.file' in page and 'Política de Privacidade' in page
+    assert '/privacidade' in client.get('/login').get_data(as_text=True)

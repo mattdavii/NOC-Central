@@ -369,6 +369,12 @@ def enforce_tenant_scope():
         conn.close()
 
 
+@app.route('/privacidade')
+def privacidade():
+    # Página pública: exigida pelo Google para publicar o app OAuth do backup.
+    return render_template('privacidade.html')
+
+
 @app.route('/healthz')
 def healthz():
     conn = database.get_db()
