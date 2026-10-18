@@ -77,7 +77,19 @@ def test_nexopulse_brand_is_local_and_consistent(client, login):
     manifest = client.get('/static/manifest.json').json
     assert manifest['name'] == 'NexoPulse Central'
     assert manifest['short_name'] == 'NexoPulse'
+    assert manifest['id'] == '/'
+    assert manifest['scope'] == '/'
+    assert manifest['start_url'] == '/'
     assert all(icon['src'].startswith('/static/icons/nexopulse-') for icon in manifest['icons'])
+    assert {'any', 'maskable'} == {icon['purpose'] for icon in manifest['icons']}
+
+    root_manifest = client.get('/manifest.json')
+    assert root_manifest.status_code == 200
+    assert 'no-cache' in root_manifest.headers['Cache-Control']
+    service_worker = client.get('/sw.js')
+    assert service_worker.status_code == 200
+    assert service_worker.headers['Service-Worker-Allowed'] == '/'
+    assert 'no-cache' in service_worker.headers['Cache-Control']
 
     login()
     for route in ('/', '/tv', '/sensores', '/usuarios'):
@@ -99,6 +111,15 @@ def test_nexopulse_brand_is_local_and_consistent(client, login):
     product_css = (root / 'static/product.css').read_text(encoding='utf-8')
     assert 'html[data-theme="light"]' in product_css
     assert '@media(max-width:480px)' in product_css
+
+    brand_js = (root / 'static/brand.js').read_text(encoding='utf-8')
+    assert "register('/sw.js?v=nexopulse-2'" in brand_js
+    assert "updateViaCache: 'none'" in brand_js
+    assert 'existing.unregister()' in brand_js
+
+    agent_spec = (root / 'agente_v2.spec').read_text(encoding='utf-8')
+    assert "icon='packaging/nexopulse-edge.ico'" in agent_spec
+    assert "version='packaging/nexopulse_edge_version.txt'" in agent_spec
 
     for relative in (
         'static/brand/nexopulse-logo-dark.png',

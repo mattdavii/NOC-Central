@@ -17,6 +17,17 @@ Os ativos oficiais ficam em `static/brand/`:
 - `static/icons/`: ícones locais do PWA;
 - `static/favicon.png`: favicon da aplicação.
 
+O manifesto usa o identificador estável `/`, o nome **NexoPulse Central** e
+ícones próprios para instalação normal e maskable. O navegador consulta
+`/manifest.json?v=nexopulse-2` e o service worker em `/sw.js?v=nexopulse-2`
+sem cache, permitindo que instalações existentes recebam a nova identidade
+sem criar um segundo aplicativo.
+
+No Windows, o executável mantém o nome técnico `agente_v2.exe` para não quebrar
+atalhos e inicialização existentes, mas passa a publicar **NexoPulse Edge** como
+nome do produto, descrição e ícone. No Linux, o atualizador preserva o serviço
+`noc-sensor.service` e atualiza somente sua descrição visível.
+
 A paleta e os componentes compartilhados são centralizados em `static/product.css`. O tema escuro é prioritário, e o tema claro pode ser selecionado pelo operador. A preferência fica somente no navegador por meio de `localStorage`.
 
 | Token | Cor | Uso |

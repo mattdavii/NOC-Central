@@ -1578,9 +1578,22 @@ def index():
 # 🛠️ MOTOR 3: SYSTEM TRAY (ÍCONE NO RELÓGIO)
 # ==========================================
 def create_image():
-    image = Image.new('RGB', (64, 64), color=(11, 11, 19))
+    base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    candidates = (
+        os.path.join(base_dir, 'brand', 'nexopulse-symbol.png'),
+        os.path.join(base_dir, 'static', 'brand', 'nexopulse-symbol.png'),
+    )
+    for icon_path in candidates:
+        try:
+            with Image.open(icon_path) as source:
+                return source.convert('RGBA').resize((64, 64), Image.Resampling.LANCZOS)
+        except (FileNotFoundError, OSError):
+            continue
+
+    # Fallback mínimo para instalações antigas que ainda não empacotaram o ativo.
+    image = Image.new('RGBA', (64, 64), color=(11, 23, 40, 255))
     dc = ImageDraw.Draw(image)
-    dc.ellipse((8, 8, 56, 56), fill=(137, 180, 250))
+    dc.ellipse((8, 8, 56, 56), fill=(5, 169, 220, 255))
     return image
 
 def on_quit(icon, item):

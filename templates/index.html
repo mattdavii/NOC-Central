@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="manifest" href="/static/manifest.json">
+    <link rel="manifest" href="/manifest.json?v=nexopulse-2">
     <meta name="theme-color" content="#082E56">
     <link rel="icon" href="/static/favicon.png" type="image/png">
     <title>NexoPulse Central - Dashboard Operacional</title>
@@ -446,11 +446,6 @@
             });
         } catch(e) { console.warn("Socket.io falhou."); }
 
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/static/sw.js')
-                .then(reg => console.log('SW registrado:', reg.scope))
-                .catch(err => console.error('Erro ao registrar SW:', err));
-        }
     </script>
 </body>
 </html>

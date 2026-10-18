@@ -2,8 +2,14 @@
   "name": "NexoPulse Central",
   "short_name": "NexoPulse",
   "description": "Network Intelligence & Monitoring",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "lang": "pt-BR",
+  "categories": ["business", "productivity", "utilities"],
   "background_color": "#0B1728",
   "theme_color": "#082E56",
   "icons": [
@@ -30,6 +36,20 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Visão operacional",
+      "short_name": "Operação",
+      "url": "/",
+      "icons": [{"src": "/static/icons/nexopulse-192.png", "sizes": "192x192", "type": "image/png"}]
+    },
+    {
+      "name": "Sala de Operações",
+      "short_name": "Sala",
+      "url": "/tv",
+      "icons": [{"src": "/static/icons/nexopulse-192.png", "sizes": "192x192", "type": "image/png"}]
     }
   ]
 }

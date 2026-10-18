@@ -8,7 +8,10 @@ a = Analysis(
     pathex=[],
     binaries=[],
     # Garante que o bundle de certificados do certifi vá junto no executável (o fix de SSL depende disso)
-    datas=[(certifi.where(), 'certifi')],
+    datas=[
+        (certifi.where(), 'certifi'),
+        ('static/brand/nexopulse-symbol.png', 'brand'),
+    ],
     hiddenimports=['speedtest', 'jwt', 'certifi', 'cryptography'],
     hookspath=[],
     hooksconfig={},
@@ -26,6 +29,8 @@ exe = EXE(
     a.datas,
     [],
     name='agente_v2',
+    icon='packaging/nexopulse-edge.ico',
+    version='packaging/nexopulse_edge_version.txt',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
