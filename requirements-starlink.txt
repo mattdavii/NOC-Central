@@ -1,0 +1,3 @@
+# Opcional: coletor da antena Starlink (API gRPC local). Sem estes pacotes o Edge
+# funciona normalmente e marca "Starlink não detectada".
+starlink-grpc-core==1.2.5

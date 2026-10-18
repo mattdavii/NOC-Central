@@ -33,6 +33,11 @@ echo "==> Preparando ambiente Python..."
 "${PYTHON_BIN}" -m venv "${VENV_DIR}"
 "${VENV_DIR}/bin/python" -m pip install --upgrade pip
 "${VENV_DIR}/bin/pip" install -r "${ROOT_DIR}/requirements-agente.txt"
+if [[ -f "${ROOT_DIR}/requirements-starlink.txt" ]]; then
+  # Opcional: sem estes pacotes o Edge só não lê a antena Starlink.
+  "${VENV_DIR}/bin/pip" install -r "${ROOT_DIR}/requirements-starlink.txt" \
+    || echo "⚠️  Dependências da Starlink não instaladas; o sensor funciona sem o coletor Starlink."
+fi
 
 CENTRAL_URL="${NOC_CENTRAL_URL:-https://nexopulse.up.railway.app/api/v2/report_data}"
 if [[ ! -f "${ENV_FILE}" ]]; then

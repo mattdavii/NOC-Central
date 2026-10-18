@@ -413,7 +413,7 @@ def enforce_tenant_scope():
 # ==========================================
 # 📦 PACOTE E INSTALADOR DO AGENTE
 # ==========================================
-ARQUIVOS_AGENTE = ['agente_v2.py', 'host_metrics.py', 'requirements-agente.txt', 'linux/install.sh', 'linux/nexopulse-admin',
+ARQUIVOS_AGENTE = ['agente_v2.py', 'host_metrics.py', 'starlink.py', 'fila_envio.py', 'requirements-agente.txt', 'requirements-starlink.txt', 'linux/install.sh', 'linux/nexopulse-admin',
                    'linux/README.md', 'windows/instalar-nexopulse-wsl.ps1']
 
 
