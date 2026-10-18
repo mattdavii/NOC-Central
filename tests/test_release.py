@@ -1,5 +1,6 @@
 import io
 import json
+import re
 import time
 import urllib.error
 from pathlib import Path
@@ -411,3 +412,38 @@ def test_queue_malformed_retry_is_terminal(client):
     row = conn.execute("SELECT state, attempts FROM telegram_outbox WHERE message='invalid-response-permanent'").fetchone()
     conn.close()
     assert row['state'] == 'failed' and row['attempts'] == 1
+
+
+def _css_block(css, selector):
+    start = css.index(selector + ' {')
+    body = css[start:css.index('}', start)]
+    return dict(re.findall(r'--([\w-]+):\s*(#[0-9A-Fa-f]{6})', body))
+
+
+def _contrast(fg, bg):
+    def luminance(hex_color):
+        channels = [int(hex_color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        channels = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+    hi, lo = sorted((luminance(fg), luminance(bg)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def test_status_palette_is_separate_from_brand_and_accessible():
+    css = (Path(__file__).resolve().parents[1] / 'static/product.css').read_text(encoding='utf-8')
+    dark = _css_block(css, ':root')
+    light = {**dark, **_css_block(css, 'html[data-theme="light"]')}
+
+    status = ('status-ok', 'status-warn', 'status-crit', 'status-offline', 'status-unknown')
+    for theme in (dark, light):
+        assert all(token in theme for token in status)
+        # Verde Pulse é cor de marca e não pode representar "OK".
+        assert theme['status-ok'].upper() not in {dark['brand-green'].upper(), theme['green'].upper()}
+        assert theme['status-unknown'].upper() != theme['status-ok'].upper()
+    assert '.status-unknown { color:var(--status-unknown); border-style:dashed;' in css
+
+    text_tokens = ('text-main', 'text-muted', 'link', 'blue', 'green', 'red', 'yellow', 'purple', *status)
+    for token in text_tokens:
+        for background in ('bg-base', 'bg-card', 'bg-input', 'surface-raised'):
+            assert _contrast(light[token], light[background]) >= 4.5, (token, background)
+    assert light['link'].upper() == '#082E56'
