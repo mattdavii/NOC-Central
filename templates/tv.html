@@ -11,33 +11,28 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        :root {
-            --bg-base: #0b0b13; --bg-card: #151521; --bg-input: #232334; --border: #36364a;
-            --text-main: #cdd6f4; --text-muted: #9399b2;
-            --blue: #89b4fa; --green: #a6e3a1; --red: #f38ba8; --yellow: #f9e2af; --purple: #cba6f7;
-        }
 
         body { 
             margin: 0; font-family: 'Inter', sans-serif; color: var(--text-main); overflow: hidden;
             background-color: var(--bg-base);
             /* Grid de fundo estilo Cyberpunk/Radar */
             background-image: 
-                linear-gradient(rgba(54, 54, 74, 0.3) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(54, 54, 74, 0.3) 1px, transparent 1px);
+                linear-gradient(color-mix(in srgb, var(--border) 30%, transparent) 1px, transparent 1px),
+                linear-gradient(90deg, color-mix(in srgb, var(--border) 30%, transparent) 1px, transparent 1px);
             background-size: 40px 40px;
         }
         
         /* HEADER GIGANTE PARA TV */
-        .tv-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; background: rgba(11, 11, 19, 0.95); border-bottom: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0,0,0,0.8); z-index: 10; position: relative; backdrop-filter: blur(10px);}
+        .tv-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; background: var(--overlay); border-bottom: 1px solid var(--border); box-shadow: var(--shadow); z-index: 10; position: relative; backdrop-filter: blur(10px);}
         .tv-logo { font-size: 2.5em; font-weight: 900; color: var(--blue); letter-spacing: 2px; display: flex; align-items: center; gap: 15px;}
         .tv-logo i { font-size: 1.2em; filter: drop-shadow(0 0 10px var(--blue)); }
         
         .tv-stats { display: flex; gap: 20px; }
-        .stat-box { background: rgba(0,0,0,0.5); padding: 12px 30px; border-radius: 8px; text-align: center; border: 1px solid var(--bg-input); box-shadow: inset 0 0 20px rgba(0,0,0,0.5);}
+        .stat-box { background: var(--bg-input); padding: 12px 30px; border-radius: 8px; text-align: center; border: 1px solid var(--bg-input);}
         .stat-num { font-family: 'JetBrains Mono'; font-size: 2.8em; font-weight: bold; line-height: 1; text-shadow: 0 0 15px currentColor;}
         .stat-label { font-size: 0.85em; text-transform: uppercase; color: var(--text-muted); letter-spacing: 1px; font-weight: bold; margin-top: 5px;}
         
-        .tv-clock { font-family: 'JetBrains Mono'; font-size: 2.5em; font-weight: bold; color: var(--text-main); text-shadow: 0 0 20px rgba(255,255,255,0.3);}
+        .tv-clock { font-family: 'JetBrains Mono'; font-size: 2.5em; font-weight: bold; color: var(--text-main);}
 
         /* GRID AUTO-AJUSTÁVEL */
         .tv-container { padding: 40px; height: calc(100vh - 180px); overflow-y: auto; scroll-behavior: smooth; padding-bottom: 100px; }
@@ -46,60 +41,64 @@
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(450px, 1fr)); gap: 30px; align-content: start;}
         
         /* CARDS RICOS DA TV */
-        .tv-card { background: linear-gradient(145deg, rgba(21,21,33,0.95) 0%, rgba(11,11,19,0.95) 100%); border-radius: 12px; padding: 25px; border: 1px solid var(--border); position: relative; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5); backdrop-filter: blur(5px);}
+        .tv-card { background: var(--bg-card); border-radius: 12px; padding: 25px; border: 1px solid var(--border); position: relative; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5); backdrop-filter: blur(5px);}
         .tv-card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px; border-top-left-radius: 12px; border-top-right-radius: 12px;}
         
-        .tv-card.online { border-color: rgba(166, 227, 161, 0.2); }
-        .tv-card.online::before { background: var(--green); box-shadow: 0 0 15px var(--green); }
+        .tv-card.online { border-color: color-mix(in srgb, var(--status-ok) 30%, transparent); }
+        .tv-card.online::before { background: var(--status-ok); }
         
-        .tv-card.offline { border-color: var(--red); animation: pulse-card-red 1.5s infinite; background: linear-gradient(145deg, rgba(40,10,10,0.95) 0%, rgba(11,11,19,0.95) 100%); }
-        .tv-card.offline::before { background: var(--red); box-shadow: 0 0 20px var(--red); }
+        .tv-card.offline { border-color: var(--status-crit); animation: pulse-card-red 1.5s infinite; background: color-mix(in srgb, var(--status-crit) 10%, var(--bg-card)); }
+        .tv-card.offline::before { background: var(--status-crit); }
         
-        .tv-card.maintenance { border-color: rgba(249, 226, 175, 0.3); }
-        .tv-card.maintenance::before { background: var(--yellow); }
+        .tv-card.maintenance { border-color: color-mix(in srgb, var(--status-warn) 30%, transparent); }
+        .tv-card.maintenance::before { background: var(--status-warn); }
 
-        @keyframes pulse-card-red { 0% { box-shadow: 0 0 0 0 rgba(243,139,168, 0.4); } 70% { box-shadow: 0 0 30px 10px rgba(243,139,168, 0); } 100% { box-shadow: 0 0 0 0 rgba(243,139,168, 0); } }
+        .tv-card.unknown { border-style: dashed; border-color: var(--status-unknown); }
+        .tv-card.unknown::before { background: var(--status-unknown); }
+
+        @keyframes pulse-card-red { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-crit) 40%, transparent); } 70% { box-shadow: 0 0 30px 10px color-mix(in srgb, var(--status-crit) 0%, transparent); } 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-crit) 0%, transparent); } }
 
         .c-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 1px dashed var(--bg-input); padding-bottom: 15px;}
         .c-title { font-size: 1.6em; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 75%; display: flex; align-items: center; gap: 10px;}
         .c-cliente { font-size: 0.7em; color: var(--blue); text-transform: uppercase; font-weight: bold; letter-spacing: 2px; display: block; margin-top: 5px; }
         
         .c-status-badge { font-family: 'JetBrains Mono'; font-weight: bold; padding: 8px 15px; border-radius: 6px; font-size: 1em; text-transform: uppercase; letter-spacing: 1px;}
-        .online .c-status-badge { background: rgba(166,227,161,0.1); color: var(--green); border: 1px solid var(--green); }
-        .offline .c-status-badge { background: rgba(243,139,168,0.15); color: var(--red); border: 1px solid var(--red); animation: blink 1s infinite;}
-        .maintenance .c-status-badge { background: rgba(249,226,175,0.1); color: var(--yellow); border: 1px solid var(--yellow); }
+        .online .c-status-badge { background: color-mix(in srgb, var(--status-ok) 10%, transparent); color: var(--status-ok); border: 1px solid var(--status-ok); }
+        .offline .c-status-badge { background: color-mix(in srgb, var(--status-crit) 15%, transparent); color: var(--status-crit); border: 1px solid var(--status-crit); animation: blink 1s infinite;}
+        .maintenance .c-status-badge { background: color-mix(in srgb, var(--status-warn) 10%, transparent); color: var(--status-warn); border: 1px solid var(--status-warn); }
+        .unknown .c-status-badge { background: transparent; color: var(--status-unknown); border: 1px dashed var(--status-unknown); }
 
         @keyframes blink { 50% { opacity: 0.3; } }
 
         /* GRID INTERNO DO CARD */
         .c-body { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         
-        .hw-box { background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; border: 1px solid var(--bg-input); }
+        .hw-box { background: var(--bg-input); padding: 12px; border-radius: 8px; border: 1px solid var(--bg-input); }
         .hw-row { display: flex; justify-content: space-between; font-size: 0.85em; color: var(--text-muted); margin-bottom: 5px; font-weight: bold;}
-        .prog-bg { background: rgba(0,0,0,0.5); height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 12px;}
+        .prog-bg { background: var(--bg-input); height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 12px;}
         .prog-fill { height: 100%; transition: 0.5s; box-shadow: 0 0 10px currentColor;}
 
         .net-box { display: flex; flex-direction: column; gap: 10px; }
-        .net-item { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); padding: 10px 15px; border-radius: 8px; border: 1px solid var(--bg-input); }
+        .net-item { display: flex; justify-content: space-between; align-items: center; background: var(--bg-input); padding: 10px 15px; border-radius: 8px; border: 1px solid var(--bg-input); }
         .net-lbl { font-size: 0.8em; color: var(--text-muted); font-weight: bold; display: flex; align-items: center; gap: 8px;}
         .net-val { font-family: 'JetBrains Mono'; font-weight: bold; font-size: 1.2em; }
 
         /* TICKER DE NOTÍCIAS (RODAPÉ) */
-        .ticker-wrap { position: fixed; bottom: 0; left: 0; width: 100%; height: 45px; background: rgba(11, 11, 19, 0.95); border-top: 1px solid var(--border); display: flex; align-items: center; z-index: 100; backdrop-filter: blur(10px);}
+        .ticker-wrap { position: fixed; bottom: 0; left: 0; width: 100%; height: 45px; background: var(--overlay); border-top: 1px solid var(--border); display: flex; align-items: center; z-index: 100; backdrop-filter: blur(10px);}
         .ticker-title { background: var(--blue); color: var(--bg-base); font-weight: 900; height: 100%; padding: 0 25px; display: flex; align-items: center; font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px; z-index: 2; box-shadow: 5px 0 15px rgba(0,0,0,0.5);}
         .ticker-content { flex: 1; overflow: hidden; white-space: nowrap; position: relative; height: 100%; display: flex; align-items: center; }
         .ticker-text { display: inline-block; padding-left: 100%; animation: ticker 25s linear infinite; font-family: 'JetBrains Mono'; font-size: 0.95em; color: var(--text-main); }
         .ticker-item { margin-right: 50px; display: inline-flex; align-items: center; gap: 10px;}
         .t-time { color: var(--text-muted); }
-        .t-crit { color: var(--red); font-weight: bold; }
-        .t-ok { color: var(--green); font-weight: bold; }
-        .t-warn { color: var(--yellow); font-weight: bold; }
+        .t-crit { color: var(--status-crit); font-weight: bold; }
+        .t-ok { color: var(--status-ok); font-weight: bold; }
+        .t-warn { color: var(--status-warn); font-weight: bold; }
 
         @keyframes ticker { 0% { transform: translate3d(0, 0, 0); } 100% { transform: translate3d(-100%, 0, 0); } }
 
         /* MODO ALERTA GERAL (PISCA A TELA TODA) */
         body.alert-mode { animation: bg-alert 2s infinite; }
-        @keyframes bg-alert { 0%, 100% { background-color: var(--bg-base); } 50% { background-color: #2a0808; } }
+        @keyframes bg-alert { 0%, 100% { background-color: var(--bg-base); } 50% { background-color: color-mix(in srgb, var(--status-crit) 18%, var(--bg-base)); } }
     </style>
 <link rel="stylesheet" href="/static/product.css?v=nexopulse-2">
 <script src="/static/brand.js?v=nexopulse-2"></script>
@@ -116,11 +115,11 @@
                 <div class="stat-label">Total Monitorado</div>
             </div>
             <div class="stat-box">
-                <div class="stat-num" id="tot-online" style="color: var(--green);">0</div>
+                <div class="stat-num" id="tot-online" style="color: var(--status-ok);">0</div>
                 <div class="stat-label">Online (Estáveis)</div>
             </div>
             <div class="stat-box">
-                <div class="stat-num" id="tot-offline" style="color: var(--red);">0</div>
+                <div class="stat-num" id="tot-offline" style="color: var(--status-crit);">0</div>
                 <div class="stat-label">Offline (Quedas)</div>
             </div>
         </div>
@@ -183,6 +182,9 @@
                     let classe = 'online', text = 'ONLINE';
                     let c_cpu = 'var(--blue)', c_ram = 'var(--purple)';
                     let cpu_val = boundedMetric(s.cpu_usage), ram_val = boundedMetric(s.ram_usage);
+                    // Sem leitura: "--" em vez de 0%, que pareceria medido.
+                    const cpu_txt = s.cpu_usage == null ? '--' : cpu_val + '%';
+                    const ram_txt = s.ram_usage == null ? '--' : ram_val + '%';
                     
                     if (s.em_manutencao === 1) {
                         classe = 'maintenance'; text = 'MANUTENÇÃO'; t_online++;
@@ -190,10 +192,14 @@
                         classe = 'offline'; text = 'OFFLINE'; t_offline++;
                         if (s.alerta_reconhecido === 0) tem_queda_critica = true;
                         c_cpu = 'var(--text-muted)'; c_ram = 'var(--text-muted)';
+                    } else if (!s.status) {
+                        // Cadastrado sem relatório: não entra como "Online (Estáveis)".
+                        classe = 'unknown'; text = 'SEM DADOS';
+                        c_cpu = 'var(--text-muted)'; c_ram = 'var(--text-muted)';
                     } else {
                         t_online++;
-                        if(cpu_val > 85) c_cpu = 'var(--red)'; else if(cpu_val > 60) c_cpu = 'var(--yellow)';
-                        if(ram_val > 85) c_ram = 'var(--red)'; else if(ram_val > 60) c_ram = 'var(--yellow)';
+                        if(cpu_val > 85) c_cpu = 'var(--status-crit)'; else if(cpu_val > 60) c_cpu = 'var(--status-warn)';
+                        if(ram_val > 85) c_ram = 'var(--status-crit)'; else if(ram_val > 60) c_ram = 'var(--status-warn)';
                     }
 
                     let wan_ping = '--';
@@ -208,7 +214,7 @@
                         <div class="tv-card ${classe}">
                             <div class="c-header">
                                 <div style="width: 100%;">
-                                    <div class="c-title"><i class="fa-solid ${classe === 'offline' ? 'fa-triangle-exclamation' : 'fa-server'}" style="color: ${classe === 'offline' ? 'var(--red)' : 'var(--blue)'}; font-size: 0.8em;"></i> ${escapeHtml(s.nome_local || 'Sensor')}</div>
+                                    <div class="c-title"><i class="fa-solid ${classe === 'offline' ? 'fa-triangle-exclamation' : 'fa-server'}" style="color: ${classe === 'offline' ? 'var(--status-crit)' : 'var(--blue)'}; font-size: 0.8em;"></i> ${escapeHtml(s.nome_local || 'Sensor')}</div>
                                     <span class="c-cliente">${escapeHtml(s.cliente_nome || 'Cliente Local')}</span>
                                 </div>
                                 <div class="c-status-badge">${text}</div>
@@ -216,23 +222,23 @@
                             
                             <div class="c-body">
                                 <div class="hw-box">
-                                    <div class="hw-row"><span>CPU</span> <span style="color: ${c_cpu};">${cpu_val}%</span></div>
+                                    <div class="hw-row"><span>CPU</span> <span style="color: ${c_cpu};">${cpu_txt}</span></div>
                                     <div class="prog-bg"><div class="prog-fill" style="width: ${cpu_val}%; background: ${c_cpu};"></div></div>
                                     
-                                    <div class="hw-row"><span>RAM</span> <span style="color: ${c_ram};">${ram_val}%</span></div>
+                                    <div class="hw-row"><span>RAM</span> <span style="color: ${c_ram};">${ram_txt}</span></div>
                                     <div class="prog-bg" style="margin-bottom: 0;"><div class="prog-fill" style="width: ${ram_val}%; background: ${c_ram};"></div></div>
                                 </div>
                                 
                                 <div class="net-box">
                                     <div class="net-item">
                                         <span class="net-lbl"><i class="fa-solid fa-globe"></i> PING</span>
-                                        <span class="net-val" style="color: ${wan_ping === '--' && classe !== 'offline' ? 'var(--red)' : (classe === 'offline' ? 'var(--text-muted)' : 'var(--green)')}">${wan_ping !== '--' ? wan_ping+'ms' : '--'}</span>
+                                        <span class="net-val" style="color: ${classe === 'offline' ? 'var(--text-muted)' : (wan_ping === '--' ? 'var(--status-unknown)' : 'var(--status-ok)')}">${wan_ping !== '--' ? wan_ping+'ms' : '--'}</span>
                                     </div>
                                     <div class="net-item">
                                         <span class="net-lbl"><i class="fa-solid fa-arrow-right-arrow-left"></i> BANDA</span>
                                         <span class="net-val" style="font-size: 0.9em; display:flex; gap: 8px;">
-                                            <span style="color: var(--green);"><i class="fa-solid fa-arrow-down"></i> ${boundedMetric(s.net_down, 100000).toFixed(1)}</span>
-                                            <span style="color: var(--red);"><i class="fa-solid fa-arrow-up"></i> ${boundedMetric(s.net_up, 100000).toFixed(1)}</span>
+                                            <span style="color: var(--green);"><i class="fa-solid fa-arrow-down" style="color: var(--brand-green);"></i> ${s.net_down == null ? '--' : boundedMetric(s.net_down, 100000).toFixed(1)}</span>
+                                            <span style="color: var(--blue);"><i class="fa-solid fa-arrow-up" style="color: var(--brand-cyan);"></i> ${s.net_up == null ? '--' : boundedMetric(s.net_up, 100000).toFixed(1)}</span>
                                         </span>
                                     </div>
                                 </div>

@@ -493,3 +493,26 @@ def test_unverified_sensor_state_is_never_shown_as_healthy(client, login):
         # Paleta antiga (Catppuccin) fora das telas operacionais.
         for legacy in ('#a6e3a1', '#f38ba8', '#f9e2af', '#89b4fa', '#cdd6f4', '#0b0b13', 'rgba(166,227,161', 'rgba(243,139,168'):
             assert legacy not in source, (name, legacy)
+
+
+def test_report_and_tv_make_no_unverified_claims(client, login):
+    conn = database.get_db()
+    conn.execute("INSERT INTO sensores (mac_id, nome_local, status) VALUES ('AA:REL', 'Relatorio', 'online')")
+    conn.execute("INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, status) VALUES ('AA:REL', '10.0.0.7', 'BB:01', 'Teste', 'desconhecido')")
+    conn.commit(); conn.close()
+    login()
+    report = client.get('/relatorio/AA:REL').get_data(as_text=True)
+    assert report.count('Relatorio') >= 1
+    assert '100% estável' not in report
+    assert 'auto-cura' not in report and 'atesta os níveis de serviço' not in report
+    assert 'Dispositivos Descobertos' in report
+    assert '<span class="badge desconhecido">Desconhecido</span>' in report
+    assert 'color-scheme: light' in report
+
+    root = Path(__file__).resolve().parents[1]
+    tv = (root / 'templates/tv.html').read_text(encoding='utf-8')
+    assert "} else if (!s.status) {" in tv and "classe = 'unknown'; text = 'SEM DADOS';" in tv
+    for name in ('tv.html', 'usuarios.html', 'relatorio.html'):
+        source = (root / 'templates' / name).read_text(encoding='utf-8').lower()
+        for legacy in ('#a6e3a1', '#f38ba8', '#f9e2af', '#89b4fa', '#cdd6f4', '#0b0b13', '#10b981', '#3b82f6'):
+            assert legacy not in source, (name, legacy)
