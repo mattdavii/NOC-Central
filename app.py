@@ -1575,13 +1575,14 @@ def deletar_usuario(id_user):
 def gerenciar_sensores():
     if 'user_id' not in session or session.get('role') != 'Administrador Master': return "Acesso Negado.", 403
     conn = database.get_db()
-    sensores = conn.execute('''SELECT s.mac_id, s.nome_local, s.status, s.ip_sensor, s.cliente_id,
+    sensores = conn.execute('''SELECT s.mac_id, s.nome_local, s.status, s.ip_sensor, s.cliente_id, s.camadas_rede, s.provedor,
         c.nome as cliente_nome, sc.key_prefix,
         CASE WHEN sc.key_hash IS NOT NULL AND sc.revoked_at IS NULL THEN 1 ELSE 0 END AS credential_active
         FROM sensores s
         LEFT JOIN clientes c ON s.cliente_id = c.id
         LEFT JOIN sensor_credentials sc ON sc.sensor_mac = s.mac_id
         ORDER BY s.cliente_id ASC''').fetchall()
+    sensores = [{**dict(r), 'camadas': _json_ou(r['camadas_rede'], None)} for r in sensores]
     clientes = conn.execute("SELECT id, nome FROM clientes WHERE role IN ('Cliente', 'Administrador Master')").fetchall()
     conn.close()
     return render_template('sensores.html', sensores=[dict(s) for s in sensores], clientes=[dict(c) for c in clientes])

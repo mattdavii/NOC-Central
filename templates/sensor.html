@@ -253,6 +253,27 @@
             </div>
         </div>
 
+        <div class="painel-grid" id="diag-rede" data-mac="{{ sensor.mac_id }}">
+            <div class="card card-stack" style="border-top: 4px solid var(--blue);">
+                <h3><span><i class="fa-solid fa-layer-group"></i> Diagnóstico de rede</span><span class="iface-tag" id="diag-atualizado">--</span></h3>
+                <ul class="saude-lista" id="diag-camadas"><li class="hist-empty">Aguardando a primeira janela de medições do sensor…</li></ul>
+                <div id="diag-ativos"></div>
+                <div class="diag-rodape">
+                    <span><i class="fa-solid fa-building"></i> Provedor: <strong id="diag-provedor">--</strong> <span class="txt-muted" id="diag-provedor-origem"></span>
+                        <button class="edit-btn" id="diag-provedor-editar" title="Definir o provedor deste site"><i class="fa-solid fa-pen-to-square"></i></button></span>
+                    <span class="diag-rota" id="diag-rota"></span>
+                </div>
+            </div>
+            <div class="card card-stack" id="card-starlink" style="border-top: 4px solid var(--purple);">
+                <h3><span><i class="fa-solid fa-satellite-dish"></i> Starlink</span><span class="iface-tag" id="sl-firmware"></span></h3>
+                <div id="sl-corpo"><div class="hist-empty">Aguardando leitura da antena…</div></div>
+            </div>
+            <div class="card card-stack" style="border-top: 4px solid var(--yellow);">
+                <h3><span><i class="fa-solid fa-timeline"></i> Linha do tempo</span></h3>
+                <ol class="timeline" id="diag-timeline"><li class="hist-empty">Carregando…</li></ol>
+            </div>
+        </div>
+
         <div class="painel-grid" style="grid-template-columns: 1fr;">
             <div class="card card-full" style="border-top: 4px solid var(--purple);">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
@@ -1106,5 +1127,6 @@
 <script src="/static/location.js?v=2.2.0-rc1"></script>
 <script src="/static/acoes.js?v=2.2.0-rc1"></script>
 <script src="/static/host.js?v=2.2.0-rc1"></script>
+<script src="/static/diagnostico.js?v=2.2.0-rc1"></script>
 </body>
 </html>
