@@ -7,7 +7,9 @@ userspace e não cria interface de rede, então o psycopg2 conecta em
 import os
 import socket
 import struct
+import sys
 import threading
+import time
 
 LISTEN_PORT = int(os.environ.get("TS_DB_LOCAL_PORT", "15432"))
 SOCKS_PORT = int(os.environ.get("TS_SOCKS_PORT", "1055"))
@@ -63,9 +65,35 @@ def _pipe(src, dst):
                 pass
 
 
+def _connect_with_retry(attempts=3, delay=1.0):
+    for attempt in range(1, attempts + 1):
+        try:
+            return _socks5_connect()
+        except Exception as exc:
+            if attempt == attempts:
+                raise
+            print(f"[ts-db-forward] tentativa {attempt} falhou: {exc}", flush=True)
+            time.sleep(delay)
+
+
+def wait_until_reachable(timeout):
+    """Bloqueia até o Postgres responder pela tailnet; o start só sobe o gunicorn depois."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            _socks5_connect().close()
+            print(f"[ts-db-forward] {TARGET_HOST}:{TARGET_PORT} alcançável", flush=True)
+            return True
+        except Exception as exc:
+            if time.monotonic() >= deadline:
+                print(f"[ts-db-forward] {TARGET_HOST}:{TARGET_PORT} inalcançável após {timeout}s: {exc}", flush=True)
+                return False
+            time.sleep(2)
+
+
 def _handle(client):
     try:
-        upstream = _socks5_connect()
+        upstream = _connect_with_retry()
     except Exception as exc:
         print(f"[ts-db-forward] falha ao conectar: {exc}", flush=True)
         client.close()
@@ -88,4 +116,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--wait":
+        sys.exit(0 if wait_until_reachable(int(sys.argv[2]) if len(sys.argv) > 2 else 120) else 1)
     main()

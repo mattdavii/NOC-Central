@@ -41,6 +41,10 @@ fi
 "$TS_DIR/tailscale" --socket="$TS_SOCKET" up --auth-key="$TS_AUTHKEY" \
   --hostname="${TS_HOSTNAME:-railway-nexopulse}" --timeout=60s
 
+# Logo após o "tailscale up" o caminho até a máquina do banco ainda pode não
+# existir; sem esperar, o init_db falha e o worker não sobe (CRASHED).
+python scripts/ts_db_forward.py --wait "${TS_DB_WAIT:-120}" || exit 1
+
 python scripts/ts_db_forward.py &
 
 # Com o banco a ~200 ms pela tailnet, as migrações do boot passam dos 30 s
