@@ -776,7 +776,10 @@ def _dados_do_lote():
 
 
 def _log_envio_medicoes(erro):
-    log_local_event("Medições", f"Falha ao enviar medições à Central: {erro}", "Alerta")
+    if erro is None:
+        log_local_event("Medições", f"Envio à Central restabelecido; fila sendo esvaziada ({fila_envio.pendentes()} pendentes).", "OK")
+    else:
+        log_local_event("Medições", f"Central inacessível; medições guardadas localmente até o link voltar ({erro}).", "Alerta")
 
 
 # ==========================================

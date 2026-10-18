@@ -508,6 +508,8 @@ PENDING_COMMANDS = {}
 AUTO_SPEEDTEST_DONE = set()
 
 GUARDIAO_INTERVALO = max(10, int(os.environ.get("GUARDIAO_INTERVALO", "15")))
+# Sem heartbeat (report_data) por mais que isso, o site vira "sem comunicação".
+SITE_SEM_COMUNICACAO_S = max(30, int(os.environ.get("SITE_SEM_COMUNICACAO_S", "60")))
 _guardiao_lock = threading.Lock()
 _guardiao_ultima_execucao = 0.0
 
@@ -591,7 +593,8 @@ def verificar_quedas_global(conn, force=False):
 
     caidos = []
     is_postgres = bool(os.environ.get('DATABASE_URL'))
-    condicao = "last_seen < NOW() - INTERVAL '60 seconds'" if is_postgres else "last_seen < datetime('now', '-60 seconds')"
+    limite = int(SITE_SEM_COMUNICACAO_S)
+    condicao = f"last_seen < NOW() - INTERVAL '{limite} seconds'" if is_postgres else f"last_seen < datetime('now', '-{limite} seconds')"
 
     try:
         # Puxa os sensores que acabaram de cair
@@ -604,6 +607,26 @@ def verificar_quedas_global(conn, force=False):
         print(f"Erro na varredura do Guardião: {e}")
         return
 
+    # Cada queda vira o diagnóstico "Site sem comunicação"; vários sites do mesmo
+    # provedor caindo juntos viram um alerta só ("Possível queda do provedor").
+    diags = {}
+    try:
+        inicio = time.time() - SITE_SEM_COMUNICACAO_S
+        for c in caidos:
+            diag = {'chave': 'sem_comunicacao', 'causa': diagnostico.CAUSAS['sem_comunicacao'], 'gravidade': 'Crítica',
+                    'confianca': 'alta', 'inicio': inicio, 'evidencias': {'sem_heartbeat_s': int(SITE_SEM_COMUNICACAO_S)}}
+            diag['mensagem'] = diagnostico.mensagem(diag, str(c['nome_local'] or c['mac_id']))
+            diags[c['mac_id']] = (diag, conn.execute('''INSERT INTO diagnosticos (sensor_mac, chave, camada, causa, gravidade, confianca, inicio, atualizado_em,
+                evidencias, acao, mensagem, estado, notificado) VALUES (?, 'sem_comunicacao', 'comunicacao', ?, 'Crítica', 'alta', ?, ?, ?, ?, ?, 'ativo', 1) RETURNING id''',
+                (c['mac_id'], diag['causa'], inicio, time.time(), json.dumps(diag['evidencias']),
+                 'verificar energia, link e o sensor no local', diag['mensagem'])).fetchone()['id'])
+        if caidos:
+            _correlacionar_provedores(conn)
+        conn.commit()
+    except Exception as err:
+        conn.rollback()
+        print(f"Erro ao registrar diagnóstico de queda: {err}")
+
     # Processa os disparos reais de alertas para o Telegram
     for c in caidos:
         try:
@@ -614,7 +637,12 @@ def verificar_quedas_global(conn, force=False):
             db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder.')", (mac,))
             conn.commit()
 
-            enviar_telegram(f"🚨 <b>QUEDA CRÍTICA DETECTADA</b>\n\n🏢 <b>Host:</b> {html.escape(str(nome))}\n🆔 <b>MAC:</b> {html.escape(str(mac))}\n❌ <b>Status:</b> OFFLINE TOTAL", cliente_id=cid, conn=conn)
+            diag, diag_id = diags.get(mac, (None, None))
+            agrupado = diag_id and conn.execute('SELECT grupo_id FROM diagnosticos WHERE id=?', (diag_id,)).fetchone()['grupo_id']
+            if agrupado:
+                continue  # o alerta do provedor já cobre este site
+            detalhe = f"\n🔎 {html.escape(diag['mensagem'])}" if diag else ''
+            enviar_telegram(f"🚨 <b>QUEDA CRÍTICA DETECTADA</b>\n\n🏢 <b>Host:</b> {html.escape(str(nome))}\n🆔 <b>MAC:</b> {html.escape(str(mac))}\n❌ <b>Status:</b> OFFLINE TOTAL{detalhe}", cliente_id=cid, conn=conn)
             conn.commit()
         except Exception as err:
             print(f"Erro ao emitir alerta de queda: {err}")
@@ -756,7 +784,13 @@ def report_data():
             if estado_anterior == 'OFFLINE' or sensor_dict.get('status') == 'offline':
                 try:
                     db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Conexão Restaurada', 'Aviso', 'O sensor restabeleceu a comunicação com a rede')", (mac,))
-                    enviar_telegram(f"✅ <b>CONEXÃO RESTAURADA</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor_dict.get('nome_local', mac)))}\n🌐 <b>Status:</b> ONLINE", cliente_id=sensor_dict.get('cliente_id'), conn=conn)
+                    queda = conn.execute("SELECT id, inicio, grupo_id FROM diagnosticos WHERE sensor_mac=? AND chave='sem_comunicacao' AND estado='ativo' ORDER BY inicio LIMIT 1", (mac,)).fetchone()
+                    duracao = ''
+                    if queda:
+                        conn.execute("UPDATE diagnosticos SET estado='resolvido', fim=? WHERE sensor_mac=? AND chave='sem_comunicacao' AND estado='ativo'", (time.time(), mac))
+                        duracao = f"\n⏱️ <b>Fora do ar:</b> ~{max(1, round((time.time() - queda['inicio']) / 60))} min"
+                        _correlacionar_provedores(conn)
+                    enviar_telegram(f"✅ <b>CONEXÃO RESTAURADA</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor_dict.get('nome_local', mac)))}\n🌐 <b>Status:</b> ONLINE{duracao}", cliente_id=sensor_dict.get('cliente_id'), conn=conn)
                 except Exception: app.logger.exception('Falha em operação auxiliar')
 
             db_execute(conn, '''UPDATE sensores SET
