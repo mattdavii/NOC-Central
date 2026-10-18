@@ -229,7 +229,24 @@ def exigir_sensor_ou_sessao():
     return None
 
 def enviar_telegram(mensagem, cliente_id=None, conn=None):
-    return notifications.enqueue(mensagem, cliente_id, conn=conn)
+    """O grupo NexoPulse recebe todos os eventos; o grupo do cliente, só os dele."""
+    owns_connection = conn is None
+    conn = conn or database.get_db()
+    try:
+        mensagem_master = mensagem
+        if cliente_id:
+            row = conn.execute('SELECT nome, usuario FROM clientes WHERE id = ?', (cliente_id,)).fetchone()
+            nome_cliente = (row['nome'] or row['usuario']) if row else f'#{cliente_id}'
+            mensagem_master = f"{mensagem}\n🏢 <b>Cliente:</b> {html.escape(str(nome_cliente))}"
+        resultado = notifications.enqueue(mensagem_master, None, conn=conn)
+        if cliente_id and notifications.client_has_chat(cliente_id, conn):
+            notifications.enqueue(mensagem, cliente_id, conn=conn)
+        if owns_connection:
+            conn.commit()
+        return resultado
+    finally:
+        if owns_connection:
+            conn.close()
 
 
 @app.route("/api/v2/testar_telegram/<int:cliente_id>", methods=["POST"])

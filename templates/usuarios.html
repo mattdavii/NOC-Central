@@ -101,12 +101,12 @@
 
             <div id="div_telegram" style="grid-column: span 2; background: var(--bg-input); padding: 15px; border-radius: 8px; border: 1px dashed var(--border); display: flex; gap: 15px;">
                 <div style="flex: 1;" class="input-group">
-                    <label style="color: var(--blue);"><i class="fa-brands fa-telegram"></i> Token do Bot (Opcional)</label>
-                    <input type="password" id="telegram_token" placeholder="Ex: 123456:ABC-DEF...">
+                    <label style="color: var(--blue);"><i class="fa-brands fa-telegram"></i> Bot próprio (opcional)</label>
+                    <input type="password" id="telegram_token" placeholder="Vazio = usa o bot do NexoPulse">
                 </div>
                 <div style="flex: 1;" class="input-group">
-                    <label style="color: var(--blue);"><i class="fa-brands fa-telegram"></i> Chat ID (Opcional)</label>
-                    <input type="text" id="telegram_chat_id" placeholder="Ex: -100987654321">
+                    <label style="color: var(--blue);"><i class="fa-brands fa-telegram"></i> Chat ID do grupo do cliente</label>
+                    <input type="text" id="telegram_chat_id" placeholder="Ex: -100987654321 (vazio = sem avisos)">
                 </div>
             </div>
 
@@ -199,8 +199,8 @@
             <div id="edit_div_telegram" style="background: var(--bg-input); padding: 15px; border-radius: 8px; border: 1px dashed var(--border); margin-bottom: 15px;">
                 <label style="color: var(--blue); font-weight: bold; font-size: 0.85em; margin-bottom: 8px; display: block;"><i class="fa-brands fa-telegram"></i> Alertas VIP via Telegram</label>
                 <div class="input-group" style="margin-bottom: 10px;">
-                    <label>Token do Bot</label>
-                    <input type="password" id="edit_telegram_token" placeholder="Ex: 123456:ABC-DEF...">
+                    <label>Bot próprio (opcional)</label>
+                    <input type="password" id="edit_telegram_token" placeholder="Vazio = usa o bot do NexoPulse">
                 </div>
                 <div class="input-group">
                     <label>Chat ID do Grupo</label>
