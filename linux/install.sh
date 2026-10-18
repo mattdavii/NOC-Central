@@ -29,10 +29,22 @@ else
   exit 1
 fi
 
+# mtr melhora o diagnóstico de rota (perda por salto); sem ele o Edge usa traceroute.
+if command -v apt-get >/dev/null; then sudo apt-get install -y mtr-tiny || true
+elif command -v pacman >/dev/null; then sudo pacman -S --needed --noconfirm mtr || true
+elif command -v dnf >/dev/null; then sudo dnf install -y mtr || true
+elif command -v zypper >/dev/null; then sudo zypper --non-interactive install mtr || true
+fi
+
 echo "==> Preparando ambiente Python..."
 "${PYTHON_BIN}" -m venv "${VENV_DIR}"
 "${VENV_DIR}/bin/python" -m pip install --upgrade pip
 "${VENV_DIR}/bin/pip" install -r "${ROOT_DIR}/requirements-agente.txt"
+if [[ -f "${ROOT_DIR}/requirements-starlink.txt" ]]; then
+  # Opcional: sem estes pacotes o Edge só não lê a antena Starlink.
+  "${VENV_DIR}/bin/pip" install -r "${ROOT_DIR}/requirements-starlink.txt" \
+    || echo "⚠️  Dependências da Starlink não instaladas; o sensor funciona sem o coletor Starlink."
+fi
 
 CENTRAL_URL="${NOC_CENTRAL_URL:-https://nexopulse.up.railway.app/api/v2/report_data}"
 if [[ ! -f "${ENV_FILE}" ]]; then

@@ -58,7 +58,7 @@
         <div class="card">
             <h3><i class="fa-solid fa-microchip"></i> Agentes na rede</h3>
             <table class="cards-mobile">
-                <thead><tr><th>Sensor / Local</th><th>MAC</th><th>IP</th><th>Status</th><th>Autenticação</th><th>Cliente</th><th>Ações</th></tr></thead>
+                <thead><tr><th>Sensor / Local</th><th>MAC</th><th>IP</th><th>Status</th><th>Rede</th><th>Autenticação</th><th>Cliente</th><th>Ações</th></tr></thead>
                 <tbody>
                     {% for s in sensores %}
                     <tr class="{% if not s.cliente_id %}alerta-novo{% endif %}">
@@ -79,6 +79,15 @@
                             {% if s.status == 'online' %}<span class="status-badge b-on">ONLINE</span>
                             {% elif not s.status %}<span class="status-badge b-unknown" title="O sensor ainda não enviou o primeiro relatório">SEM DADOS</span>
                             {% else %}<span class="status-badge b-off">OFFLINE</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if s.camadas %}
+                            <span class="camadas-mini" title="Provedor: {{ s.provedor or 'não identificado' }}">
+                                {% for chave, letra, nome in [('lan', 'L', 'Rede local'), ('starlink', 'S', 'Starlink'), ('provedor', 'P', 'Provedor'), ('dns', 'D', 'DNS')] %}
+                                {% if s.camadas.get(chave) %}<span class="camada-dot {{ s.camadas[chave] }}" title="{{ nome }}: {{ s.camadas[chave] }}">{{ letra }}</span>{% endif %}
+                                {% endfor %}
+                            </span>
+                            {% else %}<span class="txt-muted">—</span>{% endif %}
                         </td>
                         <td>
                             {% if s.credential_active %}

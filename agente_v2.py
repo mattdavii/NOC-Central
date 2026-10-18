@@ -40,6 +40,18 @@ try:
 except ImportError:
     host_metrics = None
 
+import fila_envio
+
+try:
+    import starlink
+except ImportError:
+    starlink = None
+
+try:
+    import netdiag
+except ImportError:
+    netdiag = None
+
 # ==========================================
 # ⚙️ CONFIGURAÇÃO DO AGENTE
 # ==========================================
@@ -722,6 +734,55 @@ def pegar_host_info():
 
 
 # ==========================================
+# 🛰️ STARLINK (opcional: sem antena, o resto do Edge segue normalmente)
+# ==========================================
+ULTIMA_STARLINK = None
+
+
+def loop_starlink():
+    global ULTIMA_STARLINK
+    if starlink is None:
+        return
+    while True:
+        dados = starlink.coletar()
+        if dados is None:  # NOC_STARLINK=off
+            return
+        if ULTIMA_STARLINK is None or dados.get("detectada") != ULTIMA_STARLINK.get("detectada"):
+            log_local_event("Starlink", "Antena detectada." if dados.get("detectada") else f"Starlink não detectada: {dados.get('motivo')}", "Aviso")
+        ULTIMA_STARLINK = dados
+        fila_envio.enfileirar({"tipo": "starlink", **dados})
+        time.sleep(starlink.proximo_intervalo(dados))
+
+
+def loop_netdiag():
+    if netdiag is None or os.environ.get("NOC_DIAG", "1") == "0":
+        return
+    monitor = netdiag.Monitor()
+    while True:
+        try:
+            for item in monitor.ciclo():
+                fila_envio.enfileirar(item)
+        except Exception as e:
+            log_local_event("Diagnóstico de rede", f"Ciclo falhou: {e}", "Alerta")
+            time.sleep(30)
+
+
+def _dados_do_lote():
+    """Vai junto com cada lote de medições: quem é o provedor deste site."""
+    if ULTIMA_STARLINK and ULTIMA_STARLINK.get("detectada") and not os.environ.get("NOC_PROVEDOR"):
+        return {"provedor": {"nome": "Starlink", "origem": "antena"}}
+    info = netdiag.provedor() if netdiag else None
+    return {"provedor": info} if info else {}
+
+
+def _log_envio_medicoes(erro):
+    if erro is None:
+        log_local_event("Medições", f"Envio à Central restabelecido; fila sendo esvaziada ({fila_envio.pendentes()} pendentes).", "OK")
+    else:
+        log_local_event("Medições", f"Central inacessível; medições guardadas localmente até o link voltar ({erro}).", "Alerta")
+
+
+# ==========================================
 # 🛠️ AÇÕES REMOTAS (só as desta lista; a Central nunca manda comando livre)
 # ==========================================
 ADMIN_HELPER = "/usr/local/sbin/nexopulse-admin"
@@ -789,7 +850,12 @@ def _acao_atualizar_agente():
                            os.path.join(destino, "requirements-agente.txt")], 600)
     if codigo != 0:
         return codigo, f"arquivos atualizados em {destino}, mas o pip falhou:\n{pip.strip()}"
-    return _reiniciar_agente(f"pacote instalado em {destino}")
+    opcional = os.path.join(destino, "requirements-starlink.txt")
+    aviso = ""
+    if os.path.exists(opcional):
+        codigo_sl, _ = _rodar([os.path.join(destino, ".venv", "bin", "python"), "-m", "pip", "install", "-q", "-r", opcional], 600)
+        aviso = "" if codigo_sl == 0 else " (coletor Starlink sem dependências; o resto segue normal)"
+    return _reiniciar_agente(f"pacote instalado em {destino}{aviso}")
 
 
 def _reiniciar_agente(prefixo=""):
@@ -1657,6 +1723,10 @@ if __name__ == "__main__":
         ).start()
         threading.Thread(target=loop_telemetria, daemon=True).start()
         threading.Thread(target=loop_host_info, daemon=True).start()
+        threading.Thread(target=loop_starlink, daemon=True).start()
+        threading.Thread(target=fila_envio.loop_envio, args=(URL_CENTRAL.replace('report_data', 'medicoes'), get_mac(), api_headers),
+                         kwargs={"log": _log_envio_medicoes, "extra_fn": _dados_do_lote}, daemon=True).start()
+        threading.Thread(target=loop_netdiag, daemon=True).start()
         threading.Thread(target=loop_watchdog_local, daemon=True).start()
 
         # Modo headless/systemd: mantém o processo principal vivo sem depender

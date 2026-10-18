@@ -27,6 +27,12 @@ dependências e registra o serviço `noc-sensor` no systemd com:
 Reinstalar pelo mesmo comando preserva a identidade (`sensor_id.txt`) e a chave
 (`sensor_key.txt`) do sensor.
 
+## Diagnóstico de rede e Starlink
+
+O Edge mede a rede em camadas (gateway, provedor, internet, DNS) e lê a antena
+Starlink quando houver. Variáveis, modo mock, modo bypass da Starlink e as regras
+de diagnóstico estão no [README principal](../README.md#diagnóstico-de-rede).
+
 ## Windows (via WSL)
 
 No Windows 11 22H2 ou mais novo, baixe o instalador e rode num PowerShell
