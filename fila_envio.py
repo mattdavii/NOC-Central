@@ -127,6 +127,7 @@ def enviar_lote(rotas, mac, headers, extra=None, timeout=20):
 def loop_envio(url, mac, headers_fn, extra_fn=None, intervalo=15, log=None):
     rotas = rotas_envio(url)
     falhando = False
+    time.sleep(intervalo)  # o primeiro report_data registra o sensor; antes disso a Central responde 404
     while True:
         try:
             while enviar_lote(rotas, mac, headers_fn(), extra_fn() if extra_fn else None) == LOTE:
