@@ -348,25 +348,32 @@
         </div>
 
         <div class="painel-grid">
-            <div class="card card-hist card-half">
+            <div class="card card-hist card-half card-stack">
                 <h3 id="incidentes"><span><i class="fa-solid fa-clock-rotate-left"></i> Incidentes e auditoria</span></h3>
-                <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                    <input type="date" id="filtro-data" onchange="carregarHistorico()" style="max-width: 160px;">
-                    <button class="action-btn" onclick="document.getElementById('filtro-data').value=''; carregarHistorico();" style="background: var(--bg-input); color: var(--text-muted); font-size:0.8em;">Limpar Filtro</button>
+                <div class="hist-filter">
+                    <label for="filtro-data" class="sr-only">Filtrar por data</label>
+                    <input type="date" id="filtro-data" onchange="carregarHistorico()">
+                    <button class="action-btn btn-secondary" onclick="document.getElementById('filtro-data').value=''; carregarHistorico();">Limpar filtro</button>
                 </div>
-                <div id="lista-historico" style="background: var(--bg-input); padding: 12px; border-radius: 8px; max-height: 200px; overflow-y: auto; border: 1px solid var(--bg-input);"></div>
+                <div id="lista-historico" class="hist-list"></div>
             </div>
 
-            <div class="card card-calib" id="location-editor" data-mac="{{ sensor.mac_id }}" data-source="{{ sensor.location_source or '' }}" data-accuracy="{{ sensor.accuracy_m if sensor.accuracy_m is not none else '' }}">
-                <h3>Configurações · localização</h3>
-                <label for="edit-nome">Nome do sensor</label><input type="text" id="edit-nome" maxlength="160" value="{{ sensor.nome_local }}">
-                <p class="help-text">Capture no local de instalação, com o celular ou computador do instalador. A posição pertence ao navegador e pode ser aproximada; confira a precisão antes de salvar.</p>
-                <div class="location-actions"><button class="action-btn" id="capture-location">Capturar neste dispositivo</button><button class="action-btn" id="clear-location">Remover localização</button></div>
-                <div class="location-map" id="location-map" aria-label="Clique no mapa para ajustar a localização"></div>
-                <div class="location-fields"><label for="edit-lat">Latitude<input type="number" id="edit-lat" step="any" min="-90" max="90" value="{{ sensor.lat if sensor.lat is not none else '' }}"></label><label for="edit-lon">Longitude<input type="number" id="edit-lon" step="any" min="-180" max="180" value="{{ sensor.lon if sensor.lon is not none else '' }}"></label></div>
-                <div class="location-status" id="location-status" role="status">Fonte: {{ sensor.location_source or 'não informada' }}{% if sensor.accuracy_m is not none %} · precisão estimada: {{ sensor.accuracy_m }} m{% endif %} · atualização: {{ sensor.location_updated_at or 'não registrada' }}</div>
-                <button class="action-btn" id="save-location" onclick="salvarConfig()">Salvar informações</button>
-                <p class="help-text">Linux: atualize pelo serviço systemd. Windows: a atualização automática mantém o último executável validado.</p>
+            <div class="card card-calib card-stack" id="location-editor" data-mac="{{ sensor.mac_id }}" data-source="{{ sensor.location_source or '' }}" data-accuracy="{{ sensor.accuracy_m if sensor.accuracy_m is not none else '' }}" data-updated="{{ sensor.location_updated_at or '' }}">
+                <h3>Configurações do sensor</h3>
+                <section class="config-section">
+                    <h4>Identificação</h4>
+                    <label for="edit-nome">Nome do sensor</label>
+                    <input type="text" id="edit-nome" maxlength="160" value="{{ sensor.nome_local }}">
+                </section>
+                <section class="config-section">
+                    <h4>Localização</h4>
+                    <p class="help-text">Capture no local de instalação, com o celular ou computador do instalador, ou clique no mapa. A posição do navegador pode ser aproximada.</p>
+                    <div class="location-map" id="location-map" aria-label="Clique no mapa para ajustar a localização"></div>
+                    <div class="location-fields"><label for="edit-lat">Latitude<input type="number" id="edit-lat" step="any" min="-90" max="90" value="{{ sensor.lat if sensor.lat is not none else '' }}"></label><label for="edit-lon">Longitude<input type="number" id="edit-lon" step="any" min="-180" max="180" value="{{ sensor.lon if sensor.lon is not none else '' }}"></label></div>
+                    <div class="location-actions"><button class="action-btn btn-secondary" id="capture-location"><i class="fa-solid fa-location-crosshairs"></i> Capturar neste dispositivo</button><button class="action-btn btn-danger" id="clear-location"><i class="fa-solid fa-xmark"></i> Remover</button></div>
+                    <p class="location-meta" id="location-status" role="status">Fonte: {{ sensor.location_source or 'não informada' }}{% if sensor.accuracy_m is not none %} · precisão estimada: {{ sensor.accuracy_m }} m{% endif %}</p>
+                </section>
+                <button class="action-btn btn-primary" id="save-location" onclick="salvarConfig()">Salvar alterações</button>
             </div>
         </div>
 
@@ -1013,7 +1020,7 @@
             const res = await fetch(`/api/v2/historico/${mac_id}${d ? '?data='+d : ''}`);
             const logs = await res.json(); let html = '';
             logs.forEach(l => { let cor = l.gravidade === 'Crítica' ? 'var(--status-crit)' : 'var(--status-warn)'; html += `<div style="padding: 8px; border-bottom: 1px dashed var(--border); font-size:0.85em;"><span style="color:var(--text-muted)">[${escapeHtml(l.data_hora)}]</span> <b style="color:${cor}">${escapeHtml(l.tipo_evento)}</b>: ${escapeHtml(l.detalhes)}</div>`; });
-            document.getElementById('lista-historico').innerHTML = html || '<div style="text-align:center; padding:10px; color:var(--text-muted);">Sem logs no período.</div>';
+            document.getElementById('lista-historico').innerHTML = html || '<div class="hist-empty"><i class="fa-regular fa-circle-check"></i> Sem incidentes no período.</div>';
         }
 
 
