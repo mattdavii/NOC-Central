@@ -657,10 +657,12 @@
                     soEl.title = 'Arquitetura: ' + (data.so_arquitetura || 'Não informada');
                 }
 
-                document.getElementById('cpu-text').innerText = data.cpu_usage + '%';
-                document.getElementById('cpu-fill').style.width = data.cpu_usage + '%';
-                document.getElementById('ram-text').innerText = data.ram_usage + '%';
-                document.getElementById('ram-fill').style.width = data.ram_usage + '%';
+                // Sem medição ainda, o sensor manda null: mostra "--" em vez de "null%".
+                const pct = v => (v === null || v === undefined || v === '') ? '--' : v + '%';
+                document.getElementById('cpu-text').innerText = pct(data.cpu_usage);
+                document.getElementById('cpu-fill').style.width = (Number(data.cpu_usage) || 0) + '%';
+                document.getElementById('ram-text').innerText = pct(data.ram_usage);
+                document.getElementById('ram-fill').style.width = (Number(data.ram_usage) || 0) + '%';
 
                 document.getElementById('temp-text').innerText = (data.temp > 0 ? data.temp : '--') + ' °C';
                 if(document.getElementById('gpu-text')) document.getElementById('gpu-text').innerText = (data.gpu_temp != null ? data.gpu_temp : '--') + ' °C';

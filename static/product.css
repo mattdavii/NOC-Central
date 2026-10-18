@@ -178,3 +178,79 @@ td .action-btn { padding:7px 11px; font-size:.82rem; }
 .tv-logo { font-family:'Inter',system-ui,sans-serif!important; font-weight:700!important; letter-spacing:-.01em!important; white-space:nowrap; font-size:1.6rem!important; }
 .stat-num,.tv-clock { font-family:'Inter',system-ui,sans-serif!important; font-variant-numeric:tabular-nums; text-shadow:none!important; }
 .c-status-badge { font-family:'Inter',system-ui,sans-serif!important; font-size:.8rem!important; letter-spacing:.06em!important; }
+/* ---------- Celular ---------- */
+/* Na tela do sensor o cabeçalho próprio gruda logo abaixo da barra do app
+   (antes grudava em top:0 e sumia por trás dela ao rolar). */
+.app-bar ~ .navbar { top:64px; }
+@media(max-width:700px) {
+  /* Barras não fixas: no celular elas ocupavam ~40% da tela o tempo todo. */
+  .app-bar,.app-bar ~ .navbar { position:static!important; }
+  .app-bar ~ .navbar { padding:12px 16px!important; flex-direction:column; align-items:flex-start!important; gap:6px; }
+  .app-bar ~ .navbar > div:first-child { flex-wrap:wrap; gap:8px!important; }
+  .app-bar ~ .navbar > div:first-child > div { flex-wrap:wrap; font-size:1.15em!important; row-gap:2px; }
+  .app-bar ~ .navbar span[style*="border-left"] { border-left:0!important; padding-left:0!important; margin-left:0!important; flex-basis:100%; font-size:.62em!important; }
+  /* Abas do sensor numa linha rolável em vez de três linhas. */
+  .section-nav { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; margin:0 -16px 18px; padding:0 16px; }
+  .section-nav::-webkit-scrollbar { display:none; }
+  .section-nav a { white-space:nowrap; flex:none; }
+  /* Formulários em uma coluna: itens com span 2 criavam uma coluna implícita
+     e a página inteira rolava de lado. */
+  .form-grid { grid-template-columns:minmax(0,1fr)!important; }
+  .form-grid > * { grid-column:auto!important; min-width:0; }
+  #div_telegram { flex-direction:column; }
+  #div_logo > div { flex-wrap:wrap; }
+  #div_logo > div > * { min-width:0; max-width:100%; }
+  .form-grid [style*="grid-template-columns"] { grid-template-columns:1fr!important; }
+  /* Dashboard: provedores em 2 colunas, sem "Tela cheia", e o radar de
+     sensores logo após os indicadores em vez de no fim da página. */
+  .global-grid { grid-template-columns:1fr 1fr!important; gap:10px!important; }
+  .g-card { padding:12px!important; }
+  .g-card i { font-size:1.2em!important; margin-bottom:4px!important; }
+  .kpi-grid { grid-template-columns:repeat(3,1fr)!important; gap:8px!important; }
+  .kpi-card { padding:12px 10px!important; gap:0!important; flex-direction:column; align-items:flex-start!important; border-left-width:3px!important; }
+  .kpi-icon { display:none; }
+  .kpi-dados h4 { font-size:.6rem!important; letter-spacing:.04em!important; line-height:1.25; }
+  .kpi-dados span { font-size:1.6rem!important; }
+  .page-actions [onclick="toggleTelao()"] { display:none; }
+  .main-layout { display:flex!important; flex-direction:column; gap:16px!important; padding:16px!important; }
+  .main-layout > .content-area { display:contents; }
+  .content-area > .page-head { order:1; margin-bottom:0; }
+  .content-area > .kpi-grid { order:2; }
+  .main-layout > .sidebar-area { order:3; max-height:70vh; }
+  .sidebar-area input,.sidebar-area select { width:100%!important; max-width:none!important; box-sizing:border-box; }
+  .sidebar-toggle-btn { display:none!important; }
+  .content-area > h4 { order:4; }
+  .content-area > .global-grid { order:5; }
+  .content-area > .clock-card { order:6; }
+  .content-area > .help-text { order:7; }
+  .content-area > .map-wrapper { order:8; }
+  .content-area > .terminal-wrapper { order:9; }
+  .clock-card { flex-wrap:nowrap!important; gap:4px!important; padding:12px!important; }
+  .clock-item { padding:0!important; border:0!important; }
+  .clock-label { font-size:.6rem!important; }
+  .clock-time { font-size:.95rem!important; }
+  /* Tabelas de gestão viram cartões: cada célula com o nome da coluna. */
+  table.cards-mobile,table.cards-mobile tbody,table.cards-mobile tr,table.cards-mobile td { display:block; width:100%; overflow:visible; }
+  table.cards-mobile thead { display:none; }
+  table.cards-mobile tr { border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:12px; background:var(--bg-input); }
+  table.cards-mobile td { border:0!important; padding:6px 0!important; display:flex; justify-content:space-between; align-items:center; gap:12px; text-align:right; flex-wrap:wrap; }
+  table.cards-mobile td::before { content:attr(data-label); color:var(--text-muted); font-size:.72rem; font-weight:600; text-transform:uppercase; letter-spacing:.05em; text-align:left; }
+  table.cards-mobile td[data-label=""]::before { display:none; }
+}
+@media(max-width:700px) {
+  /* Sala de Operações no celular: cards de 450px forçavam a página a ~1000px. */
+  .tv-header { flex-direction:column; align-items:stretch; gap:12px; padding:14px 16px!important; }
+  .tv-logo { font-size:1.25rem!important; }
+  .tv-logo img { height:32px!important; width:32px!important; }
+  .tv-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .stat-box { padding:10px 6px!important; }
+  .stat-num { font-size:1.6rem!important; }
+  .stat-label { font-size:.6rem!important; letter-spacing:.03em!important; }
+  .tv-clock { font-size:1.2rem!important; text-align:center; }
+  .tv-container { padding:16px!important; height:auto!important; padding-bottom:70px!important; }
+  .grid { grid-template-columns:minmax(0,1fr)!important; gap:14px!important; }
+  .tv-card { padding:16px!important; }
+  .c-title { font-size:1.15rem!important; }
+  .c-body { grid-template-columns:1fr!important; gap:10px!important; }
+  .ticker-title { padding:0 12px!important; font-size:.75rem!important; }
+}
