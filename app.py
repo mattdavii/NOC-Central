@@ -311,6 +311,9 @@ def tenant_id(conn):
 
 @app.before_request
 def validate_json_body():
+    # Agentes mandam Content-Type: application/json também em GET sem corpo.
+    if request.method in ('GET', 'HEAD', 'DELETE') and not request.get_data(cache=True):
+        return None
     if request.is_json and not isinstance(request.get_json(silent=True), dict):
         return jsonify(error='Objeto JSON válido obrigatório.'), 400
 
