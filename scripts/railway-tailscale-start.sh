@@ -35,6 +35,11 @@ with tarfile.open(fileobj=io.BytesIO(data)) as tar:
 PY
 fi
 
+# Entre o Railway e a tailnet, pacotes WireGuard acima de ~1300 bytes se
+# perdem: com o MTU padrão (1280) as respostas grandes do Postgres nunca
+# chegavam e o psycopg2 congelava o worker. Um MTU menor reduz o MSS do TCP.
+export TS_DEBUG_MTU="${TS_DEBUG_MTU:-1200}"
+
 "$TS_DIR/tailscaled" --tun=userspace-networking --state=mem: --socket="$TS_SOCKET" \
   --socks5-server="127.0.0.1:${TS_SOCKS_PORT}" &
 
