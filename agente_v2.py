@@ -47,7 +47,7 @@ except ImportError: psutil = None
 # ==========================================
 URL_CENTRAL = os.environ.get(
     "NOC_CENTRAL_URL",
-    "https://noc-central.up.railway.app/api/v2/report_data",
+    "https://nexopulse.up.railway.app/api/v2/report_data",
 ).strip()
 PORTA_LOCAL = int(os.environ.get("NOC_LOCAL_PORT", "10000"))
 VERSAO_AGENTE = "2.2.0-rc1"
