@@ -468,3 +468,28 @@ def test_login_and_base_layout_accessibility(client):
         if 'fonts.googleapis.com' in source:
             assert 'family=Inter:wght@400;600;700' in source, template.name
             assert 'family=JetBrains+Mono:wght@400;700' in source, template.name
+
+
+def test_unverified_sensor_state_is_never_shown_as_healthy(client, login):
+    conn = database.get_db()
+    conn.execute("INSERT INTO sensores (mac_id, nome_local) VALUES ('AA:NOVO', 'Sem relatorio')")
+    conn.execute("INSERT INTO sensores (mac_id, nome_local, status) VALUES ('AA:ON', 'Ativo', 'online')")
+    conn.commit(); conn.close()
+    login()
+    page = client.get('/sensores').get_data(as_text=True)
+    assert 'b-unknown' in page and 'SEM DADOS' in page
+    assert page.count('status-badge b-on">ONLINE') == 1
+
+    root = Path(__file__).resolve().parents[1]
+    sensor = (root / 'templates/sensor.html').read_text(encoding='utf-8')
+    # Antes da primeira leitura, nada aparece como estável/online.
+    assert '<span id="status-local" class="status-pill pill-unknown">AGUARDANDO</span>' in sensor
+    assert '<span id="status-wan" class="status-pill pill-unknown">AGUARDANDO</span>' in sensor
+    assert "data.ping_gateway || 0" not in sensor
+    assert "let cor = item.latencia === 0 ? 'var(--red)' : 'var(--green)'" not in sensor
+
+    for name in ('index.html', 'sensor.html', 'sensores.html', 'sensor_virtual.html'):
+        source = (root / 'templates' / name).read_text(encoding='utf-8').lower()
+        # Paleta antiga (Catppuccin) fora das telas operacionais.
+        for legacy in ('#a6e3a1', '#f38ba8', '#f9e2af', '#89b4fa', '#cdd6f4', '#0b0b13', 'rgba(166,227,161', 'rgba(243,139,168'):
+            assert legacy not in source, (name, legacy)
