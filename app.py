@@ -280,13 +280,31 @@ finally:
     conn.close()
 
 
+TELEGRAM_IDLE_SECONDS = max(2, int(os.environ.get('TELEGRAM_IDLE_SECONDS', '10')))
+
+
 def _telegram_worker():
+    falhas = 0
     while True:
         try:
-            notifications.process_one(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
+            enviado = notifications.process_one(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
         except Exception:
-            app.logger.exception('Falha no processamento da fila Telegram')
-        time.sleep(1)
+            falhas += 1
+            # Banco fora do ar: registra a 1ª falha e depois a cada 10, com espera
+            # crescente (até 5 min) em vez de tentar de novo a cada segundo.
+            if falhas == 1 or falhas % 10 == 0:
+                app.logger.exception('Falha no processamento da fila Telegram (%s seguidas)', falhas)
+            time.sleep(min(300, 2 ** min(falhas, 9)))
+            continue
+        if falhas:
+            app.logger.warning('Fila Telegram restabelecida após %s falha(s)', falhas)
+            falhas = 0
+        if enviado:
+            time.sleep(1)
+        else:
+            # Fila vazia: acorda com um evento novo ou, no máximo, a cada
+            # TELEGRAM_IDLE_SECONDS para as retentativas agendadas.
+            notifications.wait_for_work(TELEGRAM_IDLE_SECONDS)
 
 if os.environ.get('DISABLE_BACKGROUND_GUARDIAN', '0') != '1':
     threading.Thread(target=_telegram_worker, name='noc-telegram', daemon=True).start()
@@ -368,15 +386,21 @@ def enforce_tenant_scope():
 
 @app.route('/healthz')
 def healthz():
-    conn = database.get_db()
+    conn = None
     try:
+        conn = database.get_db()
         conn.execute('SELECT 1').fetchone()
-        return jsonify(
-            status='ok', central_version=CENTRAL_VERSION,
-            sensor_auth_required=NOC_SENSOR_AUTH_REQUIRED,
-        )
+    except Exception:
+        # Resposta clara para o Railway e para o operador, sem expor o erro do banco.
+        app.logger.exception('Healthcheck: banco indisponível')
+        return jsonify(status='db_unavailable', central_version=CENTRAL_VERSION), 503
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
+    return jsonify(
+        status='ok', central_version=CENTRAL_VERSION,
+        sensor_auth_required=NOC_SENSOR_AUTH_REQUIRED,
+    )
 
 SPEEDTEST_REQUESTS = set()
 TRACEROUTE_REQUESTS = set()

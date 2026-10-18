@@ -4,6 +4,7 @@ import json
 import logging
 import socket
 import ssl
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -103,6 +104,17 @@ def record_status(source, result):
         conn.close()
 
 
+# Acorda o worker quando há evento novo, para ele não precisar consultar o
+# banco a cada segundo com a fila vazia.
+_wakeup = threading.Event()
+
+
+def wait_for_work(timeout):
+    """Espera um evento novo na fila ou o fim do timeout."""
+    _wakeup.wait(timeout)
+    _wakeup.clear()
+
+
 def enqueue(message, client_id=None, conn=None):
     now = time.time()
     key = hashlib.sha256(f'{client_id}:{message}'.encode()).hexdigest()
@@ -118,6 +130,8 @@ def enqueue(message, client_id=None, conn=None):
         queued = cur.rowcount > 0
         if owns_connection:
             conn.commit()
+        if queued:
+            _wakeup.set()
         return dict(ok=True, queued=queued, duplicate=not queued)
     finally:
         if owns_connection:
