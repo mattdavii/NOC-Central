@@ -9,3 +9,4 @@ sensor_id.txt
 sensor_local.db
 build/
 dist/
+sensor_key.txt

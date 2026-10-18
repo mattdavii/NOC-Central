@@ -9,7 +9,7 @@
   3. Configura %UserProfile%\.wslconfig: networkingMode=mirrored (o sensor enxerga
      a rede e o MAC reais) e vmIdleTimeout=-1 (o WSL não desliga sozinho).
   4. Liga o systemd dentro da distribuição (o sensor roda como serviço systemd).
-  5. Clona o repositório e roda linux/install.sh dentro do WSL.
+  5. Baixa o agente da Central e roda o instalador Linux dentro do WSL.
   6. Cria uma tarefa agendada que liga o WSL quando o Windows inicia.
 
   Rode num PowerShell como Administrador:
@@ -18,8 +18,7 @@
 #>
 param(
     [string]$Distro = 'Ubuntu',
-    [string]$Repositorio = 'https://github.com/mattdavii/NOC-Central.git',
-    [string]$Branch = 'main',
+    [string]$Central = 'https://nexopulse.up.railway.app',
     [string]$NomeSensor = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -66,21 +65,10 @@ wsl.exe -d $Distro -u root -- sh -c "grep -q '^systemd=true' /etc/wsl.conf 2>/de
 wsl.exe --shutdown
 Start-Sleep -Seconds 3
 
-# 5. Repositório e instalador Linux (pede a senha do usuário Linux para o sudo).
+# 5. Instalador Linux da própria Central (pede a senha do usuário Linux para o sudo).
 Passo 'Instalando o NexoPulse Edge dentro do WSL'
-$script = @"
-set -e
-command -v git >/dev/null || (sudo apt-get update && sudo apt-get install -y git)
-if [ ! -d "`$HOME/NOC-Central/.git" ]; then git clone --branch '$Branch' '$Repositorio' "`$HOME/NOC-Central"; fi
-cd "`$HOME/NOC-Central"
-bash linux/install.sh
-if [ -n '$NomeSensor' ]; then
-  sudo sed -i '/^#\? *NOC_SENSOR_NOME=/d' /etc/default/noc-sensor
-  echo 'NOC_SENSOR_NOME=$NomeSensor' | sudo tee -a /etc/default/noc-sensor >/dev/null
-  sudo systemctl restart noc-sensor
-fi
-"@
-wsl.exe -d $Distro -- bash -lc $script
+$nome = $NomeSensor -replace "'", ''
+wsl.exe -d $Distro -- bash -lc "command -v curl >/dev/null || (sudo apt-get update && sudo apt-get install -y curl); curl -fsSL '$Central/instalar.sh' | NOC_SENSOR_NOME='$nome' bash"
 
 # 6. Liga o WSL na inicialização do Windows; o systemd sobe o sensor.
 Passo 'Criando a inicialização automática'
