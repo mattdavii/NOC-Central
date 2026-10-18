@@ -20,18 +20,11 @@ from flask import Flask, request, Response, render_template_string, jsonify
 import speedtest 
 import jwt
 
-# A bandeja gráfica só existe no agente Windows. Importar pystray no Linux
-# headless/systemd tenta conectar ao X11 antes do agente iniciar e derruba o serviço.
-IS_WIN = platform.system().lower() == 'windows'
-if IS_WIN:
-    import pystray
-    from PIL import Image, ImageDraw
-else:
-    pystray = None
-    Image = None
-    ImageDraw = None
+# O NexoPulse Edge roda só em Linux (no Windows, dentro do WSL).
+if platform.system().lower() != 'linux':
+    sys.exit("NexoPulse Edge roda em Linux. No Windows, instale pelo WSL (veja linux/README.md).")
 
-# 🛡️ Fix de SSL do PyInstaller: aponta explicitamente pro bundle de certificados do certifi
+# Usa o bundle de certificados do certifi em vez do do sistema (evita falhas de SSL em distros mínimas).
 # (em vez de desligar a verificação, que abriria brecha pra MITM em toda chamada HTTPS do agente)
 import ssl, certifi
 try:
@@ -77,8 +70,6 @@ ZCz37+OAze6+j0iMi18ECCRG3dTpaXw9X5FxrJ9X0O/hm/RTYqOUTKisDLoohhux
 uwIDAQAB
 -----END PUBLIC KEY-----"""
 
-C_FLAGS = subprocess.CREATE_NO_WINDOW if IS_WIN else 0
-
 
 def get_os_info():
     """Retorna informações normalizadas do sistema operacional para a Central."""
@@ -95,22 +86,21 @@ def get_os_info():
         except Exception:
             nome = sistema
             versao = platform.release() or platform.version() or ""
-    elif sistema == "Windows":
-        try:
-            release, version, _csd, _ptype = platform.win32_ver()
-            nome = f"Windows {release}".strip() if release else "Windows"
-            versao = version or platform.version() or ""
-        except Exception:
-            nome = "Windows"
-            versao = platform.version() or platform.release() or ""
-    elif sistema == "Darwin":
-        nome = "macOS"
-        versao = platform.mac_ver()[0] or platform.release() or ""
+    # Dentro do WSL o kernel se identifica como "microsoft"; vale mostrar na Central.
+    try:
+        with open("/proc/version", encoding="utf-8") as arquivo:
+            if "microsoft" in arquivo.read().lower():
+                nome = f"{nome} (WSL)"
+    except OSError:
+        pass
 
     return {"nome": nome, "versao": versao, "arquitetura": arquitetura}
 
 
 SO_INFO = get_os_info()
+# Nome sugerido à Central para sensores novos: o hostname identifica a máquina
+# no campo; NOC_SENSOR_NOME permite escolher outro na instalação.
+NOME_SENSOR = (os.environ.get("NOC_SENSOR_NOME") or socket.gethostname() or "Sensor NexoPulse").strip()[:160]
 
 app = Flask(__name__)
 
@@ -136,9 +126,8 @@ def _mac_valido(valor):
 
 
 def _descobrir_mac():
-    # Preserva a identidade dos sensores já instalados (no Windows o uuid.getnode()
-    # costuma ser a placa real) e só cai para a interface da rota padrão quando
-    # ele é aleatório.
+    # Usa o uuid.getnode() quando ele é a placa real (preserva sensores já
+    # cadastrados) e só cai para a interface da rota padrão quando é aleatório.
     node = uuid.getnode()
     if _mac_valido(node):
         return _formatar_mac(node)
@@ -211,40 +200,20 @@ def get_network_context():
 
     # Descobre a rota default e a interface realmente usada para sair da rede.
     try:
-        if IS_WIN:
-            saida = subprocess.check_output(
-                "route print 0.0.0.0",
-                shell=True,
-                universal_newlines=True,
-                creationflags=C_FLAGS,
-                stdin=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            candidatos = []
-            for linha in saida.splitlines():
-                partes = linha.split()
-                if len(partes) >= 5 and partes[0] == "0.0.0.0" and partes[1] == "0.0.0.0":
-                    try:
-                        candidatos.append((int(partes[4]), partes[2], partes[3]))
-                    except Exception:
-                        candidatos.append((999999, partes[2], partes[3]))
-            if candidatos:
-                _, contexto["gateway"], contexto["ip"] = sorted(candidatos, key=lambda x: x[0])[0]
-        else:
-            saida = subprocess.check_output(
-                ["ip", "-j", "route", "show", "default"],
-                universal_newlines=True,
-                stdin=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=5,
-            )
-            rotas = json.loads(saida or "[]")
-            if rotas:
-                rota = sorted(rotas, key=lambda r: r.get("metric", 0))[0]
-                contexto["gateway"] = rota.get("gateway") or "Desconhecido"
-                contexto["interface"] = rota.get("dev") or "Desconhecida"
-                if rota.get("prefsrc"):
-                    contexto["ip"] = rota["prefsrc"]
+        saida = subprocess.check_output(
+            ["ip", "-j", "route", "show", "default"],
+            universal_newlines=True,
+            stdin=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+        rotas = json.loads(saida or "[]")
+        if rotas:
+            rota = sorted(rotas, key=lambda r: r.get("metric", 0))[0]
+            contexto["gateway"] = rota.get("gateway") or "Desconhecido"
+            contexto["interface"] = rota.get("dev") or "Desconhecida"
+            if rota.get("prefsrc"):
+                contexto["ip"] = rota["prefsrc"]
     except Exception:
         pass
 
@@ -263,7 +232,7 @@ def get_network_context():
             addrs = psutil.net_if_addrs()
             stats = psutil.net_if_stats()
 
-            # No Windows a tabela de rotas fornece IP, não o nome da interface.
+            # Sem rota default (ip route vazio), acha a interface pelo IP de saída.
             if contexto["interface"] == "Desconhecida":
                 for nome_if, lista in addrs.items():
                     if any(a.family == socket.AF_INET and a.address == contexto["ip"] for a in lista):
@@ -307,16 +276,11 @@ def get_network_info():
 
 def ping_silencioso(ip):
     try:
-        if IS_WIN:
-            comando = ['ping', '-n', '1', '-w', '500', ip]
-        else:
-            comando = ['ping', '-c', '1', '-W', '1', ip]
         subprocess.call(
-            comando,
+            ['ping', '-c', '1', '-W', '1', ip],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
-            creationflags=C_FLAGS,
             timeout=2,
         )
     except Exception:
@@ -347,62 +311,36 @@ def get_topologia_arp(contexto_rede, forcar_varredura=False):
     encontrados = {}
 
     try:
-        if IS_WIN:
-            saida = subprocess.check_output(
-                "arp -a",
-                shell=True,
-                universal_newlines=True,
-                creationflags=C_FLAGS,
-                stdin=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            for linha in saida.splitlines():
-                partes = linha.split()
-                if len(partes) < 2 or "." not in partes[0] or ("-" not in partes[1] and ":" not in partes[1]):
+        comando = ["ip", "neigh", "show"]
+        if interface and interface != "Desconhecida":
+            comando += ["dev", interface]
+        saida = subprocess.check_output(
+            comando,
+            universal_newlines=True,
+            stdin=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+        for linha in saida.splitlines():
+            partes = linha.split()
+            if len(partes) < 3:
+                continue
+            ip = partes[0]
+            try:
+                ip_obj = ipaddress.ip_address(ip)
+                if ip_obj.version != 4 or ip_obj.is_multicast or not rede_real or ip_obj not in rede_real:
                     continue
-                ip = partes[0]
-                try:
-                    ip_obj = ipaddress.ip_address(ip)
-                    if ip_obj.version != 4 or ip_obj.is_multicast or not rede_real or ip_obj not in rede_real:
-                        continue
-                except Exception:
-                    continue
-                mac = partes[1].replace("-", ":").upper()
-                encontrados[ip] = {
-                    "ip": ip, "mac": mac, "nome": "Desconhecido",
-                    "fabricante": "Desconhecido", "neighbor_state": "ARP"
-                }
-        else:
-            comando = ["ip", "neigh", "show"]
-            if interface and interface != "Desconhecida":
-                comando += ["dev", interface]
-            saida = subprocess.check_output(
-                comando,
-                universal_newlines=True,
-                stdin=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=5,
-            )
-            for linha in saida.splitlines():
-                partes = linha.split()
-                if len(partes) < 3:
-                    continue
-                ip = partes[0]
-                try:
-                    ip_obj = ipaddress.ip_address(ip)
-                    if ip_obj.version != 4 or ip_obj.is_multicast or not rede_real or ip_obj not in rede_real:
-                        continue
-                    idx = partes.index("lladdr")
-                    mac = partes[idx + 1].replace("-", ":").upper()
-                except (ValueError, IndexError):
-                    continue
-                except Exception:
-                    continue
-                estado_vizinho = partes[-1].upper() if partes else "UNKNOWN"
-                encontrados[ip] = {
-                    "ip": ip, "mac": mac, "nome": "Desconhecido",
-                    "fabricante": "Desconhecido", "neighbor_state": estado_vizinho
-                }
+                idx = partes.index("lladdr")
+                mac = partes[idx + 1].replace("-", ":").upper()
+            except (ValueError, IndexError):
+                continue
+            except Exception:
+                continue
+            estado_vizinho = partes[-1].upper() if partes else "UNKNOWN"
+            encontrados[ip] = {
+                "ip": ip, "mac": mac, "nome": "Desconhecido",
+                "fabricante": "Desconhecido", "neighbor_state": estado_vizinho
+            }
     except Exception:
         pass
 
@@ -427,14 +365,11 @@ def get_topologia_arp(contexto_rede, forcar_varredura=False):
     return sorted(dispositivos, key=lambda d: tuple(int(p) for p in d["ip"].split(".")))
 
 def ping(host):
-    param = '-n' if IS_WIN else '-c'
-    timeout_param = '-w' if IS_WIN else '-W'
-    timeout_val = '1000' if IS_WIN else '1'
     if not isinstance(host, str) or not re.fullmatch(r'[A-Za-z0-9_.:-]+', host) or host.startswith('-'):
         return 0
-    comando = ['ping', param, '1', timeout_param, timeout_val, host]
+    comando = ['ping', '-c', '1', '-W', '1', host]
     try:
-        saida = subprocess.check_output(comando, shell=False, timeout=4, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
+        saida = subprocess.check_output(comando, shell=False, timeout=4, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL).decode('utf-8', errors='ignore')
         if 'unreachable' in saida.lower() or 'inacessível' in saida.lower() or 'esgotado' in saida.lower() or 'timed out' in saida.lower() or 'falha' in saida.lower():
             return 0
         if '<1ms' in saida: return 1
@@ -452,23 +387,7 @@ def ler_temperaturas():
     cpu_t = 0.0
     gpu_t = 0.0
 
-    # Windows: OpenHardwareMonitor, quando disponível.
-    if IS_WIN:
-        try:
-            cmd_ohm = 'powershell -Command "(Get-WmiObject -Namespace root\\OpenHardwareMonitor -Class Sensor -ErrorAction Stop | Where-Object { $_.SensorType -eq \'Temperature\' -and ($_.Name -match \'CPU Package\' -or $_.Name -match \'CPU Core\') } | Measure-Object -Property Value -Average).Average"'
-            out = subprocess.check_output(
-                cmd_ohm,
-                shell=True,
-                universal_newlines=True,
-                creationflags=C_FLAGS,
-                stderr=subprocess.DEVNULL,
-            ).strip()
-            if out and out != "0":
-                cpu_t = round(float(out.replace(',', '.')), 1)
-        except Exception:
-            pass
-
-    # Linux/Mac: psutil expõe lm-sensors. Suporta Intel, AMD e amdgpu.
+    # psutil expõe lm-sensors. Suporta Intel, AMD e amdgpu.
     if psutil and hasattr(psutil, "sensors_temperatures"):
         try:
             sensores = psutil.sensors_temperatures() or {}
@@ -494,33 +413,13 @@ def ler_temperaturas():
         except Exception:
             pass
 
-    # Fallback WMI do Windows.
-    if IS_WIN and cpu_t == 0.0:
-        try:
-            cmd = 'powershell -Command "Get-WmiObject MSAcpi_ThermalZoneTemperature -Namespace root/wmi -ErrorAction Stop | Select -ExpandProperty CurrentTemperature"'
-            out = subprocess.check_output(
-                cmd,
-                shell=True,
-                universal_newlines=True,
-                creationflags=C_FLAGS,
-                stderr=subprocess.DEVNULL,
-            ).strip()
-            if out:
-                kelvin_raw = float(out.split('\n')[0])
-                celsius = (kelvin_raw / 10.0) - 273.15
-                if 20 < celsius < 120:
-                    cpu_t = round(celsius, 1)
-        except Exception:
-            pass
-
-    # NVIDIA, em qualquer SO com nvidia-smi instalado.
+    # NVIDIA, quando o nvidia-smi está instalado.
     if gpu_t == 0.0:
         try:
             out = subprocess.check_output(
                 'nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader',
                 shell=True,
                 universal_newlines=True,
-                creationflags=C_FLAGS,
                 stderr=subprocess.DEVNULL,
             ).strip()
             if out:
@@ -553,69 +452,31 @@ def log_local_event(tipo, detalhes, gravidade="Alerta"):
     except: pass
 
 def verificar_atualizacao(mac):
-    """Confere se há uma versão mais nova do agente na central. Se houver e o agente estiver rodando como .exe (PyInstaller) no Windows, baixa e troca o executável sozinho (Windows não deixa sobrescrever um .exe em execução, por isso o script .bat auxiliar que espera o processo atual encerrar)."""
+    """Avisa quando a Central anuncia uma versão mais nova do agente.
+
+    No Linux (e no WSL) o agente roda a partir do repositório: a atualização é
+    feita por linux/update.sh, que preserva um ponto de rollback.
+    """
     try:
         url_versao = URL_CENTRAL.replace('report_data', 'agent_versao')
-        with urllib.request.urlopen(url_versao, timeout=5) as resp:
+        with urllib.request.urlopen(urllib.request.Request(url_versao, headers=api_headers()), timeout=5) as resp:
             info = json.loads(resp.read().decode())
-
         versao_nova = info.get('versao')
-        url_download = info.get('url_download')
-        sha256_esperado = str(info.get('sha256') or '').lower()
+
         def version_key(value):
             match = re.fullmatch(r'(\d+)\.(\d+)\.(\d+)(?:-rc(\d+))?', value or '')
             if not match:
                 return (0, 0, 0, 0)
             return tuple(map(int, match.group(1, 2, 3))) + (int(match[4]) if match[4] else 999999,)
-        if not versao_nova or version_key(versao_nova) <= version_key(VERSAO_AGENTE) or not url_download:
-            return
-        if not url_download.startswith('https://') or not re.fullmatch(r'[0-9a-f]{64}', sha256_esperado):
-            log_local_event('Atualização', 'Artefato recusado: URL HTTPS ou SHA-256 ausente/inválido.', 'Crítica')
-            return
 
-        log_local_event("Atualização", f"Nova versão disponível: {versao_nova} (atual: {VERSAO_AGENTE})", "Aviso")
-
-        # Só tenta trocar o executável sozinho se estiver realmente congelado (PyInstaller) rodando no Windows.
-        # Em modo desenvolvimento (rodando via `python agente_v2.py`), só avisa — não tem .exe pra substituir.
-        if not IS_WIN or not getattr(sys, 'frozen', False):
-            return
-
-        exe_atual = sys.executable
-        exe_novo = exe_atual + ".novo"
-        digest = hashlib.sha256()
-        total = 0
-        with urllib.request.urlopen(url_download, timeout=30) as response, open(exe_novo, 'wb') as output:
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > 150 * 1024 * 1024:
-                    raise ValueError('artefato excede o limite de 150 MB')
-                digest.update(chunk)
-                output.write(chunk)
-        if digest.hexdigest().lower() != sha256_esperado:
-            try:
-                os.remove(exe_novo)
-            except OSError:
-                pass
-            raise ValueError('SHA-256 do agente não corresponde ao publicado pela Central')
-
-        bat_path = os.path.join(os.path.dirname(exe_atual), "_atualizar_noc_agente.bat")
-        with open(bat_path, "w") as f:
-            f.write(
-                "@echo off\r\n"
-                "timeout /t 2 /nobreak > NUL\r\n"
-                f'del "{exe_atual}"\r\n'
-                f'ren "{exe_novo}" "{os.path.basename(exe_atual)}"\r\n'
-                f'start "" "{exe_atual}"\r\n'
-                'del "%~f0"\r\n'
+        if versao_nova and version_key(versao_nova) > version_key(VERSAO_AGENTE):
+            log_local_event(
+                "Atualização",
+                f"Nova versão disponível: {versao_nova} (atual: {VERSAO_AGENTE}). Atualize com: bash linux/update.sh v{versao_nova}",
+                "Aviso",
             )
-        subprocess.Popen(['cmd', '/c', bat_path], creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS)
-        log_local_event("Atualização", f"Baixado {versao_nova}. Reiniciando para aplicar a atualização...", "Crítica")
-        os._exit(0)
     except Exception as e:
-        log_local_event("Atualização", f"Falha ao checar ou baixar atualização: {e}", "Alerta")
+        log_local_event("Atualização", f"Falha ao checar atualização: {e}", "Alerta")
 
 def executar_speedtest(mac, url_central):
     d, u = 0.0, 0.0
@@ -654,8 +515,8 @@ def executar_speedtest(mac, url_central):
 
 def executar_traceroute(mac, url_central):
     try:
-        cmd = ['tracert', '-d', '-h', '15', '8.8.8.8'] if IS_WIN else ['traceroute', '-m', '15', '-n', '8.8.8.8']
-        resultado = subprocess.check_output(cmd, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, timeout=40, creationflags=C_FLAGS).decode('cp850' if IS_WIN else 'utf-8', errors='ignore')
+        cmd = ['traceroute', '-m', '15', '-n', '8.8.8.8']
+        resultado = subprocess.check_output(cmd, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, timeout=40).decode('utf-8', errors='ignore')
         payload = {"mac_id": mac, "rota": resultado}
         url_trace = url_central.replace('report_data', 'reportar_rota')
         req = urllib.request.Request(url_trace, data=json.dumps(payload).encode('utf-8'), headers=api_headers(), method='POST')
@@ -748,15 +609,6 @@ def executar_scan_loop(mac, url_central, gateway_ip):
         pass
 
 def executar_flush_dns():
-    if IS_WIN:
-        return subprocess.call(
-            "ipconfig /flushdns",
-            shell=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=C_FLAGS,
-        ) == 0
-
     comandos = [
         ["resolvectl", "flush-caches"],
         ["sudo", "-n", "resolvectl", "flush-caches"],
@@ -778,9 +630,6 @@ def executar_flush_dns():
 
 def executar_admin_linux(acao, alvo=None):
     """Executa apenas ações administrativas pré-definidas, sem prompt de senha."""
-    if IS_WIN:
-        return False
-
     wrapper = "/usr/local/sbin/minipc-admin"
     if os.path.isfile(wrapper) and os.access(wrapper, os.X_OK):
         cmd = ["sudo", "-n", wrapper, acao]
@@ -828,7 +677,6 @@ def loop_telemetria():
     approximate_location = get_approximate_location()
     global dados_sensores, MAC_GATEWAY_CONHECIDO, ALARMES_DISPARADOS
     mac = get_mac()
-    os_name = platform.system()
     ultima_varredura = 0 
     ultima_medicao_speedtest = 0
     ultima_verificacao_update = 0
@@ -923,12 +771,8 @@ def loop_telemetria():
                 
             if contador_falhas_wan == 3 and (agora - ultimo_reparo_wan) > 300:
                 try:
-                    if IS_WIN:
-                        subprocess.call("ipconfig /flushdns", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
-                        subprocess.call("ipconfig /renew", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
-                    else:
-                        if not executar_flush_dns():
-                            raise RuntimeError("não foi possível limpar o cache DNS sem interação")
+                    if not executar_flush_dns():
+                        raise RuntimeError("não foi possível limpar o cache DNS sem interação")
                     log_local_event("Auto-Cura", "Queda de DNS/WAN detectada. O Agente executou limpeza de DNS.", "Aviso")
                     try:
                         url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
@@ -973,7 +817,7 @@ def loop_telemetria():
             dados_sensores["interface"] = interface_rede; dados_sensores["rede_cidr"] = rede.get("cidr", ""); dados_sensores["mac_interface"] = rede.get("mac_interface", "")
 
             payload = {
-                "mac_id": mac, "agent_version": VERSAO_AGENTE, "nome_local": f"NexoPulse Edge ({os_name})",
+                "mac_id": mac, "agent_version": VERSAO_AGENTE, "nome_local": NOME_SENSOR,
                 **approximate_location,
                 "ip_local": meu_ip, "ip_gateway": gateway_ip,
                 "cpu_usage": cpu, "ram_usage": ram, "disco": disco,
@@ -1001,9 +845,7 @@ def loop_telemetria():
                     espera_remota = max(TELEMETRIA_INTERVALO, int(res_data.get("intervalo", TELEMETRIA_INTERVALO))) 
 
                     if comando == "reboot":
-                        if IS_WIN:
-                            subprocess.call("shutdown /r /t 0", shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=C_FLAGS)
-                        elif not executar_admin_linux("reboot"):
+                        if not executar_admin_linux("reboot"):
                             log_local_event("Comando Remoto", "Reboot negado: sudo não interativo/wrapper não autorizado.", "Crítica")
                     elif comando == "run_speedtest": threading.Thread(target=executar_speedtest, args=(mac, URL_CENTRAL), daemon=True).start()
                     elif comando == "run_traceroute": threading.Thread(target=executar_traceroute, args=(mac, URL_CENTRAL), daemon=True).start()
@@ -1155,27 +997,16 @@ def loop_watchdog_local():
                 status_atual = 'OFFLINE'
                 
                 try:
-                    if IS_WIN:
-                        out = subprocess.check_output(['sc', 'query', nome_srv], shell=False, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL)
-                        if "RUNNING" in out: status_atual = 'ONLINE'
-                    else:
-                        out = subprocess.check_output(['systemctl', 'is-active', nome_srv], shell=False, universal_newlines=True, stderr=subprocess.DEVNULL)
-                        if out.strip().lower() == "active": status_atual = 'ONLINE'
+                    out = subprocess.check_output(['systemctl', 'is-active', nome_srv], shell=False, universal_newlines=True, stderr=subprocess.DEVNULL)
+                    if out.strip().lower() == "active": status_atual = 'ONLINE'
                 except: pass
 
                 if status_atual == 'OFFLINE':
                     try:
-                        if IS_WIN:
-                            subprocess.call(['net', 'start', nome_srv], shell=False, creationflags=C_FLAGS, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        else:
-                            executar_admin_linux("start-service", nome_srv)
+                        executar_admin_linux("start-service", nome_srv)
                         time.sleep(2)
-                        if IS_WIN:
-                            out = subprocess.check_output(['sc', 'query', nome_srv], shell=False, universal_newlines=True, creationflags=C_FLAGS, stderr=subprocess.DEVNULL)
-                            if "RUNNING" in out: status_atual = 'ONLINE (Recuperado)'
-                        else:
-                            out = subprocess.check_output(['systemctl', 'is-active', nome_srv], shell=False, universal_newlines=True, stderr=subprocess.DEVNULL)
-                            if out.strip().lower() == "active": status_atual = 'ONLINE (Recuperado)'
+                        out = subprocess.check_output(['systemctl', 'is-active', nome_srv], shell=False, universal_newlines=True, stderr=subprocess.DEVNULL)
+                        if out.strip().lower() == "active": status_atual = 'ONLINE (Recuperado)'
                     except: pass
 
                 cache_alvos['SRV_'+nome_srv] = {'status': status_atual}
@@ -1627,38 +1458,6 @@ def index():
     """
     return render_template_string(HTML_CYBERPUNK)
 
-# ==========================================
-# 🛠️ MOTOR 3: SYSTEM TRAY (ÍCONE NO RELÓGIO)
-# ==========================================
-def create_image():
-    base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-    candidates = (
-        os.path.join(base_dir, 'brand', 'nexopulse-symbol.png'),
-        os.path.join(base_dir, 'static', 'brand', 'nexopulse-symbol.png'),
-    )
-    for icon_path in candidates:
-        try:
-            with Image.open(icon_path) as source:
-                return source.convert('RGBA').resize((64, 64), Image.Resampling.LANCZOS)
-        except (FileNotFoundError, OSError):
-            continue
-
-    # Fallback mínimo para instalações antigas que ainda não empacotaram o ativo.
-    image = Image.new('RGBA', (64, 64), color=(11, 23, 40, 255))
-    dc = ImageDraw.Draw(image)
-    dc.ellipse((8, 8, 56, 56), fill=(5, 169, 220, 255))
-    return image
-
-def on_quit(icon, item):
-    icon.stop()
-    os._exit(0)
-
-def run_tray():
-    image = create_image()
-    menu = pystray.Menu(pystray.MenuItem('Encerrar NexoPulse Edge', on_quit))
-    icon = pystray.Icon("NexoPulse Edge", image, "NexoPulse Edge (Ativo)", menu)
-    icon.run()
-
 if __name__ == "__main__":
     try:
         init_local_db()
@@ -1669,13 +1468,10 @@ if __name__ == "__main__":
         threading.Thread(target=loop_telemetria, daemon=True).start()
         threading.Thread(target=loop_watchdog_local, daemon=True).start()
 
-        if IS_WIN:
-            run_tray()
-        else:
-            # Modo headless/systemd: mantém o processo principal vivo sem depender
-            # de X11, bandeja do sistema ou sessão gráfica.
-            print(f"✅ NexoPulse Edge Linux {VERSAO_AGENTE} ativo.")
-            threading.Event().wait()
+        # Modo headless/systemd: mantém o processo principal vivo sem depender
+        # de X11, bandeja do sistema ou sessão gráfica.
+        print(f"✅ NexoPulse Edge Linux {VERSAO_AGENTE} ativo.")
+        threading.Event().wait()
     except KeyboardInterrupt:
         pass
     except Exception as e:

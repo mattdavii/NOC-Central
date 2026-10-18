@@ -16,15 +16,12 @@ def test_scan_bound(monkeypatch,cidr,ip,limit,expected):
 
 
 def test_missing_mask_is_unknown(monkeypatch):
-    monkeypatch.setattr(agent,'IS_WIN',False)
     with patch.object(agent.subprocess,'check_output',return_value='[{"dev":"eth0","gateway":"10.0.0.1","prefsrc":"10.0.0.2"}]'),patch.object(agent.psutil,'net_if_addrs',return_value={}),patch.object(agent.psutil,'net_if_stats',return_value={}):
         context=agent.get_network_context()
     assert context['cidr']=='' and context['scan_rede']==''
 
-@pytest.mark.parametrize('windows',[False,True])
-def test_active_interface(monkeypatch,windows):
-    monkeypatch.setattr(agent,'IS_WIN',windows)
-    route='0.0.0.0 0.0.0.0 192.168.20.1 192.168.20.7 10' if windows else '[{"dev":"Ethernet","gateway":"192.168.20.1","prefsrc":"192.168.20.7"}]'
+def test_active_interface(monkeypatch):
+    route='[{"dev":"Ethernet","gateway":"192.168.20.1","prefsrc":"192.168.20.7"}]'
     addresses={'Ethernet':[NS(family=socket.AF_INET,address='192.168.20.7',netmask='255.255.254.0'),NS(family=NS(name='AF_LINK'),address='AA-BB-CC-DD-EE-FF')], 'Other':[NS(family=socket.AF_INET,address='10.0.0.2',netmask='255.255.255.0')]}
     with patch.object(agent.subprocess,'check_output',return_value=route),patch.object(agent.psutil,'net_if_addrs',return_value=addresses),patch.object(agent.psutil,'net_if_stats',return_value={'Ethernet':NS(isup=True,speed=1000)}):
         context=agent.get_network_context()
@@ -35,7 +32,6 @@ def test_active_interface(monkeypatch,windows):
 
 
 def test_neighbor_states(monkeypatch):
-    monkeypatch.setattr(agent,'IS_WIN',False)
     output='10.0.0.2 dev eth0 lladdr aa:bb:cc:dd:ee:01 REACHABLE\n10.0.0.3 dev eth0 lladdr aa:bb:cc:dd:ee:02 STALE\n10.0.0.4 dev eth0 lladdr aa:bb:cc:dd:ee:03 FAILED\nfe80::1 dev eth0 lladdr aa:bb:cc:dd:ee:04 STALE'
     with patch.object(agent.subprocess,'check_output',return_value=output),patch.object(agent,'ping',side_effect=lambda ip:0.3 if ip=='10.0.0.2' else 0):
         rows=agent.get_topologia_arp({'ip':'10.0.0.1','interface':'eth0','cidr':'10.0.0.0/24'})

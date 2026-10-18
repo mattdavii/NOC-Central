@@ -1,6 +1,7 @@
 # NexoPulse Edge no Linux
 
-O `agente_v2.py` pode rodar como serviço `systemd`, sem depender de sessão gráfica.
+O `agente_v2.py` roda só em Linux, como serviço `systemd`, sem depender de sessão
+gráfica. No Windows ele roda dentro do WSL (veja abaixo).
 
 ## Instalação
 
@@ -9,6 +10,33 @@ Na raiz do repositório:
 ```bash
 bash linux/install.sh
 ```
+
+Funciona em distros com `apt` (Debian/Ubuntu), `pacman` (Arch/CachyOS), `dnf`
+(Fedora) e `zypper` (openSUSE).
+
+O sensor aparece na Central com o **hostname** da máquina. Para outro nome,
+defina `NOC_SENSOR_NOME` em `/etc/default/noc-sensor` antes do primeiro contato
+(depois disso, renomeie pela tela do sensor na Central; o nome dado lá nunca é
+sobrescrito).
+
+A identidade do sensor é o MAC da placa de rede, guardado em `sensor_id.txt`
+na pasta do agente: reinícios e trocas de interface não criam sensores novos.
+
+## Windows (via WSL)
+
+Em um PowerShell **como Administrador**, no Windows 11 22H2 ou mais novo:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\windows\instalar-nexopulse-wsl.ps1 -NomeSensor "Loja Centro"
+```
+
+O script instala o Ubuntu no WSL (na primeira vez pede para criar o usuário Linux
+e rodar de novo), liga a **rede espelhada** (`networkingMode=mirrored`, para o
+sensor enxergar a rede e o MAC reais), o systemd, roda `linux/install.sh` lá
+dentro e cria a tarefa "NexoPulse Edge (WSL)" que liga o WSL quando o Windows
+inicia. No WSL não há leitura de temperatura da CPU (o `lm-sensors` não enxerga
+o hardware do Windows).
 
 O instalador cria um ambiente virtual, instala as dependências necessárias e registra o NexoPulse Edge no serviço compatível `noc-sensor.service`.
 
@@ -88,6 +116,6 @@ sudo systemctl is-active noc-sensor.service
 journalctl -u noc-sensor.service -n 80 --no-pager
 ```
 
-Confirme na Central que o último contato continua atualizando. Repita para cada Linux e Windows antes de definir `NOC_SENSOR_AUTH_REQUIRED=1` no Railway. Gerar a chave não bloqueia agentes antigos enquanto essa variável permanecer `0`.
+Confirme na Central que o último contato continua atualizando. Repita para cada sensor (Linux ou WSL) antes de definir `NOC_SENSOR_AUTH_REQUIRED=1` no Railway. Gerar a chave não bloqueia agentes antigos enquanto essa variável permanecer `0`.
 
 Para rollback do Mini PC, selecione a branch `rollback/linux-...` criada acima, reinstale `requirements-agente.txt` e reinicie o mesmo serviço. Se a credencial precisar ser removida, apague somente a linha `NOC_SENSOR_API_KEY` de `/etc/default/noc-sensor`, reinicie o serviço e mantenha a Central em modo de compatibilidade até corrigir o sensor.

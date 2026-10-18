@@ -23,9 +23,9 @@ def test_legacy_report_and_migration(client, login):
         assert client.get(route).status_code == 200,route
     database.init_db();database.init_db()
     assert client.get('/api/v2/sensor_data/AA:01').json['cpu_usage']==15
-    assert client.get('/api/v2/agent_versao').json['versao']=='2.1.0'
-    assert client.get('/api/v2/agent_versao').json['update_available'] is False
-    assert client.get('/api/v2/agent_versao').json['url_download']==''
+    info = client.get('/api/v2/agent_versao').json
+    assert info['versao'] == central.CENTRAL_VERSION and info['platform'] == 'linux'
+    assert 'url_download' not in info
     assert client.get('/healthz').json['central_version']=='2.2.0-rc1'
 
 
@@ -118,9 +118,8 @@ def test_nexopulse_brand_is_local_and_consistent(client, login):
     assert "updateViaCache: 'none'" in brand_js
     assert 'existing.unregister()' in brand_js
 
-    agent_spec = (root / 'agente_v2.spec').read_text(encoding='utf-8')
-    assert "icon='packaging/nexopulse-edge.ico'" in agent_spec
-    assert "version='packaging/nexopulse_edge_version.txt'" in agent_spec
+    # O agente é só Linux: não há mais executável Windows empacotado.
+    assert not (root / 'agente_v2.spec').exists()
 
     for relative in (
         'static/brand/nexopulse-logo-dark.png',

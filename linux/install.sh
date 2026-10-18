@@ -15,8 +15,19 @@ ENV_FILE="/etc/default/noc-sensor"
 SERVICE_FILE="/etc/systemd/system/noc-sensor.service"
 
 echo "==> Instalando dependências do Linux..."
-sudo apt-get update
-sudo apt-get install -y python3-venv python3-pip iproute2 iputils-ping net-tools traceroute lm-sensors
+if command -v apt-get >/dev/null; then
+  sudo apt-get update
+  sudo apt-get install -y python3-venv python3-pip iproute2 iputils-ping net-tools traceroute lm-sensors
+elif command -v pacman >/dev/null; then
+  sudo pacman -S --needed --noconfirm python python-pip iproute2 iputils net-tools traceroute lm_sensors
+elif command -v dnf >/dev/null; then
+  sudo dnf install -y python3 python3-pip iproute iputils net-tools traceroute lm_sensors
+elif command -v zypper >/dev/null; then
+  sudo zypper --non-interactive install python3 python3-pip iproute2 iputils net-tools traceroute sensors
+else
+  echo "Gerenciador de pacotes não reconhecido. Instale: python3 (com venv e pip), iproute2, ping, traceroute e lm-sensors; depois rode de novo."
+  exit 1
+fi
 
 echo "==> Preparando ambiente Python..."
 "${PYTHON_BIN}" -m venv "${VENV_DIR}"
@@ -31,6 +42,8 @@ NOC_LOCAL_PORT=10000
 NOC_TELEMETRIA_INTERVALO=5
 NOC_WATCHDOG_INTERVALO=15
 NOC_SCAN_REDE_INTERVALO=60
+# Nome com que o sensor aparece na Central ao ser cadastrado (padrão: hostname da máquina):
+# NOC_SENSOR_NOME=Loja Centro - Rack
 # Gere uma chave individual na tela Sensores da Central e configure-a somente neste equipamento:
 # NOC_SENSOR_API_KEY=cole-a-chave-individual-aqui
 EOF
