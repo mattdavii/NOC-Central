@@ -21,6 +21,11 @@ fi
 git switch --detach "${TARGET_VERSION}"
 "${ROOT_DIR}/.venv/bin/python" -m pip install -r requirements-agente.txt
 "${ROOT_DIR}/.venv/bin/python" -m py_compile agente_v2.py
+SERVICE_FILE="/etc/systemd/system/noc-sensor.service"
+if [[ -f "${SERVICE_FILE}" ]]; then
+  sudo sed -i 's/^Description=.*/Description=NexoPulse Edge Sensor/' "${SERVICE_FILE}"
+  sudo systemctl daemon-reload
+fi
 sudo systemctl restart noc-sensor.service
 sleep 3
 sudo systemctl is-active --quiet noc-sensor.service

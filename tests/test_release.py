@@ -1,5 +1,6 @@
 import io
 import json
+import re
 import time
 import urllib.error
 from pathlib import Path
@@ -65,7 +66,7 @@ def test_login_version_is_beside_credentials(client):
     page = client.get('/login').get_data(as_text=True)
     assert '<div class="login-header">' in page
     assert '<span class="version-badge">v2.2.0-rc1</span>' in page
-    assert '<div class="product-bar">' not in page
+    assert 'class="product-bar"' not in page
 
 
 def test_nexopulse_brand_is_local_and_consistent(client, login):
@@ -77,7 +78,19 @@ def test_nexopulse_brand_is_local_and_consistent(client, login):
     manifest = client.get('/static/manifest.json').json
     assert manifest['name'] == 'NexoPulse Central'
     assert manifest['short_name'] == 'NexoPulse'
+    assert manifest['id'] == '/'
+    assert manifest['scope'] == '/'
+    assert manifest['start_url'] == '/'
     assert all(icon['src'].startswith('/static/icons/nexopulse-') for icon in manifest['icons'])
+    assert {'any', 'maskable'} == {icon['purpose'] for icon in manifest['icons']}
+
+    root_manifest = client.get('/manifest.json')
+    assert root_manifest.status_code == 200
+    assert 'no-cache' in root_manifest.headers['Cache-Control']
+    service_worker = client.get('/sw.js')
+    assert service_worker.status_code == 200
+    assert service_worker.headers['Service-Worker-Allowed'] == '/'
+    assert 'no-cache' in service_worker.headers['Cache-Control']
 
     login()
     for route in ('/', '/tv', '/sensores', '/usuarios'):
@@ -99,6 +112,15 @@ def test_nexopulse_brand_is_local_and_consistent(client, login):
     product_css = (root / 'static/product.css').read_text(encoding='utf-8')
     assert 'html[data-theme="light"]' in product_css
     assert '@media(max-width:480px)' in product_css
+
+    brand_js = (root / 'static/brand.js').read_text(encoding='utf-8')
+    assert "register('/sw.js?v=nexopulse-2'" in brand_js
+    assert "updateViaCache: 'none'" in brand_js
+    assert 'existing.unregister()' in brand_js
+
+    agent_spec = (root / 'agente_v2.spec').read_text(encoding='utf-8')
+    assert "icon='packaging/nexopulse-edge.ico'" in agent_spec
+    assert "version='packaging/nexopulse_edge_version.txt'" in agent_spec
 
     for relative in (
         'static/brand/nexopulse-logo-dark.png',
@@ -390,3 +412,107 @@ def test_queue_malformed_retry_is_terminal(client):
     row = conn.execute("SELECT state, attempts FROM telegram_outbox WHERE message='invalid-response-permanent'").fetchone()
     conn.close()
     assert row['state'] == 'failed' and row['attempts'] == 1
+
+
+def _css_block(css, selector):
+    start = css.index(selector + ' {')
+    body = css[start:css.index('}', start)]
+    return dict(re.findall(r'--([\w-]+):\s*(#[0-9A-Fa-f]{6})', body))
+
+
+def _contrast(fg, bg):
+    def luminance(hex_color):
+        channels = [int(hex_color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        channels = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+    hi, lo = sorted((luminance(fg), luminance(bg)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def test_status_palette_is_separate_from_brand_and_accessible():
+    css = (Path(__file__).resolve().parents[1] / 'static/product.css').read_text(encoding='utf-8')
+    dark = _css_block(css, ':root')
+    light = {**dark, **_css_block(css, 'html[data-theme="light"]')}
+
+    status = ('status-ok', 'status-warn', 'status-crit', 'status-offline', 'status-unknown')
+    for theme in (dark, light):
+        assert all(token in theme for token in status)
+        # Verde Pulse é cor de marca e não pode representar "OK".
+        assert theme['status-ok'].upper() not in {dark['brand-green'].upper(), theme['green'].upper()}
+        assert theme['status-unknown'].upper() != theme['status-ok'].upper()
+    assert '.status-unknown { color:var(--status-unknown); border-style:dashed;' in css
+
+    text_tokens = ('text-main', 'text-muted', 'link', 'blue', 'green', 'red', 'yellow', 'purple', *status)
+    for token in text_tokens:
+        for background in ('bg-base', 'bg-card', 'bg-input', 'surface-raised'):
+            assert _contrast(light[token], light[background]) >= 4.5, (token, background)
+    assert light['link'].upper() == '#082E56'
+
+
+def test_login_and_base_layout_accessibility(client):
+    page = client.get('/login').get_data(as_text=True)
+    assert '<label for="login-usuario">' in page and 'id="login-usuario"' in page
+    assert '<label for="login-senha">' in page and 'id="login-senha"' in page
+    assert 'autocomplete="username"' in page
+    assert 'autocomplete="current-password"' in page
+    assert 'var(--brand-gradient)' in page
+
+    root = Path(__file__).resolve().parents[1]
+    brand_js = (root / 'static/brand.js').read_text(encoding='utf-8')
+    assert 'try { return localStorage.getItem(STORAGE_KEY); }' in brand_js
+    assert 'meta[name="theme-color"]' in brand_js
+
+    for template in (root / 'templates').glob('*.html'):
+        source = template.read_text(encoding='utf-8')
+        assert 'nexopulse-1' not in source, template.name
+        if 'fonts.googleapis.com' in source:
+            assert 'family=Inter:wght@400;600;700' in source, template.name
+            assert 'family=JetBrains+Mono:wght@400;700' in source, template.name
+
+
+def test_unverified_sensor_state_is_never_shown_as_healthy(client, login):
+    conn = database.get_db()
+    conn.execute("INSERT INTO sensores (mac_id, nome_local) VALUES ('AA:NOVO', 'Sem relatorio')")
+    conn.execute("INSERT INTO sensores (mac_id, nome_local, status) VALUES ('AA:ON', 'Ativo', 'online')")
+    conn.commit(); conn.close()
+    login()
+    page = client.get('/sensores').get_data(as_text=True)
+    assert 'b-unknown' in page and 'SEM DADOS' in page
+    assert page.count('status-badge b-on">ONLINE') == 1
+
+    root = Path(__file__).resolve().parents[1]
+    sensor = (root / 'templates/sensor.html').read_text(encoding='utf-8')
+    # Antes da primeira leitura, nada aparece como estável/online.
+    assert '<span id="status-local" class="status-pill pill-unknown">AGUARDANDO</span>' in sensor
+    assert '<span id="status-wan" class="status-pill pill-unknown">AGUARDANDO</span>' in sensor
+    assert "data.ping_gateway || 0" not in sensor
+    assert "let cor = item.latencia === 0 ? 'var(--red)' : 'var(--green)'" not in sensor
+
+    for name in ('index.html', 'sensor.html', 'sensores.html', 'sensor_virtual.html'):
+        source = (root / 'templates' / name).read_text(encoding='utf-8').lower()
+        # Paleta antiga (Catppuccin) fora das telas operacionais.
+        for legacy in ('#a6e3a1', '#f38ba8', '#f9e2af', '#89b4fa', '#cdd6f4', '#0b0b13', 'rgba(166,227,161', 'rgba(243,139,168'):
+            assert legacy not in source, (name, legacy)
+
+
+def test_report_and_tv_make_no_unverified_claims(client, login):
+    conn = database.get_db()
+    conn.execute("INSERT INTO sensores (mac_id, nome_local, status) VALUES ('AA:REL', 'Relatorio', 'online')")
+    conn.execute("INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, status) VALUES ('AA:REL', '10.0.0.7', 'BB:01', 'Teste', 'desconhecido')")
+    conn.commit(); conn.close()
+    login()
+    report = client.get('/relatorio/AA:REL').get_data(as_text=True)
+    assert report.count('Relatorio') >= 1
+    assert '100% estável' not in report
+    assert 'auto-cura' not in report and 'atesta os níveis de serviço' not in report
+    assert 'Dispositivos Descobertos' in report
+    assert '<span class="badge desconhecido">Desconhecido</span>' in report
+    assert 'color-scheme: light' in report
+
+    root = Path(__file__).resolve().parents[1]
+    tv = (root / 'templates/tv.html').read_text(encoding='utf-8')
+    assert "} else if (!s.status) {" in tv and "classe = 'unknown'; text = 'SEM DADOS';" in tv
+    for name in ('tv.html', 'usuarios.html', 'relatorio.html'):
+        source = (root / 'templates' / name).read_text(encoding='utf-8').lower()
+        for legacy in ('#a6e3a1', '#f38ba8', '#f9e2af', '#89b4fa', '#cdd6f4', '#0b0b13', '#10b981', '#3b82f6'):
+            assert legacy not in source, (name, legacy)

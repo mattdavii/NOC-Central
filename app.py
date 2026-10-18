@@ -1273,9 +1273,16 @@ def get_dispositivos(mac_id):
     return jsonify([dict(d) for d in dispositivos])
 
 @app.route('/manifest.json')
-def manifest(): return send_from_directory('static', 'manifest.json')
+def manifest():
+    response = send_from_directory('static', 'manifest.json')
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return response
 @app.route('/sw.js')
-def service_worker(): return send_from_directory('static', 'sw.js')
+def service_worker():
+    response = send_from_directory('static', 'sw.js')
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Service-Worker-Allowed'] = '/'
+    return response
 
 @app.route('/usuarios')
 def gerenciar_usuarios():

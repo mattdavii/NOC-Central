@@ -10,11 +10,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        :root {
-            --bg-base: #0b0b13; --bg-card: #151521; --bg-input: #232334; --border: #36364a;
-            --text-main: #cdd6f4; --text-muted: #9399b2;
-            --blue: #89b4fa; --green: #a6e3a1; --red: #f38ba8; --yellow: #f9e2af; --purple: #cba6f7;
-        }
 
         body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-base); color: var(--text-main); padding: 30px; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
@@ -27,7 +22,7 @@
         label { font-size: 0.8em; color: var(--text-muted); font-weight: bold; }
         input, select { background: var(--bg-input); border: 1px solid var(--border); color: var(--text-main); padding: 12px; border-radius: 6px; outline: none; }
         
-        .logo-preview { width: 100%; height: 50px; border: 1px dashed var(--border); border-radius: 6px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.2); margin-top: 5px; overflow: hidden; }
+        .logo-preview { width: 100%; height: 50px; border: 1px dashed var(--border); border-radius: 6px; display: flex; align-items: center; justify-content: center; background: var(--bg-input); margin-top: 5px; overflow: hidden; }
         .logo-preview img { max-height: 40px; object-fit: contain; }
 
         .btn-save { background: var(--blue); color: var(--bg-base); border: none; padding: 12px 30px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; }
@@ -38,8 +33,8 @@
         td { padding: 15px; border-bottom: 1px solid var(--border); font-size: 0.9em; }
 
         .badge { padding: 4px 10px; border-radius: 4px; font-size: 0.75em; font-weight: bold; }
-        .role-master { background: rgba(203, 166, 247, 0.1); color: var(--purple); border: 1px solid var(--purple); }
-        .role-normal { background: rgba(166, 227, 161, 0.1); color: var(--green); border: 1px solid var(--green); }
+        .role-master { background: color-mix(in srgb, var(--purple) 10%, transparent); color: var(--purple); border: 1px solid var(--purple); }
+        .role-normal { background: color-mix(in srgb, var(--blue) 10%, transparent); color: var(--blue); border: 1px solid var(--blue); }
         
         .btn-action { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.1em; transition: 0.2s; margin-right: 10px; }
         .btn-action:hover { color: var(--blue); }
@@ -50,8 +45,8 @@
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 2000; backdrop-filter: blur(5px); }
         .modal-content { max-width: 500px; width: 100%; margin: 20px; }
     </style>
-<link rel="stylesheet" href="/static/product.css?v=nexopulse-1">
-<script src="/static/brand.js?v=nexopulse-1"></script>
+<link rel="stylesheet" href="/static/product.css?v=nexopulse-2">
+<script src="/static/brand.js?v=nexopulse-2"></script>
 </head>
 <body>
 <script src="/static/security.js?v=2.2.0-rc1"></script>
@@ -63,7 +58,7 @@
             <h1 style="margin: 10px 0 0 0; color: var(--blue);"><i class="fa-solid fa-users-gear"></i> Gestão de Usuários</h1>
         </div>
         {% if role_atual == 'Administrador Master' %}
-        <button class="btn-save" style="background:#229ED9; color:white;" onclick="testarTelegramMaster()"><i class="fa-brands fa-telegram"></i> Testar Bot Master</button>
+        <button class="btn-save" style="background:#229ED9; color:#04111E;" onclick="testarTelegramMaster()"><i class="fa-brands fa-telegram"></i> Testar Bot Master</button>
         {% endif %}
     </div>
 
@@ -103,7 +98,7 @@
                 </div>
             </div>
 
-            <div id="div_telegram" style="grid-column: span 2; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; border: 1px dashed var(--border); display: flex; gap: 15px;">
+            <div id="div_telegram" style="grid-column: span 2; background: var(--bg-input); padding: 15px; border-radius: 8px; border: 1px dashed var(--border); display: flex; gap: 15px;">
                 <div style="flex: 1;" class="input-group">
                     <label style="color: var(--blue);"><i class="fa-brands fa-telegram"></i> Token do Bot (Opcional)</label>
                     <input type="password" id="telegram_token" placeholder="Ex: 123456:ABC-DEF...">
@@ -161,9 +156,9 @@
                     </td>
                     <td>
                         {% if u.ativo == 1 %}
-                        <span style="color: var(--green); font-weight: bold; font-size: 0.85em;">● Ativo</span>
+                        <span style="color: var(--status-ok); font-weight: bold; font-size: 0.85em;">● Ativo</span>
                         {% else %}
-                        <span style="color: var(--red); font-weight: bold; font-size: 0.85em;">● Inativo</span>
+                        <span style="color: var(--status-offline); font-weight: bold; font-size: 0.85em;">● Inativo</span>
                         {% endif %}
                     </td>
                     <td>
@@ -200,7 +195,7 @@
             </div>
 
             <div id="edit-telegram-status" class="telegram-status" role="status"></div>
-            <div id="edit_div_telegram" style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; border: 1px dashed var(--border); margin-bottom: 15px;">
+            <div id="edit_div_telegram" style="background: var(--bg-input); padding: 15px; border-radius: 8px; border: 1px dashed var(--border); margin-bottom: 15px;">
                 <label style="color: var(--blue); font-weight: bold; font-size: 0.85em; margin-bottom: 8px; display: block;"><i class="fa-brands fa-telegram"></i> Alertas VIP via Telegram</label>
                 <div class="input-group" style="margin-bottom: 10px;">
                     <label>Token do Bot</label>
@@ -213,7 +208,7 @@
             </div>
 
             <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-                <button id="btn_testar_telegram" class="btn-save" style="background:#229ED9; color:white; display:none;" onclick="testarTelegram()"><i class="fa-brands fa-telegram"></i> Testar Telegram</button>
+                <button id="btn_testar_telegram" class="btn-save" style="background:#229ED9; color:#04111E; display:none;" onclick="testarTelegram()"><i class="fa-brands fa-telegram"></i> Testar Telegram</button>
                 <button class="btn-save" style="background: var(--bg-input); color: var(--text-main);" onclick="fecharModal()">Cancelar</button>
                 <button class="btn-save" onclick="salvarEdicao()">Salvar Alterações</button>
             </div>

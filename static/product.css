@@ -1,20 +1,43 @@
 :root {
+ /* Marca NexoPulse: identidade, nunca estado operacional. */
+ --brand-nexo:#082E56; --brand-cyan:#05A9DC; --brand-green:#05A88C;
+ --brand-gradient:linear-gradient(90deg,var(--brand-cyan),var(--brand-green));
+ /* Estados operacionais: paleta própria, separada da marca. */
+ --status-ok:#22C55E; --status-warn:#FBBF24; --status-crit:#F87171;
+ --status-offline:#8391A7; --status-unknown:#94A3B8;
+ --link:#05A9DC;
  --bg-base:#0B1728; --bg-card:#12263D; --bg-input:#0E2035; --border:#29445F;
  --text-main:#E8F1FA; --text-muted:#94A3B8; --blue:#05A9DC; --green:#05A88C;
  --red:#F87171; --yellow:#FBBF24; --purple:#7DD3FC; --nexo:#082E56;
  --surface-raised:#17304B; --overlay:rgba(5,18,34,.82); --shadow:0 18px 45px rgba(0,0,0,.22);
 }
+/* Tema claro: ciano e verde da marca ficam em ícones e detalhes; texto e links
+   usam tons que passam de 4,5:1 (WCAG AA) sobre branco, fundo e campos. */
 html[data-theme="light"] {
+ --status-ok:#166534; --status-warn:#92400E; --status-crit:#B91C1C;
+ --status-offline:#475569; --status-unknown:#526077;
+ --link:#082E56;
  --bg-base:#F3F8FC; --bg-card:#FFFFFF; --bg-input:#E8F1FA; --border:#C7D8E8;
- --text-main:#082E56; --text-muted:#64748B; --blue:#078DB8; --green:#048F78;
- --red:#DC2626; --yellow:#B45309; --purple:#0369A1; --surface-raised:#F8FBFE;
+ --text-main:#082E56; --text-muted:#526077; --blue:#0E7490; --green:#047866;
+ --red:#B91C1C; --yellow:#92400E; --purple:#0369A1; --surface-raised:#F8FBFE;
  --overlay:rgba(255,255,255,.9); --shadow:0 16px 40px rgba(8,46,86,.10);
 }
+/* Indicador de estado reutilizável. "Desconhecido" usa borda tracejada para
+   nunca ser lido como saudável. */
+.status { display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border:1px solid currentColor; border-radius:999px; font-size:.78rem; font-weight:600; line-height:1.4; background:color-mix(in srgb,currentColor 10%,transparent); }
+.status::before { content:''; width:8px; height:8px; border-radius:50%; background:currentColor; flex:none; }
+.status-ok { color:var(--status-ok); }
+.status-warn { color:var(--status-warn); }
+.status-crit { color:var(--status-crit); }
+.status-offline { color:var(--status-offline); }
+.status-unknown { color:var(--status-unknown); border-style:dashed; background:transparent; }
+.status-unknown::before { background:transparent; border:1.5px dashed currentColor; }
 * { box-sizing:border-box; text-shadow:none!important; }
 body { line-height:1.5; background-color:var(--bg-base)!important; color:var(--text-main); }
 button,input,select { font:inherit; }
 button,a,input,select { touch-action:manipulation; }
 button:focus-visible,a:focus-visible,input:focus-visible { outline:2px solid var(--blue); outline-offset:3px; }
+a { color:var(--link); }
 .card,.kpi-box,.sensor-card,.terminal-wrapper,.map-wrapper { box-shadow:var(--shadow)!important; border:1px solid var(--border)!important; }
 .card { border-radius:12px; padding:22px; min-width:0; scroll-margin-top:20px; }
 .card h3 { color:var(--text-main)!important; font-size:1.02rem; flex-wrap:wrap; gap:10px; }

@@ -7,21 +7,21 @@
     <meta name="theme-color" content="#082E56">
     <link rel="icon" href="/static/favicon.png" type="image/png">
     <title>NexoPulse Edge - Sensor Virtual</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { margin: 0; padding: 20px; font-family: 'JetBrains Mono', monospace; background-color: #05050a; color: #a6e3a1; overflow: hidden;}
-        .terminal { background: rgba(0,20,0,0.5); border: 1px solid #a6e3a1; padding: 20px; border-radius: 8px; box-shadow: 0 0 20px rgba(166,227,161,0.2); height: calc(100vh - 80px); display: flex; flex-direction: column;}
-        .header { display: flex; justify-content: space-between; border-bottom: 1px dashed #a6e3a1; padding-bottom: 10px; margin-bottom: 10px;}
-        .logs { flex-grow: 1; overflow-y: auto; font-size: 0.9em; line-height: 1.5; color: #cdd6f4;}
-        .log-ok { color: #a6e3a1; }
-        .log-warn { color: #f9e2af; }
-        .log-err { color: #f38ba8; }
-        .log-send { color: #89b4fa; }
-        .btn-stop { background: #f38ba8; color: #000; border: none; padding: 8px 15px; font-family: inherit; font-weight: bold; cursor: pointer; border-radius: 4px; text-decoration: none;}
+        body { margin: 0; padding: 20px; font-family: 'JetBrains Mono', monospace; background-color: var(--bg-base); color: var(--text-main); overflow: hidden;}
+        .terminal { background: var(--bg-input); border: 1px solid var(--border); padding: 20px; border-radius: 8px; height: calc(100vh - 112px); display: flex; flex-direction: column;}
+        .header { display: flex; justify-content: space-between; border-bottom: 1px dashed var(--border); padding-bottom: 10px; margin-bottom: 10px;}
+        .logs { flex-grow: 1; overflow-y: auto; font-size: 0.9em; line-height: 1.5; color: var(--text-main);}
+        .log-ok { color: var(--status-ok); }
+        .log-warn { color: var(--status-warn); }
+        .log-err { color: var(--status-crit); }
+        .log-send { color: var(--blue); }
+        .btn-stop { background: var(--red); color: var(--bg-base); border: none; padding: 8px 15px; font-family: inherit; font-weight: bold; cursor: pointer; border-radius: 4px; text-decoration: none;}
     </style>
-<link rel="stylesheet" href="/static/product.css?v=nexopulse-1">
-<script src="/static/brand.js?v=nexopulse-1"></script>
+<link rel="stylesheet" href="/static/product.css?v=nexopulse-2">
+<script src="/static/brand.js?v=nexopulse-2"></script>
 </head>
 <body>
 <script src="/static/security.js?v=2.2.0-rc1"></script>
@@ -32,7 +32,7 @@
             <div>
                 <i class="fa-solid fa-satellite-dish" style="animation: pulse 2s infinite;"></i> 
                 <strong>NEXOPULSE EDGE · SENSOR VIRTUAL</strong><br>
-                <small style="color: #9399b2;">Operador: {{ nome_operador }}</small>
+                <small style="color: var(--text-muted);">Operador: {{ nome_operador }}</small>
             </div>
             <div>
                 <a href="/" class="btn-stop"><i class="fa-solid fa-power-off"></i> Desconectar</a>
@@ -47,7 +47,7 @@
         const terminal = document.getElementById('console');
         function log(msg, type="ok") {
             const time = new Date().toLocaleTimeString();
-            terminal.innerHTML += `<div><span style="color:#9399b2">[${time}]</span> <span class="log-${type}">${msg}</span></div>`;
+            terminal.innerHTML += `<div><span style="color:var(--text-muted)">[${time}]</span> <span class="log-${type}">${msg}</span></div>`;
             terminal.scrollTop = terminal.scrollHeight;
         }
 
