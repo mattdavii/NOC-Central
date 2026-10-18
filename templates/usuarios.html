@@ -125,7 +125,7 @@
 
     <div class="card" style="margin-top: 30px;">
         <h3><i class="fa-solid fa-list"></i> Usuários Cadastrados</h3>
-        <table>
+        <table class="cards-mobile">
             <thead>
                 <tr>
                     <th>Logo</th>
@@ -146,7 +146,7 @@
                         <i class="fa-solid fa-image" style="color: var(--text-muted);"></i>
                         {% endif %}
                     </td>
-                    <td><strong>{{ u.nome }}</strong></td>
+                    <td><strong>{{ u.nome or '—' }}</strong></td>
                     <td style="font-family: 'JetBrains Mono';">{{ u.usuario }}</td>
                     <td>
                         {% if 'Master' in u.role %}
