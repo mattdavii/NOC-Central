@@ -48,3 +48,38 @@ def test_ping_does_not_invoke_shell():
         assert run.call_args.kwargs['shell'] is False
         assert agent.ping('127.0.0.1;touch /tmp/attack')==0
         assert run.call_count==1
+
+
+@pytest.fixture()
+def sensor_id_file(tmp_path, monkeypatch):
+    path = tmp_path / 'sensor_id.txt'
+    monkeypatch.setattr(agent, 'SENSOR_ID_FILE', str(path))
+    monkeypatch.setattr(agent, '_sensor_id', None)
+    return path
+
+
+def test_mac_multicast_is_rejected():
+    assert not agent._mac_valido(0xC5B064C93A7D)  # fallback aleatório do uuid.getnode()
+    assert agent._mac_valido(0x60C727095D0A)
+
+
+def test_real_uuid_mac_is_kept(sensor_id_file, monkeypatch):
+    monkeypatch.setattr(agent.uuid, 'getnode', lambda: 0x30F6EF3A4E04)
+    assert agent.get_mac() == '30:F6:EF:3A:4E:04'
+    assert sensor_id_file.read_text().strip() == '30:F6:EF:3A:4E:04'
+
+
+def test_random_uuid_falls_back_to_route_interface(sensor_id_file, monkeypatch):
+    monkeypatch.setattr(agent.uuid, 'getnode', lambda: 0xC5B064C93A7D)
+    monkeypatch.setattr(agent, 'get_network_context', lambda: {'mac_interface': '60:C7:27:09:5D:0A'})
+    assert agent.get_mac() == '60:C7:27:09:5D:0A'
+
+
+def test_persisted_id_survives_restart(sensor_id_file, monkeypatch):
+    monkeypatch.setattr(agent.uuid, 'getnode', lambda: 0xC5B064C93A7D)
+    monkeypatch.setattr(agent, 'get_network_context', lambda: {'mac_interface': ''})
+    first = agent.get_mac()
+    assert agent._mac_valido(int(first.replace(':', ''), 16))
+    monkeypatch.setattr(agent, '_sensor_id', None)  # simula novo processo
+    monkeypatch.setattr(agent.uuid, 'getnode', lambda: 0xB708272CE938)
+    assert agent.get_mac() == first

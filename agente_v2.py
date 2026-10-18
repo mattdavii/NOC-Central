@@ -120,9 +120,62 @@ cache_alvos = {}
 MAC_GATEWAY_CONHECIDO = None 
 ALARMES_DISPARADOS = {"temp_cpu": False, "temp_gpu": False}
 
+SENSOR_ID_FILE = os.environ.get("NOC_SENSOR_ID_FILE", "sensor_id.txt")
+_sensor_id = None
+_sensor_id_lock = threading.Lock()
+
+
+def _formatar_mac(valor):
+    return ':'.join(("%012X" % valor)[i:i+2] for i in range(0, 12, 2))
+
+
+def _mac_valido(valor):
+    # O bit multicast (LSB do 1º octeto) marca o MAC aleatório que o uuid.getnode()
+    # inventa quando não acha uma placa — no Linux/WSL isso muda a cada processo.
+    return valor is not None and 0 < valor < (1 << 48) and not (valor >> 40) & 1
+
+
+def _descobrir_mac():
+    # Preserva a identidade dos sensores já instalados (no Windows o uuid.getnode()
+    # costuma ser a placa real) e só cai para a interface da rota padrão quando
+    # ele é aleatório.
+    node = uuid.getnode()
+    if _mac_valido(node):
+        return _formatar_mac(node)
+    mac_interface = get_network_context().get("mac_interface", "")
+    try:
+        valor = int(mac_interface.replace(":", "").replace("-", ""), 16)
+    except ValueError:
+        valor = None
+    if _mac_valido(valor):
+        return _formatar_mac(valor)
+    # Sem placa identificável: um ID aleatório, persistido abaixo para não mudar.
+    return _formatar_mac(int.from_bytes(os.urandom(6), "big") & ~(1 << 40) | (1 << 41))
+
+
 def get_mac():
-    mac = uuid.getnode()
-    return ':'.join(("%012X" % mac)[i:i+2] for i in range(0, 12, 2))
+    """Identidade do sensor: estável entre reinícios, persistida em SENSOR_ID_FILE."""
+    global _sensor_id
+    if _sensor_id:
+        return _sensor_id
+    with _sensor_id_lock:
+        if _sensor_id:
+            return _sensor_id
+        try:
+            with open(SENSOR_ID_FILE, encoding="utf-8") as arquivo:
+                salvo = arquivo.read().strip().upper()
+            if re.fullmatch(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", salvo):
+                _sensor_id = salvo
+                return _sensor_id
+        except OSError:
+            pass
+        _sensor_id = _descobrir_mac()
+        try:
+            with open(SENSOR_ID_FILE, "w", encoding="utf-8") as arquivo:
+                arquivo.write(_sensor_id + "\n")
+        except OSError:
+            pass
+        return _sensor_id
 
 def _rede_scan_segura(cidr, ip_local):
     """Mantém o CIDR real, mas limita descoberta ativa em redes muito grandes."""
