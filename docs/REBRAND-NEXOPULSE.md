@@ -36,7 +36,7 @@ As cores de atenção, criticidade e indisponibilidade continuam separadas da co
 Os seguintes identificadores técnicos permanecem inalterados intencionalmente:
 
 - repositório `NOC-Central`;
-- domínio e rotas atuais;
+- rotas atuais (o domínio Railway passou a ser `nexopulse.up.railway.app`);
 - variáveis `NOC_*`;
 - cabeçalhos `X-NOC-Sensor-*`;
 - serviço Linux `noc-sensor.service`;
