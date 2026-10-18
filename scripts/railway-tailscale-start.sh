@@ -43,5 +43,7 @@ fi
 
 python scripts/ts_db_forward.py &
 
+# Com o banco a ~200 ms pela tailnet, as migrações do boot passam dos 30 s
+# padrão do gunicorn e o worker seria morto em loop (WORKER TIMEOUT).
 exec gunicorn app:app --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
-  -w 1 --bind "0.0.0.0:${PORT:-8000}" --no-control-socket
+  -w 1 --bind "0.0.0.0:${PORT:-8000}" --no-control-socket --timeout "${GUNICORN_TIMEOUT:-180}"
