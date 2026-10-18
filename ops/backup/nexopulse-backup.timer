@@ -1,0 +1,11 @@
+[Unit]
+Description=Backup diário do banco NexoPulse
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+# Se a máquina estava desligada às 03:30, roda assim que ligar.
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target
