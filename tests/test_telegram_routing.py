@@ -5,9 +5,10 @@ import notifications as tg
 
 def _outbox():
     conn = database.get_db()
-    rows = [dict(r) for r in conn.execute('SELECT client_id, message FROM telegram_outbox ORDER BY client_id').fetchall()]
+    rows = [dict(r) for r in conn.execute('SELECT client_id, message FROM telegram_outbox').fetchall()]
     conn.close()
-    return rows
+    # Postgres e SQLite ordenam NULL em lados opostos: o master (None) vem primeiro aqui.
+    return sorted(rows, key=lambda r: (r['client_id'] is not None, r['client_id'] or 0))
 
 
 def _set_chat(client_id, chat, token=''):
