@@ -29,6 +29,13 @@ else
   exit 1
 fi
 
+# mtr melhora o diagnóstico de rota (perda por salto); sem ele o Edge usa traceroute.
+if command -v apt-get >/dev/null; then sudo apt-get install -y mtr-tiny || true
+elif command -v pacman >/dev/null; then sudo pacman -S --needed --noconfirm mtr || true
+elif command -v dnf >/dev/null; then sudo dnf install -y mtr || true
+elif command -v zypper >/dev/null; then sudo zypper --non-interactive install mtr || true
+fi
+
 echo "==> Preparando ambiente Python..."
 "${PYTHON_BIN}" -m venv "${VENV_DIR}"
 "${VENV_DIR}/bin/python" -m pip install --upgrade pip

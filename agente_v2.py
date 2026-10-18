@@ -47,6 +47,11 @@ try:
 except ImportError:
     starlink = None
 
+try:
+    import netdiag
+except ImportError:
+    netdiag = None
+
 # ==========================================
 # ⚙️ CONFIGURAÇÃO DO AGENTE
 # ==========================================
@@ -747,6 +752,27 @@ def loop_starlink():
         ULTIMA_STARLINK = dados
         fila_envio.enfileirar({"tipo": "starlink", **dados})
         time.sleep(starlink.proximo_intervalo(dados))
+
+
+def loop_netdiag():
+    if netdiag is None or os.environ.get("NOC_DIAG", "1") == "0":
+        return
+    monitor = netdiag.Monitor()
+    while True:
+        try:
+            for item in monitor.ciclo():
+                fila_envio.enfileirar(item)
+        except Exception as e:
+            log_local_event("Diagnóstico de rede", f"Ciclo falhou: {e}", "Alerta")
+            time.sleep(30)
+
+
+def _dados_do_lote():
+    """Vai junto com cada lote de medições: quem é o provedor deste site."""
+    if ULTIMA_STARLINK and ULTIMA_STARLINK.get("detectada") and not os.environ.get("NOC_PROVEDOR"):
+        return {"provedor": {"nome": "Starlink", "origem": "antena"}}
+    info = netdiag.provedor() if netdiag else None
+    return {"provedor": info} if info else {}
 
 
 def _log_envio_medicoes(erro):
@@ -1696,7 +1722,8 @@ if __name__ == "__main__":
         threading.Thread(target=loop_host_info, daemon=True).start()
         threading.Thread(target=loop_starlink, daemon=True).start()
         threading.Thread(target=fila_envio.loop_envio, args=(URL_CENTRAL.replace('report_data', 'medicoes'), get_mac(), api_headers),
-                         kwargs={"log": _log_envio_medicoes}, daemon=True).start()
+                         kwargs={"log": _log_envio_medicoes, "extra_fn": _dados_do_lote}, daemon=True).start()
+        threading.Thread(target=loop_netdiag, daemon=True).start()
         threading.Thread(target=loop_watchdog_local, daemon=True).start()
 
         # Modo headless/systemd: mantém o processo principal vivo sem depender
