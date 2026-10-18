@@ -100,8 +100,9 @@ def test_action_without_answer_expires(client, login):
     conn.execute("INSERT INTO acoes_remotas (sensor_mac, acao, solicitante, status, criado_em) VALUES (?, 'diagnostico', 'admin', 'enviada', '2000-01-01 00:00:00')", (MAC,))
     conn.execute("INSERT INTO acoes_remotas (sensor_mac, acao, solicitante, status) VALUES (?, 'diagnostico', 'admin', 'enviada')", (MAC,))
     conn.commit(); conn.close()
+    master.post(f'/api/v2/sensor/{MAC}/acoes', json={'acao': 'diagnostico', 'senha': SENHA})
     hist = master.get(f'/api/v2/sensor/{MAC}/acoes').get_json()['historico']
+    assert hist[0]['status'] == 'pendente'  # acabou de ser criada: não pode expirar
     antiga = next(a for a in hist if a['criado_em'].startswith('2000-01-01'))
-    recente = next(a for a in hist if not a['criado_em'].startswith('2000-01-01') and a['status'] in ('enviada', 'erro'))
     assert antiga['status'] == 'erro' and 'não confirmou' in antiga['saida']
-    assert recente['status'] == 'enviada'
+    assert any(a['status'] == 'enviada' for a in hist)
