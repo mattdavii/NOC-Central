@@ -3,6 +3,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from flask_socketio import SocketIO
 import database
 import notifications
+import diagnostico
 from location import parse_location, save_location
 from version import CENTRAL_VERSION
 from urllib.parse import urlsplit
@@ -1652,6 +1653,308 @@ def processar_host_info(conn, mac, sensor, info):
 
     db_execute(conn, 'UPDATE sensores SET host_info=?, alertas_host=? WHERE mac_id=?', (bruto, json.dumps(sorted(problemas)), mac))
     conn.commit()
+
+
+# ==========================================
+# 🩺 DIAGNÓSTICO DE REDE (medições do Edge → camadas → diagnósticos)
+# ==========================================
+MAX_ITENS_MEDICAO = 200
+LIMITE_ITEM_MEDICAO = 32 * 1024
+NOTIFICAR_ATE_S = 600  # medição mais velha que isso (veio do buffer) entra na linha do tempo sem Telegram
+RETENCAO_MEDICOES_S = max(1, int(os.environ.get('DIAG_RETENCAO_DIAS', '30'))) * 86400
+ICONES_GRAVIDADE = {'Crítica': '🚨', 'Alerta': '⚠️', 'Aviso': 'ℹ️'}
+_ultima_limpeza_medicoes = 0.0
+
+
+def _json_ou(valor, padrao):
+    try:
+        return json.loads(valor) if valor else padrao
+    except (TypeError, ValueError):
+        return padrao
+
+
+def _num_ou_none(v):
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else None
+
+
+def _item_medicao_valido(item, agora):
+    if not isinstance(item, dict) or item.get('tipo') not in ('rede', 'starlink', 'rota'):
+        return False
+    ts = _num_ou_none(item.get('coletado_em'))
+    if ts is None or not agora - 8 * 86400 <= ts <= agora + 300:
+        return False
+    return len(json.dumps(item, ensure_ascii=False)) <= LIMITE_ITEM_MEDICAO
+
+
+def _notificar_diag(conn, sensor, diag, titulo=None):
+    icone = ICONES_GRAVIDADE.get(diag['gravidade'], '⚠️')
+    texto = (f"{icone} <b>{html.escape((titulo or diag['causa']).upper())}</b>\n\n{html.escape(diag['mensagem'])}"
+             f"\n🎯 <b>Confiança:</b> {html.escape(diag['confianca'] or '-')}")
+    enviar_telegram(texto, cliente_id=(sensor or {}).get('cliente_id'), conn=conn)
+
+
+def _registrar_diag_log(conn, mac, diag, prefixo=''):
+    db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Diagnóstico de rede', ?, ?)",
+               (mac, diag['gravidade'], f"{prefixo}{diag['mensagem']}"))
+
+
+def _aplicar_diagnosticos(conn, sensor, achados, inicio, fim, lim):
+    """Abre, confirma e resolve os diagnósticos de um sensor a partir de uma janela."""
+    mac = sensor['mac_id']
+    site = str(sensor.get('nome_local') or mac)
+    recente = time.time() - fim <= NOTIFICAR_ATE_S
+    ativos = {r['chave']: dict(r) for r in conn.execute(
+        "SELECT * FROM diagnosticos WHERE sensor_mac=? AND estado='ativo' AND chave <> 'sem_comunicacao'", (mac,)).fetchall()}
+    for a in achados:
+        atual = ativos.pop(a['chave'], None)
+        diag = {**a, 'inicio': atual['inicio'] if atual else inicio}
+        diag['mensagem'] = diagnostico.mensagem(diag, site, sensor.get('provedor'))
+        ev = json.dumps(a['evidencias'], ensure_ascii=False)
+        if atual:
+            gravidade = a['gravidade'] if diagnostico.ORDEM_GRAVIDADE.get(a['gravidade'], 0) > diagnostico.ORDEM_GRAVIDADE.get(atual['gravidade'], 0) else atual['gravidade']
+            diag['gravidade'] = gravidade
+            conn.execute("UPDATE diagnosticos SET janelas=janelas+1, janelas_ok=0, evidencias=?, gravidade=?, confianca=?, mensagem=?, detalhe=?, atualizado_em=? WHERE id=?",
+                         (ev, gravidade, a['confianca'], diag['mensagem'], a.get('detalhe'), fim, atual['id']))
+            diag_id, janelas, notificado, grupo = atual['id'], atual['janelas'] + 1, atual['notificado'], atual['grupo_id']
+        else:
+            cur = conn.execute('''INSERT INTO diagnosticos (sensor_mac, provedor, chave, camada, causa, gravidade, confianca, inicio, atualizado_em,
+                evidencias, acao, detalhe, mensagem, estado, janelas, janelas_ok, notificado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ativo', 1, 0, 0) RETURNING id''',
+                (mac, sensor.get('provedor'), a['chave'], a['camada'], a['causa'], a['gravidade'], a['confianca'], inicio, fim,
+                 ev, a['acao'], a.get('detalhe'), diag['mensagem']))
+            diag_id, janelas, notificado, grupo = cur.fetchone()['id'], 1, 0, None
+        # Achados de provedor esperam uma janela a mais: dá tempo de a correlação juntar os sites.
+        necessario = lim['confirmar_janelas'] + (1 if a['chave'] in diagnostico.CORRELACIONAVEIS else 0)
+        if not notificado and janelas >= necessario:
+            if a['chave'] in diagnostico.CORRELACIONAVEIS:
+                _correlacionar_provedores(conn, lim)
+                grupo = conn.execute('SELECT grupo_id FROM diagnosticos WHERE id=?', (diag_id,)).fetchone()['grupo_id']
+            _registrar_diag_log(conn, mac, diag, '(registrado após reconexão) ' if not recente else '')
+            if recente and not grupo:
+                _notificar_diag(conn, sensor, diag)
+            conn.execute('UPDATE diagnosticos SET notificado=? WHERE id=?', (1 if recente and not grupo else 2, diag_id))
+    for atual in ativos.values():  # não apareceu nesta janela
+        if atual['janelas_ok'] + 1 < lim['resolver_janelas']:
+            conn.execute('UPDATE diagnosticos SET janelas_ok=janelas_ok+1 WHERE id=?', (atual['id'],))
+            continue
+        conn.execute("UPDATE diagnosticos SET estado='resolvido', fim=?, janelas_ok=janelas_ok+1 WHERE id=?", (atual['atualizado_em'] or fim, atual['id']))
+        if atual['notificado'] == 1 and recente:
+            duracao = max(1, round(((atual['atualizado_em'] or fim) - atual['inicio']) / 60))
+            enviar_telegram(f"✅ <b>NORMALIZADO</b>\n\n🖥️ <b>Site:</b> {html.escape(site)}\n🟢 {html.escape(atual['causa'])} (durou ~{duracao} min)",
+                            cliente_id=sensor.get('cliente_id'), conn=conn)
+        db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Diagnóstico de rede', 'OK', ?)",
+                   (mac, f"Normalizado: {atual['causa']}"))
+
+
+def _correlacionar_provedores(conn, lim=None):
+    """Vários sites do mesmo provedor com problema ao mesmo tempo viram um diagnóstico só."""
+    lim = lim or diagnostico.limiares()
+    if os.environ.get('DATABASE_URL'):
+        conn.execute('SELECT pg_advisory_xact_lock(220002)')
+    chaves = sorted(diagnostico.CORRELACIONAVEIS)
+    marcadores = ','.join('?' * len(chaves))
+    ativos = [dict(r) for r in conn.execute(
+        f"""SELECT d.id, d.sensor_mac, d.chave, d.inicio, d.notificado, s.provedor, s.nome_local, s.cliente_id
+            FROM diagnosticos d JOIN sensores s ON s.mac_id = d.sensor_mac
+            WHERE d.estado='ativo' AND d.chave IN ({marcadores})""", chaves).fetchall()]
+    grupos_abertos = {r['provedor']: dict(r) for r in conn.execute(
+        "SELECT * FROM diagnosticos WHERE chave='queda_provedor' AND estado='ativo'").fetchall()}
+    grupos = diagnostico.correlacionar(ativos, lim, grupos_abertos.keys())
+    agora = time.time()
+    for provedor, membros in grupos.items():
+        nomes = sorted({str(m['nome_local'] or m['sensor_mac']) for m in membros})
+        ev = {'sites': len(nomes), 'nomes': nomes[:20], 'sensores': sorted({m['sensor_mac'] for m in membros})}
+        existente = next((g for p, g in grupos_abertos.items() if p.lower() == provedor.lower()), None)
+        diag = {'chave': 'queda_provedor', 'causa': f"{diagnostico.CAUSAS['queda_provedor']} {provedor}", 'gravidade': 'Crítica',
+                'confianca': 'alta' if len(nomes) >= 2 * lim['correlacao_min_sites'] else 'média', 'evidencias': ev,
+                'inicio': existente['inicio'] if existente else min(m['inicio'] for m in membros)}
+        diag['mensagem'] = diagnostico.mensagem(diag, None, provedor)
+        if existente:
+            gid = existente['id']
+            conn.execute('UPDATE diagnosticos SET evidencias=?, mensagem=?, confianca=?, atualizado_em=? WHERE id=?',
+                         (json.dumps(ev, ensure_ascii=False), diag['mensagem'], diag['confianca'], agora, gid))
+        else:
+            gid = conn.execute('''INSERT INTO diagnosticos (sensor_mac, provedor, chave, camada, causa, gravidade, confianca, inicio, atualizado_em,
+                evidencias, acao, mensagem, estado, notificado) VALUES (NULL, ?, 'queda_provedor', 'provedor', ?, 'Crítica', ?, ?, ?, ?, ?, ?, 'ativo', 1) RETURNING id''',
+                (provedor, diag['causa'], diag['confianca'], diag['inicio'], agora, json.dumps(ev, ensure_ascii=False),
+                 'acionar o provedor; não é falha local dos sites', diag['mensagem'])).fetchone()['id']
+            db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (NULL, 'Diagnóstico de rede', 'Crítica', ?)", (diag['mensagem'],))
+            if agora - diag['inicio'] <= NOTIFICAR_ATE_S + lim['correlacao_janela_s']:
+                enviar_telegram(f"📡 <b>POSSÍVEL QUEDA DO PROVEDOR</b>\n\n{html.escape(diag['mensagem'])}", conn=conn)
+                # Cada cliente afetado recebe só os próprios sites.
+                por_cliente = {}
+                for m in membros:
+                    if m['cliente_id']:
+                        por_cliente.setdefault(m['cliente_id'], set()).add(str(m['nome_local'] or m['sensor_mac']))
+                for cid, sites in por_cliente.items():
+                    if notifications.client_has_chat(cid, conn):
+                        notifications.enqueue(f"📡 <b>POSSÍVEL QUEDA DO PROVEDOR</b>\n\n{html.escape(provedor)} instável: {html.escape(', '.join(sorted(sites)))} "
+                                              f"afetado(s) junto com outros sites — acionar o provedor.", cid, conn=conn)
+        ids = [m['id'] for m in membros]
+        conn.execute(f"UPDATE diagnosticos SET grupo_id=? WHERE id IN ({','.join('?' * len(ids))})", (gid, *ids))
+    for provedor, grupo in grupos_abertos.items():
+        if not any(p.lower() == provedor.lower() for p in grupos):
+            conn.execute("UPDATE diagnosticos SET estado='resolvido', fim=? WHERE id=?", (agora, grupo['id']))
+            enviar_telegram(f"✅ <b>PROVEDOR NORMALIZADO</b>\n\n🟢 {html.escape(provedor)}: os sites voltaram ao normal.", conn=conn)
+
+
+def _guardar_janela_rede(conn, mac, item):
+    ts = item['coletado_em']
+    for a in item.get('alvos') or []:
+        if isinstance(a, dict):
+            conn.execute('INSERT INTO medicoes_rede (sensor_mac, coletado_em, tipo, papel, alvo, latencia_ms, jitter_ms, perda_pct, amostras) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                         (mac, ts, 'icmp', str(a.get('papel'))[:20], str(a.get('alvo'))[:80], _num_ou_none(a.get('latencia_ms')),
+                          _num_ou_none(a.get('jitter_ms')), _num_ou_none(a.get('perda_pct')), a.get('enviados') if isinstance(a.get('enviados'), int) else None))
+    for d in item.get('dns') or []:
+        if isinstance(d, dict):
+            conn.execute('INSERT INTO medicoes_rede (sensor_mac, coletado_em, tipo, papel, alvo, latencia_ms, perda_pct, amostras) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                         (mac, ts, 'dns', 'dns', str(d.get('servidor'))[:80], _num_ou_none(d.get('tempo_ms')),
+                          _num_ou_none(d.get('falha_pct')), d.get('consultas') if isinstance(d.get('consultas'), int) else None))
+
+
+def processar_medicoes(conn, sensor, itens, provedor_info=None):
+    global _ultima_limpeza_medicoes
+    mac = sensor['mac_id']
+    agora = time.time()
+    lim = diagnostico.limiares()
+    if isinstance(provedor_info, dict) and isinstance(provedor_info.get('nome'), str) and provedor_info['nome'].strip() \
+            and sensor.get('provedor_origem') != 'manual':
+        nome = ''.join(ch for ch in provedor_info['nome'] if ch.isprintable()).strip()[:80]
+        origem = provedor_info.get('origem') if provedor_info.get('origem') in ('antena', 'ip', 'manual') else 'ip'
+        if nome != sensor.get('provedor'):
+            conn.execute('UPDATE sensores SET provedor=?, provedor_origem=? WHERE mac_id=?', (nome, f'edge-{origem}', mac))
+            sensor['provedor'] = nome
+    validos = sorted((i for i in itens if _item_medicao_valido(i, agora)), key=lambda i: i['coletado_em'])
+    starlink_atual = _json_ou(sensor.get('starlink_info'), None)
+    for item in validos:
+        ts = item['coletado_em']
+        if item['tipo'] == 'starlink':
+            dados = {k: v for k, v in item.items() if k != 'tipo'}
+            conn.execute('INSERT INTO starlink_medicoes (sensor_mac, coletado_em, dados) VALUES (?, ?, ?)', (mac, ts, json.dumps(dados, ensure_ascii=False)))
+            if not starlink_atual or ts >= (starlink_atual.get('coletado_em') or 0):
+                starlink_atual = dados
+                conn.execute('UPDATE sensores SET starlink_info=? WHERE mac_id=?', (json.dumps(dados, ensure_ascii=False), mac))
+        elif item['tipo'] == 'rota':
+            conn.execute('INSERT INTO rotas_rede (sensor_mac, coletado_em, motivo, ferramenta, saltos, pior_salto) VALUES (?, ?, ?, ?, ?, ?)',
+                         (mac, ts, str(item.get('motivo'))[:20], str(item.get('ferramenta'))[:20],
+                          json.dumps(item.get('saltos') or [], ensure_ascii=False), json.dumps(item.get('pior_salto'), ensure_ascii=False) if item.get('pior_salto') else None))
+        else:
+            _guardar_janela_rede(conn, mac, item)
+            sl = starlink_atual if diagnostico.starlink_valida(starlink_atual, ts, lim) else None
+            resultado = diagnostico.avaliar(item, sl, lim)
+            inicio = _num_ou_none(item.get('inicio')) or ts
+            _aplicar_diagnosticos(conn, sensor, resultado['achados'], inicio, ts, lim)
+            if ts >= (sensor.get('diag_atualizado_em') or 0):
+                sensor['diag_atualizado_em'] = ts
+                conn.execute('UPDATE sensores SET camadas_rede=?, diag_atualizado_em=? WHERE mac_id=?',
+                             (json.dumps(resultado['camadas']), ts, mac))
+    if agora - _ultima_limpeza_medicoes > 3600:
+        _ultima_limpeza_medicoes = agora
+        for tabela in ('medicoes_rede', 'starlink_medicoes', 'rotas_rede'):
+            conn.execute(f'DELETE FROM {tabela} WHERE coletado_em < ?', (agora - RETENCAO_MEDICOES_S,))
+    return len(validos), len(itens) - len(validos)
+
+
+@app.route('/api/v2/medicoes', methods=['POST'])
+def receber_medicoes():
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error:
+        return auth_error
+    data = request.get_json(silent=True) or {}
+    mac, itens = data.get('mac_id'), data.get('itens')
+    if not isinstance(mac, str) or not isinstance(itens, list) or len(itens) > MAX_ITENS_MEDICAO:
+        return jsonify(error=f'mac_id e itens (até {MAX_ITENS_MEDICAO}) obrigatórios.'), 400
+    conn = database.get_db()
+    try:
+        sensor = conn.execute('SELECT * FROM sensores WHERE mac_id=?', (mac,)).fetchone()
+        if not sensor:
+            return jsonify(error='Sensor ainda não registrado.'), 404
+        aceitos, descartados = processar_medicoes(conn, dict(sensor), itens, data.get('provedor'))
+        conn.commit()
+        # Item inválido é descartado, não devolvido: senão travaria a fila do Edge.
+        return jsonify(status='OK', aceitos=aceitos, descartados=descartados)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _diag_publico(r):
+    d = dict(r)
+    d['evidencias'] = _json_ou(d.get('evidencias'), {})
+    for campo in ('janelas_ok', 'notificado'):
+        d.pop(campo, None)
+    return d
+
+
+@app.route('/api/v2/sensor/<mac_id>/diagnostico', methods=['GET'])
+def diagnostico_sensor(mac_id):
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        sensor = conn.execute('SELECT mac_id, nome_local, provedor, provedor_origem, starlink_info, camadas_rede, diag_atualizado_em, status FROM sensores WHERE mac_id=?', (mac_id,)).fetchone()
+        if not sensor:
+            return jsonify(error='Sensor não encontrado.'), 404
+        diags = [_diag_publico(r) for r in conn.execute(
+            'SELECT * FROM diagnosticos WHERE sensor_mac=? ORDER BY inicio DESC LIMIT 40', (mac_id,)).fetchall()]
+        grupos_ids = sorted({d['grupo_id'] for d in diags if d.get('grupo_id')})
+        grupos = [_diag_publico(r) for r in conn.execute(
+            f"SELECT * FROM diagnosticos WHERE id IN ({','.join('?' * len(grupos_ids))})", grupos_ids).fetchall()] if grupos_ids else []
+        rota = conn.execute('SELECT coletado_em, motivo, ferramenta, saltos, pior_salto FROM rotas_rede WHERE sensor_mac=? ORDER BY coletado_em DESC LIMIT 1', (mac_id,)).fetchone()
+        desde = time.time() - 2 * 3600
+        serie = [dict(r) for r in conn.execute(
+            "SELECT coletado_em, papel, alvo, latencia_ms, jitter_ms, perda_pct FROM medicoes_rede WHERE sensor_mac=? AND tipo='icmp' AND coletado_em >= ? ORDER BY coletado_em",
+            (mac_id, desde)).fetchall()]
+        return jsonify(
+            camadas=_json_ou(sensor['camadas_rede'], None), atualizado_em=sensor['diag_atualizado_em'], status=sensor['status'],
+            provedor=sensor['provedor'], provedor_origem=sensor['provedor_origem'],
+            starlink=_json_ou(sensor['starlink_info'], None),
+            ativos=[d for d in diags if d['estado'] == 'ativo'], linha_do_tempo=diags, grupos=grupos,
+            rota={**dict(rota), 'saltos': _json_ou(rota['saltos'], []), 'pior_salto': _json_ou(rota['pior_salto'], None)} if rota else None,
+            serie=serie)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/sensor/<mac_id>/provedor', methods=['POST'])
+def definir_provedor(mac_id):
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    nome = (request.get_json(silent=True) or {}).get('provedor')
+    if nome is not None and not isinstance(nome, str):
+        return jsonify(error='Provedor inválido.'), 400
+    nome = ''.join(ch for ch in (nome or '') if ch.isprintable()).strip()[:80]
+    conn = database.get_db()
+    try:
+        # Vazio devolve a identificação para o Edge (antena Starlink ou IP público).
+        conn.execute('UPDATE sensores SET provedor=?, provedor_origem=? WHERE mac_id=?', (nome or None, 'manual' if nome else None, mac_id))
+        conn.commit()
+        return jsonify(status='OK', provedor=nome or None)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/diagnosticos', methods=['GET'])
+def diagnosticos_ativos():
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        master = session.get('role') in ('Administrador Master', 'Operador Master')
+        sql = '''SELECT d.*, s.nome_local FROM diagnosticos d LEFT JOIN sensores s ON s.mac_id = d.sensor_mac WHERE d.estado='ativo' '''
+        params = ()
+        if not master:
+            sql += ' AND s.cliente_id = ?'
+            params = (tenant_id(conn),)
+        linhas = conn.execute(sql + ' ORDER BY d.inicio DESC LIMIT 200', params).fetchall()
+        camadas = {}
+        filtro = '' if master else ' WHERE cliente_id = ?'
+        for r in conn.execute('SELECT mac_id, camadas_rede FROM sensores' + filtro, () if master else (tenant_id(conn),)).fetchall():
+            camadas[r['mac_id']] = _json_ou(r['camadas_rede'], None)
+        return jsonify(ativos=[_diag_publico(r) for r in linhas], camadas=camadas)
+    finally:
+        conn.close()
 
 
 # ==========================================

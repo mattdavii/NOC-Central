@@ -131,6 +131,11 @@ def init_db():
             'ips_energia': 'sensor_mac TEXT, ip TEXT, descricao TEXT, latencia REAL DEFAULT 0',
             'dispositivos': 'sensor_mac TEXT, ip TEXT, mac TEXT, fabricante TEXT, nome_custom TEXT',
             'acoes_remotas': "sensor_mac TEXT NOT NULL, acao TEXT NOT NULL, solicitante TEXT, status TEXT DEFAULT 'pendente', codigo INTEGER, saida TEXT, criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP, concluido_em TIMESTAMP",
+            # Diagnóstico de rede: horários em epoch (segundos, UTC) para não depender do fuso da sessão.
+            'medicoes_rede': 'sensor_mac TEXT NOT NULL, coletado_em DOUBLE PRECISION NOT NULL, tipo TEXT, papel TEXT, alvo TEXT, latencia_ms DOUBLE PRECISION, jitter_ms DOUBLE PRECISION, perda_pct DOUBLE PRECISION, amostras INTEGER',
+            'starlink_medicoes': 'sensor_mac TEXT NOT NULL, coletado_em DOUBLE PRECISION NOT NULL, dados TEXT',
+            'rotas_rede': 'sensor_mac TEXT NOT NULL, coletado_em DOUBLE PRECISION NOT NULL, motivo TEXT, ferramenta TEXT, saltos TEXT, pior_salto TEXT',
+            'diagnosticos': "sensor_mac TEXT, provedor TEXT, chave TEXT NOT NULL, camada TEXT, causa TEXT, gravidade TEXT, confianca TEXT, inicio DOUBLE PRECISION NOT NULL, fim DOUBLE PRECISION, atualizado_em DOUBLE PRECISION, evidencias TEXT, acao TEXT, detalhe TEXT, mensagem TEXT, estado TEXT DEFAULT 'ativo', janelas INTEGER DEFAULT 1, janelas_ok INTEGER DEFAULT 0, notificado INTEGER DEFAULT 0, grupo_id INTEGER",
         }
         for table, definition in tables.items():
             conn.execute(f'CREATE TABLE IF NOT EXISTS {table} (id {identity}, {definition})')
@@ -145,7 +150,7 @@ def init_db():
         )''')
         conn.execute('CREATE TABLE IF NOT EXISTS telegram_outbox (event_key TEXT PRIMARY KEY, message TEXT NOT NULL, client_id INTEGER, attempts INTEGER NOT NULL, next_at DOUBLE PRECISION NOT NULL, expires_at DOUBLE PRECISION NOT NULL, state TEXT NOT NULL, result TEXT)')
         conn.execute('CREATE TABLE IF NOT EXISTS telegram_status (destination TEXT PRIMARY KEY, result TEXT, last_attempt DOUBLE PRECISION, last_success DOUBLE PRECISION, last_failure DOUBLE PRECISION)')
-        for table, cols in [('sensores','status,last_seen'),('sensores','cliente_id'),('logs_ia','sensor_mac,id'),('historico_pings','sensor_mac,id'),('historico_telemetria','sensor_mac,id'),('comandos_pendentes','sensor_mac,id'),('telegram_outbox','state,next_at')]:
+        for table, cols in [('sensores','status,last_seen'),('sensores','cliente_id'),('logs_ia','sensor_mac,id'),('historico_pings','sensor_mac,id'),('historico_telemetria','sensor_mac,id'),('comandos_pendentes','sensor_mac,id'),('telegram_outbox','state,next_at'),('medicoes_rede','sensor_mac,coletado_em'),('starlink_medicoes','sensor_mac,coletado_em'),('rotas_rede','sensor_mac,coletado_em'),('diagnosticos','estado,sensor_mac'),('diagnosticos','sensor_mac,inicio')]:
             name = 'idx_' + table + '_' + cols.replace(',', '_')
             conn.execute(f'CREATE INDEX IF NOT EXISTS {name} ON {table} ({cols})')
         if not conn.execute("SELECT version FROM schema_migrations WHERE version='2.2.0-rc1'").fetchone():
@@ -165,7 +170,7 @@ def init_db():
         conn.close()
 
 
-SENSOR_COLUMNS = ['last_seen TIMESTAMP', 'ip_gateway TEXT', 'ultima_rota TEXT', 'download REAL', 'upload REAL', 'alerta_reconhecido INTEGER DEFAULT 1', 'disco REAL', 'net_up REAL', 'net_down REAL', 'portas TEXT', 'em_manutencao INTEGER DEFAULT 0', 'cliente_id INTEGER', 'gpu_temp REAL', "memoria_alerta TEXT DEFAULT 'ONLINE'", 'so_nome TEXT', 'so_versao TEXT', 'so_arquitetura TEXT', 'interface_nome TEXT', 'interface_mac TEXT', 'rede_mascara TEXT', 'rede_cidr TEXT', 'link_speed_mbps REAL', 'interface_up BOOLEAN', 'scan_rede TEXT', 'scan_limitado BOOLEAN', 'cliente_nome TEXT', 'latitude REAL', 'longitude REAL', 'accuracy_m REAL', 'location_source TEXT', 'location_updated_at TEXT', 'agent_version TEXT', 'traceroute TEXT', 'acoes_remotas INTEGER DEFAULT 0', 'host_info TEXT', 'alertas_host TEXT']
+SENSOR_COLUMNS = ['last_seen TIMESTAMP', 'ip_gateway TEXT', 'ultima_rota TEXT', 'download REAL', 'upload REAL', 'alerta_reconhecido INTEGER DEFAULT 1', 'disco REAL', 'net_up REAL', 'net_down REAL', 'portas TEXT', 'em_manutencao INTEGER DEFAULT 0', 'cliente_id INTEGER', 'gpu_temp REAL', "memoria_alerta TEXT DEFAULT 'ONLINE'", 'so_nome TEXT', 'so_versao TEXT', 'so_arquitetura TEXT', 'interface_nome TEXT', 'interface_mac TEXT', 'rede_mascara TEXT', 'rede_cidr TEXT', 'link_speed_mbps REAL', 'interface_up BOOLEAN', 'scan_rede TEXT', 'scan_limitado BOOLEAN', 'cliente_nome TEXT', 'latitude REAL', 'longitude REAL', 'accuracy_m REAL', 'location_source TEXT', 'location_updated_at TEXT', 'agent_version TEXT', 'traceroute TEXT', 'acoes_remotas INTEGER DEFAULT 0', 'host_info TEXT', 'alertas_host TEXT', 'provedor TEXT', 'provedor_origem TEXT', 'starlink_info TEXT', 'camadas_rede TEXT', 'diag_atualizado_em DOUBLE PRECISION']
 CLIENT_COLUMNS = ['nome TEXT', 'cliente_pai_id INTEGER', 'ativo INTEGER DEFAULT 1', 'logo_url TEXT', 'telegram_token TEXT', 'telegram_chat_id TEXT']
 get_db = get_db_connection
 
