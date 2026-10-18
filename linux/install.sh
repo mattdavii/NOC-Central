@@ -26,7 +26,7 @@ echo "==> Preparando ambiente Python..."
 if [[ ! -f "${ENV_FILE}" ]]; then
   echo "==> Criando ${ENV_FILE}..."
   sudo tee "${ENV_FILE}" >/dev/null <<'EOF'
-NOC_CENTRAL_URL=https://noc-central.up.railway.app/api/v2/report_data
+NOC_CENTRAL_URL=https://nexopulse.up.railway.app/api/v2/report_data
 NOC_LOCAL_PORT=10000
 NOC_TELEMETRIA_INTERVALO=5
 NOC_WATCHDOG_INTERVALO=15
