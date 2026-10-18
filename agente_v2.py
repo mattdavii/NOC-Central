@@ -51,6 +51,8 @@ PORTA_LOCAL = int(os.environ.get("NOC_LOCAL_PORT", "10000"))
 VERSAO_AGENTE = "2.2.0-rc1"
 
 TELEMETRIA_INTERVALO = max(3, int(os.environ.get("NOC_TELEMETRIA_INTERVALO", "5")))
+# A Central pode demorar alguns segundos; desistir cedo perde o comando que ela já tirou da fila.
+REPORT_TIMEOUT = max(5, int(os.environ.get("NOC_REPORT_TIMEOUT", "25")))
 WATCHDOG_INTERVALO = max(10, int(os.environ.get("NOC_WATCHDOG_INTERVALO", "15")))
 SCAN_REDE_INTERVALO = max(30, int(os.environ.get("NOC_SCAN_REDE_INTERVALO", "60")))
 MAX_NETWORK_SCAN_HOSTS = max(64, min(2048, int(os.environ.get("NOC_MAX_SCAN_HOSTS", "512"))))
@@ -1023,7 +1025,7 @@ def loop_telemetria():
             espera_remota = TELEMETRIA_INTERVALO
             try:
                 req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers=api_headers(), method='POST')
-                with urllib.request.urlopen(req, timeout=5) as response:
+                with urllib.request.urlopen(req, timeout=REPORT_TIMEOUT) as response:
                     res_data = json.loads(response.read().decode('utf-8'))
                     comando = res_data.get("command")
                     espera_remota = max(TELEMETRIA_INTERVALO, int(res_data.get("intervalo", TELEMETRIA_INTERVALO))) 

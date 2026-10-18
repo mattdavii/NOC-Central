@@ -1690,6 +1690,18 @@ def _exigir_master_com_senha():
     return None
 
 
+ACAO_SEM_RESPOSTA_MIN = 40  # maior que o tempo limite da ação mais longa (atualizar sistema, 30 min)
+
+
+def _expirar_acoes_sem_resposta(conn, mac_id):
+    """Ação entregue que nunca voltou (resposta perdida, agente reiniciado) não fica 'Executando' para sempre."""
+    limite = (datetime.now(timezone.utc) - timedelta(minutes=ACAO_SEM_RESPOSTA_MIN)).strftime('%Y-%m-%d %H:%M:%S')
+    conn.execute("UPDATE acoes_remotas SET status='erro', saida=?, concluido_em=CURRENT_TIMESTAMP "
+                 "WHERE sensor_mac=? AND status IN ('pendente', 'enviada') AND criado_em < ?",
+                 ('O sensor não confirmou a execução (a resposta pode ter se perdido). Tente de novo.', mac_id, limite))
+    conn.commit()
+
+
 @app.route('/api/v2/sensor/<mac_id>/acoes', methods=['GET', 'POST'])
 def acoes_remotas(mac_id):
     if session.get('role') != 'Administrador Master':
@@ -1700,6 +1712,7 @@ def acoes_remotas(mac_id):
         if not sensor:
             return jsonify(error='Sensor não encontrado.'), 404
         if request.method == 'GET':
+            _expirar_acoes_sem_resposta(conn, mac_id)
             linhas = conn.execute('SELECT id, acao, solicitante, status, codigo, saida, criado_em, concluido_em FROM acoes_remotas WHERE sensor_mac=? ORDER BY id DESC LIMIT 15', (mac_id,)).fetchall()
             return jsonify(permitido=bool(sensor['acoes_remotas']), acoes=ACOES_REMOTAS,
                            historico=[{k: (str(v) if k in ('criado_em', 'concluido_em') and v is not None else v) for k, v in dict(r).items()} for r in linhas])
