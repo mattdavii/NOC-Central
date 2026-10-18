@@ -66,7 +66,7 @@ def test_login_version_is_beside_credentials(client):
     page = client.get('/login').get_data(as_text=True)
     assert '<div class="login-header">' in page
     assert '<span class="version-badge">v2.2.0-rc1</span>' in page
-    assert '<div class="product-bar">' not in page
+    assert 'class="product-bar"' not in page
 
 
 def test_nexopulse_brand_is_local_and_consistent(client, login):
@@ -447,3 +447,24 @@ def test_status_palette_is_separate_from_brand_and_accessible():
         for background in ('bg-base', 'bg-card', 'bg-input', 'surface-raised'):
             assert _contrast(light[token], light[background]) >= 4.5, (token, background)
     assert light['link'].upper() == '#082E56'
+
+
+def test_login_and_base_layout_accessibility(client):
+    page = client.get('/login').get_data(as_text=True)
+    assert '<label for="login-usuario">' in page and 'id="login-usuario"' in page
+    assert '<label for="login-senha">' in page and 'id="login-senha"' in page
+    assert 'autocomplete="username"' in page
+    assert 'autocomplete="current-password"' in page
+    assert 'var(--brand-gradient)' in page
+
+    root = Path(__file__).resolve().parents[1]
+    brand_js = (root / 'static/brand.js').read_text(encoding='utf-8')
+    assert 'try { return localStorage.getItem(STORAGE_KEY); }' in brand_js
+    assert 'meta[name="theme-color"]' in brand_js
+
+    for template in (root / 'templates').glob('*.html'):
+        source = template.read_text(encoding='utf-8')
+        assert 'nexopulse-1' not in source, template.name
+        if 'fonts.googleapis.com' in source:
+            assert 'family=Inter:wght@400;600;700' in source, template.name
+            assert 'family=JetBrains+Mono:wght@400;700' in source, template.name

@@ -8,13 +8,13 @@
     <meta name="theme-color" content="#082E56">
     <link rel="icon" href="/static/favicon.png" type="image/png">
     <title>NexoPulse Central - Acesso</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body { margin: 0; padding: 24px; box-sizing: border-box; font-family: 'Inter', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-image: radial-gradient(circle at 20% 15%, rgba(5,169,220,.14), transparent 32%), radial-gradient(circle at 85% 80%, rgba(5,168,140,.12), transparent 30%); }
         .login-shell { width: 100%; max-width: 430px; }
         .login-box { padding: 36px; border-radius: 18px; width: 100%; border: 1px solid var(--border); position: relative; overflow: hidden; }
-        .login-box::before { content: ''; position: absolute; inset: 0 0 auto; height: 3px; background: linear-gradient(90deg, var(--blue), var(--green)); }
+        .login-box::before { content: ''; position: absolute; inset: 0 0 auto; height: 3px; background: var(--brand-gradient); }
         .login-brand { display: flex; justify-content: center; margin-bottom: 18px; }
         .login-brand img { width: 310px; max-width: 88%; height: auto; }
         .login-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 22px 0 26px; padding-top: 20px; border-top: 1px solid var(--border); }
@@ -25,48 +25,49 @@
         .input-group { margin-bottom: 20px; }
         .input-group label { display: block; margin-bottom: 7px; color: var(--text-muted); font-size: 0.86em; font-weight: 600; }
         .input-group input { width: 100%; padding: 13px 14px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-main); border-radius: 8px; box-sizing: border-box; }
-        .btn-login { width: 100%; padding: 13px; background: linear-gradient(90deg, var(--blue), var(--green)); color: #04111E; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 1em; transition: 0.2s; }
+        .btn-login { width: 100%; padding: 13px; background: var(--brand-gradient); color: #04111E; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 1em; transition: 0.2s; }
         .btn-login:hover { filter: brightness(1.08); transform: translateY(-1px); }
-        .flash-msg { background: rgba(248,113,113,.16); color: var(--red); border: 1px solid rgba(248,113,113,.35); padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 20px; font-weight: bold; font-size: 0.9em; }
+        .btn-login:focus-visible { outline: 2px solid var(--text-main); outline-offset: 3px; }
+        .flash-msg { background: color-mix(in srgb, var(--status-crit) 12%, transparent); color: var(--status-crit); border: 1px solid color-mix(in srgb, var(--status-crit) 40%, transparent); padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 20px; font-weight: bold; font-size: 0.9em; }
         .login-tools { display:flex; justify-content:center; margin-top:18px; }
         @media(max-width:520px) { .login-box { padding:28px 22px; } .login-header { align-items:flex-start; } }
     </style>
 <link rel="stylesheet" href="/static/product.css?v=nexopulse-2">
-<script src="/static/brand.js?v=nexopulse-1"></script>
+<script src="/static/brand.js?v=nexopulse-2"></script>
 </head>
 <body>
     <main class="login-shell">
       <div class="login-box">
         <div class="login-brand">
-            <img class="brand-logo-dark" src="/static/brand/nexopulse-logo-dark.png" alt="NexoPulse">
-            <img class="brand-logo-light" src="/static/brand/nexopulse-logo-light.png" alt="NexoPulse">
+            <img class="brand-logo-dark" src="/static/brand/nexopulse-logo-dark.png" alt="NexoPulse" width="310" height="94">
+            <img class="brand-logo-light" src="/static/brand/nexopulse-logo-light.png" alt="NexoPulse" width="310" height="94">
         </div>
         <p class="login-positioning">NETWORK INTELLIGENCE &amp; MONITORING</p>
         <p class="login-slogan">Sua rede tem um pulso. Nós damos visibilidade a ele.</p>
         <div class="login-header">
-            <h1><i class="fa-solid fa-shield-halved"></i> Acesso à Central</h1>
+            <h1><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Acesso à Central</h1>
             <span class="version-badge">v{{ central_version }}</span>
         </div>
         
         {% with messages = get_flashed_messages() %}
           {% if messages %}
-            <div class="flash-msg">{{ messages[0] }}</div>
+            <div class="flash-msg" role="alert">{{ messages[0] }}</div>
           {% endif %}
         {% endwith %}
 
         <form method="POST" action="/login">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <div class="input-group">
-                <label>Usuário</label>
-                <input type="text" name="usuario" required placeholder="Ex: admin">
+                <label for="login-usuario">Usuário</label>
+                <input id="login-usuario" type="text" name="usuario" required autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Ex: admin">
             </div>
             <div class="input-group">
-                <label>Senha</label>
-                <input type="password" name="senha" required placeholder="••••••••">
+                <label for="login-senha">Senha</label>
+                <input id="login-senha" type="password" name="senha" required autocomplete="current-password" placeholder="••••••••">
             </div>
             <button type="submit" class="btn-login">Entrar na NexoPulse</button>
         </form>
-        <div class="login-tools"><button class="theme-toggle" type="button" onclick="NexoPulseTheme.toggle()" aria-label="Alternar tema"><i class="fa-solid fa-sun"></i><span>Alternar tema</span></button></div>
+        <div class="login-tools"><button class="theme-toggle" type="button" onclick="NexoPulseTheme.toggle()" aria-label="Alternar tema"><i class="fa-solid fa-sun" aria-hidden="true"></i><span>Alternar tema</span></button></div>
       </div>
     </main>
 </body>

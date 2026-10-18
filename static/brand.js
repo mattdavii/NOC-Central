@@ -1,9 +1,20 @@
 (function () {
     const STORAGE_KEY = 'nexopulse-theme';
+    const THEME_COLORS = { dark: '#082E56', light: '#F3F8FC' };
     const root = document.documentElement;
 
+    // Navegação privada ou cookies bloqueados podem impedir o acesso ao
+    // localStorage; o tema continua funcionando, apenas sem lembrar a escolha.
+    function readSaved() {
+        try { return localStorage.getItem(STORAGE_KEY); } catch (error) { return null; }
+    }
+
+    function save(theme) {
+        try { localStorage.setItem(STORAGE_KEY, theme); } catch (error) { /* sem persistência */ }
+    }
+
     function preferredTheme() {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = readSaved();
         if (saved === 'light' || saved === 'dark') return saved;
         return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     }
@@ -11,6 +22,8 @@
     function apply(theme) {
         root.dataset.theme = theme;
         root.style.colorScheme = theme;
+        const themeColor = document.querySelector('meta[name="theme-color"]');
+        if (themeColor) themeColor.setAttribute('content', THEME_COLORS[theme]);
         document.querySelectorAll('.theme-toggle').forEach(button => {
             const light = theme === 'light';
             button.setAttribute('aria-label', light ? 'Ativar tema escuro' : 'Ativar tema claro');
@@ -40,7 +53,7 @@
         apply,
         toggle() {
             const next = root.dataset.theme === 'light' ? 'dark' : 'light';
-            localStorage.setItem(STORAGE_KEY, next);
+            save(next);
             apply(next);
         }
     };
