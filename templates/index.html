@@ -19,8 +19,6 @@
         .alerta-vermelho { animation: piscar-fundo 1.5s infinite; }
         @keyframes piscar-fundo { 0% { box-shadow: inset 0 0 0px color-mix(in srgb, var(--status-crit) 0%, transparent); } 50% { box-shadow: inset 0 0 80px color-mix(in srgb, var(--status-crit) 40%, transparent); } 100% { box-shadow: inset 0 0 0px color-mix(in srgb, var(--status-crit) 0%, transparent); } }
         body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: var(--bg-base); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden;}
-        .navbar { background: var(--overlay); backdrop-filter: blur(10px); padding: 10px 30px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; z-index: 1000; flex-shrink: 0; transition: 0.3s;}
-        .navbar-brand { font-size: 1.4em; font-weight: bold; color: var(--blue); display: flex; align-items: center; gap: 15px;}
         .main-layout { display: grid; grid-template-columns: 1fr 380px; gap: 20px; padding: 20px; flex-grow: 1; overflow: hidden; transition: 0.3s;}
         .main-layout.sidebar-collapsed { grid-template-columns: 1fr 44px; }
         .content-area { display: flex; flex-direction: column; gap: 20px; overflow-y: auto; padding-right: 10px;}
@@ -71,7 +69,7 @@
         .s-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;}
         .s-title { font-size: 1em; font-weight: bold; color: var(--text-main); margin-bottom: 2px; }
         .s-mac { font-family: 'JetBrains Mono', monospace; font-size: 0.7em; color: var(--text-muted); }
-        .s-cliente { font-size: 0.75em; color: var(--yellow); margin-top: 5px; font-weight: bold;}
+        .s-cliente { font-size: 0.75em; color: var(--text-muted); margin-top: 4px; display: flex; align-items: center; gap: 6px; } .s-cliente i { width: 14px; text-align: center; opacity: .8; }
         .status-badge { padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.7em; border: 1px solid transparent; }
         .badge-on { background: color-mix(in srgb, var(--status-ok) 10%, transparent); color: var(--status-ok); border-color: var(--status-ok); }
         .badge-off { background: color-mix(in srgb, var(--status-crit) 10%, transparent); color: var(--status-crit); border-color: var(--status-crit); animation: blink 1s infinite;}
@@ -92,33 +90,23 @@
 <body>
 {% include '_brand_bar.html' %}
     <audio id="alarme-critico" src="https://assets.mixkit.co/active_storage/sfx/991/991-preview.mp3" preload="auto"></audio>
-    <nav class="navbar">
-        <div class="navbar-brand">
-            {% if session.logo_cliente %}
-                <img src="{{ session.logo_cliente }}" alt="Logo Cliente" style="height: 35px; border-radius: 4px; border: 1px solid var(--border); object-fit: contain;">
-            {% else %}
-                <img src="/static/brand/nexopulse-symbol.png" alt="NexoPulse" style="height: 38px; object-fit: contain;">
-            {% endif %}
-            <span>CENTRAL DE OPERAÇÕES</span>
-        </div>
-        <div style="display: flex; gap: 20px; align-items: center;">
-            {% if session.role == 'Administrador Master' %}
-                <a href="/sensores" class="btn-logout" style="color: var(--yellow);"><i class="fa-solid fa-satellite-dish"></i> Gestão de Sensores</a>
-                <a href="/usuarios" class="btn-logout" style="color: var(--blue);"><i class="fa-solid fa-users-gear"></i> Gestão de Usuários</a>
-            {% endif %}
-            <button id="btn-ack" onclick="reconhecerAlertas()" style="display: none; background: var(--status-crit); color: var(--bg-base); border: none; padding: 8px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-right: 20px; animation: blink 1s infinite;"><i class="fa-solid fa-triangle-exclamation"></i> ESTOU CIENTE</button>
-            <button onclick="toggleTelao()" style="background: color-mix(in srgb, var(--purple) 20%, transparent); color: var(--purple); border: 1px solid var(--purple); padding: 8px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s;"><i class="fa-solid fa-tv"></i> Telão</button>
-            <span style="color: var(--text-muted); font-size: 0.9em; margin-left: 10px; padding-left: 15px; border-left: 1px solid var(--border);">Operador: <strong style="color: var(--text-main);">{{ session.usuario }}</strong></span>
-            <form method="POST" action="/logout" style="display:inline;">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn-logout" style="background:none;border:0;cursor:pointer;"><i class="fa-solid fa-right-from-bracket"></i> Sair</button>
-            </form>
-        </div>
-    </nav>
 
     <div class="main-layout">
         <div class="content-area">
-            
+            <div class="page-head">
+                <div>
+                    <h1>
+                        {% if session.logo_cliente %}<img src="{{ session.logo_cliente }}" alt="" class="client-logo">{% else %}<i class="fa-solid fa-gauge-high"></i>{% endif %}
+                        Central de Operações
+                    </h1>
+                    <p>Estado da rede, dos sensores e dos provedores em tempo real.</p>
+                </div>
+                <div class="page-actions">
+                    <button id="btn-ack" class="action-btn btn-danger-solid" onclick="reconhecerAlertas()" style="display: none;"><i class="fa-solid fa-triangle-exclamation"></i> Estou ciente</button>
+                    <button class="action-btn btn-secondary" onclick="toggleTelao()"><i class="fa-solid fa-expand"></i> Tela cheia</button>
+                </div>
+            </div>
+
             <div class="clock-card">
                 <div class="clock-item"><div class="clock-label"><i class="fa-solid fa-clock"></i> TOKYO</div><div id="clk-tk" class="clock-time">--:--:--</div></div>
                 <div class="clock-item"><div class="clock-label"><i class="fa-solid fa-clock"></i> LONDON</div><div id="clk-ln" class="clock-time">--:--:--</div></div>
@@ -336,7 +324,7 @@
                 document.getElementById('sensor-list').innerHTML = htmlSidebar || '<p style="text-align:center; color:var(--text-muted); margin-top:30px;">Nenhum sensor atende ao filtro.</p>';
                 
                 filtrarSensores(); checarDefcon(nao_reconhecidos);
-                const btnAck = document.getElementById('btn-ack'); if (btnAck) btnAck.style.display = (nao_reconhecidos > 0) ? 'block' : 'none';
+                const btnAck = document.getElementById('btn-ack'); if (btnAck) btnAck.style.display = (nao_reconhecidos > 0) ? 'inline-flex' : 'none';
 
             } catch (error) { 
                 console.error(error);
@@ -358,7 +346,7 @@
             const painel = document.documentElement;
             if (!document.fullscreenElement) {
                 painel.requestFullscreen();
-                document.querySelector('.navbar').style.display = 'none';
+                document.querySelector('.app-bar').style.display = 'none';
                 document.querySelector('.sidebar-area').style.display = 'none';
                 document.querySelector('.main-layout').style.gridTemplateColumns = '1fr';
                 document.getElementById('container-mapa').style.height = '45vh';
@@ -367,7 +355,7 @@
         }
         document.addEventListener('fullscreenchange', () => {
             if (!document.fullscreenElement) {
-                document.querySelector('.navbar').style.display = 'flex';
+                document.querySelector('.app-bar').style.display = '';
                 document.querySelector('.sidebar-area').style.display = 'flex';
                 document.querySelector('.main-layout').style.gridTemplateColumns = '1fr 380px';
                 document.getElementById('container-mapa').style.height = '350px';
