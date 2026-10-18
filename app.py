@@ -4,7 +4,7 @@ from flask_socketio import SocketIO
 import database
 import notifications
 from location import parse_location, save_location
-from version import CENTRAL_VERSION, WINDOWS_BINARY_VERSION
+from version import CENTRAL_VERSION
 from urllib.parse import urlsplit
 import urllib.request, json
 import os
@@ -615,6 +615,9 @@ def report_data():
         except Exception: app.logger.exception('Falha em operação auxiliar')
 
         sensor = db_execute(conn, "SELECT * FROM sensores WHERE mac_id = ?", (mac,)).fetchone()
+        # O agente sugere o hostname; nomes dados na Central nunca são sobrescritos.
+        nome_sugerido = data.get('nome_local') if isinstance(data.get('nome_local'), str) else ''
+        nome_sugerido = ''.join(ch for ch in nome_sugerido if ch.isprintable()).strip()[:160] or 'Novo Sensor'
 
         if sensor:
             sensor_dict = dict(sensor)
@@ -631,23 +634,24 @@ def report_data():
                 ip_sensor = ?, cpu_usage = ?, ram_usage = ?, temp = ?, gpu_temp = ?,
                 status = 'online', memoria_alerta = 'ONLINE', ping_gateway = ?, ping_global = ?,
                 ip_gateway = ?, last_seen = CURRENT_TIMESTAMP,
-                disco = ?, net_up = ?, net_down = ?, portas = ?
+                disco = ?, net_up = ?, net_down = ?, portas = ?,
+                nome_local = CASE WHEN nome_local IS NULL OR nome_local IN ('Novo Sensor', 'Sensor Novo') THEN ? ELSE nome_local END
                 WHERE mac_id = ?''',
                 (ip_display, data.get('cpu_usage'), data.get('ram_usage'),
                  data.get('temp'), data.get('gpu_temp'), data.get('ping_gateway'),
                  data.get('ping_global'), data.get('ip_gateway'),
                  data.get('disco'), data.get('net_up'), data.get('net_down'), data.get('portas'),
-                 mac))
+                 nome_sugerido, mac))
             conn.commit()
         else:
             db_execute(conn, '''INSERT INTO sensores
                 (mac_id, nome_local, ip_sensor, cpu_usage, ram_usage, temp, gpu_temp, status, memoria_alerta, lat, lon, ping_gateway, ping_global, ip_gateway, last_seen, alerta_reconhecido, em_manutencao)
-                VALUES (?, 'Novo Sensor', ?, ?, ?, ?, ?, 'online', 'ONLINE', NULL, NULL, ?, ?, ?, CURRENT_TIMESTAMP, 1, 0)''',
-                (mac, ip_display, data.get('cpu_usage'), data.get('ram_usage'),
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'online', 'ONLINE', NULL, NULL, ?, ?, ?, CURRENT_TIMESTAMP, 1, 0)''',
+                (mac, nome_sugerido, ip_display, data.get('cpu_usage'), data.get('ram_usage'),
                  data.get('temp'), data.get('gpu_temp'), data.get('ping_gateway'),
                  data.get('ping_global'), data.get('ip_gateway')))
             conn.commit()
-            enviar_telegram(f"🎉 <b>NOVO SENSOR REGISTRADO</b>\n\n🖥️ <b>MAC:</b> {html.escape(str(mac))}\n🌐 <b>IP:</b> {html.escape(str(ip_display))}", conn=conn)
+            enviar_telegram(f"🎉 <b>NOVO SENSOR REGISTRADO</b>\n\n🖥️ <b>Nome:</b> {html.escape(nome_sugerido)}\n🔖 <b>MAC:</b> {html.escape(str(mac))}\n🌐 <b>IP:</b> {html.escape(str(ip_display))}", conn=conn)
 
         if data.get('location_source') == 'ip' and data.get('latitude') is not None:
             try:
@@ -742,27 +746,17 @@ def gerar_token_local(mac):
     return jsonify({"token": token, "mac": mac, "expira_em_horas": 1})
 
 # ==========================================
-# 🔄 VERSÃO DO AGENTE (PARA O AUTO-UPDATE)
+# 🔄 VERSÃO DO AGENTE
 # ==========================================
-# Atualize os dois valores abaixo toda vez que compilar e publicar uma nova versão do agente.
-VERSAO_AGENTE_ATUAL = WINDOWS_BINARY_VERSION
-URL_DOWNLOAD_AGENTE = os.environ.get('WINDOWS_AGENT_URL', '').strip()
-WINDOWS_AGENT_SHA256 = os.environ.get('WINDOWS_AGENT_SHA256', '').strip().lower()
-
+# O agente é só Linux (no Windows, via WSL) e roda do repositório: a Central
+# anuncia a versão e o sensor se atualiza com linux/update.sh <tag>.
 @app.route('/api/v2/agent_versao')
 def agent_versao():
-    artifact_ready = bool(
-        URL_DOWNLOAD_AGENTE.startswith('https://')
-        and re.fullmatch(r'[0-9a-f]{64}', WINDOWS_AGENT_SHA256)
-    )
     return jsonify({
-        "versao": VERSAO_AGENTE_ATUAL,
-        "url_download": URL_DOWNLOAD_AGENTE if artifact_ready else '',
-        "sha256": WINDOWS_AGENT_SHA256 if artifact_ready else '',
-        "update_available": artifact_ready,
-        "platform": "windows",
+        "versao": CENTRAL_VERSION,
+        "platform": "linux",
+        "update_command": f"bash linux/update.sh v{CENTRAL_VERSION}",
         "central_version": CENTRAL_VERSION,
-        "source_version": CENTRAL_VERSION,
     })
 
 # ==========================================
