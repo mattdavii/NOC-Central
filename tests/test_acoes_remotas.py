@@ -92,3 +92,16 @@ def test_installer_points_to_this_central(client):
     script = client.get('/instalar.sh', headers={'X-Forwarded-Proto': 'https'}).get_data(as_text=True)
     assert 'https://localhost/agente/pacote.tar.gz' in script
     assert 'NOC_CENTRAL_URL="https://localhost/api/v2/report_data"' in script
+
+
+def test_action_without_answer_expires(client, login):
+    master = _preparar(client, login)
+    conn = database.get_db()
+    conn.execute("INSERT INTO acoes_remotas (sensor_mac, acao, solicitante, status, criado_em) VALUES (?, 'diagnostico', 'admin', 'enviada', '2000-01-01 00:00:00')", (MAC,))
+    conn.execute("INSERT INTO acoes_remotas (sensor_mac, acao, solicitante, status) VALUES (?, 'diagnostico', 'admin', 'enviada')", (MAC,))
+    conn.commit(); conn.close()
+    hist = master.get(f'/api/v2/sensor/{MAC}/acoes').get_json()['historico']
+    antiga = next(a for a in hist if a['criado_em'].startswith('2000-01-01'))
+    recente = next(a for a in hist if not a['criado_em'].startswith('2000-01-01') and a['status'] in ('enviada', 'erro'))
+    assert antiga['status'] == 'erro' and 'não confirmou' in antiga['saida']
+    assert recente['status'] == 'enviada'
