@@ -49,7 +49,36 @@ TELEMETRIA_INTERVALO = max(3, int(os.environ.get("NOC_TELEMETRIA_INTERVALO", "5"
 WATCHDOG_INTERVALO = max(10, int(os.environ.get("NOC_WATCHDOG_INTERVALO", "15")))
 SCAN_REDE_INTERVALO = max(30, int(os.environ.get("NOC_SCAN_REDE_INTERVALO", "60")))
 MAX_NETWORK_SCAN_HOSTS = max(64, min(2048, int(os.environ.get("NOC_MAX_SCAN_HOSTS", "512"))))
-SENSOR_API_KEY = os.environ.get("NOC_SENSOR_API_KEY", "").strip()
+SENSOR_KEY_FILE = os.environ.get("NOC_SENSOR_KEY_FILE", "sensor_key.txt")
+
+
+def _carregar_chave_sensor():
+    """Chave do agente: NOC_SENSOR_API_KEY, ou uma gerada uma vez e guardada em disco.
+
+    A Central vincula essa chave ao MAC no primeiro contato e passa a exigi-la.
+    """
+    chave = os.environ.get("NOC_SENSOR_API_KEY", "").strip()
+    if chave:
+        return chave
+    try:
+        with open(SENSOR_KEY_FILE, encoding="utf-8") as arquivo:
+            chave = arquivo.read().strip()
+        if len(chave) >= 32:
+            return chave
+    except OSError:
+        pass
+    import secrets
+    chave = secrets.token_urlsafe(32)
+    try:
+        fd = os.open(SENSOR_KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as arquivo:
+            arquivo.write(chave + "\n")
+    except OSError:
+        pass
+    return chave
+
+
+SENSOR_API_KEY = _carregar_chave_sensor()
 
 
 def api_headers():
@@ -630,8 +659,9 @@ def executar_flush_dns():
 
 def executar_admin_linux(acao, alvo=None):
     """Executa apenas ações administrativas pré-definidas, sem prompt de senha."""
-    wrapper = "/usr/local/sbin/minipc-admin"
-    if os.path.isfile(wrapper) and os.access(wrapper, os.X_OK):
+    wrapper = next((w for w in ("/usr/local/sbin/nexopulse-admin", "/usr/local/sbin/minipc-admin")
+                    if os.path.isfile(w) and os.access(w, os.X_OK)), None)
+    if wrapper:
         cmd = ["sudo", "-n", wrapper, acao]
         if alvo:
             cmd.append(alvo)
@@ -651,6 +681,122 @@ def executar_admin_linux(acao, alvo=None):
         ).returncode == 0
     except Exception:
         return False
+
+
+# ==========================================
+# 🛠️ AÇÕES REMOTAS (só as desta lista; a Central nunca manda comando livre)
+# ==========================================
+ADMIN_HELPER = "/usr/local/sbin/nexopulse-admin"
+LIMITE_SAIDA_ACAO = 16000
+
+
+def _rodar(cmd, timeout):
+    try:
+        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                           timeout=timeout, text=True, errors="replace")
+        return r.returncode, r.stdout
+    except subprocess.TimeoutExpired as e:
+        return 124, (e.stdout or "") + f"\n[tempo limite de {timeout}s esgotado]"
+    except FileNotFoundError:
+        return 127, f"comando não encontrado: {cmd[0]}"
+
+
+def _admin(subcomando, timeout):
+    if not (os.path.isfile(ADMIN_HELPER) and os.access(ADMIN_HELPER, os.X_OK)):
+        return 1, (f"{ADMIN_HELPER} não está liberado nesta máquina: esta ação precisa de root. "
+                   "Veja 'Ações que precisam de root' no linux/README.md.")
+    return _rodar(["sudo", "-n", ADMIN_HELPER, subcomando], timeout)
+
+
+def _acao_diagnostico():
+    partes = []
+    for titulo, cmd in (
+        ("Sistema", ["uname", "-a"]), ("Ligado há", ["uptime"]), ("Disco", ["df", "-h", "-x", "tmpfs", "-x", "devtmpfs"]),
+        ("Memória", ["free", "-m"]), ("Rede", ["ip", "-br", "addr"]), ("Rotas", ["ip", "route"]),
+        ("Serviço do agente", ["systemctl", "status", "noc-sensor", "--no-pager", "-n", "15"]),
+    ):
+        _, saida = _rodar(cmd, 15)
+        partes.append(f"== {titulo} ==\n{saida.strip()}")
+    partes.append(f"== Agente ==\nNexoPulse Edge {VERSAO_AGENTE} · {SO_INFO['nome']} {SO_INFO['versao']}")
+    return 0, "\n\n".join(partes)
+
+
+def _acao_atualizar_agente():
+    """Baixa o pacote atual da Central, troca os arquivos do agente e reinicia o serviço."""
+    import tarfile, tempfile, io, shutil
+    base = URL_CENTRAL.split("/api/")[0]
+    try:
+        req = urllib.request.Request(f"{base}/agente/pacote.tar.gz", headers=api_headers())
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            dados = resp.read(30 * 1024 * 1024)
+    except Exception as e:
+        return 1, f"falha ao baixar o pacote: {e}"
+    destino = os.path.dirname(os.path.abspath(__file__))
+    preservar = {"sensor_key.txt", "sensor_id.txt", "sensor_local.db", ".venv"}
+    with tempfile.TemporaryDirectory() as tmp:
+        with tarfile.open(fileobj=io.BytesIO(dados), mode="r:gz") as tar:
+            membros = [m for m in tar.getmembers() if m.isfile() and not m.name.startswith(("/", "..")) and ".." not in m.name.split("/")]
+            tar.extractall(tmp, members=membros)
+        raiz = os.path.join(tmp, "nexopulse-edge")
+        for pasta, _, arquivos in os.walk(raiz):
+            for nome in arquivos:
+                origem = os.path.join(pasta, nome)
+                relativo = os.path.relpath(origem, raiz)
+                if relativo.split(os.sep)[0] in preservar:
+                    continue
+                alvo = os.path.join(destino, relativo)
+                os.makedirs(os.path.dirname(alvo), exist_ok=True)
+                shutil.copy2(origem, alvo)
+    codigo, pip = _rodar([os.path.join(destino, ".venv", "bin", "python"), "-m", "pip", "install", "-q", "-r",
+                           os.path.join(destino, "requirements-agente.txt")], 600)
+    if codigo != 0:
+        return codigo, f"arquivos atualizados em {destino}, mas o pip falhou:\n{pip.strip()}"
+    return _reiniciar_agente(f"pacote instalado em {destino}")
+
+
+def _reiniciar_agente(prefixo=""):
+    # Sem root: o agente encerra depois de enviar o resultado e o systemd
+    # (Restart=always) o sobe de novo, já com o código atual.
+    global _REINICIAR_APOS_RESULTADO
+    _REINICIAR_APOS_RESULTADO = True
+    return 0, (prefixo + "\n" if prefixo else "") + "o agente vai reiniciar em instantes"
+
+
+_REINICIAR_APOS_RESULTADO = False
+
+
+ACOES_REMOTAS = {
+    "diagnostico": _acao_diagnostico,
+    "atualizar_sistema": lambda: _admin("update-system", 1800),
+    "atualizar_agente": _acao_atualizar_agente,
+    "reiniciar_agente": _reiniciar_agente,
+    "reiniciar_maquina": lambda: _admin("reboot", 30),
+}
+
+
+def executar_acao_remota(mac, id_acao, acao):
+    funcao = ACOES_REMOTAS.get(acao)
+    if funcao is None:
+        codigo, saida = 2, f"ação desconhecida pelo agente: {acao}"
+    else:
+        log_local_event("Ação remota", f"Executando '{acao}' (#{id_acao}) pedida pela Central.", "Aviso")
+        try:
+            codigo, saida = funcao()
+        except Exception as e:
+            codigo, saida = 1, f"erro: {e}"
+    saida = (saida or "")[-LIMITE_SAIDA_ACAO:]
+    try:
+        req = urllib.request.Request(
+            URL_CENTRAL.replace("report_data", "acao_resultado"),
+            data=json.dumps({"mac_id": mac, "id": id_acao, "codigo": codigo, "saida": saida}).encode("utf-8"),
+            headers=api_headers(), method="POST")
+        urllib.request.urlopen(req, timeout=15).close()
+    except Exception as e:
+        log_local_event("Ação remota", f"Não foi possível enviar o resultado de #{id_acao}: {e}", "Alerta")
+    if _REINICIAR_APOS_RESULTADO:
+        log_local_event("Ação remota", "Reiniciando o agente a pedido da Central.", "Aviso")
+        time.sleep(1)
+        os._exit(0)
 
 
 # ==========================================
@@ -853,6 +999,10 @@ def loop_telemetria():
                     elif comando == "flush_dns":
                         if not executar_flush_dns():
                             log_local_event("Comando Remoto", "Falha ao limpar cache DNS.", "Alerta")
+                    elif comando and comando.startswith("acao:"):
+                        _, id_acao, nome_acao = (comando.split(":", 2) + ["", ""])[:3]
+                        if id_acao.isdigit():
+                            threading.Thread(target=executar_acao_remota, args=(mac, int(id_acao), nome_acao), daemon=True).start()
                     elif comando == "scan_loop": 
                         threading.Thread(target=executar_scan_loop, args=(mac, URL_CENTRAL, gateway_ip), daemon=True).start()
                     elif comando and comando.startswith("wol:"): 

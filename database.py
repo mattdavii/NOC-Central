@@ -130,6 +130,7 @@ def init_db():
             'ips_custom': 'sensor_mac TEXT, ip TEXT, descricao TEXT, latencia REAL DEFAULT 0',
             'ips_energia': 'sensor_mac TEXT, ip TEXT, descricao TEXT, latencia REAL DEFAULT 0',
             'dispositivos': 'sensor_mac TEXT, ip TEXT, mac TEXT, fabricante TEXT, nome_custom TEXT',
+            'acoes_remotas': "sensor_mac TEXT NOT NULL, acao TEXT NOT NULL, solicitante TEXT, status TEXT DEFAULT 'pendente', codigo INTEGER, saida TEXT, criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP, concluido_em TIMESTAMP",
         }
         for table, definition in tables.items():
             conn.execute(f'CREATE TABLE IF NOT EXISTS {table} (id {identity}, {definition})')
@@ -164,7 +165,7 @@ def init_db():
         conn.close()
 
 
-SENSOR_COLUMNS = ['last_seen TIMESTAMP', 'ip_gateway TEXT', 'ultima_rota TEXT', 'download REAL', 'upload REAL', 'alerta_reconhecido INTEGER DEFAULT 1', 'disco REAL', 'net_up REAL', 'net_down REAL', 'portas TEXT', 'em_manutencao INTEGER DEFAULT 0', 'cliente_id INTEGER', 'gpu_temp REAL', "memoria_alerta TEXT DEFAULT 'ONLINE'", 'so_nome TEXT', 'so_versao TEXT', 'so_arquitetura TEXT', 'interface_nome TEXT', 'interface_mac TEXT', 'rede_mascara TEXT', 'rede_cidr TEXT', 'link_speed_mbps REAL', 'interface_up BOOLEAN', 'scan_rede TEXT', 'scan_limitado BOOLEAN', 'cliente_nome TEXT', 'latitude REAL', 'longitude REAL', 'accuracy_m REAL', 'location_source TEXT', 'location_updated_at TEXT', 'agent_version TEXT', 'traceroute TEXT']
+SENSOR_COLUMNS = ['last_seen TIMESTAMP', 'ip_gateway TEXT', 'ultima_rota TEXT', 'download REAL', 'upload REAL', 'alerta_reconhecido INTEGER DEFAULT 1', 'disco REAL', 'net_up REAL', 'net_down REAL', 'portas TEXT', 'em_manutencao INTEGER DEFAULT 0', 'cliente_id INTEGER', 'gpu_temp REAL', "memoria_alerta TEXT DEFAULT 'ONLINE'", 'so_nome TEXT', 'so_versao TEXT', 'so_arquitetura TEXT', 'interface_nome TEXT', 'interface_mac TEXT', 'rede_mascara TEXT', 'rede_cidr TEXT', 'link_speed_mbps REAL', 'interface_up BOOLEAN', 'scan_rede TEXT', 'scan_limitado BOOLEAN', 'cliente_nome TEXT', 'latitude REAL', 'longitude REAL', 'accuracy_m REAL', 'location_source TEXT', 'location_updated_at TEXT', 'agent_version TEXT', 'traceroute TEXT', 'acoes_remotas INTEGER DEFAULT 0']
 CLIENT_COLUMNS = ['nome TEXT', 'cliente_pai_id INTEGER', 'ativo INTEGER DEFAULT 1', 'logo_url TEXT', 'telegram_token TEXT', 'telegram_chat_id TEXT']
 get_db = get_db_connection
 

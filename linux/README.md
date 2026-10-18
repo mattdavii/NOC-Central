@@ -3,42 +3,82 @@
 O `agente_v2.py` roda só em Linux, como serviço `systemd`, sem depender de sessão
 gráfica. No Windows ele roda dentro do WSL (veja abaixo).
 
-## Instalação
+## Instalação (Linux)
 
-Na raiz do repositório:
+Numa máquina com Linux (Debian/Ubuntu, Arch/CachyOS, Fedora ou openSUSE), como
+usuário normal (o instalador pede `sudo` quando precisa):
 
 ```bash
-bash linux/install.sh
+curl -fsSL https://nexopulse.up.railway.app/instalar.sh | bash
 ```
 
-Funciona em distros com `apt` (Debian/Ubuntu), `pacman` (Arch/CachyOS), `dnf`
-(Fedora) e `zypper` (openSUSE).
+Com um nome diferente do hostname:
 
-O sensor aparece na Central com o **hostname** da máquina. Para outro nome,
-defina `NOC_SENSOR_NOME` em `/etc/default/noc-sensor` antes do primeiro contato
-(depois disso, renomeie pela tela do sensor na Central; o nome dado lá nunca é
-sobrescrito).
+```bash
+curl -fsSL https://nexopulse.up.railway.app/instalar.sh | NOC_SENSOR_NOME="Loja Centro" bash
+```
 
-A identidade do sensor é o MAC da placa de rede, guardado em `sensor_id.txt`
-na pasta do agente: reinícios e trocas de interface não criam sensores novos.
+O instalador baixa o agente da Central para `~/nexopulse-edge`, instala as
+dependências e registra o serviço `noc-sensor` no systemd com:
+
+- **início automático no boot** (`systemctl enable`): a máquina liga, o sensor sobe;
+- **`Restart=always` sem limite de tentativas**: se o agente cair, volta em 5 s.
+
+Reinstalar pelo mesmo comando preserva a identidade (`sensor_id.txt`) e a chave
+(`sensor_key.txt`) do sensor.
 
 ## Windows (via WSL)
 
-Em um PowerShell **como Administrador**, no Windows 11 22H2 ou mais novo:
+No Windows 11 22H2 ou mais novo, baixe o instalador e rode num PowerShell
+**como Administrador**:
 
 ```powershell
+irm https://nexopulse.up.railway.app/instalar-windows.ps1 -OutFile instalar-nexopulse.ps1
 Set-ExecutionPolicy -Scope Process Bypass
-.\windows\instalar-nexopulse-wsl.ps1 -NomeSensor "Loja Centro"
+.\instalar-nexopulse.ps1 -NomeSensor "Loja Centro"
 ```
 
-O script instala o Ubuntu no WSL (na primeira vez pede para criar o usuário Linux
-e rodar de novo), liga a **rede espelhada** (`networkingMode=mirrored`, para o
-sensor enxergar a rede e o MAC reais), o systemd, roda `linux/install.sh` lá
-dentro e cria a tarefa "NexoPulse Edge (WSL)" que liga o WSL quando o Windows
-inicia. No WSL não há leitura de temperatura da CPU (o `lm-sensors` não enxerga
-o hardware do Windows).
+O script instala o Ubuntu no WSL (na primeira vez pede para criar o usuário
+Linux e rodar de novo), liga a **rede espelhada** (`networkingMode=mirrored`,
+para o sensor enxergar a rede e o MAC reais), o systemd e roda o mesmo
+instalador Linux lá dentro. Também cria a tarefa agendada **"NexoPulse Edge
+(WSL)"**, que liga o WSL quando o Windows inicia — o systemd do WSL então sobe o
+sensor. No WSL não há leitura de temperatura da CPU.
 
-O instalador cria um ambiente virtual, instala as dependências necessárias e registra o NexoPulse Edge no serviço compatível `noc-sensor.service`.
+## Identidade e chave do sensor
+
+- O sensor aparece na Central com o **hostname** (ou `NOC_SENSOR_NOME`); o nome
+  dado na tela da Central nunca é sobrescrito.
+- A identidade é o MAC da placa de rede, guardado em `sensor_id.txt`.
+- No primeiro uso o agente gera uma chave em `sensor_key.txt` (permissão 600). A
+  Central a vincula ao sensor no primeiro contato, avisa o grupo NexoPulse no
+  Telegram e passa a exigi-la. Para trocar a chave de um sensor, use
+  **Gerar chave** na tela Sensores e coloque o valor em `NOC_SENSOR_API_KEY` no
+  `/etc/default/noc-sensor`.
+
+## Ações remotas
+
+Na tela do sensor, o **Administrador Master** pode ligar as ações remotas daquele
+sensor e executar: coletar diagnóstico, atualizar o agente, reiniciar o agente,
+atualizar o sistema e reiniciar a máquina. Cada uso pede a senha, fica em
+Incidentes e avisa o grupo NexoPulse no Telegram. O agente só executa essa lista
+fixa — a Central nunca manda comando livre.
+
+### Ações que precisam de root
+
+"Atualizar o sistema" e "Reiniciar a máquina" precisam de root. O agente roda
+como usuário comum e só consegue fazê-las se você liberar, nesta máquina, o
+ajudante `nexopulse-admin` (que aceita apenas `update-system`, `reboot`,
+`restart-agent` e `start-service`). **Isso dá à Central o poder de atualizar e
+reiniciar a máquina — libere só onde fizer sentido.** Na pasta do agente:
+
+```bash
+sudo install -o root -g root -m 0755 linux/nexopulse-admin /usr/local/sbin/nexopulse-admin
+echo "$USER ALL=(root) NOPASSWD: /usr/local/sbin/nexopulse-admin" | sudo tee /etc/sudoers.d/nexopulse-edge
+sudo chmod 0440 /etc/sudoers.d/nexopulse-edge && sudo visudo -c
+```
+
+Para desfazer: `sudo rm /etc/sudoers.d/nexopulse-edge /usr/local/sbin/nexopulse-admin`.
 
 ## Operação
 

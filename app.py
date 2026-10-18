@@ -65,6 +65,8 @@ TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 # NOC_SENSOR_API_KEY na Central é apenas a opção compartilhada legada de transição.
 NOC_SENSOR_API_KEY = os.environ.get("NOC_SENSOR_API_KEY", "").strip()
 NOC_SENSOR_AUTH_REQUIRED = os.environ.get("NOC_SENSOR_AUTH_REQUIRED", "0").strip().lower() in ('1', 'true', 'yes', 'on')
+# Agentes geram a própria chave; no primeiro contato a Central a vincula ao MAC.
+NOC_SENSOR_AUTO_ENROLL = os.environ.get("NOC_SENSOR_AUTO_ENROLL", "1").strip().lower() in ('1', 'true', 'yes', 'on')
 if not NOC_SENSOR_API_KEY:
     print("⚠️ NOC_SENSOR_API_KEY ausente: API de sensores em modo compatibilidade.")
 if not NOC_SENSOR_AUTH_REQUIRED:
@@ -190,6 +192,26 @@ def _sensor_child_scope_error(conn, sensor_id):
     return None
 
 
+def _vincular_chave_sensor(conn, sensor_id, chave, chave_hash):
+    """Primeiro contato de um sensor sem credencial: vincula a chave que ele gerou.
+
+    Só acontece quando o MAC nunca teve credencial (uma chave revogada nunca é
+    revinculada sozinha). O grupo NexoPulse é avisado de cada vínculo.
+    """
+    conn.execute('''INSERT INTO sensor_credentials (sensor_mac, key_hash, key_prefix, created_at, revoked_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP, NULL) ON CONFLICT(sensor_mac) DO NOTHING''',
+        (sensor_id, chave_hash, chave[:8]))
+    credential = conn.execute(
+        'SELECT key_hash, revoked_at FROM sensor_credentials WHERE sensor_mac=?', (sensor_id,)).fetchone()
+    if credential and credential['key_hash'] == chave_hash:
+        sensor = conn.execute('SELECT nome_local FROM sensores WHERE mac_id=?', (sensor_id,)).fetchone()
+        nome = sensor['nome_local'] if sensor else 'sensor novo'
+        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Credencial vinculada', 'Aviso', 'Chave do agente vinculada no primeiro contato.')", (sensor_id,))
+        enviar_telegram(f"🔐 <b>SENSOR VINCULADO</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(nome))}\n🔖 <b>MAC:</b> {html.escape(str(sensor_id))}\nA chave deste agente passa a ser exigida.", conn=conn)
+    conn.commit()
+    return credential
+
+
 def validar_sensor_ou_sessao():
     if session.get("user_id"):
         return None
@@ -204,12 +226,14 @@ def validar_sensor_ou_sessao():
         if sensor_id:
             conn = database.get_db()
             try:
+                supplied_hash = hashlib.sha256(fornecida.encode('utf-8')).hexdigest()
                 credential = conn.execute(
-                    'SELECT key_hash FROM sensor_credentials WHERE sensor_mac=? AND revoked_at IS NULL',
+                    'SELECT key_hash, revoked_at FROM sensor_credentials WHERE sensor_mac=?',
                     (sensor_id,),
                 ).fetchone()
-                supplied_hash = hashlib.sha256(fornecida.encode('utf-8')).hexdigest()
-                if credential and hmac.compare_digest(str(credential['key_hash']), supplied_hash):
+                if credential is None and NOC_SENSOR_AUTO_ENROLL:
+                    credential = _vincular_chave_sensor(conn, sensor_id, fornecida, supplied_hash)
+                if credential and not credential['revoked_at'] and hmac.compare_digest(str(credential['key_hash']), supplied_hash):
                     scope_error = _sensor_child_scope_error(conn, sensor_id)
                     return scope_error
             finally:
@@ -386,6 +410,78 @@ def enforce_tenant_scope():
         conn.close()
 
 
+# ==========================================
+# 📦 PACOTE E INSTALADOR DO AGENTE
+# ==========================================
+ARQUIVOS_AGENTE = ['agente_v2.py', 'requirements-agente.txt', 'linux/install.sh', 'linux/nexopulse-admin',
+                   'linux/README.md', 'windows/instalar-nexopulse-wsl.ps1']
+
+
+def _url_central():
+    proto = request.headers.get('X-Forwarded-Proto', request.scheme).split(',')[0].strip()
+    return f"{proto}://{request.host}"
+
+
+@app.route('/agente/pacote.tar.gz')
+def pacote_agente():
+    """Pacote do NexoPulse Edge montado a partir dos arquivos desta versão da Central."""
+    import io, tarfile
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode='w:gz') as tar:
+        for relativo in ARQUIVOS_AGENTE:
+            info = tar.gettarinfo(os.path.join(raiz, relativo), arcname=f'nexopulse-edge/{relativo}')
+            info.uid = info.gid = 0
+            info.uname = info.gname = ''
+            with open(os.path.join(raiz, relativo), 'rb') as arquivo:
+                tar.addfile(info, arquivo)
+        versao = f'{CENTRAL_VERSION}\n'.encode()
+        info = tarfile.TarInfo('nexopulse-edge/VERSION')
+        info.size, info.mtime, info.mode = len(versao), int(time.time()), 0o644
+        tar.addfile(info, io.BytesIO(versao))
+    resposta = app.response_class(buffer.getvalue(), mimetype='application/gzip')
+    resposta.headers['Content-Disposition'] = f'attachment; filename=nexopulse-edge-{CENTRAL_VERSION}.tar.gz'
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
+
+
+@app.route('/instalar.sh')
+def instalar_sh():
+    """Instalador de uma linha: curl -fsSL <central>/instalar.sh | bash"""
+    central = _url_central()
+    script = f"""#!/usr/bin/env bash
+# Instalador do NexoPulse Edge para esta Central ({central}).
+# Uso: curl -fsSL {central}/instalar.sh | bash
+#   Nome personalizado: curl -fsSL {central}/instalar.sh | NOC_SENSOR_NOME="Loja Centro" bash
+set -euo pipefail
+if [ "$(id -u)" -eq 0 ]; then echo "Rode como usuário normal (o instalador pede sudo quando precisa)."; exit 1; fi
+DESTINO="${{NEXOPULSE_DIR:-$HOME/nexopulse-edge}}"
+TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+echo "==> Baixando o NexoPulse Edge de {central}..."
+curl -fsSL "{central}/agente/pacote.tar.gz" -o "$TMP/pacote.tar.gz"
+mkdir -p "$DESTINO"
+tar -xzf "$TMP/pacote.tar.gz" -C "$TMP"
+# Preserva a identidade e a chave do sensor em reinstalações.
+cp -a "$TMP/nexopulse-edge/." "$DESTINO/"
+cd "$DESTINO"
+NOC_CENTRAL_URL="{central}/api/v2/report_data" bash linux/install.sh
+echo "Pasta do agente: $DESTINO"
+"""
+    return app.response_class(script, mimetype='text/x-shellscript', headers={'Cache-Control': 'no-store'})
+
+
+@app.route('/instalar-windows.ps1')
+def instalar_windows():
+    """Instalador para Windows (via WSL), já apontando para esta Central."""
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(raiz, 'windows', 'instalar-nexopulse-wsl.ps1'), encoding='utf-8') as arquivo:
+        script = arquivo.read().replace("'https://nexopulse.up.railway.app'", f"'{_url_central()}'")
+    resposta = app.response_class(script, mimetype='text/plain')
+    resposta.headers['Content-Disposition'] = 'attachment; filename=instalar-nexopulse.ps1'
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
+
+
 @app.route('/privacidade')
 def privacidade():
     # Página pública: exigida pelo Google para publicar o app OAuth do backup.
@@ -457,7 +553,9 @@ def consumir_comando(conn, sensor_mac):
             (sensor_mac,),
         ).fetchone()
         conn.commit()
-        return row["comando"] if row else "none"
+        comando = row["comando"] if row else "none"
+        _marcar_acao_enviada(conn, comando)
+        return comando
 
     row = db_execute(
         conn,
@@ -468,7 +566,14 @@ def consumir_comando(conn, sensor_mac):
         return "none"
     db_execute(conn, "DELETE FROM comandos_pendentes WHERE id = ?", (row["id"],))
     conn.commit()
+    _marcar_acao_enviada(conn, row["comando"])
     return row["comando"]
+
+
+def _marcar_acao_enviada(conn, comando):
+    if comando.startswith('acao:') and comando.split(':')[1].isdigit():
+        conn.execute("UPDATE acoes_remotas SET status='enviada' WHERE id=? AND status='pendente'", (int(comando.split(':')[1]),))
+        conn.commit()
 
 
 # ==========================================
@@ -1476,6 +1581,128 @@ def sensor_credential(mac_id):
         ), 201
     finally:
         conn.close()
+
+# ==========================================
+# 🛠️ AÇÕES REMOTAS (Administrador Master, com senha e auditoria)
+# ==========================================
+ACOES_REMOTAS = {
+    'diagnostico': 'Coletar diagnóstico',
+    'atualizar_sistema': 'Atualizar sistema operacional',
+    'atualizar_agente': 'Atualizar agente NexoPulse',
+    'reiniciar_agente': 'Reiniciar serviço do agente',
+    'reiniciar_maquina': 'Reiniciar a máquina',
+}
+_falhas_senha = {}
+
+
+def _exigir_master_com_senha():
+    """Só o Administrador Master, e só reconfirmando a senha (5 erros = 10 min bloqueado)."""
+    if session.get('role') != 'Administrador Master' or 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    agora = time.time()
+    falhas = [t for t in _falhas_senha.get(session['user_id'], []) if agora - t < 600]
+    if len(falhas) >= 5:
+        return jsonify(error='Muitas tentativas. Tente de novo em alguns minutos.'), 429
+    senha = (request.get_json(silent=True) or {}).get('senha') or ''
+    conn = database.get_db()
+    try:
+        row = conn.execute('SELECT senha FROM clientes WHERE id=?', (session['user_id'],)).fetchone()
+    finally:
+        conn.close()
+    guardada = str(row['senha']) if row else ''
+    ok = bool(senha) and guardada.startswith(('scrypt:', 'pbkdf2:')) and check_password_hash(guardada, senha)
+    if not ok:
+        _falhas_senha[session['user_id']] = falhas + [agora]
+        return jsonify(error='Senha incorreta.'), 401
+    _falhas_senha.pop(session['user_id'], None)
+    return None
+
+
+@app.route('/api/v2/sensor/<mac_id>/acoes', methods=['GET', 'POST'])
+def acoes_remotas(mac_id):
+    if session.get('role') != 'Administrador Master':
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        sensor = conn.execute('SELECT mac_id, nome_local, acoes_remotas FROM sensores WHERE mac_id=?', (mac_id,)).fetchone()
+        if not sensor:
+            return jsonify(error='Sensor não encontrado.'), 404
+        if request.method == 'GET':
+            linhas = conn.execute('SELECT id, acao, solicitante, status, codigo, saida, criado_em, concluido_em FROM acoes_remotas WHERE sensor_mac=? ORDER BY id DESC LIMIT 15', (mac_id,)).fetchall()
+            return jsonify(permitido=bool(sensor['acoes_remotas']), acoes=ACOES_REMOTAS,
+                           historico=[{k: (str(v) if k in ('criado_em', 'concluido_em') and v is not None else v) for k, v in dict(r).items()} for r in linhas])
+    finally:
+        conn.close()
+    erro = _exigir_master_com_senha()
+    if erro:
+        return erro
+    acao = (request.get_json(silent=True) or {}).get('acao')
+    if acao not in ACOES_REMOTAS:
+        return jsonify(error='Ação desconhecida.'), 400
+    if not sensor['acoes_remotas']:
+        return jsonify(error='Ações remotas estão desligadas para este sensor.'), 409
+    conn = database.get_db()
+    try:
+        cur = conn.execute('INSERT INTO acoes_remotas (sensor_mac, acao, solicitante, status) VALUES (?, ?, ?, ?) RETURNING id',
+                           (mac_id, acao, session.get('usuario'), 'pendente'))
+        id_acao = cur.fetchone()['id']
+        conn.execute('INSERT INTO comandos_pendentes (sensor_mac, comando) VALUES (?, ?)', (mac_id, f'acao:{id_acao}:{acao}'))
+        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Ação remota', 'Aviso', ?)",
+                     (mac_id, f"{ACOES_REMOTAS[acao]} solicitada por {session.get('usuario')} (#{id_acao})."))
+        enviar_telegram(f"⚠️ <b>AÇÃO REMOTA</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor['nome_local']))}\n🛠️ <b>Ação:</b> {ACOES_REMOTAS[acao]}\n👤 <b>Por:</b> {html.escape(str(session.get('usuario')))}", conn=conn)
+        conn.commit()
+        return jsonify(status='OK', id=id_acao), 201
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/sensor/<mac_id>/permitir_acoes', methods=['POST'])
+def permitir_acoes_remotas(mac_id):
+    erro = _exigir_master_com_senha()
+    if erro:
+        return erro
+    permitir = bool((request.get_json(silent=True) or {}).get('permitir'))
+    conn = database.get_db()
+    try:
+        sensor = conn.execute('SELECT nome_local FROM sensores WHERE mac_id=?', (mac_id,)).fetchone()
+        if not sensor:
+            return jsonify(error='Sensor não encontrado.'), 404
+        conn.execute('UPDATE sensores SET acoes_remotas=? WHERE mac_id=?', (1 if permitir else 0, mac_id))
+        estado = 'LIGADAS' if permitir else 'DESLIGADAS'
+        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Ação remota', 'Aviso', ?)",
+                     (mac_id, f"Ações remotas {estado.lower()} por {session.get('usuario')}."))
+        enviar_telegram(f"🔧 <b>AÇÕES REMOTAS {estado}</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor['nome_local']))}\n👤 <b>Por:</b> {html.escape(str(session.get('usuario')))}", conn=conn)
+        conn.commit()
+        return jsonify(status='OK', permitido=permitir)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acao_resultado', methods=['POST'])
+def acao_resultado():
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error:
+        return auth_error
+    data = request.get_json(silent=True) or {}
+    mac, id_acao = data.get('mac_id'), data.get('id')
+    if not isinstance(id_acao, int):
+        return jsonify(error='id inválido'), 400
+    codigo = data.get('codigo') if isinstance(data.get('codigo'), int) else None
+    saida = str(data.get('saida') or '')[-16000:]
+    conn = database.get_db()
+    try:
+        row = conn.execute('SELECT sensor_mac, acao FROM acoes_remotas WHERE id=?', (id_acao,)).fetchone()
+        if not row or row['sensor_mac'] != mac:
+            return jsonify(error='Ação não pertence a este sensor.'), 403
+        status = 'concluida' if codigo == 0 else 'erro'
+        conn.execute('UPDATE acoes_remotas SET status=?, codigo=?, saida=?, concluido_em=CURRENT_TIMESTAMP WHERE id=?', (status, codigo, saida, id_acao))
+        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Ação remota', ?, ?)",
+                     (mac, 'Aviso' if codigo == 0 else 'Alerta', f"{ACOES_REMOTAS.get(row['acao'], row['acao'])} (#{id_acao}): {'concluída' if codigo == 0 else f'falhou (código {codigo})'}."))
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
 
 @app.route('/api/v2/alocar_sensor', methods=['POST'])
 def alocar_sensor():

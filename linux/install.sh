@@ -34,19 +34,25 @@ echo "==> Preparando ambiente Python..."
 "${VENV_DIR}/bin/python" -m pip install --upgrade pip
 "${VENV_DIR}/bin/pip" install -r "${ROOT_DIR}/requirements-agente.txt"
 
+CENTRAL_URL="${NOC_CENTRAL_URL:-https://nexopulse.up.railway.app/api/v2/report_data}"
 if [[ ! -f "${ENV_FILE}" ]]; then
   echo "==> Criando ${ENV_FILE}..."
-  sudo tee "${ENV_FILE}" >/dev/null <<'EOF'
-NOC_CENTRAL_URL=https://nexopulse.up.railway.app/api/v2/report_data
+  sudo tee "${ENV_FILE}" >/dev/null <<EOF
+NOC_CENTRAL_URL=${CENTRAL_URL}
 NOC_LOCAL_PORT=10000
 NOC_TELEMETRIA_INTERVALO=5
 NOC_WATCHDOG_INTERVALO=15
 NOC_SCAN_REDE_INTERVALO=60
 # Nome com que o sensor aparece na Central ao ser cadastrado (padrão: hostname da máquina):
 # NOC_SENSOR_NOME=Loja Centro - Rack
-# Gere uma chave individual na tela Sensores da Central e configure-a somente neste equipamento:
-# NOC_SENSOR_API_KEY=cole-a-chave-individual-aqui
+# A chave do sensor é gerada automaticamente em sensor_key.txt no primeiro uso.
 EOF
+elif [[ -n "${NOC_CENTRAL_URL:-}" ]]; then
+  sudo sed -i "s|^NOC_CENTRAL_URL=.*|NOC_CENTRAL_URL=${CENTRAL_URL}|" "${ENV_FILE}"
+fi
+if [[ -n "${NOC_SENSOR_NOME:-}" ]]; then
+  sudo sed -i '/^#\? *NOC_SENSOR_NOME=/d' "${ENV_FILE}"
+  echo "NOC_SENSOR_NOME=${NOC_SENSOR_NOME}" | sudo tee -a "${ENV_FILE}" >/dev/null
 fi
 
 echo "==> Instalando serviço systemd..."
@@ -55,6 +61,8 @@ sudo tee "${SERVICE_FILE}" >/dev/null <<EOF
 Description=NexoPulse Edge Sensor
 After=network-online.target
 Wants=network-online.target
+# Nunca desiste de reiniciar, mesmo com várias quedas seguidas.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -63,11 +71,11 @@ WorkingDirectory=${ROOT_DIR}
 EnvironmentFile=-${ENV_FILE}
 Environment=PYTHONUNBUFFERED=1
 ExecStart=${VENV_DIR}/bin/python ${ROOT_DIR}/agente_v2.py
-Restart=on-failure
+# always: volta sozinho se cair, e também depois de "reiniciar/atualizar agente".
+Restart=always
 RestartSec=5
 TimeoutStopSec=15
 
-# Endurecimento sem bloquear leitura de /sys, rede ou SQLite local.
 NoNewPrivileges=false
 PrivateTmp=true
 
@@ -76,10 +84,12 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
+# enable = sobe sozinho a cada boot; --now = já inicia agora.
 sudo systemctl enable --now noc-sensor.service
+sudo systemctl restart noc-sensor.service
 
 echo
-echo "✅ NexoPulse Edge instalado e iniciado."
+echo "✅ NexoPulse Edge instalado, iniciado e configurado para subir com a máquina."
 echo "Status: sudo systemctl status noc-sensor --no-pager"
 echo "Logs:   journalctl -u noc-sensor -f"
 echo "Config: ${ENV_FILE}"
