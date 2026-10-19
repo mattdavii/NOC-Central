@@ -502,8 +502,8 @@ def log_local_event(tipo, detalhes, gravidade="Alerta"):
 def verificar_atualizacao(mac):
     """Avisa quando a Central anuncia uma versão mais nova do agente.
 
-    No Linux (e no WSL) o agente roda a partir do repositório: a atualização é
-    feita por linux/update.sh, que preserva um ponto de rollback.
+    A atualização é feita pela Central (ação "Atualizar agente" na tela do sensor)
+    ou rodando de novo o instalador; nada é atualizado sozinho.
     """
     try:
         url_versao = URL_CENTRAL.replace('report_data', 'agent_versao')
@@ -520,7 +520,7 @@ def verificar_atualizacao(mac):
         if versao_nova and version_key(versao_nova) > version_key(VERSAO_AGENTE):
             log_local_event(
                 "Atualização",
-                f"Nova versão disponível: {versao_nova} (atual: {VERSAO_AGENTE}). Atualize com: bash linux/update.sh v{versao_nova}",
+                f"Nova versão disponível: {versao_nova} (atual: {VERSAO_AGENTE}). Atualize pela Central (Atualizar agente) ou rode o instalador de novo.",
                 "Aviso",
             )
     except Exception as e:
