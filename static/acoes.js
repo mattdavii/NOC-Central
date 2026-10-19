@@ -8,6 +8,8 @@
     const historico = document.getElementById('acoes-historico');
     const chave = document.getElementById('acoes-permitir');
     const chaveTexto = document.getElementById('acoes-permitir-texto');
+    const auto = document.getElementById('auto-atualizar');
+    const versaoInfo = document.getElementById('versao-info');
     const modal = document.getElementById('modal-senha');
     const form = document.getElementById('modal-senha-form');
     const campo = document.getElementById('modal-senha-input');
@@ -49,10 +51,23 @@
         return r.ok ? null : (dados.error || 'Não foi possível concluir.');
     }
 
+    function situacaoVersao(d) {
+        const sensor = d.build_sensor || 'não informada (agente antigo)';
+        let situacao;
+        if (d.build_sensor && d.build_sensor === d.build_central) situacao = 'em dia com a Central.';
+        else if (!d.guarda) situacao = 'reinstale o sensor (comando de instalação) para habilitar a atualização automática com volta segura.';
+        else if (d.build_recusado && d.build_recusado === d.build_central) situacao = `a versão ${d.build_recusado} falhou neste sensor e foi desfeita; ele aguarda a próxima.`;
+        else if (d.auto_atualizar) situacao = 'versão nova disponível; atualiza sozinho na madrugada (04h).';
+        else situacao = 'versão nova disponível; use "Atualizar agente" ou ligue a atualização automática.';
+        return `Versão do sensor: ${sensor} · Central: ${d.build_central} — ${situacao}`;
+    }
+
     function desenhar(dados) {
         nomes = dados.acoes || {};
         chave.checked = !!dados.permitido;
         chaveTexto.textContent = dados.permitido ? 'Ligadas' : 'Desligadas';
+        auto.checked = !!dados.auto_atualizar;
+        versaoInfo.textContent = situacaoVersao(dados);
         botoes.innerHTML = Object.entries(nomes).map(([id, nome]) =>
             `<button class="action-btn ${PERIGOSAS.has(id) ? 'btn-danger' : 'btn-secondary'}" data-acao="${id}" ${dados.permitido ? '' : 'disabled'}>${esc(nome)}</button>`).join('');
         const itens = dados.historico || [];
@@ -90,6 +105,19 @@
             permitir ? 'Com as ações ligadas, a Central pode atualizar e reiniciar esta máquina.' : 'Nenhuma ação remota será aceita para este sensor.',
             async senha => {
                 const msg = await enviar(`${base}/permitir_acoes`, {permitir, senha});
+                if (!msg) carregar();
+                return msg;
+            });
+    });
+
+    auto.addEventListener('change', () => {
+        const ligar = auto.checked;
+        auto.checked = !ligar;
+        pedirSenha(ligar ? 'Ligar atualização automática' : 'Desligar atualização automática',
+            ligar ? 'Na madrugada, o sensor baixa sozinho a versão nova da Central. Se ela não funcionar, volta para a anterior.'
+                  : 'O sensor só será atualizado quando alguém usar "Atualizar agente".',
+            async senha => {
+                const msg = await enviar(`${base}/auto_atualizar`, {ligar, senha});
                 if (!msg) carregar();
                 return msg;
             });

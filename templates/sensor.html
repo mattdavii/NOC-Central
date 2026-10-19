@@ -421,6 +421,10 @@
                     <label class="switch-label"><input type="checkbox" id="acoes-permitir"> <span id="acoes-permitir-texto">Desligadas</span></label>
                 </h3>
                 <p class="help-text">Comandos pré-definidos executados pelo agente nesta máquina. Cada uso pede sua senha, fica registrado em Incidentes e avisa o grupo NexoPulse no Telegram.</p>
+                <div class="auto-update">
+                    <label class="switch-label"><input type="checkbox" id="auto-atualizar"> <span>Atualização automática</span></label>
+                    <p class="help-text" id="versao-info"></p>
+                </div>
                 <div class="acoes-botoes" id="acoes-botoes"></div>
                 <div class="acoes-historico" id="acoes-historico"><div class="hist-empty">Nenhuma ação executada.</div></div>
             </div>
@@ -1125,7 +1129,7 @@
         });
     </script>
 <script src="/static/location.js?v=2.2.0-rc1"></script>
-<script src="/static/acoes.js?v=2.2.0-rc1"></script>
+<script src="/static/acoes.js?v=2.2.0-rc1-auto"></script>
 <script src="/static/host.js?v=2.2.0-rc1"></script>
 <script src="/static/diagnostico.js?v=2.2.0-rc1"></script>
 </body>

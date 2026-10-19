@@ -120,6 +120,9 @@ User=${RUN_USER}
 WorkingDirectory=${ROOT_DIR}
 EnvironmentFile=-${ENV_FILE}
 Environment=PYTHONUNBUFFERED=1
+# Guarda da atualização automática: desfaz uma versão nova que não consegue falar com a Central.
+Environment=NEXOPULSE_GUARD=1
+ExecStartPre=-/bin/bash ${ROOT_DIR}/linux/nexopulse-guard.sh
 ExecStart=${VENV_DIR}/bin/python ${ROOT_DIR}/nexopulse_edge.py
 # always: volta sozinho se cair, e também depois de "reiniciar/atualizar agente".
 Restart=always

@@ -62,6 +62,27 @@ URL_CENTRAL = os.environ.get(
 PORTA_LOCAL = int(os.environ.get("NOC_LOCAL_PORT", "10000"))
 VERSAO_AGENTE = "2.2.0-rc1"
 
+PASTA_AGENTE = os.path.dirname(os.path.abspath(__file__))
+# Estado da atualização: anterior/ (cópia da versão de antes), pendente (versão nova
+# ainda não confirmada), tentativas (inícios sem confirmar) e recusado (versão desfeita).
+PASTA_ATUALIZACAO = os.path.join(PASTA_AGENTE, ".atualizacao")
+# Sem falar com a Central nesse prazo, a versão nova encerra o processo; a guarda conta a tentativa.
+PRAZO_CONFIRMAR_ATUALIZACAO_S = 600
+
+
+def _ler_texto(caminho):
+    try:
+        with open(caminho, encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+# Identificador da versão instalada: o pacote da Central traz em VERSION (versão + hash do código).
+BUILD_AGENTE = (_ler_texto(os.path.join(PASTA_AGENTE, "VERSION")).splitlines() or [VERSAO_AGENTE])[0]
+# A guarda (ExecStartPre do serviço) é o que desfaz uma versão ruim: sem ela, nada de atualização automática.
+GUARDA_ATIVA = os.environ.get("NEXOPULSE_GUARD") == "1"
+
 TELEMETRIA_INTERVALO = max(3, int(os.environ.get("NOC_TELEMETRIA_INTERVALO", "5")))
 # A Central pode demorar alguns segundos; desistir cedo perde o comando que ela já tirou da fila.
 REPORT_TIMEOUT = max(5, int(os.environ.get("NOC_REPORT_TIMEOUT", "25")))
@@ -500,27 +521,21 @@ def log_local_event(tipo, detalhes, gravidade="Alerta"):
     except: pass
 
 def verificar_atualizacao(mac):
-    """Avisa quando a Central anuncia uma versão mais nova do agente.
+    """Avisa quando a Central tem uma versão do agente diferente da instalada.
 
-    A atualização é feita pela Central (ação "Atualizar agente" na tela do sensor)
-    ou rodando de novo o instalador; nada é atualizado sozinho.
+    A atualização é feita pela Central (ação "Atualizar agente", ou sozinha na
+    madrugada quando a atualização automática está ligada) ou rodando de novo o instalador.
     """
     try:
         url_versao = URL_CENTRAL.replace('report_data', 'agent_versao')
         with urllib.request.urlopen(urllib.request.Request(url_versao, headers=api_headers()), timeout=5) as resp:
             info = json.loads(resp.read().decode())
-        versao_nova = info.get('versao')
-
-        def version_key(value):
-            match = re.fullmatch(r'(\d+)\.(\d+)\.(\d+)(?:-rc(\d+))?', value or '')
-            if not match:
-                return (0, 0, 0, 0)
-            return tuple(map(int, match.group(1, 2, 3))) + (int(match[4]) if match[4] else 999999,)
-
-        if versao_nova and version_key(versao_nova) > version_key(VERSAO_AGENTE):
+        build_central = info.get('build')
+        if build_central and build_central != BUILD_AGENTE:
             log_local_event(
                 "Atualização",
-                f"Nova versão disponível: {versao_nova} (atual: {VERSAO_AGENTE}). Atualize pela Central (Atualizar agente) ou rode o instalador de novo.",
+                f"Nova versão disponível: {build_central} (instalada: {BUILD_AGENTE}). "
+                + "Com a atualização automática ligada, ela entra na madrugada; ou use Atualizar agente na Central.",
                 "Aviso",
             )
     except Exception as e:
@@ -819,9 +834,57 @@ def _acao_diagnostico():
     return 0, "\n\n".join(partes)
 
 
-def _acao_atualizar_agente():
-    """Baixa o pacote atual da Central, troca os arquivos do agente e reinicia o serviço."""
+ARQUIVOS_PRESERVADOS = {"sensor_key.txt", "sensor_id.txt", "sensor_local.db", ".venv", ".atualizacao"}
+
+
+def _aplicar_pacote(dados, destino):
+    """Troca os arquivos do agente pelos do pacote, guardando antes cópia dos atuais em .atualizacao/anterior."""
     import tarfile, tempfile, io, shutil
+    anterior = os.path.join(destino, ".atualizacao", "anterior")
+    shutil.rmtree(anterior, ignore_errors=True)
+    os.makedirs(anterior, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        with tarfile.open(fileobj=io.BytesIO(dados), mode="r:gz") as tar:
+            membros = [m for m in tar.getmembers() if m.isfile() and not m.name.startswith(("/", "..")) and ".." not in m.name.split("/")]
+            try:
+                tar.extractall(tmp, members=membros, filter="data")
+            except TypeError:  # Python sem filtro de extração (antes do 3.11.4)
+                tar.extractall(tmp, members=membros)
+        raiz = os.path.join(tmp, "nexopulse-edge")
+        build_novo = (_ler_texto(os.path.join(raiz, "VERSION")).splitlines() or [""])[0]
+        for pasta, _, arquivos in os.walk(raiz):
+            for nome in arquivos:
+                origem = os.path.join(pasta, nome)
+                relativo = os.path.relpath(origem, raiz)
+                if relativo.split(os.sep)[0] in ARQUIVOS_PRESERVADOS:
+                    continue
+                alvo = os.path.join(destino, relativo)
+                if os.path.isfile(alvo):
+                    copia = os.path.join(anterior, relativo)
+                    os.makedirs(os.path.dirname(copia), exist_ok=True)
+                    shutil.copy2(alvo, copia)
+                os.makedirs(os.path.dirname(alvo), exist_ok=True)
+                shutil.copy2(origem, alvo)
+    # Nome antigo do agente (antes de nexopulse_edge.py): o serviço não o usa mais.
+    antigo = os.path.join(destino, "agente_v2.py")
+    if os.path.exists(antigo) and os.path.abspath(antigo) != os.path.abspath(__file__):
+        os.remove(antigo)
+    return build_novo
+
+
+def _restaurar_anterior(destino):
+    import shutil
+    anterior = os.path.join(destino, ".atualizacao", "anterior")
+    if os.path.isdir(anterior):
+        shutil.copytree(anterior, destino, dirs_exist_ok=True)
+
+
+def _acao_atualizar_agente():
+    """Baixa o pacote atual da Central, troca os arquivos do agente e reinicia o serviço.
+
+    Com a guarda ativa, a versão nova fica "pendente" até falar com a Central; se não
+    conseguir em 3 inícios, a guarda (linux/nexopulse-guard.sh) restaura a anterior.
+    """
     base = URL_CENTRAL.split("/api/")[0]
     try:
         req = urllib.request.Request(f"{base}/agente/pacote.tar.gz", headers=api_headers())
@@ -829,38 +892,56 @@ def _acao_atualizar_agente():
             dados = resp.read(30 * 1024 * 1024)
     except Exception as e:
         return 1, f"falha ao baixar o pacote: {e}"
-    destino = os.path.dirname(os.path.abspath(__file__))
-    preservar = {"sensor_key.txt", "sensor_id.txt", "sensor_local.db", ".venv"}
-    with tempfile.TemporaryDirectory() as tmp:
-        with tarfile.open(fileobj=io.BytesIO(dados), mode="r:gz") as tar:
-            membros = [m for m in tar.getmembers() if m.isfile() and not m.name.startswith(("/", "..")) and ".." not in m.name.split("/")]
-            tar.extractall(tmp, members=membros)
-        raiz = os.path.join(tmp, "nexopulse-edge")
-        for pasta, _, arquivos in os.walk(raiz):
-            for nome in arquivos:
-                origem = os.path.join(pasta, nome)
-                relativo = os.path.relpath(origem, raiz)
-                if relativo.split(os.sep)[0] in preservar:
-                    continue
-                alvo = os.path.join(destino, relativo)
-                os.makedirs(os.path.dirname(alvo), exist_ok=True)
-                shutil.copy2(origem, alvo)
-    # Nome antigo do agente (antes de nexopulse_edge.py): o serviço não o usa mais.
-    antigo = os.path.join(destino, "agente_v2.py")
-    if os.path.exists(antigo) and os.path.abspath(antigo) != os.path.abspath(__file__):
-        os.remove(antigo)
+    destino = PASTA_AGENTE
+    try:
+        build_novo = _aplicar_pacote(dados, destino)
+    except Exception as e:
+        _restaurar_anterior(destino)
+        return 1, f"falha ao instalar o pacote (versão anterior mantida): {e}"
     python_venv = os.path.join(destino, ".venv", "bin", "python")
     codigo, pip = _rodar([python_venv, "-m", "pip", "install", "-q", "-r",
                            os.path.join(destino, "requirements-agente.txt")], 600)
     if codigo != 0:
-        return codigo, f"arquivos atualizados em {destino}, mas o pip falhou:\n{pip.strip()}"
+        _restaurar_anterior(destino)
+        return codigo, f"o pip falhou; versão anterior mantida:\n{pip.strip()}"
     opcional = os.path.join(destino, "requirements-starlink.txt")
     aviso = ""
     # Coletor Starlink é opcional: só atualiza as dependências onde ele já foi instalado.
     if os.path.exists(opcional) and starlink is not None and starlink.starlink_grpc is not None:
         codigo_sl, _ = _rodar([python_venv, "-m", "pip", "install", "-q", "-r", opcional], 600)
         aviso = "" if codigo_sl == 0 else " (coletor Starlink sem dependências; o resto segue normal)"
-    return _reiniciar_agente(f"pacote instalado em {destino}{aviso}")
+    if GUARDA_ATIVA:
+        with open(os.path.join(destino, ".atualizacao", "pendente"), "w", encoding="utf-8") as f:
+            f.write(f"{build_novo}\n{BUILD_AGENTE}\n")
+        for nome in ("tentativas", "recusado"):
+            try:
+                os.remove(os.path.join(destino, ".atualizacao", nome))
+            except OSError:
+                pass
+    return _reiniciar_agente(f"versão {BUILD_AGENTE} → {build_novo or '?'} instalada em {destino}{aviso}")
+
+
+def _confirmar_atualizacao():
+    """Primeiro contato bem-sucedido com a Central depois de uma atualização: a versão nova fica."""
+    pendente = os.path.join(PASTA_ATUALIZACAO, "pendente")
+    if not os.path.exists(pendente):
+        return
+    for nome in ("pendente", "tentativas"):
+        try:
+            os.remove(os.path.join(PASTA_ATUALIZACAO, nome))
+        except OSError:
+            pass
+    log_local_event("Atualização", f"Versão {BUILD_AGENTE} confirmada: falou com a Central.", "OK")
+
+
+def _vigiar_atualizacao_pendente():
+    """Versão nova que não fala com a Central no prazo encerra o processo; a guarda conta e, na 3ª, desfaz."""
+    if not GUARDA_ATIVA or not os.path.exists(os.path.join(PASTA_ATUALIZACAO, "pendente")):
+        return
+    time.sleep(PRAZO_CONFIRMAR_ATUALIZACAO_S)
+    if os.path.exists(os.path.join(PASTA_ATUALIZACAO, "pendente")):
+        log_local_event("Atualização", f"Versão {BUILD_AGENTE} não falou com a Central em {PRAZO_CONFIRMAR_ATUALIZACAO_S // 60} min; reiniciando para a guarda decidir.", "Alerta")
+        os._exit(1)
 
 
 def _reiniciar_agente(prefixo=""):
@@ -1074,6 +1155,8 @@ def loop_telemetria():
             host_info = pegar_host_info()
             payload = {
                 "mac_id": mac, "agent_version": VERSAO_AGENTE, "nome_local": NOME_SENSOR,
+                "agent_build": BUILD_AGENTE, "auto_update_guard": GUARDA_ATIVA,
+                "build_recusado": _ler_texto(os.path.join(PASTA_ATUALIZACAO, "recusado")),
                 **({"host_info": host_info} if host_info else {}),
                 **approximate_location,
                 "ip_local": meu_ip, "ip_gateway": gateway_ip,
@@ -1098,6 +1181,7 @@ def loop_telemetria():
                 req = urllib.request.Request(URL_CENTRAL, data=json.dumps(payload).encode('utf-8'), headers=api_headers(), method='POST')
                 with urllib.request.urlopen(req, timeout=REPORT_TIMEOUT) as response:
                     res_data = json.loads(response.read().decode('utf-8'))
+                    _confirmar_atualizacao()
                     comando = res_data.get("command")
                     espera_remota = max(TELEMETRIA_INTERVALO, int(res_data.get("intervalo", TELEMETRIA_INTERVALO))) 
 
@@ -1727,6 +1811,7 @@ if __name__ == "__main__":
             daemon=True,
         ).start()
         threading.Thread(target=loop_telemetria, daemon=True).start()
+        threading.Thread(target=_vigiar_atualizacao_pendente, daemon=True).start()
         threading.Thread(target=loop_host_info, daemon=True).start()
         threading.Thread(target=loop_starlink, daemon=True).start()
         threading.Thread(target=fila_envio.loop_envio, args=(URL_CENTRAL.replace('report_data', 'medicoes'), get_mac(), api_headers),
@@ -1736,7 +1821,7 @@ if __name__ == "__main__":
 
         # Modo headless/systemd: mantém o processo principal vivo sem depender
         # de X11, bandeja do sistema ou sessão gráfica.
-        print(f"✅ NexoPulse Edge Linux {VERSAO_AGENTE} ativo.")
+        print(f"✅ NexoPulse Edge Linux {BUILD_AGENTE} ativo{' (atualização automática protegida)' if GUARDA_ATIVA else ''}.")
         threading.Event().wait()
     except KeyboardInterrupt:
         pass
