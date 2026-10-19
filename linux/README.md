@@ -78,18 +78,25 @@ fixa — a Central nunca manda comando livre.
 ### Ações que precisam de root
 
 "Atualizar o sistema" e "Reiniciar a máquina" precisam de root. O agente roda
-como usuário comum e só consegue fazê-las se você liberar, nesta máquina, o
-ajudante `nexopulse-admin` (que aceita apenas `update-system`, `reboot`,
-`restart-agent` e `start-service`). **Isso dá à Central o poder de atualizar e
-reiniciar a máquina — libere só onde fizer sentido.** Na pasta do agente:
+como usuário comum e só consegue fazê-las onde você liberar o ajudante
+`nexopulse-admin` (que aceita apenas `update-system`, `reboot`, `restart-agent` e
+`start-service`), com uma regra de sudo que permite **só ele**, sem senha.
+**Isso dá à Central o poder de atualizar e reiniciar a máquina — libere só onde
+fizer sentido.** Por padrão a instalação **não** libera.
+
+Liberar já na instalação:
 
 ```bash
-sudo install -o root -g root -m 0755 linux/nexopulse-admin /usr/local/sbin/nexopulse-admin
-echo "$USER ALL=(root) NOPASSWD: /usr/local/sbin/nexopulse-admin" | sudo tee /etc/sudoers.d/nexopulse-edge
-sudo chmod 0440 /etc/sudoers.d/nexopulse-edge && sudo visudo -c
+curl -fsSL https://nexopulse.up.railway.app/instalar.sh | NOC_SENSOR_NOME="Loja Centro" NEXOPULSE_ROOT=1 bash
 ```
 
-Para desfazer: `sudo rm /etc/sudoers.d/nexopulse-edge /usr/local/sbin/nexopulse-admin`.
+No Windows (WSL), acrescente `-Root` ao instalador. Num sensor já instalado:
+`bash ~/nexopulse-edge/linux/liberar-root.sh`. Para desfazer:
+`bash ~/nexopulse-edge/linux/liberar-root.sh --desfazer`.
+
+A regra é validada com `visudo` antes de entrar em `/etc/sudoers.d/nexopulse-edge`.
+Mesmo liberadas, as ações só rodam com as ações remotas do sensor ligadas na
+Central e com a senha do Administrador Master a cada uso.
 
 ## Operação
 

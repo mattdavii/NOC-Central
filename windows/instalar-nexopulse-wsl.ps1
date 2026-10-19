@@ -15,11 +15,14 @@
   Rode num PowerShell como Administrador:
     Set-ExecutionPolicy -Scope Process Bypass
     .\instalar-nexopulse-wsl.ps1 -NomeSensor "Loja Centro"
+  Com -Root, libera também "Atualizar sistema" e "Reiniciar máquina".
 #>
 param(
     [string]$Distro = 'Ubuntu',
     [string]$Central = 'https://nexopulse.up.railway.app',
-    [string]$NomeSensor = ''
+    [string]$NomeSensor = '',
+    # Libera "Atualizar sistema" e "Reiniciar máquina" (a Central passa a poder fazer isso no Linux do WSL).
+    [switch]$Root
 )
 $ErrorActionPreference = 'Stop'
 
@@ -68,7 +71,7 @@ Start-Sleep -Seconds 3
 # 5. Instalador Linux da própria Central (pede a senha do usuário Linux para o sudo).
 Passo 'Instalando o NexoPulse Edge dentro do WSL'
 $nome = $NomeSensor -replace "'", ''
-wsl.exe -d $Distro -- bash -lc "command -v curl >/dev/null || (sudo apt-get update && sudo apt-get install -y curl); curl -fsSL '$Central/instalar.sh' | NOC_SENSOR_NOME='$nome' bash"
+wsl.exe -d $Distro -- bash -lc "command -v curl >/dev/null || (sudo apt-get update && sudo apt-get install -y curl); curl -fsSL '$Central/instalar.sh' | NOC_SENSOR_NOME='$nome' NEXOPULSE_ROOT=$(if ($Root) { 1 } else { 0 }) bash"
 
 # 6. Liga o WSL na inicialização do Windows; o systemd sobe o sensor.
 Passo 'Criando a inicialização automática'

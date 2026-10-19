@@ -426,7 +426,8 @@ def enforce_tenant_scope():
 # ==========================================
 # Só o que o sensor precisa para rodar; docs e o instalador do Windows ficam no servidor.
 ARQUIVOS_AGENTE = ['nexopulse_edge.py', 'host_metrics.py', 'starlink.py', 'netdiag.py', 'fila_envio.py', 'requirements-agente.txt',
-                   'requirements-starlink.txt', 'linux/install.sh', 'linux/nexopulse-admin', 'linux/nexopulse-guard.sh']
+                   'requirements-starlink.txt', 'linux/install.sh', 'linux/nexopulse-admin', 'linux/nexopulse-guard.sh',
+                   'linux/liberar-root.sh']
 
 
 def _calcular_build_agente():
@@ -479,6 +480,7 @@ def instalar_sh():
 # Instalador do NexoPulse Edge para esta Central ({central}).
 # Uso: curl -fsSL {central}/instalar.sh | bash
 #   Nome personalizado: curl -fsSL {central}/instalar.sh | NOC_SENSOR_NOME="Loja Centro" bash
+#   Com ações de root (atualizar sistema / reiniciar máquina): ... | NEXOPULSE_ROOT=1 bash
 set -euo pipefail
 if [ "$(id -u)" -eq 0 ]; then echo "Rode como usuário normal (o instalador pede sudo quando precisa)."; exit 1; fi
 DESTINO="${{NEXOPULSE_DIR:-$HOME/nexopulse-edge}}"
