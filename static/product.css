@@ -257,6 +257,8 @@ td .action-btn { padding:7px 11px; font-size:.82rem; }
 /* Ações remotas (tela do sensor) */
 .switch-label { display:inline-flex; align-items:center; gap:8px; font-size:.85rem; font-weight:600; color:var(--text-muted); cursor:pointer; }
 .switch-label input { width:18px; height:18px; accent-color:var(--blue); }
+.auto-update { display:flex; flex-direction:column; gap:4px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; }
+.auto-update .help-text { margin:0; overflow-wrap:anywhere; }
 .acoes-botoes { display:flex; flex-wrap:wrap; gap:8px; }
 .acoes-botoes button:disabled { opacity:.45; cursor:not-allowed; }
 .acoes-historico { display:flex; flex-direction:column; gap:8px; }

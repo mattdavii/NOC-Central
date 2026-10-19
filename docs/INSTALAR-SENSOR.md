@@ -61,6 +61,9 @@ Conferir: `wsl -d Ubuntu -- systemctl status nexopulse-edge --no-pager`.
 - **Nome:** pode ser trocado na tela do sensor na Central.
 - **Cliente:** vincule o sensor ao cliente na tela **Sensores**. Se o cliente tiver
   Chat ID cadastrado, o grupo dele passa a receber os alertas desse sensor.
+- **Atualização:** automática, de madrugada (04h), sempre que o código do sensor
+  muda na Central; se a versão nova não funcionar, o sensor volta sozinho para a
+  anterior. Pode ser desligada na tela do sensor (veja `linux/README.md` → *Atualização*).
 - **Ações remotas** (diagnóstico, atualizar e reiniciar o agente): ligue o
   interruptor no card **Ações remotas** da tela do sensor (só Administrador Master).
   "Atualizar sistema" e "Reiniciar máquina" exigem liberar o `nexopulse-admin`

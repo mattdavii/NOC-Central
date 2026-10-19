@@ -419,7 +419,21 @@ def enforce_tenant_scope():
 # ==========================================
 # Só o que o sensor precisa para rodar; docs e o instalador do Windows ficam no servidor.
 ARQUIVOS_AGENTE = ['nexopulse_edge.py', 'host_metrics.py', 'starlink.py', 'netdiag.py', 'fila_envio.py', 'requirements-agente.txt',
-                   'requirements-starlink.txt', 'linux/install.sh', 'linux/nexopulse-admin']
+                   'requirements-starlink.txt', 'linux/install.sh', 'linux/nexopulse-admin', 'linux/nexopulse-guard.sh']
+
+
+def _calcular_build_agente():
+    """Versão do pacote do sensor: muda só quando o código do sensor muda (não a cada deploy da Central)."""
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    soma = hashlib.sha256()
+    for relativo in ARQUIVOS_AGENTE:
+        soma.update(relativo.encode())
+        with open(os.path.join(raiz, relativo), 'rb') as arquivo:
+            soma.update(arquivo.read())
+    return f'{CENTRAL_VERSION}+{soma.hexdigest()[:10]}'
+
+
+AGENT_BUILD = _calcular_build_agente()
 
 
 def _url_central():
@@ -440,7 +454,7 @@ def pacote_agente():
             info.uname = info.gname = ''
             with open(os.path.join(raiz, relativo), 'rb') as arquivo:
                 tar.addfile(info, arquivo)
-        versao = f'{CENTRAL_VERSION}\n'.encode()
+        versao = f'{AGENT_BUILD}\n'.encode()
         info = tarfile.TarInfo('nexopulse-edge/VERSION')
         info.size, info.mtime, info.mode = len(versao), int(time.time()), 0o644
         tar.addfile(info, io.BytesIO(versao))
@@ -925,14 +939,25 @@ def report_data():
             interface_up = COALESCE(?, interface_up),
             scan_rede = COALESCE(?, scan_rede),
             scan_limitado = COALESCE(?, scan_limitado),
-            agent_version = COALESCE(?, agent_version)
+            agent_version = COALESCE(?, agent_version),
+            agent_build = COALESCE(?, agent_build),
+            build_recusado = COALESCE(?, build_recusado),
+            auto_update_guard = COALESCE(?, auto_update_guard)
             WHERE mac_id = ?''',
             (data.get('disco'), data.get('net_up'), data.get('net_down'), data.get('portas'),
              data.get('so_nome'), data.get('so_versao'), data.get('so_arquitetura'),
              data.get('interface_nome'), data.get('interface_mac'), data.get('rede_mascara'),
              data.get('rede_cidr'), data.get('link_speed_mbps'), data.get('interface_up'),
-             data.get('scan_rede'), data.get('scan_limitado'), data.get('agent_version'), mac))
+             data.get('scan_rede'), data.get('scan_limitado'), data.get('agent_version'),
+             _texto_curto(data.get('agent_build')), _texto_curto(data.get('build_recusado')),
+             None if data.get('auto_update_guard') is None else int(bool(data.get('auto_update_guard'))), mac))
         conn.commit()
+        if sensor:
+            try:
+                _registrar_mudanca_de_versao(conn, mac, sensor_dict, data)
+                _agendar_atualizacao_automatica(conn, mac, sensor_dict, data)
+            except Exception:
+                app.logger.exception('Falha ao tratar a versão do sensor')
 
         try:
             # Estado atual continua sendo atualizado a cada batimento, mas o histórico
@@ -1014,6 +1039,7 @@ def agent_versao():
         "platform": "linux",
         "update_command": f"curl -fsSL {_url_central()}/instalar.sh | bash",
         "central_version": CENTRAL_VERSION,
+        "build": AGENT_BUILD,
     })
 
 # ==========================================
@@ -2142,13 +2168,109 @@ def _expirar_acoes_sem_resposta(conn, mac_id):
     conn.commit()
 
 
+# ==========================================
+# 🔄 ATUALIZAÇÃO AUTOMÁTICA DOS SENSORES
+# ==========================================
+# Na janela da madrugada, a Central pede "atualizar_agente" aos sensores com versão
+# diferente da dela. Só para sensores com a guarda do systemd (volta sozinha para a
+# versão anterior se a nova não conseguir falar com a Central) e com o interruptor ligado.
+AUTO_UPDATE_HORA = int(os.environ.get('NEXOPULSE_AUTO_UPDATE_HORA', '4'))  # hora de Brasília
+AUTO_UPDATE_INTERVALO_H = 6  # não repete a tentativa no mesmo sensor antes disso
+FUSO_BRASIL = timezone(timedelta(hours=-3))
+
+
+def _texto_curto(valor):
+    return valor.strip()[:80] if isinstance(valor, str) else None
+
+
+def _agora_brasil():
+    return datetime.now(FUSO_BRASIL)
+
+
+def _limite_sql(horas):
+    """Instante 'agora - N horas' no relógio do próprio banco (Postgres ou SQLite)."""
+    if os.environ.get("DATABASE_URL"):
+        return f"CURRENT_TIMESTAMP - INTERVAL '{int(horas)} hours'"
+    return f"datetime('now', '-{int(horas)} hours')"
+
+
+def _registrar_mudanca_de_versao(conn, mac, anterior, data):
+    nome = html.escape(str(anterior.get('nome_local') or mac))
+    build_novo, build_antigo = _texto_curto(data.get('agent_build')), anterior.get('agent_build')
+    if build_novo and build_antigo and build_novo != build_antigo:
+        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Atualização', 'OK', ?)",
+                     (mac, f"Agente atualizado: {build_antigo} → {build_novo}."))
+        enviar_telegram(f"🔄 <b>SENSOR ATUALIZADO</b>\n\n🖥️ <b>Sensor:</b> {nome}\n📦 <b>Versão:</b> {html.escape(build_antigo)} → {html.escape(build_novo)}",
+                        cliente_id=None, conn=conn)
+    recusado = _texto_curto(data.get('build_recusado'))
+    if recusado and recusado != (anterior.get('build_recusado') or ''):
+        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Atualização', 'Alerta', ?)",
+                     (mac, f"Versão {recusado} não funcionou e foi desfeita; o sensor voltou para {build_novo or 'a anterior'}."))
+        enviar_telegram(f"↩️ <b>ATUALIZAÇÃO DESFEITA</b>\n\n🖥️ <b>Sensor:</b> {nome}\n📦 <b>Versão recusada:</b> {html.escape(recusado)}\n"
+                        f"✅ <b>Voltou para:</b> {html.escape(build_novo or 'a anterior')}\n\nA versão nova não conseguiu falar com a Central depois de 3 tentativas.",
+                        cliente_id=None, conn=conn)
+    conn.commit()
+
+
+def _agendar_atualizacao_automatica(conn, mac, sensor, data):
+    build = _texto_curto(data.get('agent_build'))
+    if not (sensor.get('auto_atualizar', 1) and data.get('auto_update_guard') and build):
+        return False
+    if build == AGENT_BUILD or _texto_curto(data.get('build_recusado')) == AGENT_BUILD:
+        return False
+    agora = _agora_brasil()
+    if agora.hour != AUTO_UPDATE_HORA:
+        return False
+    # Cada sensor tem seu minuto dentro da hora: uma versão ruim não derruba todos de uma vez.
+    if agora.minute < int(hashlib.sha256(mac.encode()).hexdigest(), 16) % 50:
+        return False
+    recente = conn.execute(
+        "SELECT 1 FROM acoes_remotas WHERE sensor_mac=? AND acao='atualizar_agente' AND "
+        f"(status IN ('pendente', 'enviada') OR criado_em > {_limite_sql(AUTO_UPDATE_INTERVALO_H)}) LIMIT 1", (mac,)).fetchone()
+    if recente:
+        return False
+    cur = conn.execute("INSERT INTO acoes_remotas (sensor_mac, acao, solicitante, status) VALUES (?, 'atualizar_agente', 'automático', 'pendente') RETURNING id",
+                       (mac,))
+    id_acao = cur.fetchone()['id']
+    conn.execute('INSERT INTO comandos_pendentes (sensor_mac, comando) VALUES (?, ?)', (mac, f'acao:{id_acao}:atualizar_agente'))
+    conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Atualização', 'Aviso', ?)",
+                 (mac, f"Atualização automática iniciada: {build} → {AGENT_BUILD} (#{id_acao})."))
+    enviar_telegram(f"⏳ <b>ATUALIZAÇÃO AUTOMÁTICA</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor.get('nome_local') or mac))}\n"
+                    f"📦 <b>Versão:</b> {html.escape(build)} → {html.escape(AGENT_BUILD)}", cliente_id=None, conn=conn)
+    conn.commit()
+    return True
+
+
+@app.route('/api/v2/sensor/<mac_id>/auto_atualizar', methods=['POST'])
+def alternar_auto_atualizar(mac_id):
+    erro = _exigir_master_com_senha()
+    if erro:
+        return erro
+    ligar = bool((request.get_json(silent=True) or {}).get('ligar'))
+    conn = database.get_db()
+    try:
+        sensor = conn.execute('SELECT nome_local FROM sensores WHERE mac_id=?', (mac_id,)).fetchone()
+        if not sensor:
+            return jsonify(error='Sensor não encontrado.'), 404
+        conn.execute('UPDATE sensores SET auto_atualizar=? WHERE mac_id=?', (1 if ligar else 0, mac_id))
+        estado = 'LIGADA' if ligar else 'DESLIGADA'
+        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Atualização', 'Aviso', ?)",
+                     (mac_id, f"Atualização automática {estado.lower()} por {session.get('usuario')}."))
+        enviar_telegram(f"🔄 <b>ATUALIZAÇÃO AUTOMÁTICA {estado}</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor['nome_local']))}\n👤 <b>Por:</b> {html.escape(str(session.get('usuario')))}", conn=conn)
+        conn.commit()
+        return jsonify(status='OK', auto_atualizar=ligar)
+    finally:
+        conn.close()
+
+
 @app.route('/api/v2/sensor/<mac_id>/acoes', methods=['GET', 'POST'])
 def acoes_remotas(mac_id):
     if session.get('role') != 'Administrador Master':
         return jsonify(error='Acesso Negado'), 403
     conn = database.get_db()
     try:
-        sensor = conn.execute('SELECT mac_id, nome_local, acoes_remotas FROM sensores WHERE mac_id=?', (mac_id,)).fetchone()
+        sensor = conn.execute('SELECT mac_id, nome_local, acoes_remotas, auto_atualizar, agent_build, build_recusado, auto_update_guard '
+                              'FROM sensores WHERE mac_id=?', (mac_id,)).fetchone()
         if not sensor:
             return jsonify(error='Sensor não encontrado.'), 404
         if request.method == 'GET':
@@ -2158,6 +2280,8 @@ def acoes_remotas(mac_id):
                       if os.environ.get("DATABASE_URL") else 'criado_em, concluido_em')
             linhas = conn.execute(f'SELECT id, acao, solicitante, status, codigo, saida, {campos} FROM acoes_remotas WHERE sensor_mac=? ORDER BY id DESC LIMIT 15', (mac_id,)).fetchall()
             return jsonify(permitido=bool(sensor['acoes_remotas']), acoes=ACOES_REMOTAS,
+                           auto_atualizar=bool(sensor['auto_atualizar']), guarda=bool(sensor['auto_update_guard']),
+                           build_sensor=sensor['agent_build'], build_central=AGENT_BUILD, build_recusado=sensor['build_recusado'] or None,
                            historico=[{k: (str(v) if k in ('criado_em', 'concluido_em') and v is not None else v) for k, v in dict(r).items()} for r in linhas])
     finally:
         conn.close()
@@ -2226,6 +2350,10 @@ def acao_resultado():
         conn.execute('UPDATE acoes_remotas SET status=?, codigo=?, saida=?, concluido_em=CURRENT_TIMESTAMP WHERE id=?', (status, codigo, saida, id_acao))
         conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Ação remota', ?, ?)",
                      (mac, 'Aviso' if codigo == 0 else 'Alerta', f"{ACOES_REMOTAS.get(row['acao'], row['acao'])} (#{id_acao}): {'concluída' if codigo == 0 else f'falhou (código {codigo})'}."))
+        if row['acao'] == 'atualizar_agente' and codigo != 0:
+            nome = conn.execute('SELECT nome_local FROM sensores WHERE mac_id=?', (mac,)).fetchone()
+            enviar_telegram(f"❌ <b>ATUALIZAÇÃO FALHOU</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(nome['nome_local'] if nome else mac))}\n"
+                            f"O sensor segue na versão atual.\n\n<pre>{html.escape(saida[-600:])}</pre>", conn=conn)
         conn.commit()
         return jsonify(status='OK')
     finally:

@@ -119,9 +119,29 @@ Fallback aproximado por IP é opcional: adicione `NOC_IP_GEOLOCATION=1` a `/etc/
 
 ## Atualização
 
-Pela Central: na tela do sensor, **Atualizar agente** baixa o pacote da versão
-atual e reinicia o serviço, preservando identidade, chave e fila local. Ou, na
-máquina, rode de novo o comando de instalação.
+**Automática (padrão):** a versão do sensor é um hash do código dele (ex.:
+`2.2.0-rc1+3f9a1c2b7d`), então muda sempre que o código do sensor muda — e só
+nesse caso. Toda madrugada, às 04h (horário de Brasília), a Central pede a
+atualização aos sensores com versão diferente da dela, cada um num minuto
+diferente da hora. O grupo NexoPulse recebe um aviso no início e outro com a
+versão nova em uso.
+
+**Volta segura:** antes de trocar os arquivos, o sensor guarda a versão atual em
+`.atualizacao/anterior/`. A versão nova fica "pendente" até o primeiro contato
+com a Central. A guarda `linux/nexopulse-guard.sh` (rodada pelo systemd antes de
+cada início) desfaz a atualização se o serviço iniciar 3 vezes sem esse contato:
+versão quebrando ao abrir, ou sem falar com a Central em 10 minutos. A versão
+desfeita fica marcada e não é oferecida de novo a esse sensor; o Telegram avisa
+"ATUALIZAÇÃO DESFEITA".
+
+A atualização automática pode ser desligada por sensor na tela dele (card
+**Ações remotas** → **Atualização automática**; pede a senha do Administrador
+Master). Para mudar a hora: variável `NEXOPULSE_AUTO_UPDATE_HORA` na Central.
+Sensores instalados antes da guarda aparecem como "reinstale o sensor": rode o
+comando de instalação de novo uma vez.
+
+**Manual:** na tela do sensor, **Atualizar agente** (com as ações remotas
+ligadas) faz o mesmo na hora. Ou, na máquina, rode de novo o comando de instalação.
 
 ## Credencial individual do sensor
 
