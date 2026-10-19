@@ -12,6 +12,15 @@ O Edge manda o estado a cada 5 s (`POST /api/v2/report_data`, que também é o
 heartbeat) e as medições de diagnóstico em lotes (`POST /api/v2/medicoes`), sempre
 com a chave do próprio sensor (`X-NOC-Sensor-Key`).
 
+## Saúde do servidor
+
+A página **Servidor** (só Administrador Master) mostra a saúde da Central (latência
+do banco, sessões presas, pool, fila do Telegram, guardião, memória) e o que o
+**vigia** viu na máquina do banco (Central no ar, banco, Tailscale, disco, backup).
+Alertas vão para o grupo NexoPulse depois de falhas seguidas e quando normaliza.
+Configuração e estado ficam no banco. Detalhes e instalação do vigia em
+[`ops/vigia/README.md`](ops/vigia/README.md).
+
 ---
 
 ## Diagnóstico de rede

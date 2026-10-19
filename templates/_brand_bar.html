@@ -15,6 +15,9 @@
         {% if _role in ['Administrador Master', 'Cliente', 'Administrador Cliente'] %}
         <a href="/usuarios" class="{{ 'active' if _path == '/usuarios' }}"><i class="fa-solid fa-users" aria-hidden="true"></i><span>Usuários</span></a>
         {% endif %}
+        {% if _role == 'Administrador Master' %}
+        <a href="/saude" class="{{ 'active' if _path == '/saude' }}"><i class="fa-solid fa-heart-pulse" aria-hidden="true"></i><span>Servidor</span></a>
+        {% endif %}
         <a href="/tv" class="{{ 'active' if _path == '/tv' }}"><i class="fa-solid fa-display" aria-hidden="true"></i><span>Sala de Operações</span></a>
     </nav>
     {% endif %}

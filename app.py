@@ -4,6 +4,7 @@ from flask_socketio import SocketIO
 import database
 import notifications
 import diagnostico
+import saude
 from location import parse_location, save_location
 from version import CENTRAL_VERSION
 from urllib.parse import urlsplit
@@ -318,6 +319,8 @@ try:
         conn.execute("INSERT INTO clientes (usuario, senha, role, ativo) VALUES ('admin', ?, 'Administrador Master', 1)",
                      (generate_password_hash(initial_password),))
         conn.commit()
+    # Padrões da saúde do servidor e o destino de alerta do vigia (bot master) no banco.
+    saude.garantir_config(conn, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
 finally:
     conn.close()
 
@@ -489,6 +492,44 @@ def privacidade():
     return render_template('privacidade.html')
 
 
+@app.route('/saude')
+def pagina_saude():
+    if session.get('role') != 'Administrador Master':
+        return "Acesso Negado.", 403
+    return render_template('saude.html')
+
+
+@app.route('/api/v2/saude', methods=['GET'])
+def api_saude():
+    if session.get('role') != 'Administrador Master':
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        checks = saude.coletar(conn, _contexto_saude())
+        anteriores = {r['chave']: dict(r) for r in conn.execute("SELECT chave, desde, falhas, notificado FROM saude_estado").fetchall()}
+        for c in checks:
+            c.update({k: anteriores.get(c['chave'], {}).get(k) for k in ('desde', 'falhas', 'notificado')})
+        return jsonify(central=checks, vigia=saude.estado_vigia(conn), config=saude.ler_config(conn),
+                       editaveis={k: list(v) for k, v in saude.EDITAVEIS.items()},
+                       processo=saude.info_processo(), versao=CENTRAL_VERSION, agora=time.time())
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/saude/config', methods=['POST'])
+def api_saude_config():
+    if session.get('role') != 'Administrador Master':
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        ok, erro = saude.salvar_config(conn, request.get_json(silent=True) or {})
+        if not ok:
+            return jsonify(error=erro), 400
+        return jsonify(status='OK', config=saude.ler_config(conn))
+    finally:
+        conn.close()
+
+
 @app.route('/healthz')
 def healthz():
     conn = database.get_db()
@@ -512,6 +553,7 @@ GUARDIAO_INTERVALO = max(10, int(os.environ.get("GUARDIAO_INTERVALO", "15")))
 SITE_SEM_COMUNICACAO_S = max(30, int(os.environ.get("SITE_SEM_COMUNICACAO_S", "60")))
 _guardiao_lock = threading.Lock()
 _guardiao_ultima_execucao = 0.0
+_guardiao_ultima_execucao_ts = None  # relógio de parede, para a página de saúde
 
 PING_HISTORY_INTERVAL = max(30, int(os.environ.get("PING_HISTORY_INTERVAL", "60")))
 _ultimo_historico_ping = {}
@@ -583,13 +625,14 @@ def _marcar_acao_enviada(conn, comando):
 # ⚡ FUNÇÃO GUARDIÃ GLOBAL (CRON DA NUVEM)
 # ==========================================
 def verificar_quedas_global(conn, force=False):
-    global _guardiao_ultima_execucao
+    global _guardiao_ultima_execucao, _guardiao_ultima_execucao_ts
 
     agora_monotonic = time.monotonic()
     with _guardiao_lock:
         if not force and (agora_monotonic - _guardiao_ultima_execucao) < GUARDIAO_INTERVALO:
             return
         _guardiao_ultima_execucao = agora_monotonic
+        _guardiao_ultima_execucao_ts = time.time()
 
     caidos = []
     is_postgres = bool(os.environ.get('DATABASE_URL'))
@@ -669,6 +712,49 @@ if os.environ.get("DISABLE_BACKGROUND_GUARDIAN", "0") != "1":
         name="noc-guardiao",
         daemon=True,
     ).start()
+
+# ==========================================
+# 🩺 SAÚDE DO SERVIDOR (verificações internas e alertas para o grupo master)
+# ==========================================
+SAUDE_INTERVALO = max(30, int(os.environ.get("SAUDE_INTERVALO", "60")))
+GUARDIAO_LIGADO = os.environ.get("DISABLE_BACKGROUND_GUARDIAN", "0") != "1"
+
+
+def _contexto_saude():
+    return {
+        'pool': database._pg_pool,
+        'guardiao_ligado': GUARDIAO_LIGADO,
+        'guardiao_intervalo_s': GUARDIAO_INTERVALO,
+        'guardiao_idade_s': (time.time() - _guardiao_ultima_execucao_ts) if _guardiao_ultima_execucao_ts else None,
+    }
+
+
+def verificar_saude(conn):
+    checks = saude.coletar(conn, _contexto_saude())
+    saude.aplicar(conn, checks, saude.ler_config(conn),
+                  lambda texto: enviar_telegram(html.escape(texto).replace('SAÚDE DO SERVIDOR', '<b>SAÚDE DO SERVIDOR</b>')
+                                                .replace('SERVIDOR NORMALIZADO', '<b>SERVIDOR NORMALIZADO</b>'), conn=conn))
+    conn.commit()
+    return checks
+
+
+def _loop_saude():
+    while True:
+        time.sleep(SAUDE_INTERVALO)
+        conn = None
+        try:
+            conn = database.get_db()
+            verificar_saude(conn)
+        except Exception as e:
+            # Com o banco fora, quem avisa é o vigia (ops/vigia), que roda fora da Central.
+            print(f"⚠️ Verificação de saúde: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+
+if GUARDIAO_LIGADO:
+    threading.Thread(target=_loop_saude, name="noc-saude", daemon=True).start()
 
 # ==========================================
 # 🔐 SISTEMA DE LOGIN E SESSÃO
