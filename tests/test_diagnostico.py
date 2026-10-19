@@ -234,3 +234,17 @@ def test_sensor_diagnosis_endpoint_and_tenant_scope(client, login):
     assert dados['rota']['pior_salto']['ttl'] == 2 and len(dados['serie']) == 4
     assert cli.get('/api/v2/sensor/AA:00:00:00:30:99/diagnostico').status_code == 403
     assert [d['sensor_mac'] for d in cli.get('/api/v2/diagnosticos').get_json()['ativos']] == [MAC]
+
+
+def test_resent_batch_is_ignored(client):
+    _sensor()
+    agora = time.time()
+    lote = [{'tipo': 'starlink', **starlink._coletar_mock('obstruida'), 'coletado_em': agora - 100},
+            {'tipo': 'rota', 'coletado_em': agora - 90, 'motivo': 'periodica', 'ferramenta': 'mtr', 'saltos': []},
+            janela(ts=agora - 60)]
+    _enviar(client, lote)
+    _enviar(client, lote)  # o agente desistiu de esperar e mandou de novo
+    assert len(_linhas('SELECT id FROM medicoes_rede')) == 6
+    assert len(_linhas('SELECT id FROM starlink_medicoes')) == 1 and len(_linhas('SELECT id FROM rotas_rede')) == 1
+    assert _linhas("SELECT janelas FROM diagnosticos WHERE chave='starlink_obstruida'")[0]['janelas'] == 1
+    assert not _telegrams()  # uma janela só: ainda não confirmou
