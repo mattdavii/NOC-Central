@@ -1005,14 +1005,14 @@ def gerar_token_local(mac):
 # ==========================================
 # 🔄 VERSÃO DO AGENTE
 # ==========================================
-# O agente é só Linux (no Windows, via WSL) e roda do repositório: a Central
-# anuncia a versão e o sensor se atualiza com linux/update.sh <tag>.
+# O agente é só Linux (no Windows, via WSL): a Central anuncia a versão e o
+# sensor é atualizado pela ação "Atualizar agente" ou reinstalando.
 @app.route('/api/v2/agent_versao')
 def agent_versao():
     return jsonify({
         "versao": CENTRAL_VERSION,
         "platform": "linux",
-        "update_command": f"bash linux/update.sh v{CENTRAL_VERSION}",
+        "update_command": f"curl -fsSL {_url_central()}/instalar.sh | bash",
         "central_version": CENTRAL_VERSION,
     })
 
