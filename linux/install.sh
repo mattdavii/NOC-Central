@@ -11,8 +11,12 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_USER="$(id -un)"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 VENV_DIR="${ROOT_DIR}/.venv"
-ENV_FILE="/etc/default/noc-sensor"
-SERVICE_FILE="/etc/systemd/system/noc-sensor.service"
+SERVICE="nexopulse-edge"
+ENV_FILE="/etc/default/${SERVICE}"
+SERVICE_FILE="/etc/systemd/system/${SERVICE}.service"
+# Nomes até a 2.2: o serviço era noc-sensor e o agente, agente_v2.py.
+ENV_ANTIGO="/etc/default/noc-sensor"
+SERVICE_ANTIGO="/etc/systemd/system/noc-sensor.service"
 
 echo "==> Instalando dependências do Linux..."
 if command -v apt-get >/dev/null; then
@@ -40,10 +44,44 @@ echo "==> Preparando ambiente Python..."
 "${PYTHON_BIN}" -m venv "${VENV_DIR}"
 "${VENV_DIR}/bin/python" -m pip install --upgrade pip
 "${VENV_DIR}/bin/pip" install -r "${ROOT_DIR}/requirements-agente.txt"
-if [[ -f "${ROOT_DIR}/requirements-starlink.txt" ]]; then
-  # Opcional: sem estes pacotes o Edge só não lê a antena Starlink.
+
+# Coletor Starlink (opcional, dependências mais pesadas): NOC_STARLINK=on força,
+# off pula; no automático, instala só se a antena responder ou já estiver em uso.
+starlink_modo="${NOC_STARLINK:-auto}"
+instalar_starlink=0
+case "${starlink_modo}" in
+  on|1|sim|yes) instalar_starlink=1 ;;
+  off|0|nao|no) instalar_starlink=0 ;;
+  *)
+    if "${VENV_DIR}/bin/python" -c 'import starlink_grpc' 2>/dev/null \
+       || timeout 2 bash -c '</dev/tcp/192.168.100.1/9200' 2>/dev/null; then
+      instalar_starlink=1
+    fi
+    ;;
+esac
+if ((instalar_starlink)) && [[ -f "${ROOT_DIR}/requirements-starlink.txt" ]]; then
+  echo "==> Instalando o coletor Starlink..."
   "${VENV_DIR}/bin/pip" install -r "${ROOT_DIR}/requirements-starlink.txt" \
     || echo "⚠️  Dependências da Starlink não instaladas; o sensor funciona sem o coletor Starlink."
+else
+  echo "    Starlink não detectada: coletor não instalado (para instalar depois: NOC_STARLINK=on bash linux/install.sh)."
+fi
+
+echo "==> Migrando instalação antiga (noc-sensor), se houver..."
+if [[ -f "${SERVICE_ANTIGO}" ]]; then
+  sudo systemctl disable --now noc-sensor.service 2>/dev/null || true
+  sudo rm -f "${SERVICE_ANTIGO}"
+  sudo systemctl daemon-reload
+fi
+if [[ -f "${ENV_ANTIGO}" && ! -f "${ENV_FILE}" ]]; then
+  # Mantém URL da Central, nome e chave de API do sensor.
+  sudo mv "${ENV_ANTIGO}" "${ENV_FILE}"
+fi
+# Arquivos que saíram do pacote (agente renomeado; docs e Windows ficam só no servidor).
+# Nunca dentro de um clone do repositório.
+if [[ ! -d "${ROOT_DIR}/.git" ]]; then
+  rm -f "${ROOT_DIR}/agente_v2.py" "${ROOT_DIR}/linux/README.md" "${ROOT_DIR}/linux/update.sh"
+  rm -rf "${ROOT_DIR}/windows" "${ROOT_DIR}/__pycache__"
 fi
 
 CENTRAL_URL="${NOC_CENTRAL_URL:-https://nexopulse.up.railway.app/api/v2/report_data}"
@@ -82,7 +120,7 @@ User=${RUN_USER}
 WorkingDirectory=${ROOT_DIR}
 EnvironmentFile=-${ENV_FILE}
 Environment=PYTHONUNBUFFERED=1
-ExecStart=${VENV_DIR}/bin/python ${ROOT_DIR}/agente_v2.py
+ExecStart=${VENV_DIR}/bin/python ${ROOT_DIR}/nexopulse_edge.py
 # always: volta sozinho se cair, e também depois de "reiniciar/atualizar agente".
 Restart=always
 RestartSec=5
@@ -95,13 +133,18 @@ PrivateTmp=true
 WantedBy=multi-user.target
 EOF
 
+# Se o ajudante de root já foi liberado nesta máquina, atualiza para a versão do pacote.
+if [[ -f /usr/local/sbin/nexopulse-admin ]]; then
+  sudo install -o root -g root -m 0755 "${ROOT_DIR}/linux/nexopulse-admin" /usr/local/sbin/nexopulse-admin
+fi
+
 sudo systemctl daemon-reload
 # enable = sobe sozinho a cada boot; --now = já inicia agora.
-sudo systemctl enable --now noc-sensor.service
-sudo systemctl restart noc-sensor.service
+sudo systemctl enable --now "${SERVICE}.service"
+sudo systemctl restart "${SERVICE}.service"
 
 echo
 echo "✅ NexoPulse Edge instalado, iniciado e configurado para subir com a máquina."
-echo "Status: sudo systemctl status noc-sensor --no-pager"
-echo "Logs:   journalctl -u noc-sensor -f"
+echo "Status: sudo systemctl status ${SERVICE} --no-pager"
+echo "Logs:   journalctl -u ${SERVICE} -f"
 echo "Config: ${ENV_FILE}"

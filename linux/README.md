@@ -1,6 +1,6 @@
 # NexoPulse Edge no Linux
 
-O `agente_v2.py` roda só em Linux, como serviço `systemd`, sem depender de sessão
+O `nexopulse_edge.py` roda só em Linux, como serviço `systemd`, sem depender de sessão
 gráfica. No Windows ele roda dentro do WSL (veja abaixo).
 
 ## Instalação (Linux)
@@ -19,13 +19,20 @@ curl -fsSL https://nexopulse.up.railway.app/instalar.sh | NOC_SENSOR_NOME="Loja 
 ```
 
 O instalador baixa o agente da Central para `~/nexopulse-edge`, instala as
-dependências e registra o serviço `noc-sensor` no systemd com:
+dependências e registra o serviço `nexopulse-edge` no systemd com:
 
 - **início automático no boot** (`systemctl enable`): a máquina liga, o sensor sobe;
 - **`Restart=always` sem limite de tentativas**: se o agente cair, volta em 5 s.
 
 Reinstalar pelo mesmo comando preserva a identidade (`sensor_id.txt`) e a chave
-(`sensor_key.txt`) do sensor.
+(`sensor_key.txt`) do sensor. Uma instalação antiga (serviço `noc-sensor`) é
+migrada sozinha: o serviço velho é removido e `/etc/default/noc-sensor` vira
+`/etc/default/nexopulse-edge`.
+
+Na máquina fica só o necessário para o sensor rodar (agente, módulos e
+instalador); documentação e instalador do Windows ficam no servidor. O coletor
+Starlink só é instalado se a antena responder; para instalar depois:
+`NOC_STARLINK=on bash ~/nexopulse-edge/linux/install.sh`.
 
 ## Diagnóstico de rede e Starlink
 
@@ -39,9 +46,7 @@ No Windows 11 22H2 ou mais novo, baixe o instalador e rode num PowerShell
 **como Administrador**:
 
 ```powershell
-irm https://nexopulse.up.railway.app/instalar-windows.ps1 -OutFile instalar-nexopulse.ps1
-Set-ExecutionPolicy -Scope Process Bypass
-.\instalar-nexopulse.ps1 -NomeSensor "Loja Centro"
+irm https://nexopulse.up.railway.app/instalar-windows.ps1 -OutFile $env:TEMP\nexopulse.ps1; powershell -ExecutionPolicy Bypass -File $env:TEMP\nexopulse.ps1 -NomeSensor "Loja Centro"
 ```
 
 O script instala o Ubuntu no WSL (na primeira vez pede para criar o usuário
@@ -60,7 +65,7 @@ sensor. No WSL não há leitura de temperatura da CPU.
   Central a vincula ao sensor no primeiro contato, avisa o grupo NexoPulse no
   Telegram e passa a exigi-la. Para trocar a chave de um sensor, use
   **Gerar chave** na tela Sensores e coloque o valor em `NOC_SENSOR_API_KEY` no
-  `/etc/default/noc-sensor`.
+  `/etc/default/nexopulse-edge`.
 
 ## Ações remotas
 
@@ -89,12 +94,13 @@ Para desfazer: `sudo rm /etc/sudoers.d/nexopulse-edge /usr/local/sbin/nexopulse-
 ## Operação
 
 ```bash
-sudo systemctl status noc-sensor --no-pager
-journalctl -u noc-sensor -f
-sudo systemctl restart noc-sensor
+sudo systemctl status nexopulse-edge --no-pager
+journalctl -u nexopulse-edge -f
+sudo systemctl restart nexopulse-edge
 ```
 
-As opções de runtime ficam em `/etc/default/noc-sensor`. Os valores padrão são:
+As opções de runtime ficam em `/etc/default/nexopulse-edge` (depois de editar,
+reinicie o serviço). Os valores padrão são:
 
 - telemetria: 5 s;
 - watchdog: 15 s;
@@ -109,43 +115,20 @@ Os valores RX/TX representam somente a interface do sensor e não o tráfego tot
 
 O agente usa `ip neigh` no Linux, suporta sensores térmicos AMD/Intel expostos por `lm-sensors`/psutil e não depende de ícone de bandeja quando executado headless.
 
-Para ações administrativas, o sensor tenta o wrapper `/usr/local/sbin/minipc-admin` quando ele existe. Caso contrário, usa apenas `sudo -n`, sem bloquear esperando senha.
+Fallback aproximado por IP é opcional: adicione `NOC_IP_GEOLOCATION=1` a `/etc/default/nexopulse-edge` e reinicie. Isso consulta o provedor ipwho.is a partir da máquina do sensor. Não substitui uma localização manual/do navegador. Sem essa opção, não há consulta externa de geolocalização.
 
-## Atualização para 2.2.0-rc1
+## Atualização
 
-Execute no Mini PC como o usuário que instalou o sensor. O caminho é obtido do próprio serviço:
+Pela Central: na tela do sensor, **Atualizar agente** baixa o pacote da versão
+atual e reinicia o serviço, preservando identidade, chave e fila local. Ou, na
+máquina, rode de novo o comando de instalação.
 
-```bash
-cd "$(systemctl show noc-sensor.service -p WorkingDirectory --value)"
-git status --short
-```
+## Credencial individual do sensor
 
-Se houver alterações locais, preserve/revise-as antes de prosseguir. Não use reset --hard. Com a árvore limpa:
-
-```bash
-git branch "rollback/linux-$(date -u +%Y%m%dT%H%M%SZ)" HEAD
-git fetch origin e5537ed24da09add6b3b541e03fe89c1577a1344
-git switch --detach e5537ed24da09add6b3b541e03fe89c1577a1344
-.venv/bin/python -m pip install -r requirements-agente.txt
-.venv/bin/python -m py_compile agente_v2.py
-sudo systemctl restart noc-sensor.service
-sudo systemctl is-active noc-sensor.service
-sudo systemctl status noc-sensor.service --no-pager
-journalctl -u noc-sensor.service -n 80 --no-pager
-```
-
-O SHA acima é o commit imutável validado pelo CI que contém o hardening posterior ao RC original. A tag `v2.2.0-rc1` permanece imutável no primeiro RC e, sozinha, não contém essas correções. Depois que esse commit estiver em uso, `linux/update.sh` também aceitará tags ou um SHA completo nas próximas atualizações. Não reinstale o serviço nem apague bancos locais. `/etc/default/noc-sensor` é preservado.
-
-Na Central, confira `Agente 2.2.0-rc1`, horário do último contato, IP/CIDR/interface, MAC, velocidade, RX/TX e dispositivos SEM ICMP. Acesse Configurações do sensor pelo celular no local e capture a localização; revise a precisão e salve. A Central deve ser acessada por HTTPS.
-
-Fallback aproximado por IP é opcional: adicione `NOC_IP_GEOLOCATION=1` a `/etc/default/noc-sensor` e reinicie. Isso consulta o provedor ipwho.is a partir do Mini PC. Não substitui uma localização manual/do navegador. Sem essa opção, não há consulta externa de geolocalização.
-
-## Credencial individual do Mini PC
-
-Na Central, abra **Sensores**, clique em **Gerar chave** no Mini PC e copie o valor exibido uma única vez. No Mini PC:
+Na Central, abra **Sensores**, clique em **Gerar chave** no sensor e copie o valor exibido uma única vez. Na máquina do sensor:
 
 ```bash
-sudoedit /etc/default/noc-sensor
+sudoedit /etc/default/nexopulse-edge
 ```
 
 Adicione uma linha, sem aspas nem espaços ao redor de `=`:
@@ -157,11 +140,9 @@ NOC_SENSOR_API_KEY=CHAVE_COPIADA_DA_CENTRAL
 Salve e valide sem imprimir a chave nos logs:
 
 ```bash
-sudo systemctl restart noc-sensor.service
-sudo systemctl is-active noc-sensor.service
-journalctl -u noc-sensor.service -n 80 --no-pager
+sudo systemctl restart nexopulse-edge
+sudo systemctl is-active nexopulse-edge
+journalctl -u nexopulse-edge -n 80 --no-pager
 ```
 
-Confirme na Central que o último contato continua atualizando. Repita para cada sensor (Linux ou WSL) antes de definir `NOC_SENSOR_AUTH_REQUIRED=1` no Railway. Gerar a chave não bloqueia agentes antigos enquanto essa variável permanecer `0`.
-
-Para rollback do Mini PC, selecione a branch `rollback/linux-...` criada acima, reinstale `requirements-agente.txt` e reinicie o mesmo serviço. Se a credencial precisar ser removida, apague somente a linha `NOC_SENSOR_API_KEY` de `/etc/default/noc-sensor`, reinicie o serviço e mantenha a Central em modo de compatibilidade até corrigir o sensor.
+Confirme na Central que o último contato continua atualizando. Repita para cada sensor (Linux ou WSL) antes de definir `NOC_SENSOR_AUTH_REQUIRED=1` no Railway. Gerar a chave não bloqueia agentes antigos enquanto essa variável permanecer `0`. Para remover a credencial, apague somente a linha `NOC_SENSOR_API_KEY` e reinicie o serviço.

@@ -2,7 +2,7 @@
 
 Plataforma de monitoramento de rede em dois componentes:
 
-- **NexoPulse Edge** (`agente_v2.py` e módulos): agente Linux que roda na rede do
+- **NexoPulse Edge** (`nexopulse_edge.py` e módulos): agente Linux que roda na rede do
   site (no Windows, dentro do WSL). Instalação em [`linux/README.md`](linux/README.md)
   e [`docs/INSTALAR-SENSOR.md`](docs/INSTALAR-SENSOR.md).
 - **NexoPulse Central** (`app.py`): servidor Flask na nuvem (Railway) com o painel,
@@ -53,8 +53,8 @@ caso o próximo é testado).
 
 ### Configuração do Edge
 
-As variáveis ficam em `/etc/default/noc-sensor` (depois de editar:
-`sudo systemctl restart noc-sensor`). Todas são opcionais.
+As variáveis ficam em `/etc/default/nexopulse-edge` (depois de editar:
+`sudo systemctl restart nexopulse-edge`). Todas são opcionais.
 
 | Variável | Padrão | Para quê |
 |---|---|---|

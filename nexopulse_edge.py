@@ -678,8 +678,7 @@ def executar_flush_dns():
 
 def executar_admin_linux(acao, alvo=None):
     """Executa apenas ações administrativas pré-definidas, sem prompt de senha."""
-    wrapper = next((w for w in ("/usr/local/sbin/nexopulse-admin", "/usr/local/sbin/minipc-admin")
-                    if os.path.isfile(w) and os.access(w, os.X_OK)), None)
+    wrapper = ADMIN_HELPER if os.path.isfile(ADMIN_HELPER) and os.access(ADMIN_HELPER, os.X_OK) else None
     if wrapper:
         cmd = ["sudo", "-n", wrapper, acao]
         if alvo:
@@ -812,7 +811,7 @@ def _acao_diagnostico():
     for titulo, cmd in (
         ("Sistema", ["uname", "-a"]), ("Ligado há", ["uptime"]), ("Disco", ["df", "-h", "-x", "tmpfs", "-x", "devtmpfs"]),
         ("Memória", ["free", "-m"]), ("Rede", ["ip", "-br", "addr"]), ("Rotas", ["ip", "route"]),
-        ("Serviço do agente", ["systemctl", "status", "noc-sensor", "--no-pager", "-n", "15"]),
+        ("Serviço do agente", ["systemctl", "status", "nexopulse-edge", "--no-pager", "-n", "15"]),
     ):
         _, saida = _rodar(cmd, 15)
         partes.append(f"== {titulo} ==\n{saida.strip()}")
@@ -846,14 +845,20 @@ def _acao_atualizar_agente():
                 alvo = os.path.join(destino, relativo)
                 os.makedirs(os.path.dirname(alvo), exist_ok=True)
                 shutil.copy2(origem, alvo)
-    codigo, pip = _rodar([os.path.join(destino, ".venv", "bin", "python"), "-m", "pip", "install", "-q", "-r",
+    # Nome antigo do agente (antes de nexopulse_edge.py): o serviço não o usa mais.
+    antigo = os.path.join(destino, "agente_v2.py")
+    if os.path.exists(antigo) and os.path.abspath(antigo) != os.path.abspath(__file__):
+        os.remove(antigo)
+    python_venv = os.path.join(destino, ".venv", "bin", "python")
+    codigo, pip = _rodar([python_venv, "-m", "pip", "install", "-q", "-r",
                            os.path.join(destino, "requirements-agente.txt")], 600)
     if codigo != 0:
         return codigo, f"arquivos atualizados em {destino}, mas o pip falhou:\n{pip.strip()}"
     opcional = os.path.join(destino, "requirements-starlink.txt")
     aviso = ""
-    if os.path.exists(opcional):
-        codigo_sl, _ = _rodar([os.path.join(destino, ".venv", "bin", "python"), "-m", "pip", "install", "-q", "-r", opcional], 600)
+    # Coletor Starlink é opcional: só atualiza as dependências onde ele já foi instalado.
+    if os.path.exists(opcional) and starlink is not None and starlink.starlink_grpc is not None:
+        codigo_sl, _ = _rodar([python_venv, "-m", "pip", "install", "-q", "-r", opcional], 600)
         aviso = "" if codigo_sl == 0 else " (coletor Starlink sem dependências; o resto segue normal)"
     return _reiniciar_agente(f"pacote instalado em {destino}{aviso}")
 

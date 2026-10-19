@@ -29,7 +29,7 @@ Debian/Ubuntu, Arch/CachyOS, Fedora ou openSUSE, com acesso à internet.
    com a máquina"**. Em até 1 minuto o sensor aparece na Central e o grupo
    **NexoPulse · Alertas** recebe "🔐 SENSOR VINCULADO".
 
-Conferir: `sudo systemctl status noc-sensor --no-pager` (deve estar `active (running)`
+Conferir: `sudo systemctl status nexopulse-edge --no-pager` (deve estar `active (running)`
 e `enabled`).
 
 ---
@@ -42,9 +42,7 @@ Windows 11 versão 22H2 ou mais nova.
 2. Baixe e rode o instalador:
 
    ```powershell
-   irm https://nexopulse.up.railway.app/instalar-windows.ps1 -OutFile instalar-nexopulse.ps1
-   Set-ExecutionPolicy -Scope Process Bypass
-   .\instalar-nexopulse.ps1 -NomeSensor "Loja Centro"
+   irm https://nexopulse.up.railway.app/instalar-windows.ps1 -OutFile $env:TEMP\nexopulse.ps1; powershell -ExecutionPolicy Bypass -File $env:TEMP\nexopulse.ps1 -NomeSensor "Loja Centro"
    ```
 
 3. **Primeira vez:** o script instala o Ubuntu e para. Abra o **Ubuntu** pelo menu
@@ -54,7 +52,7 @@ Windows 11 versão 22H2 ou mais nova.
    dentro do Ubuntu (pede a senha do Linux) e cria a tarefa **"NexoPulse Edge (WSL)"**.
    Essa tarefa liga o WSL sempre que o Windows inicia.
 
-Conferir: `wsl -d Ubuntu -- systemctl status noc-sensor --no-pager`.
+Conferir: `wsl -d Ubuntu -- systemctl status nexopulse-edge --no-pager`.
 
 ---
 
@@ -72,7 +70,7 @@ Conferir: `wsl -d Ubuntu -- systemctl status noc-sensor --no-pager`.
 
 | Sintoma | O que fazer |
 |---|---|
-| Sensor não aparece | `journalctl -u noc-sensor -n 50 --no-pager` e veja o erro |
+| Sensor não aparece | `journalctl -u nexopulse-edge -n 50 --no-pager` e veja o erro |
 | `401 Sensor não autenticado` no log | A chave mudou. Na Central, **Sensores → excluir** o sensor e reinicie o serviço: ele se vincula de novo |
 | Não volta depois de reiniciar o PC (Windows) | Confira se a tarefa **"NexoPulse Edge (WSL)"** existe no Agendador de Tarefas |
 | Reinstalar | Rode o mesmo comando de instalação: identidade e chave são preservadas |

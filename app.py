@@ -22,7 +22,7 @@ import re
 import hashlib
 from datetime import datetime, timedelta, timezone
 
-# Chave privada RSA usada para assinar os tokens de acesso local do agente (agente_v2.py guarda só a pública)
+# Chave privada RSA usada para assinar os tokens de acesso local do agente (nexopulse_edge.py guarda só a pública)
 JWT_PRIVATE_KEY = os.environ.get('JWT_PRIVATE_KEY', '')
 
 app = Flask(__name__)
@@ -417,8 +417,9 @@ def enforce_tenant_scope():
 # ==========================================
 # 📦 PACOTE E INSTALADOR DO AGENTE
 # ==========================================
-ARQUIVOS_AGENTE = ['agente_v2.py', 'host_metrics.py', 'starlink.py', 'netdiag.py', 'fila_envio.py', 'requirements-agente.txt', 'requirements-starlink.txt', 'linux/install.sh', 'linux/nexopulse-admin',
-                   'linux/README.md', 'windows/instalar-nexopulse-wsl.ps1']
+# Só o que o sensor precisa para rodar; docs e o instalador do Windows ficam no servidor.
+ARQUIVOS_AGENTE = ['nexopulse_edge.py', 'host_metrics.py', 'starlink.py', 'netdiag.py', 'fila_envio.py', 'requirements-agente.txt',
+                   'requirements-starlink.txt', 'linux/install.sh', 'linux/nexopulse-admin']
 
 
 def _url_central():

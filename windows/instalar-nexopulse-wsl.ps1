@@ -79,4 +79,4 @@ Register-ScheduledTask -TaskName 'NexoPulse Edge (WSL)' -Action $acao -Trigger $
 
 Passo 'Pronto'
 Write-Host 'O sensor deve aparecer na Central em alguns segundos, com o nome deste computador.'
-Write-Host "Status: wsl -d $Distro -- systemctl status noc-sensor --no-pager"
+Write-Host "Status: wsl -d $Distro -- systemctl status nexopulse-edge --no-pager"

@@ -3,7 +3,7 @@ import socket
 from types import SimpleNamespace as NS
 from unittest.mock import patch
 import pytest
-import agente_v2 as agent
+import nexopulse_edge as agent
 
 @pytest.mark.parametrize('cidr,ip,limit,expected', [('10.2.0.0/16','10.2.3.4',64,True),('192.168.1.0/24','192.168.1.5',512,False),('10.2.3.4/31','10.2.3.4',64,False),('bad','10.0.0.1',64,False)])
 def test_scan_bound(monkeypatch,cidr,ip,limit,expected):
