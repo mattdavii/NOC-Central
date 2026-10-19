@@ -12,6 +12,12 @@ O Edge manda o estado a cada 5 s (`POST /api/v2/report_data`, que também é o
 heartbeat) e as medições de diagnóstico em lotes (`POST /api/v2/medicoes`), sempre
 com a chave do próprio sensor (`X-NOC-Sensor-Key`).
 
+## Banco e migração para o MiniPC
+
+O banco (PostgreSQL 16 + TimescaleDB em Docker) é definido em
+[`ops/minipc/banco`](ops/minipc/banco). O roteiro para levá-lo, com o backup e o
+vigia, para outra máquina está em [`docs/MIGRAR-MINIPC.md`](docs/MIGRAR-MINIPC.md).
+
 ## Saúde do servidor
 
 A página **Servidor** (só Administrador Master) mostra a saúde da Central (latência
