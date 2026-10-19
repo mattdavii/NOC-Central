@@ -75,6 +75,14 @@ class PostgresWrapper:
             return
         self._pool.putconn(self.conn)
 
+    def __del__(self):
+        # Rede de segurança: conexão esquecida (erro no meio de uma rota ou tarefa)
+        # volta ao pool quando o objeto some, em vez de esgotar o pool aos poucos.
+        try:
+            self.close()
+        except Exception:
+            pass
+
 
 def _get_postgres_pool():
     global _pg_pool
@@ -104,15 +112,36 @@ def _get_postgres_pool():
     return _pg_pool
 
 
+def _registrar_na_requisicao(conn):
+    """Guarda a conexão na requisição Flask atual para fechar_conexoes_da_requisicao()."""
+    try:
+        import flask
+        if flask.has_request_context():
+            flask.g.setdefault("_conexoes_db", []).append(conn)
+    except ImportError:
+        pass
+    return conn
+
+
+def fechar_conexoes_da_requisicao():
+    """Fecha as conexões que uma requisição abriu e não fechou (rota que falhou no meio)."""
+    import flask
+    for conn in flask.g.pop("_conexoes_db", []):
+        try:
+            conn.close()  # idempotente: a rota pode já ter fechado
+        except Exception:
+            pass
+
+
 def get_db_connection():
     if DATABASE_URL:
         pool = _get_postgres_pool()
         conn = pool.getconn()
-        return PostgresWrapper(conn, pool)
+        return _registrar_na_requisicao(PostgresWrapper(conn, pool))
 
     conn = sqlite3.connect(os.environ.get("NOC_DB_PATH", "database.db"), timeout=10)
     conn.row_factory = sqlite3.Row
-    return conn
+    return _registrar_na_requisicao(conn)
 
 
 def ensure_columns(conn, table, definitions):

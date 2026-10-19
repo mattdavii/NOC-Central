@@ -131,6 +131,13 @@ def enforce_csrf():
     return None
 
 
+@app.teardown_request
+def devolver_conexoes_ao_pool(_erro=None):
+    # Várias rotas fecham a conexão só no caminho feliz: um erro no meio (banco
+    # caindo, por exemplo) deixava a conexão presa e esgotava o pool de 10.
+    database.fechar_conexoes_da_requisicao()
+
+
 @app.after_request
 def add_security_headers(response):
     response.headers.setdefault('X-Content-Type-Options', 'nosniff')
