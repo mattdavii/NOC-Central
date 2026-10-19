@@ -146,13 +146,18 @@ def test_package_is_applied_with_backup_and_can_be_restored(tmp_path):
     assert (tmp_path / 'nexopulse_edge.py').read_text() == 'VELHO'
 
 
-def test_first_contact_confirms_pending_update(tmp_path, monkeypatch):
+def test_first_contact_confirms_pending_update_only_in_new_version(tmp_path, monkeypatch):
     estado = tmp_path / '.atualizacao'
     estado.mkdir()
     (estado / 'pendente').write_text('v2\nv1\n')
     (estado / 'tentativas').write_text('1')
     monkeypatch.setattr(agent, 'PASTA_ATUALIZACAO', str(estado))
     monkeypatch.setattr(agent, 'log_local_event', lambda *a, **k: None)
+    # O processo antigo (v1), que ainda roda entre instalar e reiniciar, não confirma.
+    monkeypatch.setattr(agent, 'BUILD_AGENTE', 'v1')
+    agent._confirmar_atualizacao()
+    assert (estado / 'pendente').exists()
+    monkeypatch.setattr(agent, 'BUILD_AGENTE', 'v2')
     agent._confirmar_atualizacao()
     assert not (estado / 'pendente').exists() and not (estado / 'tentativas').exists()
 
