@@ -926,6 +926,10 @@ def _confirmar_atualizacao():
     pendente = os.path.join(PASTA_ATUALIZACAO, "pendente")
     if not os.path.exists(pendente):
         return
+    # Só quem roda a versão nova confirma: entre instalar e reiniciar, o processo
+    # antigo ainda fala com a Central e não pode dar a versão nova por boa.
+    if (_ler_texto(pendente).splitlines() or [""])[0] != BUILD_AGENTE:
+        return
     for nome in ("pendente", "tentativas"):
         try:
             os.remove(os.path.join(PASTA_ATUALIZACAO, nome))
