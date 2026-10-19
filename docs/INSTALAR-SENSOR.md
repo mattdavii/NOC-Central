@@ -66,8 +66,10 @@ Conferir: `wsl -d Ubuntu -- systemctl status nexopulse-edge --no-pager`.
   anterior. Pode ser desligada na tela do sensor (veja `linux/README.md` → *Atualização*).
 - **Ações remotas** (diagnóstico, atualizar e reiniciar o agente): ligue o
   interruptor no card **Ações remotas** da tela do sensor (só Administrador Master).
-  "Atualizar sistema" e "Reiniciar máquina" exigem liberar o `nexopulse-admin`
-  nessa máquina (veja `linux/README.md` → *Ações que precisam de root*).
+  "Atualizar sistema" e "Reiniciar máquina" exigem liberar o root nessa máquina:
+  instale com `NEXOPULSE_ROOT=1` (no Windows, `-Root`) ou rode
+  `bash ~/nexopulse-edge/linux/liberar-root.sh` depois (veja `linux/README.md` →
+  *Ações que precisam de root*).
 
 ## Se algo der errado
 

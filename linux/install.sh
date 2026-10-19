@@ -136,8 +136,12 @@ PrivateTmp=true
 WantedBy=multi-user.target
 EOF
 
-# Se o ajudante de root já foi liberado nesta máquina, atualiza para a versão do pacote.
-if [[ -f /usr/local/sbin/nexopulse-admin ]]; then
+# Ações de root ("Atualizar sistema" e "Reiniciar máquina"): só com NEXOPULSE_ROOT=1.
+# Se já foram liberadas antes, só atualiza o ajudante para a versão do pacote.
+if [[ "${NEXOPULSE_ROOT:-0}" == "1" ]]; then
+  echo "==> Liberando as ações de root (NEXOPULSE_ROOT=1)..."
+  bash "${ROOT_DIR}/linux/liberar-root.sh"
+elif [[ -f /usr/local/sbin/nexopulse-admin ]]; then
   sudo install -o root -g root -m 0755 "${ROOT_DIR}/linux/nexopulse-admin" /usr/local/sbin/nexopulse-admin
 fi
 
@@ -151,3 +155,8 @@ echo "✅ NexoPulse Edge instalado, iniciado e configurado para subir com a máq
 echo "Status: sudo systemctl status ${SERVICE} --no-pager"
 echo "Logs:   journalctl -u ${SERVICE} -f"
 echo "Config: ${ENV_FILE}"
+if [[ -f /usr/local/sbin/nexopulse-admin ]]; then
+  echo "Ações de root: liberadas (desfazer: bash ${ROOT_DIR}/linux/liberar-root.sh --desfazer)"
+else
+  echo "Ações de root: não liberadas (para liberar: bash ${ROOT_DIR}/linux/liberar-root.sh)"
+fi
