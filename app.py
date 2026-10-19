@@ -1833,17 +1833,26 @@ def _correlacionar_provedores(conn, lim=None):
 
 
 def _guardar_janela_rede(conn, mac, item):
+    """Grava a janela num único INSERT (cada ida ao banco custa ~200 ms pela tailnet).
+
+    Devolve False se a janela já estava gravada (lote reenviado pelo agente).
+    """
     ts = item['coletado_em']
+    linhas = []
     for a in item.get('alvos') or []:
         if isinstance(a, dict):
-            conn.execute('INSERT INTO medicoes_rede (sensor_mac, coletado_em, tipo, papel, alvo, latencia_ms, jitter_ms, perda_pct, amostras) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                         (mac, ts, 'icmp', str(a.get('papel'))[:20], str(a.get('alvo'))[:80], _num_ou_none(a.get('latencia_ms')),
-                          _num_ou_none(a.get('jitter_ms')), _num_ou_none(a.get('perda_pct')), a.get('enviados') if isinstance(a.get('enviados'), int) else None))
+            linhas.append((mac, ts, 'icmp', str(a.get('papel'))[:20], str(a.get('alvo'))[:80], _num_ou_none(a.get('latencia_ms')),
+                           _num_ou_none(a.get('jitter_ms')), _num_ou_none(a.get('perda_pct')), a.get('enviados') if isinstance(a.get('enviados'), int) else None))
     for d in item.get('dns') or []:
         if isinstance(d, dict):
-            conn.execute('INSERT INTO medicoes_rede (sensor_mac, coletado_em, tipo, papel, alvo, latencia_ms, perda_pct, amostras) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                         (mac, ts, 'dns', 'dns', str(d.get('servidor'))[:80], _num_ou_none(d.get('tempo_ms')),
-                          _num_ou_none(d.get('falha_pct')), d.get('consultas') if isinstance(d.get('consultas'), int) else None))
+            linhas.append((mac, ts, 'dns', 'dns', str(d.get('servidor'))[:80], _num_ou_none(d.get('tempo_ms')), None,
+                           _num_ou_none(d.get('falha_pct')), d.get('consultas') if isinstance(d.get('consultas'), int) else None))
+    if not linhas:
+        return True
+    valores = ', '.join(['(?, ?, ?, ?, ?, ?, ?, ?, ?)'] * len(linhas))
+    cur = conn.execute(f'INSERT INTO medicoes_rede (sensor_mac, coletado_em, tipo, papel, alvo, latencia_ms, jitter_ms, perda_pct, amostras) '
+                       f'VALUES {valores} ON CONFLICT DO NOTHING', [v for linha in linhas for v in linha])
+    return cur.rowcount != 0
 
 
 def processar_medicoes(conn, sensor, itens, provedor_info=None):
@@ -1864,16 +1873,18 @@ def processar_medicoes(conn, sensor, itens, provedor_info=None):
         ts = item['coletado_em']
         if item['tipo'] == 'starlink':
             dados = {k: v for k, v in item.items() if k != 'tipo'}
-            conn.execute('INSERT INTO starlink_medicoes (sensor_mac, coletado_em, dados) VALUES (?, ?, ?)', (mac, ts, json.dumps(dados, ensure_ascii=False)))
-            if not starlink_atual or ts >= (starlink_atual.get('coletado_em') or 0):
+            nova = conn.execute('INSERT INTO starlink_medicoes (sensor_mac, coletado_em, dados) VALUES (?, ?, ?) ON CONFLICT DO NOTHING',
+                                (mac, ts, json.dumps(dados, ensure_ascii=False))).rowcount != 0
+            if nova and (not starlink_atual or ts >= (starlink_atual.get('coletado_em') or 0)):
                 starlink_atual = dados
                 conn.execute('UPDATE sensores SET starlink_info=? WHERE mac_id=?', (json.dumps(dados, ensure_ascii=False), mac))
         elif item['tipo'] == 'rota':
-            conn.execute('INSERT INTO rotas_rede (sensor_mac, coletado_em, motivo, ferramenta, saltos, pior_salto) VALUES (?, ?, ?, ?, ?, ?)',
+            conn.execute('INSERT INTO rotas_rede (sensor_mac, coletado_em, motivo, ferramenta, saltos, pior_salto) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
                          (mac, ts, str(item.get('motivo'))[:20], str(item.get('ferramenta'))[:20],
                           json.dumps(item.get('saltos') or [], ensure_ascii=False), json.dumps(item.get('pior_salto'), ensure_ascii=False) if item.get('pior_salto') else None))
         else:
-            _guardar_janela_rede(conn, mac, item)
+            if not _guardar_janela_rede(conn, mac, item):
+                continue  # janela repetida: já avaliada
             sl = starlink_atual if diagnostico.starlink_valida(starlink_atual, ts, lim) else None
             resultado = diagnostico.avaliar(item, sl, lim)
             inicio = _num_ou_none(item.get('inicio')) or ts

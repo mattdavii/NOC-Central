@@ -8,6 +8,24 @@ DB_POOL_MAX = max(DB_POOL_MIN, int(os.environ.get("DB_POOL_MAX", "10")))
 
 _pg_pool = None
 _pg_pool_lock = threading.Lock()
+IDLE_IN_TRANSACTION_MS = max(10000, int(os.environ.get("DB_IDLE_IN_TRANSACTION_MS", "300000")))
+
+
+def _cooperar_com_gevent():
+    """Sob o worker gevent, faz o psycopg2 ceder a vez enquanto espera o banco.
+
+    Sem isso, cada consulta (≈200 ms pela tailnet) bloqueia o único worker e uma
+    requisição lenta congela a Central inteira.
+    """
+    try:
+        from gevent import monkey
+        if not monkey.is_module_patched("socket"):
+            return
+        from psycogreen.gevent import patch_psycopg
+        patch_psycopg()
+        print("✅ psycopg2 cooperativo com gevent (psycogreen).")
+    except ImportError:
+        print("⚠️ psycogreen ausente: consultas ao banco bloqueiam o worker gevent.")
 
 
 class PostgresWrapper:
@@ -68,12 +86,19 @@ def _get_postgres_pool():
             import psycopg2.pool
             import psycopg2.extras
 
+            _cooperar_com_gevent()
             dsn = DATABASE_URL.replace("postgres://", "postgresql://", 1)
             _pg_pool = psycopg2.pool.ThreadedConnectionPool(
                 DB_POOL_MIN,
                 DB_POOL_MAX,
                 dsn,
                 cursor_factory=psycopg2.extras.DictCursor,
+                # O banco fica do outro lado da tailnet: se o processo da Central
+                # morre no meio de uma transação, a conexão pode continuar "viva"
+                # no servidor segurando locks (e travando a migração do próximo
+                # boot). O Postgres encerra transação ociosa além disso.
+                options=f"-c idle_in_transaction_session_timeout={IDLE_IN_TRANSACTION_MS}",
+                keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3,
             )
             print(f"✅ Pool PostgreSQL iniciado ({DB_POOL_MIN}-{DB_POOL_MAX} conexões).")
     return _pg_pool
@@ -107,6 +132,9 @@ def init_db():
     identity = 'SERIAL PRIMARY KEY' if DATABASE_URL else 'INTEGER PRIMARY KEY AUTOINCREMENT'
     try:
         if DATABASE_URL:
+            # Lock preso por outra sessão não pode travar o boot para sempre:
+            # falha em 30 s e o start script tenta de novo.
+            conn.execute("SET LOCAL lock_timeout = '30s'")
             conn.execute('SELECT pg_advisory_xact_lock(220001)')
         conn.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         conn.execute("CREATE TABLE IF NOT EXISTS sensores (mac_id TEXT PRIMARY KEY, nome_local TEXT, ip_sensor TEXT, cpu_usage REAL, ram_usage REAL, temp REAL, status TEXT, lat REAL, lon REAL, ping_gateway REAL, ping_global TEXT)")
@@ -160,6 +188,15 @@ def init_db():
             conn.execute('UPDATE sensores SET lat=NULL, lon=NULL WHERE ABS(lat + 14.235) < 0.00001 AND ABS(lon + 51.925) < 0.00001')
             conn.execute("UPDATE sensores SET latitude=lat, longitude=lon, location_source='legacy' WHERE lat BETWEEN -90 AND 90 AND lon BETWEEN -180 AND 180 AND latitude IS NULL")
             conn.execute("INSERT INTO schema_migrations (version) VALUES ('2.2.0-rc1')")
+        if not conn.execute("SELECT version FROM schema_migrations WHERE version='2.3.0-medicoes-unicas'").fetchone():
+            # O agente reenvia o lote quando a resposta demora: a mesma medição não
+            # pode entrar duas vezes (nem contar duas janelas para o diagnóstico).
+            for table, cols in (('medicoes_rede', 'sensor_mac, coletado_em, tipo, papel, alvo'),
+                                ('starlink_medicoes', 'sensor_mac, coletado_em'),
+                                ('rotas_rede', 'sensor_mac, coletado_em')):
+                conn.execute(f'DELETE FROM {table} WHERE id NOT IN (SELECT MIN(id) FROM {table} GROUP BY {cols})')
+                conn.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS uq_{table} ON {table} ({cols})")
+            conn.execute("INSERT INTO schema_migrations (version) VALUES ('2.3.0-medicoes-unicas')")
         if not conn.execute("SELECT version FROM schema_migrations WHERE version='2.2.0-sensor-auth'").fetchone():
             conn.execute("INSERT INTO schema_migrations (version) VALUES ('2.2.0-sensor-auth')")
         conn.commit()

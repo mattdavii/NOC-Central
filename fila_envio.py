@@ -22,7 +22,8 @@ import urllib.request
 DB = os.environ.get("NOC_FILA_DB", "sensor_local.db")
 MAX_ITENS = max(100, int(os.environ.get("NOC_FILA_MAX_ITENS", "20000")))
 MAX_DIAS = max(1, float(os.environ.get("NOC_FILA_MAX_DIAS", "7")))
-LOTE = 100
+# Lotes pequenos: a Central grava cada janela pela tailnet e o lote precisa caber no timeout.
+LOTE = 25
 
 _lock = threading.Lock()
 _pronta = set()
@@ -105,7 +106,7 @@ def rotas_envio(url_principal):
     return rotas
 
 
-def enviar_lote(rotas, mac, headers, extra=None, timeout=20):
+def enviar_lote(rotas, mac, headers, extra=None, timeout=60):
     """Envia o lote mais antigo pela primeira rota que aceitar. Devolve quantos itens saíram da fila."""
     ids, itens = _proximo_lote()
     if not ids:
