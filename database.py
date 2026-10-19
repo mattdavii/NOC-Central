@@ -178,6 +178,11 @@ def init_db():
         )''')
         conn.execute('CREATE TABLE IF NOT EXISTS telegram_outbox (event_key TEXT PRIMARY KEY, message TEXT NOT NULL, client_id INTEGER, attempts INTEGER NOT NULL, next_at DOUBLE PRECISION NOT NULL, expires_at DOUBLE PRECISION NOT NULL, state TEXT NOT NULL, result TEXT)')
         conn.execute('CREATE TABLE IF NOT EXISTS telegram_status (destination TEXT PRIMARY KEY, result TEXT, last_attempt DOUBLE PRECISION, last_success DOUBLE PRECISION, last_failure DOUBLE PRECISION)')
+        # Saúde do servidor: configuração e estado ficam no banco (não na máquina),
+        # para o vigia e os alertas seguirem iguais quando o banco mudar de máquina.
+        conn.execute('CREATE TABLE IF NOT EXISTS config_sistema (chave TEXT PRIMARY KEY, valor TEXT, atualizado_em DOUBLE PRECISION)')
+        conn.execute('''CREATE TABLE IF NOT EXISTS saude_estado (chave TEXT PRIMARY KEY, origem TEXT NOT NULL, rotulo TEXT, estado TEXT,
+            valor TEXT, detalhe TEXT, desde DOUBLE PRECISION, falhas INTEGER DEFAULT 0, notificado INTEGER DEFAULT 0, atualizado_em DOUBLE PRECISION)''')
         for table, cols in [('sensores','status,last_seen'),('sensores','cliente_id'),('logs_ia','sensor_mac,id'),('historico_pings','sensor_mac,id'),('historico_telemetria','sensor_mac,id'),('comandos_pendentes','sensor_mac,id'),('telegram_outbox','state,next_at'),('medicoes_rede','sensor_mac,coletado_em'),('starlink_medicoes','sensor_mac,coletado_em'),('rotas_rede','sensor_mac,coletado_em'),('diagnosticos','estado,sensor_mac'),('diagnosticos','sensor_mac,inicio')]:
             name = 'idx_' + table + '_' + cols.replace(',', '_')
             conn.execute(f'CREATE INDEX IF NOT EXISTS {name} ON {table} ({cols})')

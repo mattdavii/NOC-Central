@@ -363,3 +363,14 @@ table.procs th:nth-child(n+3),table.procs td:nth-child(n+3) { text-align:right; 
 .camada-dot.alerta { color:var(--status-warn); border-color:var(--status-warn); }
 .camada-dot.critico { color:#fff; background:var(--status-crit); border-color:var(--status-crit); }
 @media (max-width: 700px) { .sl-metricas { grid-template-columns:1fr; } }
+
+/* Saúde do servidor */
+.saude-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:25px; }
+.saude-config { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px 18px; align-items:end; }
+.saude-config label { display:flex; flex-direction:column; gap:4px; font-size:.82rem; color:var(--text-muted); }
+.saude-campo { display:flex; align-items:center; gap:6px; }
+.saude-campo input { width:100%; padding:8px 10px; background:var(--bg-input); border:1px solid var(--border); color:var(--text-main); border-radius:6px; }
+.saude-campo small { color:var(--text-muted); }
+.saude-config button { justify-self:start; }
+.iface-tag.warn { color:var(--status-warn); border-color:var(--status-warn); }
+@media (max-width: 900px) { .saude-grid { grid-template-columns:1fr; } }
