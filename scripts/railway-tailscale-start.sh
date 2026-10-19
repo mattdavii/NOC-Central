@@ -46,13 +46,36 @@ export TS_DEBUG_MTU="${TS_DEBUG_MTU:-1200}"
 "$TS_DIR/tailscale" --socket="$TS_SOCKET" up --auth-key="$TS_AUTHKEY" \
   --hostname="${TS_HOSTNAME:-railway-nexopulse}" --timeout=60s
 
-# Logo após o "tailscale up" o caminho até a máquina do banco ainda pode não
-# existir; sem esperar, o init_db falha e o worker não sobe (CRASHED).
-python scripts/ts_db_forward.py --wait "${TS_DB_WAIT:-120}" || exit 1
+# O banco mora num PC pela tailnet: se ele suspender, reiniciar ou perder a
+# rede, a Central não pode desistir. Antes, o container esperava 120 s e saía;
+# depois de algumas saídas o Railway marcava CRASHED e não tentava mais, e a
+# Central ficava fora até alguém reiniciar à mão. Agora ela espera o banco sem
+# limite e, se o gunicorn cair (worker preso no banco), espera e sobe de novo.
+esperar_banco() {
+  until python scripts/ts_db_forward.py --wait "${TS_DB_WAIT:-120}"; do
+    echo "[start] banco ainda inalcançável pela tailnet; continuo esperando"
+  done
+}
 
+esperar_banco
 python scripts/ts_db_forward.py &
 
-# Com o banco a ~200 ms pela tailnet, as migrações do boot passam dos 30 s
-# padrão do gunicorn e o worker seria morto em loop (WORKER TIMEOUT).
-exec gunicorn app:app --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
-  -w 1 --bind "0.0.0.0:${PORT:-8000}" --no-control-socket --timeout "${GUNICORN_TIMEOUT:-180}"
+gunicorn_pid=""
+encerrar() {
+  [ -n "$gunicorn_pid" ] && kill -TERM "$gunicorn_pid" 2>/dev/null && wait "$gunicorn_pid"
+  exit 0
+}
+trap encerrar TERM INT
+
+while true; do
+  # Com o banco a ~200 ms pela tailnet, as migrações do boot passam dos 30 s
+  # padrão do gunicorn e o worker seria morto em loop (WORKER TIMEOUT).
+  gunicorn app:app --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
+    -w 1 --bind "0.0.0.0:${PORT:-8000}" --no-control-socket --timeout "${GUNICORN_TIMEOUT:-180}" &
+  gunicorn_pid=$!
+  wait "$gunicorn_pid" || true
+  gunicorn_pid=""
+  echo "[start] gunicorn encerrou; aguardando o banco para subir de novo"
+  sleep 5
+  esperar_banco
+done
