@@ -5,6 +5,9 @@ casos ele **sobe sozinho quando a máquina liga** e **volta sozinho se cair**.
 
 Central: `https://nexopulse.up.railway.app`
 
+Versão para imprimir ou mandar ao cliente: [guia em PDF](guia-instalacao/NexoPulse-Edge-Guia-de-Instalacao.pdf)
+(gerado de `guia-instalacao/guia.html`; veja o comando no topo daquele arquivo).
+
 ---
 
 ## Máquina com Linux
