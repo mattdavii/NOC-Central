@@ -83,9 +83,11 @@ def test_agent_package_contains_agent_and_installer(client):
     resp = client.get('/agente/pacote.tar.gz')
     assert resp.status_code == 200
     nomes = tarfile.open(fileobj=io.BytesIO(resp.data), mode='r:gz').getnames()
-    for esperado in ('nexopulse-edge/agente_v2.py', 'nexopulse-edge/linux/install.sh', 'nexopulse-edge/VERSION'):
+    for esperado in ('nexopulse-edge/nexopulse_edge.py', 'nexopulse-edge/linux/install.sh', 'nexopulse-edge/VERSION'):
         assert esperado in nomes
     assert not any('sensor_key' in n or '.venv' in n for n in nomes)
+    # Enxuto: sem docs, sem instalador do Windows e sem o nome antigo do agente.
+    assert not any(n.endswith('.md') or '/windows/' in n or 'agente_v2' in n for n in nomes)
 
 
 def test_installer_points_to_this_central(client):
