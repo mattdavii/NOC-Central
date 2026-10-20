@@ -3,8 +3,8 @@
 {% set _role = session.get('role') %}
 <header class="app-bar">
     <a class="brand-lockup" href="/" aria-label="NexoPulse Central — início">
-        <img class="brand-logo brand-logo-dark" src="/static/brand/nexopulse-logo-dark.png" alt="NexoPulse" width="210" height="52">
-        <img class="brand-logo brand-logo-light" src="/static/brand/nexopulse-logo-light.png" alt="NexoPulse" width="210" height="52">
+        <img class="brand-logo brand-logo-dark" src="/static/brand/nexopulse/logo-escuro.svg" alt="NexoPulse" width="166" height="48">
+        <img class="brand-logo brand-logo-light" src="/static/brand/nexopulse/logo-claro.svg" alt="NexoPulse" width="166" height="48">
     </a>
     {% if session.get('usuario') and not hide_nav %}
     {% set _menu = menu_nexo() %}

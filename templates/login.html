@@ -6,7 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="manifest" href="/manifest.json?v=nexopulse-2">
     <meta name="theme-color" content="#082E56">
-    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="apple-touch-icon" href="/static/brand/nexopulse/apple-touch-icon.png">
     <title>NexoPulse Central - Acesso</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -30,7 +32,7 @@
         .btn-login:hover { filter: brightness(1.08); transform: translateY(-1px); }
         .btn-login:focus-visible { outline: 2px solid var(--text-main); outline-offset: 3px; }
         .flash-msg { background: color-mix(in srgb, var(--status-crit) 12%, transparent); color: var(--status-crit); border: 1px solid color-mix(in srgb, var(--status-crit) 40%, transparent); padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 20px; font-weight: bold; font-size: 0.9em; }
-        .login-tools { display:flex; justify-content:center; margin-top:18px; }
+        .login-tools { display:flex; flex-direction:column; align-items:center; margin-top:18px; }
         @media(max-width:520px) { .login-box { padding:28px 22px; } .login-header { align-items:flex-start; } }
     </style>
 <link rel="stylesheet" href="/static/product.css?v=nexopulse-3">
@@ -40,8 +42,8 @@
     <main class="login-shell">
       <div class="login-box">
         <div class="login-brand">
-            <img class="brand-logo-dark" src="/static/brand/nexopulse-logo-dark.png" alt="NexoPulse" width="310" height="94">
-            <img class="brand-logo-light" src="/static/brand/nexopulse-logo-light.png" alt="NexoPulse" width="310" height="94">
+            <img class="brand-logo-dark" src="/static/brand/nexopulse/logo-escuro.svg" alt="NexoPulse" width="310" height="90">
+            <img class="brand-logo-light" src="/static/brand/nexopulse/logo-claro.svg" alt="NexoPulse" width="310" height="90">
         </div>
         <p class="login-positioning">NETWORK INTELLIGENCE &amp; MONITORING</p>
         <p class="login-slogan">Sua rede tem um pulso. Nós damos visibilidade a ele.</p>
