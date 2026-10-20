@@ -2,7 +2,7 @@
 
 Kit oficial **proposto** das nove marcas da Família Nexo, ferramentas próprias da MD Soluções Tecnológicas. Ele foi recebido como `Kit_Nexo_Logos_Alta_Resolucao.zip` em 20/10/2026 e copiado sem alterações.
 
-> **Status:** a NexoPulse do kit foi adotada pela Central (branch `feat/nexopulse-marca-kit`, aguardando aprovação), usando os [derivados](#derivados-da-nexopulse-usados-pela-central) abaixo. As outras oito marcas estão armazenadas e ainda não integradas. Os PNGs antigos de `static/brand/` e `static/icons/` continuam no repositório; voltar atrás é trocar as referências.
+> **Status:** a NexoPulse do kit foi adotada pela Central (branch `feat/nexopulse-marca-kit`, aguardando aprovação), usando os [derivados](#derivados-usados-pela-central-nexopulse-e-nexohub) abaixo. As outras oito marcas estão armazenadas e ainda não integradas. Os PNGs antigos de `static/brand/` e `static/icons/` continuam no repositório; voltar atrás é trocar as referências.
 
 | Marca | Descrição |
 |---|---|
@@ -25,7 +25,7 @@ assets/branding/nexo/
 ├── paleta.json            cores e tipografia (do kit)
 ├── SHA256SUMS             hash dos 138 arquivos recebidos no kit (sha256sum -c SHA256SUMS)
 ├── logos/<slug>/          uma pasta por marca, 15 arquivos cada (abaixo)
-├── derivados/nexopulse/  versões criadas a partir do kit para a Central (abaixo)
+├── derivados/<slug>/     versões criadas a partir do kit para a Central (NexoPulse e NexoHub; abaixo)
 ├── referencias/
 │   └── painel-visual-aprovado.png   painel do conceito aprovado (referência, não é master)
 └── previa/
@@ -147,15 +147,17 @@ Veja `previa/comparacao-nexopulse.png`. O kit é uma **reconstrução vetorial d
 
 As cores mudam pouco, mas o símbolo e a tipografia mudam o suficiente para quem já conhece a marca perceber. Trocar a NexoPulse é uma decisão de marca, não só técnica.
 
-## Derivados da NexoPulse usados pela Central
+## Derivados usados pela Central (NexoPulse e NexoHub)
 
-O kit não tinha três versões que a Central precisa. Elas foram geradas a partir dos masters, por `scripts/gerar_derivados_nexopulse.py` (Playwright com Chrome), sem redesenhar a marca:
+O kit não tinha três versões que a Central precisa. Elas foram geradas a partir dos masters, por `scripts/gerar_derivados_nexo.py` (Playwright com Chrome), sem redesenhar a marca:
 
 | Master (`derivados/nexopulse/`) | O que é | Exportado para `static/brand/nexopulse/` |
 |---|---|---|
 | `horizontal-sem-descritor-{claro,escuro}.svg` | A horizontal do kit sem o descritor. O nome, em contornos idênticos aos do kit, fica centralizado na altura do símbolo, e o viewBox é recortado | `logo-claro.svg` e `logo-escuro.svg` (barra, login, relatório) |
 | `favicon.svg` | Versão simplificada para 16 a 48 px: hexágono e pulso mais grossos, sem os nós, sobre o azul-marinho do ícone | `favicon.svg`, `favicon-{16,32,48}.png` e `favicon.ico` (com os três tamanhos) |
 | `app-icon-maskable.svg` | O ícone do kit com fundo de ponta a ponta e o símbolo reduzido (escala 1,1), deixando os nós em 33% do centro, dentro da zona segura de 40% | `maskable-192.png`, `maskable-512.png` e `apple-touch-icon.png` (180) |
+
+O **NexoHub** tem os mesmos derivados, gerados pelo mesmo script, em `derivados/nexohub/` e `static/brand/nexohub/`. O favicon dele é o hexágono com círculo e ponto central; a mira fina do símbolo some em 16 px. Para outra marca, basta acrescentar o miolo do favicon dela em `MARCAS`, no script, e rodar `python scripts/gerar_derivados_nexo.py <slug>`.
 
 Também vão para `static/brand/nexopulse/`, copiados do kit sem alteração:
 - `simbolo-{claro,escuro}.svg`, usados na Sala de Operações;

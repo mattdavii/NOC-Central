@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Ícone PWA NexoHub (maskable)">
+<title>Ícone PWA NexoHub (maskable)</title>
+<defs><linearGradient id="nexoGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#08ABD0"/><stop offset="56%" stop-color="#05B7BE"/><stop offset="100%" stop-color="#04B89C"/></linearGradient><linearGradient id="nexoGradText" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#08ABD0"/><stop offset="100%" stop-color="#04B89C"/></linearGradient></defs>
+<rect width="256" height="256" fill="#0B1B32"/><g transform="translate(40 40) scale(1.1)"><path d="M80 12 L138 46 L138 114 L80 148 L22 114 L22 46 Z" fill="none" stroke="url(#nexoGrad)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<g stroke="#4DE6D9" stroke-width="5.7" stroke-linecap="round" stroke-linejoin="round" fill="none"><circle cx="80" cy="80" r="28"/><circle cx="80" cy="80" r="12"/><path d="M80 51 V34 M108 80 H124 M80 108 V125 M52 80 H36"/></g>
+<circle cx="80" cy="12" r="9.1" fill="#06D2C9"/>
+<circle cx="138" cy="46" r="9.1" fill="#9CEDE5"/>
+<circle cx="138" cy="114" r="9.1" fill="#67E9D7"/>
+<circle cx="80" cy="148" r="9.1" fill="#04B89C"/>
+<circle cx="22" cy="114" r="9.1" fill="#B1E8FF"/>
+<circle cx="22" cy="46" r="9.1" fill="#08ABD0"/></g>
+</svg>
