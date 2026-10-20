@@ -71,18 +71,18 @@ def test_login_version_is_beside_credentials(client):
 
 def test_nexopulse_brand_is_local_and_consistent(client, login):
     login_page = client.get('/login').get_data(as_text=True)
-    assert '<title>NexoPulse Central - Acesso</title>' in login_page
-    assert 'NETWORK INTELLIGENCE &amp; MONITORING' in login_page
-    assert '/static/brand/nexopulse/logo-escuro.svg' in login_page
-    assert '/static/brand/nexopulse/favicon.svg' in login_page
+    assert '<title>NexoHub - Acesso</title>' in login_page
+    assert 'PORTAL DO CLIENTE' in login_page and 'MD Soluções Tecnológicas' in login_page
+    assert '/static/brand/nexohub/logo-escuro.svg' in login_page
+    assert '/static/brand/nexohub/favicon.svg' in login_page
 
     manifest = client.get('/static/manifest.json').json
-    assert manifest['name'] == 'NexoPulse Central'
-    assert manifest['short_name'] == 'NexoPulse'
+    assert manifest['name'] == 'NexoHub'
+    assert manifest['short_name'] == 'NexoHub'
     assert manifest['id'] == '/'
     assert manifest['scope'] == '/'
     assert manifest['start_url'] == '/'
-    assert all(icon['src'].startswith('/static/brand/nexopulse/') for icon in manifest['icons'])
+    assert all(icon['src'].startswith('/static/brand/nexohub/') for icon in manifest['icons'])
     assert {'any', 'maskable'} == {icon['purpose'] for icon in manifest['icons']}
 
     root_manifest = client.get('/manifest.json')
