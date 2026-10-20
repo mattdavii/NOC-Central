@@ -7,19 +7,63 @@
         <img class="brand-logo brand-logo-light" src="/static/brand/nexopulse/logo-claro.svg" alt="NexoPulse" width="166" height="48">
     </a>
     {% if session.get('usuario') and not hide_nav %}
+    {% set _menu = menu_nexo() %}
+    {% set _pulse = _path == '/pulse' or _path.startswith('/sensor/') or _path == '/sensores' or _path == '/tv' or _path.startswith('/relatorio/') %}
+    {% set _admin = _path == '/usuarios' or _path == '/saude' %}
     <nav class="app-nav" aria-label="Navegação principal">
-        <a href="/" class="{{ 'active' if _path == '/' or _path.startswith('/sensor/') }}"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i><span>Operação</span></a>
-        {% if _role == 'Administrador Master' %}
-        <a href="/sensores" class="{{ 'active' if _path == '/sensores' }}"><i class="fa-solid fa-satellite-dish" aria-hidden="true"></i><span>Sensores</span></a>
+        <a href="/" class="{{ 'active' if _path == '/' }}"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Início</span></a>
+        {% if 'pulse' in _menu.acesso %}
+        <div class="nav-group {{ 'active' if _pulse }}">
+            <button type="button" class="nav-group-btn" aria-expanded="false" aria-controls="menu-pulse" onclick="NexoMenu.alternar(this)">
+                <i class="fa-solid fa-wave-square" aria-hidden="true"></i><span>NexoPulse</span><i class="fa-solid fa-chevron-down nav-caret" aria-hidden="true"></i>
+            </button>
+            <div class="nav-menu" id="menu-pulse">
+                <a href="/pulse" class="{{ 'active' if _path == '/pulse' or _path.startswith('/sensor/') }}"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i><span>Operação</span></a>
+                {% if _role == 'Administrador Master' %}
+                <a href="/sensores" class="{{ 'active' if _path == '/sensores' }}"><i class="fa-solid fa-satellite-dish" aria-hidden="true"></i><span>Sensores</span></a>
+                {% endif %}
+                <a href="/tv" class="{{ 'active' if _path == '/tv' }}"><i class="fa-solid fa-display" aria-hidden="true"></i><span>Sala de Operações</span></a>
+            </div>
+        </div>
         {% endif %}
-        {% if _role in ['Administrador Master', 'Cliente', 'Administrador Cliente'] %}
-        <a href="/usuarios" class="{{ 'active' if _path == '/usuarios' }}"><i class="fa-solid fa-key" aria-hidden="true"></i><span>Acessos</span></a>
+        {% if _menu.gerencia_usuarios or _role == 'Administrador Master' %}
+        <div class="nav-group {{ 'active' if _admin }}">
+            <button type="button" class="nav-group-btn" aria-expanded="false" aria-controls="menu-admin" onclick="NexoMenu.alternar(this)">
+                <i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Administração</span><i class="fa-solid fa-chevron-down nav-caret" aria-hidden="true"></i>
+            </button>
+            <div class="nav-menu" id="menu-admin">
+                {% if _menu.gerencia_usuarios %}
+                <a href="/usuarios" class="{{ 'active' if _path == '/usuarios' }}"><i class="fa-solid fa-key" aria-hidden="true"></i><span>Acessos</span></a>
+                {% endif %}
+                {% if _role == 'Administrador Master' %}
+                <a href="/saude" class="{{ 'active' if _path == '/saude' }}"><i class="fa-solid fa-heart-pulse" aria-hidden="true"></i><span>Servidor</span></a>
+                {% endif %}
+            </div>
+        </div>
         {% endif %}
-        {% if _role == 'Administrador Master' %}
-        <a href="/saude" class="{{ 'active' if _path == '/saude' }}"><i class="fa-solid fa-heart-pulse" aria-hidden="true"></i><span>Servidor</span></a>
-        {% endif %}
-        <a href="/tv" class="{{ 'active' if _path == '/tv' }}"><i class="fa-solid fa-display" aria-hidden="true"></i><span>Sala de Operações</span></a>
     </nav>
+    <script>
+    // Menus do NexoHub: abre/fecha no clique, fecha com Esc ou clicando fora.
+    window.NexoMenu = window.NexoMenu || (function () {
+        function fecharTodos(excecao) {
+            document.querySelectorAll('.nav-group.open').forEach(grupo => {
+                if (grupo === excecao) return;
+                grupo.classList.remove('open');
+                grupo.querySelector('.nav-group-btn').setAttribute('aria-expanded', 'false');
+            });
+        }
+        document.addEventListener('click', e => { if (!e.target.closest('.nav-group')) fecharTodos(); });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharTodos(); });
+        return {
+            alternar(botao) {
+                const grupo = botao.closest('.nav-group');
+                fecharTodos(grupo);
+                const aberto = grupo.classList.toggle('open');
+                botao.setAttribute('aria-expanded', String(aberto));
+            }
+        };
+    })();
+    </script>
     {% endif %}
     <div class="app-bar-actions">
         <span class="product-version" title="Versão da Central">v{{ central_version }}</span>
