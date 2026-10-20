@@ -219,6 +219,9 @@ def init_db():
         conn.execute(f'''CREATE TABLE IF NOT EXISTS auditoria_acessos (id {identity}, criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             autor_id INTEGER, autor TEXT, empresa_id INTEGER, acao TEXT NOT NULL, alvo TEXT, detalhes TEXT)''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_auditoria_acessos_empresa ON auditoria_acessos (empresa_id, id)')
+        # Bloqueio de login por conta (seguranca.py); horários em epoch para não depender do fuso do banco.
+        conn.execute('CREATE TABLE IF NOT EXISTS tentativas_login (chave TEXT PRIMARY KEY, falhas INTEGER DEFAULT 0, '
+                     'janela_inicio DOUBLE PRECISION, bloqueado_ate DOUBLE PRECISION)')
         conn.execute('''CREATE TABLE IF NOT EXISTS saude_estado (chave TEXT PRIMARY KEY, origem TEXT NOT NULL, rotulo TEXT, estado TEXT,
             valor TEXT, detalhe TEXT, desde DOUBLE PRECISION, falhas INTEGER DEFAULT 0, notificado INTEGER DEFAULT 0, atualizado_em DOUBLE PRECISION)''')
         for table, cols in [('sensores','status,last_seen'),('sensores','cliente_id'),('logs_ia','sensor_mac,id'),('historico_pings','sensor_mac,id'),('historico_telemetria','sensor_mac,id'),('comandos_pendentes','sensor_mac,id'),('telegram_outbox','state,next_at'),('medicoes_rede','sensor_mac,coletado_em'),('starlink_medicoes','sensor_mac,coletado_em'),('rotas_rede','sensor_mac,coletado_em'),('diagnosticos','estado,sensor_mac'),('diagnosticos','sensor_mac,inicio')]:
@@ -251,7 +254,10 @@ def init_db():
 
 
 SENSOR_COLUMNS = ['last_seen TIMESTAMP', 'ip_gateway TEXT', 'ultima_rota TEXT', 'download REAL', 'upload REAL', 'alerta_reconhecido INTEGER DEFAULT 1', 'disco REAL', 'net_up REAL', 'net_down REAL', 'portas TEXT', 'em_manutencao INTEGER DEFAULT 0', 'cliente_id INTEGER', 'gpu_temp REAL', "memoria_alerta TEXT DEFAULT 'ONLINE'", 'so_nome TEXT', 'so_versao TEXT', 'so_arquitetura TEXT', 'interface_nome TEXT', 'interface_mac TEXT', 'rede_mascara TEXT', 'rede_cidr TEXT', 'link_speed_mbps REAL', 'interface_up BOOLEAN', 'scan_rede TEXT', 'scan_limitado BOOLEAN', 'cliente_nome TEXT', 'latitude REAL', 'longitude REAL', 'accuracy_m REAL', 'location_source TEXT', 'location_updated_at TEXT', 'agent_version TEXT', 'traceroute TEXT', 'acoes_remotas INTEGER DEFAULT 0', 'host_info TEXT', 'alertas_host TEXT', 'provedor TEXT', 'provedor_origem TEXT', 'starlink_info TEXT', 'camadas_rede TEXT', 'diag_atualizado_em DOUBLE PRECISION', 'agent_build TEXT', 'build_recusado TEXT', 'auto_update_guard INTEGER', 'auto_atualizar INTEGER DEFAULT 1']
-CLIENT_COLUMNS = ['nome TEXT', 'cliente_pai_id INTEGER', 'ativo INTEGER DEFAULT 1', 'logo_url TEXT', 'telegram_token TEXT', 'telegram_chat_id TEXT', 'delegacao_acessos INTEGER DEFAULT 1']
+CLIENT_COLUMNS = ['nome TEXT', 'cliente_pai_id INTEGER', 'ativo INTEGER DEFAULT 1', 'logo_url TEXT', 'telegram_token TEXT', 'telegram_chat_id TEXT', 'delegacao_acessos INTEGER DEFAULT 1',
+                  # Verificação em duas etapas, sessões encerráveis e exigência de 2FA (esta na conta da empresa).
+                  'totp_segredo TEXT', 'totp_ativo INTEGER DEFAULT 0', 'totp_ultimo_passo INTEGER', 'codigos_recuperacao TEXT',
+                  'sessao_versao INTEGER DEFAULT 0', 'exigir_2fa INTEGER DEFAULT 0']
 get_db = get_db_connection
 
 if __name__ == '__main__':

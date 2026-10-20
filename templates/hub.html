@@ -64,6 +64,9 @@
 <body>
 {% include '_brand_bar.html' %}
 <main class="page-main">
+{% with mensagens = get_flashed_messages() %}{% for m in mensagens %}
+    <div class="ver-como" role="status"><span><i class="fa-solid fa-circle-info"></i> {{ m }}</span><a href="/conta">Minha conta</a></div>
+{% endfor %}{% endwith %}
 
 {% macro simbolo(app) -%}
     <img class="sym sym-dark" src="/static/brand/nexo{{ app }}/simbolo-escuro.svg" alt="" aria-hidden="true">

@@ -32,6 +32,7 @@
         .btn-login:hover { filter: brightness(1.08); transform: translateY(-1px); }
         .btn-login:focus-visible { outline: 2px solid var(--text-main); outline-offset: 3px; }
         .flash-msg { background: color-mix(in srgb, var(--status-crit) 12%, transparent); color: var(--status-crit); border: 1px solid color-mix(in srgb, var(--status-crit) 40%, transparent); padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 20px; font-weight: bold; font-size: 0.9em; }
+        .login-2fa-ajuda { margin: 0 0 16px; color: var(--text-muted); font-size: .88rem; line-height: 1.5; }
         .login-tools { display:flex; flex-direction:column; align-items:center; margin-top:18px; }
         @media(max-width:520px) { .login-box { padding:28px 22px; } .login-header { align-items:flex-start; } }
     </style>
@@ -48,7 +49,7 @@
         <p class="login-positioning">PORTAL DO CLIENTE</p>
         <p class="login-slogan">As ferramentas Nexo dos serviços da MD Soluções Tecnológicas, num só acesso.</p>
         <div class="login-header">
-            <h1><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Acesso</h1>
+            <h1><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> {{ 'Segunda etapa' if etapa == '2fa' else 'Acesso' }}</h1>
             <span class="version-badge">v{{ central_version }}</span>
         </div>
         
@@ -57,7 +58,24 @@
             <div class="flash-msg" role="alert">{{ messages[0] }}</div>
           {% endif %}
         {% endwith %}
+        {% if erro %}
+            <div class="flash-msg" role="alert">{{ erro }}</div>
+        {% endif %}
 
+        {% if etapa == '2fa' %}
+        <form method="POST" action="/login/2fa">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <p class="login-2fa-ajuda">Abra o aplicativo autenticador no celular e digite o código de 6 dígitos do NexoHub.
+               Sem o celular? Use um dos seus códigos de recuperação.</p>
+            <div class="input-group">
+                <label for="login-codigo">Código</label>
+                <input id="login-codigo" type="text" name="codigo" required autofocus autocomplete="one-time-code"
+                       inputmode="text" autocapitalize="none" spellcheck="false" maxlength="12" placeholder="123456 ou xxxx-xxxx">
+            </div>
+            <button type="submit" class="btn-login">Confirmar</button>
+        </form>
+        <a class="login-privacy" href="/login?cancelar=1">Voltar e entrar com outro usuário</a>
+        {% else %}
         <form method="POST" action="/login">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <div class="input-group">
@@ -70,6 +88,7 @@
             </div>
             <button type="submit" class="btn-login">Entrar no NexoHub</button>
         </form>
+        {% endif %}
         <div class="login-tools"><button class="theme-toggle" type="button" onclick="NexoPulseTheme.toggle()" aria-label="Alternar tema"><i class="fa-solid fa-sun" aria-hidden="true"></i><span>Alternar tema</span></button><a class="login-privacy" href="/privacidade">Política de privacidade</a></div>
       </div>
     </main>

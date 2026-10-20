@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#082E56">
+    <link rel="icon" href="/static/brand/nexohub/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/brand/nexohub/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="apple-touch-icon" href="/static/brand/nexohub/apple-touch-icon.png">
+    <title>NexoHub - Minha conta</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/product.css?v=nexopulse-3">
+    <style>
+        body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-base); color: var(--text-main); }
+        .conta { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; align-items: start; }
+        .bloco { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 22px; box-shadow: var(--shadow); }
+        .bloco h2 { margin: 0 0 6px; font-size: 1.05rem; display: flex; align-items: center; gap: 10px; }
+        .bloco p { color: var(--text-muted); font-size: .9rem; margin: 0 0 14px; line-height: 1.5; }
+        .dados { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: .92rem; }
+        .dados dt { color: var(--text-muted); } .dados dd { margin: 0; font-weight: 600; }
+        .estado { margin-left: auto; font-size: .72rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-muted); }
+        .estado.ok { color: var(--status-ok); border-color: var(--status-ok); }
+        .campo { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+        .campo label { font-size: .8rem; color: var(--text-muted); font-weight: 700; }
+        .campo input { background: var(--bg-input); border: 1px solid var(--border); color: var(--text-main); padding: 11px; border-radius: 8px; font: inherit; }
+        .campo input.codigo { font-family: 'JetBrains Mono', monospace; letter-spacing: .12em; max-width: 220px; }
+        .botoes { display: flex; flex-wrap: wrap; gap: 10px; }
+        .btn { border: 1px solid var(--border); background: var(--bg-input); color: var(--text-main); padding: 10px 16px; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer; }
+        .btn.primario { background: var(--blue); border-color: var(--blue); color: var(--bg-base); }
+        .btn.perigo { color: var(--status-crit); }
+        .btn:disabled { opacity: .5; cursor: wait; }
+        .aviso { display: flex; gap: 10px; align-items: flex-start; padding: 12px 16px; margin-bottom: 18px; border-radius: 10px; border: 1px solid var(--yellow);
+                 background: color-mix(in srgb, var(--yellow) 10%, transparent); }
+        .msg { margin-top: 10px; font-size: .88rem; font-weight: 600; min-height: 1.2em; }
+        .msg.erro { color: var(--status-crit); } .msg.ok { color: var(--status-ok); }
+        .passos { margin: 0 0 14px; padding-left: 20px; color: var(--text-muted); font-size: .9rem; line-height: 1.6; }
+        #qr { background: #fff; padding: 12px; border-radius: 10px; width: max-content; margin: 4px 0 12px; }
+        .segredo { font-family: 'JetBrains Mono', monospace; font-size: .85rem; word-break: break-all; padding: 8px 10px; border-radius: 8px; background: var(--bg-input); margin-bottom: 14px; }
+        .codigos { display: grid; grid-template-columns: repeat(2, max-content); gap: 6px 22px; font-family: 'JetBrains Mono', monospace; font-size: 1rem;
+                   padding: 14px 18px; border-radius: 10px; background: var(--bg-input); margin: 6px 0 14px; }
+        [hidden] { display: none !important; }
+    </style>
+<script src="/static/brand.js?v=nexopulse-2"></script>
+</head>
+<body>
+<script src="/static/security.js?v=2.2.0-rc1"></script>
+{% include '_brand_bar.html' %}
+<main class="page-main">
+    <div class="page-head">
+        <div>
+            <h1><i class="fa-solid fa-user-shield"></i> Minha conta</h1>
+            <p>Seus dados, sua senha e a verificação em duas etapas.</p>
+        </div>
+    </div>
+
+    {% with mensagens = get_flashed_messages() %}{% for m in mensagens %}
+    <div class="aviso" role="status"><i class="fa-solid fa-circle-info"></i><span>{{ m }}</span></div>
+    {% endfor %}{% endwith %}
+
+    {% if obrigatorio_agora %}
+    <div class="aviso" role="alert"><i class="fa-solid fa-triangle-exclamation"></i>
+        <span><strong>Ative a verificação em duas etapas para continuar.</strong>
+        {% if user.role in ('Administrador Master', 'Operador Master') %}A MD exige{% else %}Sua empresa exige{% endif %} esse cuidado extra para todos os usuários.
+        Leva um minuto: você só precisa de um aplicativo autenticador no celular.</span></div>
+    {% endif %}
+
+    <div class="conta">
+        <section class="bloco" aria-labelledby="t-2fa">
+            <h2 id="t-2fa"><i class="fa-solid fa-mobile-screen-button"></i> Verificação em duas etapas
+                <span class="estado {{ 'ok' if user.totp_ativo }}" id="estado-2fa">{{ 'Ativa' if user.totp_ativo else 'Desligada' }}</span></h2>
+            {% if not cifra_disponivel %}
+                <p>Indisponível neste servidor: falta configurar a variável FLASK_SECRET_KEY.</p>
+            {% elif user.totp_ativo %}
+                <p>Ao entrar, além da senha, o NexoHub pede o código do seu aplicativo autenticador.
+                   Restam <strong>{{ codigos_restantes }}</strong> códigos de recuperação.</p>
+                <div class="campo">
+                    <label for="codigo-gestao">Código atual do aplicativo (ou um de recuperação)</label>
+                    <input id="codigo-gestao" class="codigo" autocomplete="one-time-code" maxlength="12" placeholder="123456">
+                </div>
+                <div class="botoes">
+                    <button class="btn" type="button" onclick="gerarCodigos()"><i class="fa-solid fa-key"></i> Gerar novos códigos de recuperação</button>
+                    {% if not exige_2fa %}
+                    <button class="btn perigo" type="button" onclick="desativar2fa()"><i class="fa-solid fa-power-off"></i> Desativar</button>
+                    {% endif %}
+                </div>
+                {% if exige_2fa %}<p style="margin-top:12px">Obrigatória para {{ 'a equipe MD' if user.role in ('Administrador Master', 'Operador Master') else 'a sua empresa' }}: não pode ser desativada. Perdeu o celular? Peça ao administrador para redefinir.</p>{% endif %}
+            {% else %}
+                <p>Protege a sua conta mesmo que alguém descubra a sua senha: para entrar, é preciso também um código que muda a cada 30 segundos no seu celular.</p>
+                <div id="ativar-inicio">
+                    <button class="btn primario" type="button" onclick="iniciar2fa()"><i class="fa-solid fa-shield-halved"></i> Ativar</button>
+                </div>
+                <div id="ativar-passos" hidden>
+                    <ol class="passos">
+                        <li>Instale um aplicativo autenticador (Google Authenticator, Microsoft Authenticator, Authy…).</li>
+                        <li>No aplicativo, adicione uma conta lendo o QR code abaixo.</li>
+                        <li>Digite o código de 6 dígitos que aparecer.</li>
+                    </ol>
+                    <div id="qr" aria-label="QR code para o aplicativo autenticador"></div>
+                    <p style="margin-bottom:6px">Não consegue ler o QR? Digite esta chave no aplicativo:</p>
+                    <div class="segredo" id="segredo"></div>
+                    <div class="campo">
+                        <label for="codigo-ativar">Código do aplicativo</label>
+                        <input id="codigo-ativar" class="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456">
+                    </div>
+                    <button class="btn primario" type="button" onclick="confirmar2fa()">Confirmar e ativar</button>
+                </div>
+            {% endif %}
+            <div id="codigos-novos" hidden>
+                <p style="margin-top:14px"><strong>Guarde estes códigos de recuperação</strong> num lugar seguro (fora do celular).
+                   Cada um vale uma vez, para entrar se você perder o celular. Eles não serão mostrados de novo.</p>
+                <div class="codigos" id="lista-codigos"></div>
+                <div class="botoes">
+                    <button class="btn" type="button" onclick="copiarCodigos()"><i class="fa-regular fa-copy"></i> Copiar</button>
+                    <button class="btn primario" type="button" onclick="window.location.href = '{{ url_for('hub') if obrigatorio_agora else url_for('conta') }}'">Já guardei</button>
+                </div>
+            </div>
+            <div class="msg" id="msg-2fa" role="status"></div>
+        </section>
+
+        <section class="bloco" aria-labelledby="t-dados">
+            <h2 id="t-dados"><i class="fa-solid fa-id-card"></i> Conta</h2>
+            <dl class="dados">
+                <dt>Nome</dt><dd>{{ user.nome or '—' }}</dd>
+                <dt>Usuário</dt><dd>{{ user.usuario }}</dd>
+                <dt>Perfil</dt><dd>{{ user.role }}</dd>
+                {% if empresa %}<dt>Empresa</dt><dd>{{ empresa.nome or empresa.usuario }}</dd>{% endif %}
+            </dl>
+        </section>
+
+        <section class="bloco" aria-labelledby="t-senha">
+            <h2 id="t-senha"><i class="fa-solid fa-lock"></i> Trocar senha</h2>
+            <p>Pelo menos {{ senha_minimo }} caracteres, com letras e números. Ao trocar, os outros aparelhos conectados saem da conta.</p>
+            <form onsubmit="trocarSenha(event)">
+                <input type="text" name="username" value="{{ user.usuario }}" autocomplete="username" hidden>
+                <div class="campo"><label for="senha-atual">Senha atual</label><input id="senha-atual" type="password" autocomplete="current-password" required></div>
+                <div class="campo"><label for="senha-nova">Nova senha</label><input id="senha-nova" type="password" autocomplete="new-password" minlength="{{ senha_minimo }}" required></div>
+                <div class="campo"><label for="senha-conf">Repita a nova senha</label><input id="senha-conf" type="password" autocomplete="new-password" required></div>
+                <button class="btn primario" type="submit">Trocar senha</button>
+            </form>
+            <div class="msg" id="msg-senha" role="status"></div>
+        </section>
+
+        <section class="bloco" aria-labelledby="t-sessoes">
+            <h2 id="t-sessoes"><i class="fa-solid fa-laptop"></i> Aparelhos conectados</h2>
+            <p>Esqueceu a conta aberta em outro computador ou celular? Saia de todos eles de uma vez; este aparelho continua conectado.</p>
+            <button class="btn" type="button" onclick="encerrarOutras()"><i class="fa-solid fa-right-from-bracket"></i> Sair dos outros aparelhos</button>
+            <div class="msg" id="msg-sessoes" role="status"></div>
+        </section>
+    </div>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+        integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+    async function postJson(url, payload) {
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload || {}) });
+        let data = {};
+        try { data = await res.json(); } catch (_) {}
+        if (!res.ok) throw new Error(data.error || 'Não foi possível concluir.');
+        return data;
+    }
+    function mensagem(id, texto, ok) {
+        const el = document.getElementById(id);
+        el.textContent = texto;
+        el.className = 'msg ' + (ok ? 'ok' : 'erro');
+    }
+    function mostrarCodigos(codigos) {
+        const lista = document.getElementById('lista-codigos');
+        lista.replaceChildren(...codigos.map(c => Object.assign(document.createElement('span'), { textContent: c })));
+        lista.dataset.texto = codigos.join('\n');
+        document.getElementById('codigos-novos').hidden = false;
+    }
+    async function copiarCodigos() {
+        try { await navigator.clipboard.writeText(document.getElementById('lista-codigos').dataset.texto); mensagem('msg-2fa', 'Códigos copiados.', true); }
+        catch (_) { mensagem('msg-2fa', 'Não deu para copiar: anote os códigos acima.', false); }
+    }
+    async function iniciar2fa() {
+        try {
+            const dados = await postJson('/api/v2/conta/2fa/iniciar');
+            document.getElementById('ativar-inicio').hidden = true;
+            document.getElementById('ativar-passos').hidden = false;
+            document.getElementById('segredo').textContent = dados.segredo.match(/.{1,4}/g).join(' ');
+            const qr = document.getElementById('qr');
+            qr.replaceChildren();
+            if (window.QRCode) new QRCode(qr, { text: dados.uri, width: 184, height: 184, correctLevel: QRCode.CorrectLevel.M });
+            else qr.hidden = true;  // sem a biblioteca, fica a chave para digitar
+            document.getElementById('codigo-ativar').focus();
+        } catch (e) { mensagem('msg-2fa', e.message, false); }
+    }
+    async function confirmar2fa() {
+        try {
+            const dados = await postJson('/api/v2/conta/2fa/confirmar', { codigo: document.getElementById('codigo-ativar').value });
+            document.getElementById('ativar-passos').hidden = true;
+            const estado = document.getElementById('estado-2fa');
+            estado.textContent = 'Ativa'; estado.classList.add('ok');
+            mensagem('msg-2fa', 'Verificação em duas etapas ativada.', true);
+            mostrarCodigos(dados.codigos_recuperacao);
+        } catch (e) { mensagem('msg-2fa', e.message, false); }
+    }
+    async function gerarCodigos() {
+        try {
+            const dados = await postJson('/api/v2/conta/2fa/codigos', { codigo: document.getElementById('codigo-gestao').value });
+            mensagem('msg-2fa', 'Novos códigos gerados; os anteriores não valem mais.', true);
+            mostrarCodigos(dados.codigos_recuperacao);
+        } catch (e) { mensagem('msg-2fa', e.message, false); }
+    }
+    async function desativar2fa() {
+        if (!confirm('Desativar a verificação em duas etapas? Sua conta volta a depender só da senha.')) return;
+        try {
+            await postJson('/api/v2/conta/2fa/desativar', { codigo: document.getElementById('codigo-gestao').value });
+            window.location.reload();
+        } catch (e) { mensagem('msg-2fa', e.message, false); }
+    }
+    async function trocarSenha(evento) {
+        evento.preventDefault();
+        const nova = document.getElementById('senha-nova').value;
+        if (nova !== document.getElementById('senha-conf').value) { mensagem('msg-senha', 'As duas senhas novas não são iguais.', false); return; }
+        try {
+            await postJson('/api/v2/conta/senha', { atual: document.getElementById('senha-atual').value, nova });
+            evento.target.reset();
+            mensagem('msg-senha', 'Senha trocada. Os outros aparelhos saíram da conta.', true);
+        } catch (e) { mensagem('msg-senha', e.message, false); }
+    }
+    async function encerrarOutras() {
+        try {
+            await postJson('/api/v2/conta/sessoes/encerrar');
+            mensagem('msg-sessoes', 'Pronto: os outros aparelhos saíram da conta.', true);
+        } catch (e) { mensagem('msg-sessoes', e.message, false); }
+    }
+</script>
+</body>
+</html>
