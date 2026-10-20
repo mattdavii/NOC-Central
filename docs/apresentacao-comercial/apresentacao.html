@@ -1,0 +1,350 @@
+<!doctype html>
+<!-- Apresentação do serviço de monitoramento gerenciado da MD Soluções Tecnológicas.
+     Para gerar o PDF (nesta pasta):
+     google-chrome --headless=new --no-pdf-header-footer --virtual-time-budget=15000 \
+       --print-to-pdf=MD-Centro-de-Operacoes.pdf "file://$PWD/apresentacao.html"
+     As telas em img/ são da plataforma NexoPulse real, rodando com dados de demonstração. -->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>MD Soluções Tecnológicas · Centro de Operações de Rede</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --roxo:#670CB2; --azul:#2571AB; --turq:#00A9A7;
+    --grad:linear-gradient(90deg,var(--roxo),var(--azul),var(--turq));
+    --tinta:#14123A; --texto:#2B2F4A; --muted:#62677F; --linha:#E1E4F0; --bg:#F6F7FC; --card:#FFFFFF;
+    --destaque:#5A12A6; --ok:#0F8A5F; --crit:#C2342F; --escuro:#0B1728;
+  }
+  @page { size:1280px 720px; margin:0; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; padding:0; }
+  body { font-family:'Inter',system-ui,sans-serif; color:var(--texto); -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .slide { width:1280px; height:720px; position:relative; overflow:hidden; background:var(--bg); page-break-after:always; padding:58px 72px; }
+  .slide:last-child { page-break-after:auto; }
+  .slide::after { content:''; position:absolute; left:0; right:0; top:0; height:6px; background:var(--grad); }
+  .brand { position:absolute; top:34px; right:64px; height:46px; }
+  .rodape { position:absolute; bottom:28px; left:72px; right:72px; display:flex; justify-content:space-between; font-size:12.5px; color:var(--muted); }
+  .rodape b { color:var(--tinta); }
+  .kicker { font-size:13.5px; font-weight:800; letter-spacing:.2em; text-transform:uppercase; color:var(--azul); }
+  h1 { font-size:56px; line-height:1.06; margin:16px 0 0; font-weight:900; letter-spacing:-.025em; color:var(--tinta); }
+  h2 { font-size:38px; line-height:1.14; margin:12px 0 0; font-weight:800; letter-spacing:-.02em; color:var(--tinta); max-width:930px; }
+  .d { color:var(--destaque); }
+  .lead { font-size:19.5px; line-height:1.55; color:var(--muted); margin:16px 0 0; max-width:900px; }
+  p { margin:0; }
+  .grid { display:grid; gap:18px; }
+  .g2 { grid-template-columns:1fr 1fr; } .g3 { grid-template-columns:repeat(3,1fr); } .g4 { grid-template-columns:repeat(4,1fr); }
+  .card { background:var(--card); border:1px solid var(--linha); border-radius:16px; padding:24px; box-shadow:0 10px 30px rgba(20,18,58,.06); }
+  .card h3 { margin:0 0 8px; font-size:19.5px; font-weight:800; color:var(--tinta); }
+  .card p { font-size:15px; line-height:1.55; color:var(--muted); }
+  .ico { width:44px; height:44px; border-radius:12px; background:var(--grad); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:19px; color:#fff; margin-bottom:16px; }
+  .ico.red { background:linear-gradient(135deg,#E5534B,#A61E1A); }
+  .shot { border-radius:14px; display:block; box-shadow:0 24px 60px rgba(20,18,58,.25); border:6px solid #0E1B2E; }
+  .cap { font-size:12px; color:var(--muted); margin-top:10px; }
+  ul.check { list-style:none; margin:0; padding:0; }
+  ul.check li { position:relative; padding-left:30px; margin-bottom:13px; font-size:16.5px; line-height:1.45; color:var(--muted); }
+  ul.check li::before { content:''; position:absolute; left:0; top:4px; width:18px; height:18px; border-radius:50%; background:var(--grad); }
+  ul.check li::after { content:''; position:absolute; left:6px; top:8px; width:5px; height:8px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }
+  ul.check b { color:var(--tinta); }
+  .pill { display:inline-block; border:1px solid var(--linha); background:#fff; border-radius:999px; padding:7px 15px; font-size:13.5px; font-weight:700; color:var(--tinta); }
+
+  /* capa */
+  .cover { padding:0; display:grid; grid-template-columns:1.05fr 1fr; background:#fff; }
+  .cover::after { display:none; }
+  .cover .esq { padding:64px 64px 64px 80px; display:flex; flex-direction:column; justify-content:center; }
+  .cover .logo { width:360px; margin-bottom:30px; }
+  .cover h1 { font-size:45px; }
+  .cover .pills { display:flex; gap:10px; margin-top:22px; flex-wrap:wrap; }
+  .cover .dir { background:var(--escuro); position:relative; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .cover .dir::before { content:''; position:absolute; inset:0; background:radial-gradient(circle at 80% 15%, rgba(103,12,178,.45), transparent 50%), radial-gradient(circle at 15% 90%, rgba(0,169,167,.35), transparent 50%); }
+  .cover .dir img { position:relative; width:118%; margin-left:22%; border-radius:12px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .cover .faixa { position:absolute; left:0; top:0; bottom:0; width:8px; background:linear-gradient(180deg,var(--roxo),var(--azul),var(--turq)); }
+
+  .layers { display:flex; gap:10px; align-items:stretch; margin-top:30px; }
+  .layer { flex:1; background:#fff; border:1px solid var(--linha); border-radius:14px; padding:16px 12px; text-align:center; }
+  .layer b { display:block; font-size:16px; margin-bottom:4px; color:var(--tinta); }
+  .layer span { font-size:12.5px; color:var(--muted); line-height:1.35; display:block; }
+  .layer .st { margin-top:10px; font-size:11.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+  .layer.ok .st { color:var(--ok); } .layer.crit { border-color:#F0B9B6; background:#FFF4F3; } .layer.crit .st { color:var(--crit); }
+  .layer.na .st { color:var(--muted); }
+  .arrow { align-self:center; color:var(--azul); font-weight:800; font-size:20px; }
+
+  .flow { display:flex; align-items:center; gap:14px; margin-top:34px; }
+  .flow .f { flex:1; text-align:center; padding:18px 10px; border-radius:14px; background:#fff; border:1px solid var(--linha); }
+  .flow .f b { display:block; font-size:16px; color:var(--tinta); } .flow .f span { font-size:13px; color:var(--muted); }
+  .flow .f.md { background:linear-gradient(135deg,rgba(103,12,178,.08),rgba(0,169,167,.10)); border-color:#CBB8E6; }
+  .flow .a { color:var(--azul); font-weight:800; font-size:22px; }
+
+  .tg { background:#17212B; border-radius:18px; padding:20px; box-shadow:0 24px 60px rgba(20,18,58,.25); }
+  .tg-head { display:flex; align-items:center; gap:12px; padding-bottom:14px; border-bottom:1px solid #23313f; margin-bottom:16px; }
+  .tg-av { width:40px; height:40px; border-radius:50%; background:var(--grad); display:flex; align-items:center; justify-content:center; font-weight:800; color:#fff; font-size:14px; }
+  .tg-head b { font-size:15px; display:block; color:#fff; } .tg-head span { font-size:12.5px; color:#8696a5; }
+  .bubble { background:#182533; border:1px solid #243445; border-radius:14px 14px 14px 4px; padding:14px 16px; font-size:14px; line-height:1.5; color:#E7EEF5; margin-bottom:12px; }
+  .bubble .t { font-weight:800; margin-bottom:6px; display:block; }
+  .bubble .h { font-size:11.5px; color:#6d8193; text-align:right; margin-top:6px; }
+
+  .endosso { display:flex; align-items:center; gap:12px; margin-top:24px; padding-top:18px; border-top:1px solid var(--linha); font-size:14.5px; color:var(--muted); }
+  .endosso img { height:30px; }
+  .endosso b { color:var(--tinta); }
+  .np-pilar { position:relative; overflow:hidden; padding-top:28px; }
+  .np-pilar::before { content:''; position:absolute; left:0; right:0; top:0; height:5px; background:linear-gradient(90deg,#05A9DC,#05A88C); }
+  .numeros { display:grid; grid-template-columns:repeat(4,1fr); gap:0; margin-top:26px; background:#fff; border:1px solid var(--linha); border-radius:16px; }
+  .numeros div { padding:18px 22px; border-left:1px solid var(--linha); }
+  .numeros div:first-child { border-left:none; }
+  .numeros b { display:block; font-size:30px; font-weight:900; color:#0B7F99; line-height:1.1; }
+  .numeros span { font-size:13.5px; color:var(--muted); }
+  .num { font-size:54px; font-weight:900; line-height:1; color:var(--destaque); }
+  .cta { margin-top:34px; display:flex; align-items:center; gap:26px; padding:28px 34px; border-radius:18px; background:var(--escuro); color:#fff; position:relative; overflow:hidden; }
+  .cta::before { content:''; position:absolute; inset:0; background:radial-gradient(circle at 90% 20%, rgba(103,12,178,.5), transparent 45%), radial-gradient(circle at 10% 100%, rgba(0,169,167,.35), transparent 50%); }
+  .cta > * { position:relative; }
+  .cta h3 { margin:0; font-size:26px; font-weight:800; } .cta p { color:#C9D3E3; font-size:16px; margin-top:6px; }
+</style>
+</head>
+<body>
+
+<!-- 1. CAPA -->
+<section class="slide cover">
+  <div class="faixa"></div>
+  <div class="esq">
+    <img class="logo" src="img/md-logo.png" alt="MD Soluções Tecnológicas">
+    <div class="kicker">Centro de Operações de Rede · 24/7</div>
+    <h1>Sua conexão <span class="d">monitorada</span> por quem entende — antes que o problema chegue até você.</h1>
+    <div class="pills"><span class="pill">Monitoramento 24/7</span><span class="pill">Diagnóstico da causa</span><span class="pill">Alertas no Telegram</span><span class="pill">Acesso à plataforma</span></div>
+    <div class="endosso"><img src="img/nexopulse-simbolo.png" alt=""><span>Tecnologia <b>NexoPulse</b> · plataforma desenvolvida pela MD</span></div>
+  </div>
+  <div class="dir"><img src="img/tv.jpg" alt=""></div>
+</section>
+
+<!-- 2. PROBLEMA -->
+<section class="slide">
+  <img class="brand" src="img/md-logo.png" alt="">
+  <div class="kicker">O desafio</div>
+  <h2>Quando a internet cai, cada minuto custa — e ninguém sabe dizer por quê.</h2>
+  <p class="lead">Vendas paradas, sistemas fora do ar, equipe sem trabalhar. E a primeira pergunta é sempre a mesma: é aqui dentro, é o provedor ou é a antena?</p>
+  <div class="grid g4" style="margin-top:42px">
+    <div class="card"><div class="ico red">1</div><h3>Você descobre por último</h3><p>A queda aparece quando alguém reclama, não quando começou.</p></div>
+    <div class="card"><div class="ico red">2</div><h3>Técnico às cegas</h3><p>A visita acontece sem saber se o problema é no local ou fora dele.</p></div>
+    <div class="card"><div class="ico red">3</div><h3>Provedor sem prova</h3><p>“Do nosso lado está tudo ok” — e sem medições fica difícil cobrar.</p></div>
+    <div class="card"><div class="ico red">4</div><h3>Problemas que voltam</h3><p>Instabilidades curtas se repetem e ninguém consegue registrar.</p></div>
+  </div>
+  <div class="rodape"><span><b>MD Soluções Tecnológicas</b> · Centro de Operações de Rede · Tecnologia NexoPulse</span><span>02 / 13</span></div>
+</section>
+
+<!-- 3. SOLUÇÃO -->
+<section class="slide">
+  <img class="brand" src="img/md-logo.png" alt="">
+  <div class="kicker">Nossa solução</div>
+  <h2>A MD <span class="d">monitora, diagnostica e age</span> pela sua rede, 24 horas por dia.</h2>
+  <div class="grid g3" style="margin-top:44px">
+    <div class="card"><div class="ico">1</div><h3>Monitoramos</h3><p>Instalamos um sensor na sua rede, que mede a conexão o tempo todo. Nosso Centro de Operações acompanha todos os seus sites, 24/7.</p></div>
+    <div class="card"><div class="ico">2</div><h3>Diagnosticamos</h3><p>Não paramos no “caiu”: identificamos em que ponto está o problema — rede interna, antena, provedor ou DNS — com as medições como prova.</p></div>
+    <div class="card"><div class="ico">3</div><h3>Agimos</h3><p>Você é avisado na hora, com a causa e o que está sendo feito. Acionamos o provedor com dados em mãos e, se contratado, levamos o suporte até você.</p></div>
+  </div>
+  <div class="flow">
+    <div class="f"><b>Sua rede</b><span>link, equipamentos e antena</span></div><div class="a">→</div>
+    <div class="f md"><b>Sensor MD</b><span>mede a cada poucos segundos</span></div><div class="a">→</div>
+    <div class="f md"><b>Centro de Operações MD</b><span>24/7, identifica a causa</span></div><div class="a">→</div>
+    <div class="f"><b>Você informado</b><span>Telegram e NexoPulse</span></div>
+  </div>
+  <div class="rodape"><span><b>MD Soluções Tecnológicas</b> · Centro de Operações de Rede · Tecnologia NexoPulse</span><span>03 / 13</span></div>
+</section>
+
+<!-- 4. NEXOPULSE -->
+<section class="slide">
+  <img class="brand" src="img/md-logo.png" alt="">
+  <div class="kicker">Nossa tecnologia</div>
+  <div style="display:flex; align-items:center; gap:28px; margin-top:14px">
+    <img src="img/nexopulse-logo.png" alt="NexoPulse" style="height:78px">
+    <div style="border-left:1px solid var(--linha); padding-left:26px; font-size:17px; color:var(--muted); line-height:1.5">Plataforma de monitoramento <b style="color:var(--tinta)">desenvolvida e mantida pela MD</b>,<br>o motor por trás do nosso Centro de Operações.</div>
+  </div>
+  <div class="grid g3" style="margin-top:40px">
+    <div class="card np-pilar"><h3>NexoPulse Edge</h3><p>O sensor instalado na sua rede. Mede a conexão a cada poucos segundos, lê a antena Starlink e guarda tudo se a internet cair.</p></div>
+    <div class="card np-pilar"><h3>NexoPulse Central</h3><p>O painel na nuvem onde nossa equipe acompanha todos os sites 24/7 — e onde você acompanha os seus, com acesso próprio.</p></div>
+    <div class="card np-pilar"><h3>Diagnóstico inteligente</h3><p>Analisa cada camada da conexão e conclui a causa provável, com evidências e o próximo passo, antes de qualquer alerta.</p></div>
+  </div>
+  <div class="numeros">
+    <div><b>5 s</b><span>entre cada leitura do sensor</span></div>
+    <div><b>5 camadas</b><span>analisadas em cada diagnóstico</span></div>
+    <div><b>até 7 dias</b><span>de medições guardadas sem internet</span></div>
+    <div><b>24/7</b><span>acompanhamento pelo nosso Centro</span></div>
+  </div>
+  <p class="lead" style="margin-top:22px; font-size:16.5px">Por ser tecnologia própria, a NexoPulse evolui junto com as necessidades dos nossos clientes — sem depender de ferramentas de terceiros.</p>
+  <div class="rodape"><span><b>MD Soluções Tecnológicas</b> · Centro de Operações de Rede · Tecnologia NexoPulse</span><span>04 / 13</span></div>
+</section>
+
+<!-- 4. DIAGNÓSTICO POR CAMADAS -->
+<section class="slide">
+  <img class="brand" src="img/md-logo.png" alt="">
+  <div class="kicker">Nosso diferencial</div>
+  <h2>Não dizemos só que caiu. Dizemos <span class="d">onde</span> está o problema.</h2>
+  <p class="lead">A NexoPulse analisa a conexão em camadas, de dentro para fora. O ponto mais próximo com falha explica os seguintes — assim você recebe a causa real, sem alarmes falsos.</p>
+  <div class="layers">
+    <div class="layer ok"><b>Rede interna</b><span>cabos, Wi-Fi e roteador</span><div class="st">Normal</div></div>
+    <div class="arrow">→</div>
+    <div class="layer crit"><b>Antena Starlink</b><span>obstrução e alinhamento</span><div class="st">Causa encontrada</div></div>
+    <div class="arrow">→</div>
+    <div class="layer na"><b>Provedor</b><span>primeiro ponto fora do local</span><div class="st">Explicado</div></div>
+    <div class="arrow">→</div>
+    <div class="layer na"><b>Internet</b><span>acesso aos serviços</span><div class="st">Explicado</div></div>
+    <div class="arrow">→</div>
+    <div class="layer na"><b>DNS</b><span>tradução dos endereços</span><div class="st">Explicado</div></div>
+  </div>
+  <div class="grid g3" style="margin-top:28px">
+    <div class="card" style="padding:18px 20px"><h3 style="font-size:16.5px">Causa provável</h3><p style="font-size:14px">Em linguagem clara, sem jargão.</p></div>
+    <div class="card" style="padding:18px 20px"><h3 style="font-size:16.5px">Evidências</h3><p style="font-size:14px">As medições que comprovam o problema.</p></div>
+    <div class="card" style="padding:18px 20px"><h3 style="font-size:16.5px">Próximo passo</h3><p style="font-size:14px">O que fazer — e quem precisa agir.</p></div>
+  </div>
+  <div class="rodape"><span><b>MD Soluções Tecnológicas</b> · Centro de Operações de Rede · Tecnologia NexoPulse</span><span>05 / 13</span></div>
+</section>
+
+<!-- 5. NA PRÁTICA -->
+<section class="slide">
+  <img class="brand" src="img/md-logo.png" alt="">
+  <div class="kicker">Na prática</div>
+  <h2>O que nossa equipe vê quando a antena da fazenda fica obstruída.</h2>
+  <img class="shot" src="img/diagnostico-recorte.jpg" alt="" style="width:1136px; margin-top:28px">
+  <p class="cap">Plataforma NexoPulse, com dados de demonstração: estado de cada camada, leitura da antena e a linha do tempo com a causa e a ação recomendada.</p>
+  <div class="rodape"><span><b>MD Soluções Tecnológicas</b> · Centro de Operações de Rede · Tecnologia NexoPulse</span><span>06 / 13</span></div>
+</section>
+
+<!-- 6. CENTRO DE OPERAÇÕES -->
+<section class="slide">
+  <img class="brand" src="img/md-logo.png" alt="">
+  <div style="display:grid; grid-template-columns:390px 1fr; gap:40px; align-items:center; height:100%">
+    <div>
+      <div class="kicker">Nosso Centro de Operações</div>
+      <h2 style="font-size:34px">Sua rede na nossa tela, 24 horas por dia.</h2>
+      <ul class="check" style="margin-top:26px">
+        <li><b>Tempo real:</b> cada local reporta a cada poucos segundos.</li>
+        <li><b>Mapa</b> com todos os seus sites.</li>
+        <li><b>Qualidade da conexão</b> até Google, Cloudflare, AWS e Quad9.</li>
+        <li>Quedas e instabilidades <b>registradas com data e hora</b>.</li>
+      </ul>
+    </div>
+    <div><img class="shot" src="img/painel.jpg" alt="" style="width:100%"><p class="cap">Plataforma NexoPulse, com dados de demonstração.</p></div>
+  </div>
+  <div class="rodape"><span><b>MD Soluções Tecnológicas</b> · Centro de Operações de Rede · Tecnologia NexoPulse</span><span>07 / 13</span></div>
+</section>
+
+<!-- 7. SALA DE OPERAÇÕES -->
+<section class="slide">
+  <img class="brand" src="img/md-logo.png" alt="">
+  <div style="display:grid; grid-template-columns:1fr 390px; gap:40px; align-items:center; height:100%">
+    <div><img class="shot" src="img/tv.jpg" alt="" style="width:100%"><p class="cap">Plataforma NexoPulse, com dados de demonstração.</p></div>
+    <div>
+      <div class="kicker">Atenção contínua</div>
+      <h2 style="font-size:34px">Uma queda não passa despercebida.</h2>
+      <ul class="check" style="margin-top:26px">
+        <li>Cada local do cliente com seu <b>painel de saúde</b>.</li>
+        <li>Site com problema <b>destacado em vermelho</b> na parede do nosso NOC.</li>
+        <li>Eventos e diagnósticos <b>acompanhados ao vivo</b> pela equipe.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="rodape"><span><b>MD Soluções Tecnológicas</b> · Centro de Operações de Rede · Tecnologia NexoPulse</span><span>08 / 13</span></div>
+</section>
+
+<!-- 8. VOCÊ INFORMADO -->
+<section class="slide">
+  <img class="brand" src="img/md-logo.png" alt="">
+  <div style="display:grid; grid-template-columns:1fr 460px; gap:48px; align-items:center; height:100%">
+    <div>
+      <div class="kicker">Você sempre informado</div>
+      <h2 style="font-size:36px">Transparência total, do <span class="d">alerta</span> ao <span class="d">relatório</span>.</h2>
+      <ul class="check" style="margin-top:28px">
+        <li><b>Alertas no Telegram</b>, no grupo da sua empresa: o que aconteceu, desde quando e o que fazer.</li>
+        <li><b>Acesso à NexoPulse:</b> login próprio para acompanhar seus sites em tempo real.</li>
+        <li><b>Relatórios sob medida</b>, na frequência e no formato que fizerem sentido para você.</li>
+        <li><b>Sem enxurrada:</b> só avisamos o que foi confirmado — e avisamos quando normaliza.</li>
+      </ul>
+    </div>
+    <div class="tg">
+      <div class="tg-head"><div class="tg-av">MD</div><div><b>Alertas · Sua Empresa</b><span>Centro de Operações MD · NexoPulse</span></div></div>
+      <div class="bubble"><span class="t">🚨 STARLINK OBSTRUÍDA</span>Starlink do site Fazenda Boa Vista com 6% de obstrução desde 20h31 — verificar árvores ou estruturas no campo de visão da antena (app Starlink → Verificar obstruções).<br>🎯 <b>Confiança:</b> alta<div class="h">20:33</div></div>
+      <div class="bubble"><span class="t">✅ CONEXÃO RESTAURADA</span>🖥️ <b>Sensor:</b> Filial Litoral<br>🌐 <b>Status:</b> ONLINE<br>⏱️ <b>Fora do ar:</b> ~4 min<div class="h">20:39</div></div>
+    </div>
+  </div>
+  <div class="rodape"><span><b>MD Soluções Tecnológicas</b> · Centro de Operações de Rede · Tecnologia NexoPulse</span><span>09 / 13</span></div>
+</section>
+
+<!-- 9. O QUE MONITORAMOS -->
+<section class="slide">
+  <img class="brand" src="img/md-logo.png" alt="">
+  <div class="kicker">O que monitoramos</div>
+  <h2>Da porta da sua empresa até a antena no telhado.</h2>
+  <div class="grid g2" style="margin-top:38px">
+    <div class="card">
+      <h3>Sua conexão</h3>
+      <ul class="check" style="margin-top:16px">
+        <li>Tempo de resposta, <b>oscilação e perda</b> de dados, do equipamento local até a internet.</li>
+        <li><b>DNS</b> verificado à parte, separando falha de configuração de bloqueio.</li>
+        <li><b>Caminho da conexão</b>, apontando o trecho que piorou.</li>
+        <li><b>Velocidade</b>, equipamentos na rede e serviços importantes do seu negócio.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Internet via satélite (Starlink)</h3>
+      <ul class="check" style="margin-top:16px">
+        <li><b>Obstrução</b> e quedas da última hora, com a causa de cada uma.</li>
+        <li><b>Alinhamento</b> da antena, com o desvio em graus.</li>
+        <li>Qualidade até a <b>estação da Starlink</b>.</li>
+        <li><b>Alertas da própria antena</b> (temperatura, mastro, atualização).</li>
+      </ul>
+    </div>
+  </div>
+  <div class="rodape"><span><b>MD Soluções Tecnológicas</b> · Centro de Operações de Rede · Tecnologia NexoPulse</span><span>10 / 13</span></div>
+</section>
+
+<!-- 10. NÓS CUIDAMOS DE TUDO -->
+<section class="slide">
+  <img class="brand" src="img/md-logo.png" alt="">
+  <div class="kicker">Sem trabalho para você</div>
+  <h2>Nós cuidamos de tudo. Você cuida do seu negócio.</h2>
+  <div class="grid g3" style="margin-top:38px">
+    <div class="card"><div class="ico">1</div><h3>Implantação pela MD</h3><p>Nossa equipe instala e configura o sensor. Você não precisa de conhecimento técnico.</p></div>
+    <div class="card"><div class="ico">2</div><h3>Manutenção contínua</h3><p>Atualizamos e mantemos o monitoramento funcionando, sem interromper sua operação.</p></div>
+    <div class="card"><div class="ico">3</div><h3>Nada se perde</h3><p>Se a internet cair, as medições ficam guardadas e chegam depois, com o horário certo.</p></div>
+    <div class="card"><div class="ico">4</div><h3>Suporte presencial</h3><p>Opcional: quando for preciso ir ao local, nossa equipe vai, com prazo definido em contrato.</p></div>
+    <div class="card"><div class="ico">5</div><h3>Seus dados protegidos</h3><p>Cada sensor tem uma chave própria, e você acessa apenas as informações da sua empresa.</p></div>
+    <div class="card"><div class="ico">6</div><h3>Sob medida</h3><p>Alertas, relatórios e atendimento ajustados à realidade e à necessidade do seu negócio.</p></div>
+  </div>
+  <div class="rodape"><span><b>MD Soluções Tecnológicas</b> · Centro de Operações de Rede · Tecnologia NexoPulse</span><span>11 / 13</span></div>
+</section>
+
+<!-- 11. PARA QUEM -->
+<section class="slide">
+  <img class="brand" src="img/md-logo.png" alt="">
+  <div class="kicker">Para quem é</div>
+  <h2>Para empresas que <span class="d">não podem ficar sem internet</span>.</h2>
+  <div class="grid g4" style="margin-top:40px">
+    <div class="card"><h3>Comércio e varejo</h3><p>Caixas, maquininhas e sistemas de venda sempre conectados — em uma loja ou em toda a rede.</p></div>
+    <div class="card"><h3>Agronegócio</h3><p>Fazendas e unidades remotas com Starlink acompanhadas de perto, mesmo longe de tudo.</p></div>
+    <div class="card"><h3>Saúde</h3><p>Clínicas e consultórios com agenda, prontuário e sistemas online sem surpresas.</p></div>
+    <div class="card"><h3>Empresas com filiais</h3><p>Todas as unidades em um só acompanhamento, com a visão de onde está cada problema.</p></div>
+  </div>
+  <div class="card" style="margin-top:22px; display:flex; align-items:center; gap:22px; padding:22px 26px">
+    <img src="img/nexopulse-logo.png" alt="NexoPulse" style="height:44px">
+    <p style="font-size:16.5px; color:var(--texto); border-left:1px solid var(--linha); padding-left:22px"><b style="color:var(--tinta)">Tecnologia própria.</b> Nosso Centro de Operações funciona sobre a NexoPulse, plataforma desenvolvida e mantida pela MD — e que evolui conforme as necessidades dos nossos clientes.</p>
+  </div>
+  <div class="rodape"><span><b>MD Soluções Tecnológicas</b> · Centro de Operações de Rede · Tecnologia NexoPulse</span><span>12 / 13</span></div>
+</section>
+
+<!-- 12. COMO COMEÇAR -->
+<section class="slide">
+  <img class="brand" src="img/md-logo.png" alt="">
+  <div class="kicker">Como começar</div>
+  <h2>Três passos para sua rede passar a ser monitorada.</h2>
+  <div class="grid g3" style="margin-top:34px">
+    <div class="card"><div class="num">1</div><h3 style="margin-top:14px">Avaliamos sua rede</h3><p>Entendemos seus locais, links e o que é crítico para o seu negócio.</p></div>
+    <div class="card"><div class="num">2</div><h3 style="margin-top:14px">Instalamos o sensor</h3><p>Nossa equipe implanta e configura, sem parar sua operação.</p></div>
+    <div class="card"><div class="num">3</div><h3 style="margin-top:14px">Monitoramento 24/7</h3><p>Seu grupo de alertas e seu acesso à NexoPulse já começam a funcionar.</p></div>
+  </div>
+  <div class="cta">
+    <img src="img/md-simbolo.png" alt="" style="width:72px">
+    <div><h3>Vamos cuidar da sua conexão?</h3><p>Fale com a MD Soluções Tecnológicas e agende uma avaliação da sua rede.</p></div>
+  </div>
+  <div class="rodape"><span><b>MD Soluções Tecnológicas</b> · Centro de Operações de Rede · Tecnologia NexoPulse</span><span>13 / 13</span></div>
+</section>
+
+</body>
+</html>
