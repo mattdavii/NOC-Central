@@ -13,7 +13,7 @@
         <a href="/sensores" class="{{ 'active' if _path == '/sensores' }}"><i class="fa-solid fa-satellite-dish" aria-hidden="true"></i><span>Sensores</span></a>
         {% endif %}
         {% if _role in ['Administrador Master', 'Cliente', 'Administrador Cliente'] %}
-        <a href="/usuarios" class="{{ 'active' if _path == '/usuarios' }}"><i class="fa-solid fa-users" aria-hidden="true"></i><span>Usuários</span></a>
+        <a href="/usuarios" class="{{ 'active' if _path == '/usuarios' }}"><i class="fa-solid fa-key" aria-hidden="true"></i><span>Acessos</span></a>
         {% endif %}
         {% if _role == 'Administrador Master' %}
         <a href="/saude" class="{{ 'active' if _path == '/saude' }}"><i class="fa-solid fa-heart-pulse" aria-hidden="true"></i><span>Servidor</span></a>

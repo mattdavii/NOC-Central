@@ -1667,8 +1667,36 @@ def gerenciar_usuarios():
             tenant_id = user_info['cliente_pai_id']
         usuarios = db_execute(conn, "SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id FROM clientes WHERE cliente_pai_id = ? ORDER BY id DESC", (tenant_id,)).fetchall()
         clientes_pais = []
-    conn.close()
-    return render_template('usuarios.html', usuarios=[dict(u) for u in usuarios], role_atual=session['role'], telegram_tenant=locals().get('tenant_id', 0), clientes_pais=[dict(c) for c in clientes_pais])
+    try:
+        usuarios = [dict(u) for u in usuarios]
+        contratos = {}
+        for u in usuarios:
+            empresa = acessos.empresa_de(u)
+            if empresa is not None and empresa not in contratos:
+                contratos[empresa] = acessos.contrato(conn, empresa)
+            u['acesso'] = acessos.acesso_efetivo(conn, u['id'])
+            u['niveis'] = acessos.niveis_registrados(conn, u['id'])
+            u['empresa_id'] = empresa
+            u['contrato'] = contratos.get(empresa, {})
+            u['editavel'] = u['role'] not in acessos.ROLES_MASTER and u['id'] != session['user_id']
+        empresas = []
+        if session['role'] == 'Administrador Master':
+            empresas = [{**dict(c), 'contrato': acessos.contrato(conn, c['id']), 'delegacao': acessos.delegacao_ativa(conn, c['id'])}
+                        for c in conn.execute("SELECT id, nome, usuario, ativo FROM clientes WHERE role='Cliente' ORDER BY nome").fetchall()]
+        meu_acesso = acessos.acesso_efetivo(conn, session['user_id'])
+        dados_acessos = {
+            'master': session['role'] == 'Administrador Master', 'meu_acesso': meu_acesso,
+            'aplicativos': list(acessos.APLICATIVOS.items()), 'rotulos': acessos.ROTULOS_NIVEL,  # lista: o JSON ordenaria as chaves
+            'usuarios': {str(u['id']): {'nome': u['nome'] or u['usuario'], 'contrato': u['contrato'],
+                                        'niveis': u['niveis'], 'acesso': u['acesso']}
+                         for u in usuarios if u['editavel']},
+        }
+    finally:
+        conn.close()
+    return render_template('usuarios.html', usuarios=usuarios, role_atual=session['role'], telegram_tenant=locals().get('tenant_id', 0),
+                           clientes_pais=[dict(c) for c in clientes_pais], empresas=empresas, meu_acesso=meu_acesso,
+                           aplicativos=acessos.APLICATIVOS, rotulos_nivel=acessos.ROTULOS_NIVEL,
+                           perfis_prontos=acessos.PERFIS_PRONTOS, dados_acessos=dados_acessos)
 
 @app.route('/api/v2/usuarios', methods=['POST'])
 def criar_usuario():
@@ -1921,6 +1949,32 @@ def acessos_nivel(id_user):
         conn.close()
 
 
+@app.route('/api/v2/acessos/usuarios/<int:id_user>/perfil', methods=['POST'])
+def acessos_perfil(id_user):
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    perfil = (request.get_json(silent=True) or {}).get('perfil')
+    if perfil not in acessos.PERFIS_PRONTOS:
+        return jsonify(error='Perfil pronto desconhecido.'), 400
+    conn = database.get_db()
+    try:
+        mudancas = acessos.mudancas_do_perfil(conn, id_user, perfil)
+        if not mudancas:
+            return jsonify(error='Usuário sem empresa ou sem aplicativos contratados.'), 400
+        # Tudo ou nada: valida cada aplicativo antes de gravar qualquer um.
+        for aplicativo, nivel in mudancas.items():
+            erro = acessos.validar_mudanca_nivel(conn, session['user_id'], id_user, aplicativo, nivel)
+            if erro:
+                return jsonify(error=erro), 403
+        for aplicativo, nivel in mudancas.items():
+            acessos.definir_nivel(conn, id_user, aplicativo, nivel)
+        _auditar_alvo(conn, 'perfil_aplicado', id_user, detalhes={'perfil': acessos.PERFIS_PRONTOS[perfil]['nome'], 'niveis': mudancas})
+        conn.commit()
+        return jsonify(status='OK', usuario=_resumo_usuario(conn, acessos._usuario(conn, id_user)))
+    finally:
+        conn.close()
+
+
 @app.route('/api/v2/acessos/auditoria')
 def acessos_auditoria():
     if 'user_id' not in session:
@@ -1933,7 +1987,9 @@ def acessos_auditoria():
     try:
         if not _pode_gerenciar_usuarios(conn):
             return jsonify(error='Sem permissão para ver a auditoria.'), 403
-        campos = 'SELECT id, criado_em, autor, empresa_id, acao, alvo, detalhes FROM auditoria_acessos'
+        # No Postgres criado_em fica no fuso da sessão; com o fuso explícito o navegador converte certo.
+        quando = ("criado_em AT TIME ZONE current_setting('TimeZone') AS criado_em" if os.environ.get('DATABASE_URL') else 'criado_em')
+        campos = f'SELECT id, {quando}, autor, empresa_id, acao, alvo, detalhes FROM auditoria_acessos'
         if session.get('role') == 'Administrador Master':
             rows = conn.execute(f'{campos} ORDER BY id DESC LIMIT ?', (limite,)).fetchall()
         else:

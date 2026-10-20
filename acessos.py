@@ -17,6 +17,17 @@ ROLES_ADMIN_EMPRESA = ('Cliente', 'Administrador Cliente')
 CONTRATO_PADRAO = {'pulse': True, 'guard': False, 'report': False}
 # Sem nível registrado, o usuário recebe o padrão do perfil em cada aplicativo contratado.
 NIVEL_PADRAO_POR_PERFIL = {'Cliente': 'admin', 'Administrador Cliente': 'admin', 'Operador Cliente': 'operador'}
+ROTULOS_NIVEL = {'nenhum': 'Sem acesso', 'leitura': 'Leitura', 'operador': 'Operador', 'admin': 'Administrador'}
+
+# Atalhos da Central de Acessos: aplicativo fora da lista fica "Sem acesso".
+PERFIS_PRONTOS = {
+    'diretoria': {'nome': 'Diretoria', 'descricao': 'Acompanha a rede e os relatórios, sem agir.',
+                  'niveis': {'pulse': 'leitura', 'report': 'leitura'}},
+    'tecnico': {'nome': 'Técnico', 'descricao': 'Opera o dia a dia da rede e da segurança.',
+                'niveis': {'pulse': 'operador', 'guard': 'operador'}},
+    'gestor_ti': {'nome': 'Gestor de TI', 'descricao': 'Administra todos os aplicativos contratados.',
+                  'niveis': {'pulse': 'admin', 'guard': 'admin', 'report': 'admin'}},
+}
 
 # Rotas do próprio Hub (portal, login, administração de acessos, servidor): não pertencem
 # a um aplicativo. Toda outra rota acessada com sessão de usuário é da NexoPulse.
@@ -27,7 +38,7 @@ ROTAS_DO_HUB = {
     'alterar_senha_user', 'toggle_user_status', 'testar_telegram',
     'pagina_saude', 'api_saude', 'api_saude_config', 'debug_db',
     'acessos_me', 'acessos_empresas', 'acessos_contrato', 'acessos_delegacao',
-    'acessos_usuarios', 'acessos_nivel', 'acessos_auditoria',
+    'acessos_usuarios', 'acessos_nivel', 'acessos_perfil', 'acessos_auditoria',
 }
 
 
@@ -134,6 +145,17 @@ def validar_mudanca_nivel(conn, autor_id, alvo_id, app, nivel):
     if nivel != NIVEL_NENHUM and not (meu and nivel_suficiente(meu, nivel)):
         return 'Não é possível conceder um nível acima do seu.'
     return None
+
+
+def mudancas_do_perfil(conn, usuario_id, perfil):
+    """{aplicativo: nível} que o perfil pronto aplica, só nos aplicativos contratados pela empresa."""
+    usuario = _usuario(conn, usuario_id)
+    empresa = empresa_de(usuario)
+    if perfil not in PERFIS_PRONTOS or empresa is None:
+        return {}
+    contratado = contrato(conn, empresa)
+    niveis = PERFIS_PRONTOS[perfil]['niveis']
+    return {app: niveis.get(app, NIVEL_NENHUM) for app in APLICATIVOS if contratado.get(app)}
 
 
 def definir_nivel(conn, usuario_id, app, nivel):
