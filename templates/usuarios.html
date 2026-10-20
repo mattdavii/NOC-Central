@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#082E56">
     <link rel="icon" href="/static/favicon.png" type="image/png">
-    <title>NexoPulse Central - Gestão de Usuários</title>
+    <title>NexoPulse Central - Central de Acessos</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -42,6 +42,31 @@
         /* Estilos do Modal de Edição */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 2000; backdrop-filter: blur(5px); }
         .modal-content { max-width: 500px; width: 100%; margin: 20px; }
+
+        /* Central de Acessos */
+        .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 24px; overflow-x: auto; }
+        .tab { background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); padding: 10px 14px; font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+        .tab[aria-selected="true"] { color: var(--text-main); border-bottom-color: var(--blue); }
+        .tab-panel[hidden] { display: none; }
+        .app-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .app-chip { font-size: .75em; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
+        .app-chip strong { color: var(--blue); font-weight: 600; }
+        .app-chip.total { border-color: var(--purple); color: var(--purple); }
+        .app-chip.vazio { color: var(--text-muted); }
+        .nivel-linha { display: grid; grid-template-columns: 1fr 170px; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+        .nivel-linha:last-child { border-bottom: none; }
+        .nivel-linha small { display: block; color: var(--text-muted); font-weight: 400; }
+        .nivel-linha select { padding: 8px; }
+        .perfis { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 14px; }
+        .perfil-btn { flex: 1 1 150px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; padding: 8px 12px; font: inherit; font-size: .85em; cursor: pointer; text-align: left; }
+        .perfil-btn:hover { border-color: var(--blue); }
+        .perfil-btn small { display: block; color: var(--text-muted); }
+        .help-text { color: var(--text-muted); font-size: .85em; margin: 0 0 12px; }
+        .auditoria td { font-size: .85em; vertical-align: top; }
+        .auditoria .quando { font-family: 'JetBrains Mono'; white-space: nowrap; color: var(--text-muted); }
+        .empresas td.centro, .empresas th.centro { text-align: center; }
+        .empresas input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--blue); cursor: pointer; }
+        @media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; } .form-grid > * { grid-column: auto !important; } .nivel-linha { grid-template-columns: 1fr; } }
     </style>
 <link rel="stylesheet" href="/static/product.css?v=nexopulse-2">
 <script src="/static/brand.js?v=nexopulse-2"></script>
@@ -53,8 +78,8 @@
 
     <div class="page-head">
         <div>
-            <h1><i class="fa-solid fa-users"></i> Usuários</h1>
-            <p>Clientes, operadores e as notificações do Telegram de cada um.</p>
+            <h1><i class="fa-solid fa-key"></i> Central de Acessos</h1>
+            <p>Quem acessa cada aplicativo Nexo, com qual nível, e o histórico de tudo o que mudou.</p>
         </div>
         {% if role_atual == 'Administrador Master' %}
         <div class="page-actions">
@@ -63,6 +88,15 @@
         {% endif %}
     </div>
 
+    <div class="tabs" role="tablist" aria-label="Seções da Central de Acessos">
+        <button class="tab" role="tab" id="tab-usuarios" aria-controls="painel-usuarios" aria-selected="true" onclick="abrirAba('usuarios')"><i class="fa-solid fa-users"></i> Usuários</button>
+        {% if role_atual == 'Administrador Master' %}
+        <button class="tab" role="tab" id="tab-empresas" aria-controls="painel-empresas" aria-selected="false" onclick="abrirAba('empresas')"><i class="fa-solid fa-building"></i> Empresas</button>
+        {% endif %}
+        <button class="tab" role="tab" id="tab-auditoria" aria-controls="painel-auditoria" aria-selected="false" onclick="abrirAba('auditoria')"><i class="fa-solid fa-clock-rotate-left"></i> Auditoria</button>
+    </div>
+
+    <section class="tab-panel" id="painel-usuarios" role="tabpanel" aria-labelledby="tab-usuarios">
     <div class="card">
         <h3 style="margin-top: 0;"><i class="fa-solid fa-user-plus"></i> Novo Usuário / Cliente</h3>
         <div class="form-grid">
@@ -81,11 +115,15 @@
             <div class="input-group">
                 <label>Nível de Permissão</label>
                 <select id="role" onchange="toggleCamposDinamicos()">
-                    <option value="Cliente">Cliente Dono (White-Label)</option>
-                    <option value="Administrador Cliente">Administrador Cliente (Gerente)</option>
-                    <option value="Operador">Operador (Vinculado)</option>
-                    <option value="Operador Master">Operador Master</option>
-                    <option value="Administrador Master">Administrador Master</option>
+                    {% if role_atual == 'Administrador Master' %}
+                    <option value="Cliente">Empresa cliente (conta principal)</option>
+                    {% endif %}
+                    <option value="Administrador Cliente">Administrador da empresa</option>
+                    <option value="Operador Cliente">Operador da empresa</option>
+                    {% if role_atual == 'Administrador Master' %}
+                    <option value="Operador Master">Operador Master (equipe MD)</option>
+                    <option value="Administrador Master">Administrador Master (equipe MD)</option>
+                    {% endif %}
                 </select>
             </div>
             
@@ -111,9 +149,9 @@
             </div>
 
             <div class="input-group" id="div_pai" style="grid-column: span 2; display: none;">
-                <label>Vincular a Cliente Pai</label>
+                <label>Empresa</label>
                 <select id="cliente_pai">
-                    <option value="null">Nenhum (Acesso Global)</option>
+                    <option value="null">Selecione a empresa</option>
                     {% for c in clientes_pais %}
                     <option value="{{ c.id }}">{{ c.nome }}</option>
                     {% endfor %}
@@ -131,7 +169,8 @@
                     <th>Logo</th>
                     <th>Nome / Empresa</th>
                     <th>Usuário</th>
-                    <th>Permissão</th>
+                    <th>Perfil</th>
+                    <th>Aplicativos</th>
                     <th>Status</th>
                     <th>Ações</th>
                 </tr>
@@ -156,6 +195,19 @@
                         {% endif %}
                     </td>
                     <td>
+                        <div class="app-chips">
+                        {% if 'Master' in u.role %}
+                            <span class="app-chip total">Acesso total (MD)</span>
+                        {% else %}
+                            {% for app, nivel in u.acesso.items() %}
+                            <span class="app-chip">{{ aplicativos[app] }} · <strong>{{ rotulos_nivel[nivel] }}</strong></span>
+                            {% else %}
+                            <span class="app-chip vazio">Sem acesso</span>
+                            {% endfor %}
+                        {% endif %}
+                        </div>
+                    </td>
+                    <td>
                         {% if u.ativo == 1 %}
                         <span style="color: var(--status-ok); font-weight: bold; font-size: 0.85em;">● Ativo</span>
                         {% else %}
@@ -164,6 +216,9 @@
                     </td>
                     <td>
                         <button class="btn-action" onclick='abrirModalEditar({{ u.id|tojson }}, {{ u.nome|tojson }}, {{ u.usuario|tojson }}, {{ u.role|tojson }}, {{ u.logo_url|tojson }}, {{ u.telegram_token|tojson }}, {{ u.telegram_chat_id|tojson }})'  title="Editar Info"><i class="fa-solid fa-pen"></i></button>
+                        {% if u.editavel %}
+                        <button class="btn-action" onclick='abrirAcessos({{ u.id|tojson }})' title="Acessos aos aplicativos"><i class="fa-solid fa-sliders"></i></button>
+                        {% endif %}
                         <button class="btn-action" onclick="mudarSenha('{{ u.id }}')" title="Mudar Senha"><i class="fa-solid fa-key"></i></button>
                         <button class="btn-action power" onclick="toggleStatus('{{ u.id }}')" title="Ativar / Desativar"><i class="fa-solid fa-power-off"></i></button>
                         <button class="btn-action delete" onclick="deletarUsuario('{{ u.id }}')" title="Excluir Definitivamente"><i class="fa-solid fa-trash-can"></i></button>
@@ -172,6 +227,65 @@
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+
+    </section>
+
+    {% if role_atual == 'Administrador Master' %}
+    <section class="tab-panel" id="painel-empresas" role="tabpanel" aria-labelledby="tab-empresas" hidden>
+        <div class="card">
+            <h3 style="margin-top: 0;"><i class="fa-solid fa-building"></i> Aplicativos contratados</h3>
+            <p class="help-text">Ligue os aplicativos que cada empresa contratou. Desligar tira o aplicativo de todos os usuários da empresa na hora.
+            <strong>Delegação</strong> permite que os administradores da empresa gerenciem os próprios usuários; desligada, só a MD gerencia.</p>
+            <table class="empresas cards-mobile">
+                <thead><tr><th>Empresa</th>{% for app, nome in aplicativos.items() %}<th class="centro">{{ nome }}</th>{% endfor %}<th class="centro">Delegação</th></tr></thead>
+                <tbody>
+                {% for e in empresas %}
+                <tr>
+                    <td><strong>{{ e.nome or e.usuario }}</strong>{% if not e.ativo %} <span class="app-chip vazio">inativa</span>{% endif %}</td>
+                    {% for app, nome in aplicativos.items() %}
+                    <td class="centro" data-label="{{ nome }}"><input type="checkbox" aria-label="{{ nome }} para {{ e.nome or e.usuario }}" {{ 'checked' if e.contrato[app] }}
+                        onchange='mudarContrato({{ e.id|tojson }}, {{ app|tojson }}, this)'></td>
+                    {% endfor %}
+                    <td class="centro" data-label="Delegação"><input type="checkbox" aria-label="Delegação para {{ e.nome or e.usuario }}" {{ 'checked' if e.delegacao }}
+                        onchange='mudarDelegacao({{ e.id|tojson }}, this)'></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="{{ aplicativos|length + 2 }}" class="help-text">Nenhuma empresa cadastrada ainda.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="tab-panel" id="painel-auditoria" role="tabpanel" aria-labelledby="tab-auditoria" hidden>
+        <div class="card">
+            <h3 style="margin-top: 0;"><i class="fa-solid fa-clock-rotate-left"></i> Auditoria</h3>
+            <p class="help-text">Logins, mudanças de usuários, de níveis{% if role_atual == 'Administrador Master' %}, de contratos e de delegação{% endif %}: quem fez, o quê e quando. Últimos 200 registros.</p>
+            <table class="auditoria cards-mobile">
+                <thead><tr><th>Quando</th><th>Quem</th><th>O quê</th><th>Alvo</th><th>Detalhes</th></tr></thead>
+                <tbody id="auditoria-linhas"><tr><td colspan="5" class="help-text">Carregando…</td></tr></tbody>
+            </table>
+        </div>
+    </section>
+
+    <div id="modalAcessos" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="acessos-titulo">
+        <div class="card modal-content">
+            <h3 id="acessos-titulo" style="margin-top: 0; color: var(--blue); border-bottom: 1px solid var(--border); padding-bottom: 10px;"><i class="fa-solid fa-sliders"></i> Acessos de <span id="acessos-nome"></span></h3>
+            <label>Perfis prontos</label>
+            <div class="perfis">
+                {% for chave, perfil in perfis_prontos.items() %}
+                <button class="perfil-btn" type="button" onclick='aplicarPerfil({{ chave|tojson }})'>{{ perfil.nome }}<small>{{ perfil.descricao }}</small></button>
+                {% endfor %}
+            </div>
+            <label>Ou ajuste aplicativo por aplicativo</label>
+            <div id="acessos-linhas"></div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                <button class="btn-save" style="background: var(--bg-input); color: var(--text-main);" onclick="fecharAcessos()">Cancelar</button>
+                <button class="btn-save" onclick="salvarAcessos()">Salvar acessos</button>
+            </div>
+        </div>
     </div>
 
     <div id="modalEditar" class="modal-overlay" style="display: none;">
@@ -216,6 +330,7 @@
         </div>
     </div>
 
+    <script id="dados-acessos" type="application/json">{{ dados_acessos | tojson }}</script>
     <script>
         function toggleCamposDinamicos() {
             const role = document.getElementById('role').value;
@@ -228,11 +343,12 @@
                 divLogo.style.flexDirection = 'column';
                 divPai.style.display = 'none';  
                 divTg.style.display = 'flex'; // Mostra Telegram
-            } else if (role.includes('Operador') || role === 'Administrador Cliente') {
-                divLogo.style.display = 'none'; 
-                divPai.style.display = 'flex';  
+            } else if (role === 'Operador Cliente' || role === 'Administrador Cliente') {
+                // Fora da MD a empresa é sempre a do próprio administrador.
+                divLogo.style.display = 'none';
+                divPai.style.display = ACESSOS.master ? 'flex' : 'none';
                 divPai.style.flexDirection = 'column';
-                divTg.style.display = 'none'; // Esconde Telegram
+                divTg.style.display = 'none';
             } else {
                 divLogo.style.display = 'none';
                 divPai.style.display = 'none';
@@ -417,6 +533,167 @@
                 window.location.reload();
             }
         }
+
+        // ===== Central de Acessos =====
+        const ACESSOS = JSON.parse(document.getElementById('dados-acessos').textContent);
+        const NOMES_APPS = Object.fromEntries(ACESSOS.aplicativos);
+        const ORDEM_NIVEIS = ['nenhum', 'leitura', 'operador', 'admin'];
+        const ACOES = {
+            login: 'Entrou', login_falhou: 'Login recusado', usuario_criado: 'Criou usuário', usuario_editado: 'Editou usuário',
+            usuario_excluido: 'Excluiu usuário', usuario_ativado: 'Ativou usuário', usuario_desativado: 'Desativou usuário',
+            senha_redefinida: 'Redefiniu senha', nivel_alterado: 'Mudou nível', perfil_aplicado: 'Aplicou perfil pronto',
+            contrato_alterado: 'Mudou contrato', delegacao_alterada: 'Mudou delegação'
+        };
+        let auditoriaCarregada = false;
+        let acessosAberto = null;
+
+        async function postJson(url, payload) {
+            const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            let data = {};
+            try { data = await res.json(); } catch (_) {}
+            if (!res.ok) throw new Error(data.error || 'Não foi possível salvar.');
+            return data;
+        }
+
+        function abrirAba(nome) {
+            document.querySelectorAll('.tab').forEach(tab => tab.setAttribute('aria-selected', String(tab.id === 'tab-' + nome)));
+            document.querySelectorAll('.tab-panel').forEach(painel => { painel.hidden = painel.id !== 'painel-' + nome; });
+            try { sessionStorage.setItem('central-acessos-aba', nome); } catch (_) {}
+            if (nome === 'auditoria' && !auditoriaCarregada) carregarAuditoria();
+        }
+
+        function podeConceder(nivel, app) {
+            if (ACESSOS.master || nivel === 'nenhum') return true;
+            const meu = ACESSOS.meu_acesso[app];
+            return Boolean(meu) && ORDEM_NIVEIS.indexOf(meu) >= ORDEM_NIVEIS.indexOf(nivel);
+        }
+
+        function abrirAcessos(id) {
+            const u = ACESSOS.usuarios[String(id)];
+            if (!u) return;
+            acessosAberto = id;
+            document.getElementById('acessos-nome').textContent = u.nome;
+            const linhas = document.getElementById('acessos-linhas');
+            linhas.replaceChildren();
+            for (const [app, nome] of ACESSOS.aplicativos) {
+                const linha = document.createElement('div');
+                linha.className = 'nivel-linha';
+                const rotulo = document.createElement('label');
+                rotulo.htmlFor = 'nivel-' + app;
+                rotulo.textContent = nome;
+                const ajuda = document.createElement('small');
+                const select = document.createElement('select');
+                select.id = 'nivel-' + app;
+                select.dataset.app = app;
+                const atual = u.acesso[app] || 'nenhum';
+                select.dataset.inicial = atual;
+                for (const nivel of ORDEM_NIVEIS) {
+                    const opcao = new Option(ACESSOS.rotulos[nivel], nivel, false, nivel === atual);
+                    opcao.disabled = !podeConceder(nivel, app) && nivel !== atual;
+                    select.add(opcao);
+                }
+                if (!u.contrato[app]) {
+                    select.disabled = true;
+                    ajuda.textContent = 'Não contratado pela empresa' + (ACESSOS.master ? ' (ligue na aba Empresas).' : '. Fale com a MD.');
+                } else if (!(app in u.niveis)) {
+                    ajuda.textContent = 'Padrão do perfil';
+                }
+                rotulo.appendChild(ajuda);
+                linha.append(rotulo, select);
+                linhas.appendChild(linha);
+            }
+            document.getElementById('modalAcessos').style.display = 'flex';
+        }
+
+        function fecharAcessos() {
+            document.getElementById('modalAcessos').style.display = 'none';
+            acessosAberto = null;
+        }
+
+        async function salvarAcessos() {
+            const mudancas = [...document.querySelectorAll('#acessos-linhas select')]
+                .filter(select => !select.disabled && select.value !== select.dataset.inicial);
+            try {
+                for (const select of mudancas) {
+                    await postJson('/api/v2/acessos/usuarios/' + acessosAberto + '/nivel', { aplicativo: select.dataset.app, nivel: select.value });
+                }
+                window.location.reload();
+            } catch (e) { alert('❌ ' + e.message); }
+        }
+
+        async function aplicarPerfil(perfil) {
+            try {
+                await postJson('/api/v2/acessos/usuarios/' + acessosAberto + '/perfil', { perfil });
+                window.location.reload();
+            } catch (e) { alert('❌ ' + e.message); }
+        }
+
+        async function mudarContrato(empresa, app, caixa) {
+            const nome = NOMES_APPS[app];
+            if (!caixa.checked && !confirm('Desligar o ' + nome + ' tira o acesso de todos os usuários desta empresa. Continuar?')) {
+                caixa.checked = true; return;
+            }
+            caixa.disabled = true;
+            try { await postJson('/api/v2/acessos/empresas/' + empresa + '/contrato', { aplicativo: app, ativo: caixa.checked }); auditoriaCarregada = false; }
+            catch (e) { caixa.checked = !caixa.checked; alert('❌ ' + e.message); }
+            finally { caixa.disabled = false; }
+        }
+
+        async function mudarDelegacao(empresa, caixa) {
+            caixa.disabled = true;
+            try { await postJson('/api/v2/acessos/empresas/' + empresa + '/delegacao', { ativo: caixa.checked }); auditoriaCarregada = false; }
+            catch (e) { caixa.checked = !caixa.checked; alert('❌ ' + e.message); }
+            finally { caixa.disabled = false; }
+        }
+
+        function descreverDetalhes(registro) {
+            let d = registro.detalhes;
+            if (!d) return '';
+            try { d = JSON.parse(d); } catch (_) { return String(d); }
+            const app = nome => NOMES_APPS[nome] || nome;
+            const nivel = n => ACESSOS.rotulos[n] || n;
+            if (registro.acao === 'nivel_alterado') return app(d.aplicativo) + ': ' + nivel(d.antes) + ' → ' + nivel(d.depois);
+            if (registro.acao === 'contrato_alterado') return app(d.aplicativo) + (d.depois ? ' ligado' : ' desligado');
+            if (registro.acao === 'delegacao_alterada') return d.ativo ? 'Delegação ligada' : 'Delegação desligada';
+            if (registro.acao === 'perfil_aplicado') return d.perfil + ' (' + Object.entries(d.niveis).map(([a, n]) => app(a) + ' ' + nivel(n)).join(', ') + ')';
+            if (registro.acao === 'usuario_criado') return 'Perfil: ' + d.perfil;
+            return JSON.stringify(d);
+        }
+
+        async function carregarAuditoria() {
+            const corpo = document.getElementById('auditoria-linhas');
+            try {
+                const res = await fetch('/api/v2/acessos/auditoria?limite=200');
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Falha ao carregar.');
+                corpo.replaceChildren();
+                if (!data.registros.length) {
+                    const tr = corpo.insertRow(); const td = tr.insertCell(); td.colSpan = 5; td.className = 'help-text'; td.textContent = 'Nada registrado ainda.';
+                }
+                for (const r of data.registros) {
+                    const tr = corpo.insertRow();
+                    let txt = String(r.criado_em).trim().replace(' ', 'T');
+                    if (!/[zZ]|[+-]\d\d:?\d\d$/.test(txt)) txt += 'Z';
+                    const quando = new Date(txt);
+                    const celulas = [
+                        ['Quando', isNaN(quando) ? r.criado_em : quando.toLocaleString('pt-BR', {dateStyle: 'short', timeStyle: 'short'}), 'quando'],
+                        ['Quem', r.autor || '—'], ['O quê', ACOES[r.acao] || r.acao], ['Alvo', r.alvo || '—'], ['Detalhes', descreverDetalhes(r)]
+                    ];
+                    for (const [rotulo, texto, classe] of celulas) {
+                        const td = tr.insertCell(); td.textContent = texto; td.dataset.label = rotulo; if (classe) td.className = classe;
+                    }
+                }
+                auditoriaCarregada = true;
+            } catch (e) {
+                corpo.replaceChildren();
+                const tr = corpo.insertRow(); const td = tr.insertCell(); td.colSpan = 5; td.textContent = '❌ ' + e.message;
+            }
+        }
+
+        try {
+            const aba = sessionStorage.getItem('central-acessos-aba');
+            if (aba && document.getElementById('tab-' + aba)) abrirAba(aba);
+        } catch (_) {}
     </script>
 <div class="telegram-status" role="status" data-telegram-status="{{ 0 if session.role == 'Administrador Master' else telegram_tenant }}"></div>
 <script src="/static/telegram-status.js?v=2.2.0-rc1"></script>
