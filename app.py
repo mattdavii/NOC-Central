@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template, session, redirect, url_for, flash, send_from_directory
+from flask import Flask, jsonify, request, render_template, session, redirect, url_for, flash, send_from_directory, g
 from werkzeug.security import check_password_hash, generate_password_hash
 from flask_socketio import SocketIO
 import database
@@ -6,6 +6,7 @@ import notifications
 import diagnostico
 import saude
 import acessos
+import hub
 from location import parse_location, save_location
 from version import CENTRAL_VERSION
 from urllib.parse import urlsplit
@@ -345,9 +346,24 @@ if os.environ.get('DISABLE_BACKGROUND_GUARDIAN', '0') != '1':
     threading.Thread(target=_telegram_worker, name='noc-telegram', daemon=True).start()
 
 
+def menu_nexo():
+    """O que o menu mostra para quem está logado: aplicativos com acesso e se gerencia usuários (cache por requisição)."""
+    if 'menu_nexo' not in g:
+        menu = {'acesso': {}, 'gerencia_usuarios': False}
+        if session.get('user_id'):
+            conn = database.get_db()
+            try:
+                menu = {'acesso': acessos.acesso_efetivo(conn, session['user_id']),
+                        'gerencia_usuarios': _pode_gerenciar_usuarios(conn)}
+            finally:
+                conn.close()
+        g.menu_nexo = menu
+    return g.menu_nexo
+
+
 @app.context_processor
 def product_context():
-    return {'central_version': CENTRAL_VERSION, 'csrf_token': get_csrf_token}
+    return {'central_version': CENTRAL_VERSION, 'csrf_token': get_csrf_token, 'menu_nexo': menu_nexo}
 
 
 @socketio.on('connect')
@@ -879,7 +895,7 @@ def login():
                 session.permanent = True
                 _auditar(conn, 'login', alvo=user['usuario'], autor=dict(user))
                 conn.commit()
-                return redirect(url_for('index'))
+                return redirect(url_for('hub'))
             else:
                 erro = "Usuário ou senha incorretos!"
                 alvo = dict(user) if user else None
@@ -908,7 +924,35 @@ def ack_alerta():
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
 
-@app.route('/')
+@app.route('/', endpoint='hub')
+def hub_inicio():
+    """Página inicial do NexoHub: cards dos aplicativos (cliente) ou todos os clientes (MD)."""
+    if 'usuario' not in session: return redirect(url_for('login'))
+    conn = database.get_db()
+    try:
+        master = session.get('role') in acessos.ROLES_MASTER
+        ver_como = request.args.get('ver_como', type=int) if master else None
+        if master and not ver_como:
+            return render_template('hub.html', modo='md', empresas=hub.visao_md(conn), total=hub.resumo_pulse(conn),
+                                   sem_empresa=hub.sem_empresa(conn), aplicativos=acessos.APLICATIVOS)
+        if ver_como:
+            # "Ver como cliente": a MD enxerga o Hub da conta principal da empresa, só para consulta.
+            empresa = _empresa_ou_404(conn, ver_como)
+            if not empresa:
+                return redirect(url_for('hub'))
+            empresa_id, acesso = empresa['id'], acessos.acesso_efetivo(conn, empresa['id'])
+        else:
+            empresa_id = acessos.empresa_de(_autor(conn))
+            acesso = acessos.acesso_efetivo(conn, session['user_id'])
+        dono = conn.execute('SELECT nome, usuario, logo_url FROM clientes WHERE id=?', (empresa_id,)).fetchone() if empresa_id else None
+        return render_template('hub.html', modo='cliente', cards=hub.cards(conn, empresa_id, acesso) if empresa_id else [],
+                               empresa=(dict(dono) if dono else None), ver_como=ver_como, rotulos_nivel=acessos.ROTULOS_NIVEL)
+    finally:
+        conn.close()
+
+
+
+@app.route('/pulse')
 def index():
     if 'usuario' not in session: return redirect(url_for('login'))
     return render_template('index.html', nome=session['usuario'])

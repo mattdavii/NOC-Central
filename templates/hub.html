@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#082E56">
+    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <title>NexoHub - Início</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/product.css?v=nexopulse-3">
+    <style>
+        body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-base); color: var(--text-main); }
+        .sym { width: 44px; height: 44px; flex: none; }
+        .sym-light { display: none; }
+        html[data-theme="light"] .sym-dark { display: none; }
+        html[data-theme="light"] .sym-light { display: block; }
+        .ver-como { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px;
+                    margin-bottom: 22px; border: 1px solid var(--yellow); border-radius: 10px; color: var(--text-main);
+                    background: color-mix(in srgb, var(--yellow) 10%, transparent); }
+        .ver-como a { color: var(--text-main); font-weight: 600; }
+        .saudacao { display: flex; align-items: center; gap: 16px; }
+        .saudacao img { max-height: 48px; max-width: 160px; object-fit: contain; }
+        .apps { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
+        .app-card { display: flex; flex-direction: column; gap: 14px; padding: 22px; border-radius: 14px; background: var(--bg-card); border: 1px solid var(--border); box-shadow: var(--shadow); }
+        .app-card.vitrine { background: transparent; border-style: dashed; box-shadow: none; }
+        .app-card header { display: flex; align-items: center; gap: 14px; }
+        .app-card h2 { margin: 0; font-size: 1.15rem; }
+        .app-card .sub { margin: 2px 0 0; font-size: .82rem; color: var(--text-muted); }
+        .app-card p { margin: 0; color: var(--text-muted); font-size: .92rem; }
+        .etiqueta { margin-left: auto; font-size: .72rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-muted); white-space: nowrap; }
+        .etiqueta.ok { color: var(--blue); border-color: var(--blue); }
+        .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .kpi { padding: 10px 12px; border-radius: 10px; background: var(--bg-input); }
+        .kpi strong { display: block; font-size: 1.5rem; line-height: 1.2; }
+        .kpi span { font-size: .78rem; color: var(--text-muted); }
+        .lista-diag { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+        .lista-diag li { display: flex; gap: 10px; align-items: baseline; font-size: .88rem; }
+        .lista-diag .site { font-weight: 600; }
+        .lista-diag .quando, .queda .quando { color: var(--text-muted); font-size: .8rem; white-space: nowrap; margin-left: auto; }
+        .tudo-ok { color: var(--status-ok); font-weight: 600; font-size: .9rem; }
+        .queda { font-size: .85rem; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap; }
+        .abrir { margin-top: auto; align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 8px;
+                 background: var(--blue); color: var(--bg-base); font-weight: 700; text-decoration: none; }
+        .kpis-md { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 22px; }
+        .kpis-md .kpi { background: var(--bg-card); border: 1px solid var(--border); padding: 14px 16px; }
+        .filtros { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-bottom: 14px; }
+        .filtros input[type="search"] { flex: 1 1 240px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-main); padding: 10px 12px; border-radius: 8px; font: inherit; }
+        table.clientes { width: 100%; border-collapse: collapse; }
+        table.clientes th { text-align: left; padding: 12px; border-bottom: 2px solid var(--border); color: var(--blue); font-size: .85em; }
+        table.clientes td { padding: 12px; border-bottom: 1px solid var(--border); font-size: .9em; vertical-align: middle; }
+        .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .chip { font-size: .75em; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
+        .num-off { color: var(--status-crit); font-weight: 700; }
+        .acoes-linha { display: flex; gap: 12px; flex-wrap: wrap; }
+        .acoes-linha a { white-space: nowrap; font-weight: 600; text-decoration: none; }
+        .vazio { color: var(--text-muted); }
+        @media (max-width: 640px) { .apps { grid-template-columns: 1fr; } .kpi strong { font-size: 1.25rem; } }
+    </style>
+<script src="/static/brand.js?v=nexopulse-2"></script>
+</head>
+<body>
+{% include '_brand_bar.html' %}
+<main class="page-main">
+
+{% macro simbolo(app) -%}
+    {%- if app == 'pulse' -%}
+    <img class="sym" src="/static/brand/nexopulse-symbol.png" alt="" aria-hidden="true">
+    {%- else -%}
+    <img class="sym sym-dark" src="/static/brand/familia/nexo{{ app }}-simbolo-escuro.svg" alt="" aria-hidden="true">
+    <img class="sym sym-light" src="/static/brand/familia/nexo{{ app }}-simbolo-claro.svg" alt="" aria-hidden="true">
+    {%- endif -%}
+{%- endmacro %}
+
+{% if modo == 'md' %}
+    <div class="page-head">
+        <div>
+            <h1><i class="fa-solid fa-house"></i> Início</h1>
+            <p>Todos os clientes da MD: aplicativos contratados, sites e alertas ativos.</p>
+        </div>
+    </div>
+
+    <div class="kpis-md">
+        <div class="kpi"><strong>{{ empresas|length }}</strong><span>empresas clientes</span></div>
+        <div class="kpi"><strong class="status-ok">{{ total.online }}</strong><span>sites online</span></div>
+        <div class="kpi"><strong class="{{ 'num-off' if total.offline }}">{{ total.offline }}</strong><span>sites offline</span></div>
+        <div class="kpi"><strong class="{{ 'num-off' if total.total_diagnosticos }}">{{ total.total_diagnosticos }}</strong><span>alertas ativos</span></div>
+        {% if sem_empresa %}
+        <div class="kpi"><strong class="txt-warn">{{ sem_empresa }}</strong><span>sensores sem empresa (<a href="/sensores">alocar</a>)</span></div>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <div class="filtros">
+            <input type="search" id="filtro" placeholder="Filtrar por nome da empresa" aria-label="Filtrar clientes" oninput="filtrar()">
+            <label class="switch-label"><input type="checkbox" id="so-problema" onchange="filtrar()"> Só com problema agora</label>
+        </div>
+        <table class="clientes cards-mobile">
+            <thead><tr><th>Empresa</th><th>Aplicativos</th><th>Sites</th><th>Alertas</th><th>Última queda</th><th>Ações</th></tr></thead>
+            <tbody>
+            {% for e in empresas %}
+            <tr data-nome="{{ e.nome|lower }}" data-problema="{{ 1 if e.offline or e.alertas else 0 }}">
+                <td data-label="Empresa"><strong>{{ e.nome }}</strong>{% if not e.ativo %} <span class="chip vazio">inativa</span>{% endif %}</td>
+                <td data-label="Aplicativos"><div class="chips">
+                    {% for app, nome in aplicativos.items() if e.contrato[app] %}<span class="chip">{{ nome }}</span>{% else %}<span class="chip vazio">Nenhum</span>{% endfor %}
+                </div></td>
+                <td data-label="Sites">
+                    {% if e.sites %}
+                    <span class="status-ok">{{ e.online }} online</span>{% if e.offline %} · <span class="num-off">{{ e.offline }} offline</span>{% endif %}{% if e.manutencao %} · {{ e.manutencao }} em manutenção{% endif %}
+                    {% else %}<span class="vazio">sem sensores</span>{% endif %}
+                </td>
+                <td data-label="Alertas">{% if e.alertas %}<span class="num-off">{{ e.alertas }}</span>{% else %}<span class="vazio">—</span>{% endif %}</td>
+                <td data-label="Última queda">{% if e.ultima_queda %}{{ e.ultima_queda.site }} · <span data-ts="{{ e.ultima_queda.inicio }}"></span>{% if e.ultima_queda.ativa %} <span class="num-off">(em andamento)</span>{% endif %}{% else %}<span class="vazio">—</span>{% endif %}</td>
+                <td data-label="Ações"><div class="acoes-linha">
+                    <a href="/?ver_como={{ e.id }}"><i class="fa-solid fa-eye"></i> Ver como cliente</a>
+                </div></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="vazio">Nenhuma empresa cadastrada ainda. Cadastre em <a href="/usuarios">Acessos</a>.</td></tr>
+            {% endfor %}
+            <tr id="nenhum-filtro" hidden><td colspan="6" class="vazio">Nenhuma empresa com esse filtro.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+{% else %}
+    {% if ver_como %}
+    <div class="ver-como" role="status">
+        <span><i class="fa-solid fa-eye"></i> Você está vendo o NexoHub como <strong>{{ empresa.nome or empresa.usuario }}</strong> vê. Somente consulta.</span>
+        <a href="/"><i class="fa-solid fa-arrow-left"></i> Voltar para a visão da MD</a>
+    </div>
+    {% endif %}
+
+    <div class="page-head">
+        <div class="saudacao">
+            {% if empresa and empresa.logo_url %}<img src="{{ empresa.logo_url }}" alt="Logo de {{ empresa.nome or empresa.usuario }}">{% endif %}
+            <div>
+                <h1>{{ (empresa.nome or empresa.usuario) if empresa else 'Início' }}</h1>
+                <p>Os aplicativos Nexo dos serviços que a MD presta para você.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="apps">
+    {% for c in cards %}
+        <article class="app-card {{ c.estado }}">
+            <header>
+                {{ simbolo(c.app) }}
+                <div>
+                    <h2>{% if c.estado == 'vitrine' %}Conheça o {% endif %}{{ c.nome }}</h2>
+                    {% if c.estado == 'liberado' %}<p class="sub">Seu acesso: {{ rotulos_nivel[c.nivel] }}</p>{% endif %}
+                </div>
+                {% if c.estado == 'liberado' %}<span class="etiqueta ok">Ativo</span>
+                {% elif c.estado == 'em_breve' %}<span class="etiqueta">Em breve</span>
+                {% else %}<span class="etiqueta">Não contratado</span>{% endif %}
+            </header>
+
+            {% if c.estado == 'liberado' and c.app == 'pulse' %}
+                {% set r = c.resumo %}
+                <div class="kpis">
+                    <div class="kpi"><strong class="status-ok">{{ r.online }}</strong><span>online</span></div>
+                    <div class="kpi"><strong class="{{ 'num-off' if r.offline }}">{{ r.offline }}</strong><span>offline</span></div>
+                    <div class="kpi"><strong>{{ r.manutencao }}</strong><span>em manutenção</span></div>
+                </div>
+                {% if r.diagnosticos %}
+                <div>
+                    <p style="margin-bottom:8px;"><strong>{{ r.total_diagnosticos }} diagnóstico{{ 's' if r.total_diagnosticos != 1 }} ativo{{ 's' if r.total_diagnosticos != 1 }}</strong></p>
+                    <ul class="lista-diag">
+                        {% for d in r.diagnosticos %}
+                        <li><span class="site">{{ d.site }}</span><span>{{ d.causa }}</span><span class="quando" data-ts="{{ d.inicio }}"></span></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% elif r.sites %}
+                <p class="tudo-ok"><i class="fa-solid fa-circle-check"></i> Tudo funcionando: nenhum diagnóstico ativo.</p>
+                {% else %}
+                <p>Nenhum site monitorado ainda. A MD instala os sensores e eles aparecem aqui.</p>
+                {% endif %}
+                {% if r.ultima_queda %}
+                <div class="queda"><span>Última queda: <strong>{{ r.ultima_queda.site }}</strong>{% if r.ultima_queda.ativa %} (em andamento){% endif %}</span><span class="quando" data-ts="{{ r.ultima_queda.inicio }}"></span></div>
+                {% endif %}
+                {% if not ver_como %}
+                <a class="abrir" href="/pulse"><i class="fa-solid fa-gauge-high"></i> Abrir a Operação</a>
+                {% endif %}
+            {% elif c.estado == 'em_breve' %}
+                <p>{{ c.descricao }}</p>
+                <p>Já está no seu contrato. Assim que estiver disponível, ele aparece aqui.</p>
+            {% else %}
+                <p>{{ c.descricao }}</p>
+                <p>Fale com a MD para incluir no seu contrato.</p>
+            {% endif %}
+        </article>
+    {% else %}
+        <p class="vazio">Nenhum aplicativo liberado para você ainda. Fale com o administrador da sua empresa ou com a MD.</p>
+    {% endfor %}
+    </div>
+{% endif %}
+</main>
+<script>
+    // Datas vêm em segundos (epoch); mostra "há X" para o recente e a data local para o resto.
+    document.querySelectorAll('[data-ts]').forEach(el => {
+        const ts = Number(el.dataset.ts);
+        if (!ts) return;
+        const segundos = Math.max(0, Date.now() / 1000 - ts);
+        const data = new Date(ts * 1000);
+        el.title = data.toLocaleString('pt-BR');
+        if (segundos < 3600) el.textContent = 'há ' + Math.max(1, Math.round(segundos / 60)) + ' min';
+        else if (segundos < 86400) el.textContent = 'há ' + Math.round(segundos / 3600) + ' h';
+        else el.textContent = data.toLocaleString('pt-BR', {dateStyle: 'short', timeStyle: 'short'});
+    });
+
+    function filtrar() {
+        const termo = document.getElementById('filtro').value.trim().toLowerCase();
+        const soProblema = document.getElementById('so-problema').checked;
+        let visiveis = 0;
+        document.querySelectorAll('table.clientes tbody tr[data-nome]').forEach(tr => {
+            const mostra = tr.dataset.nome.includes(termo) && (!soProblema || tr.dataset.problema === '1');
+            tr.hidden = !mostra;
+            if (mostra) visiveis++;
+        });
+        document.getElementById('nenhum-filtro').hidden = visiveis > 0;
+    }
+
+    // Atualiza o resumo a cada minuto enquanto a aba estiver visível (não mexe no filtro digitado).
+    setInterval(() => {
+        const filtro = document.getElementById('filtro');
+        const filtrando = filtro && (filtro.value || document.getElementById('so-problema').checked);
+        if (document.visibilityState === 'visible' && !filtrando) window.location.reload();
+    }, 60000);
+</script>
+</body>
+</html>
