@@ -72,7 +72,7 @@
             <i class="fa-solid fa-sun" aria-hidden="true"></i>
         </button>
         {% if session.get('usuario') and not hide_nav %}
-        <span class="app-user" title="{{ _role or '' }}"><i class="fa-solid fa-circle-user" aria-hidden="true"></i><span>{{ session.get('usuario') }}</span></span>
+        <a class="app-user {{ 'active' if _path == '/conta' }}" href="/conta" title="Minha conta · {{ _role or '' }}"><i class="fa-solid fa-circle-user" aria-hidden="true"></i><span>{{ session.get('usuario') }}</span></a>
         <form method="POST" action="/logout" class="app-logout">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <button type="submit" title="Sair"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i><span>Sair</span></button>

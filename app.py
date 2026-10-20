@@ -7,6 +7,7 @@ import diagnostico
 import saude
 import acessos
 import hub
+import seguranca
 from location import parse_location, save_location
 from version import CENTRAL_VERSION
 from urllib.parse import urlsplit
@@ -397,9 +398,12 @@ def enforce_tenant_scope():
             return jsonify(error='Origem não autorizada.'), 403
     conn = database.get_db()
     try:
-        current = conn.execute('SELECT ativo FROM clientes WHERE id=?', (session['user_id'],)).fetchone()
-        if not current or current['ativo'] == 0:
+        current = conn.execute('SELECT ativo, sessao_versao FROM clientes WHERE id=?', (session['user_id'],)).fetchone()
+        if not current or current['ativo'] == 0 or session.get('sv', 0) != (current['sessao_versao'] or 0):
             session.clear()
+            if request.method == 'GET' and not request.path.startswith('/api/'):
+                flash('Sua sessão foi encerrada. Entre de novo.')
+                return redirect(url_for('login'))
             return jsonify(error='Sessão inválida.'), 401
         master = session.get('role') in ('Administrador Master', 'Operador Master')
         tenant = None if master else tenant_id(conn)
@@ -448,6 +452,20 @@ def _resposta_sem_acesso(mensagem):
     return render_template('sem_acesso.html', mensagem=mensagem), 403
 
 
+ROTAS_DURANTE_CADASTRO_2FA = {'conta', 'conta_2fa_iniciar', 'conta_2fa_confirmar', 'logout', 'static', 'manifest',
+                              'service_worker', 'privacidade', 'healthz'}
+
+
+@app.before_request
+def exigir_cadastro_2fa():
+    """Empresa (ou a MD) exige verificação em duas etapas e o usuário ainda não cadastrou: só a Minha conta abre."""
+    if not session.get('user_id') or not session.get('precisa_2fa') or request.endpoint in ROTAS_DURANTE_CADASTRO_2FA:
+        return None
+    if request.path.startswith('/api/'):
+        return jsonify(error='Ative a verificação em duas etapas para continuar.'), 403
+    return redirect(url_for('conta'))
+
+
 @app.before_request
 def exigir_acesso_aplicativo():
     """Acesso efetivo = aplicativo contratado pela empresa ∩ nível do usuário (Família Nexo)."""
@@ -469,6 +487,48 @@ def exigir_acesso_aplicativo():
     if not acessos.nivel_suficiente(nivel, minimo):
         return _resposta_sem_acesso('Seu acesso a este aplicativo é somente leitura.')
     return None
+
+
+def _exige_2fa(conn, usuario):
+    """A empresa do usuário (ou a MD, para a equipe MD) tornou a verificação em duas etapas obrigatória."""
+    if usuario['role'] in acessos.ROLES_MASTER:
+        row = conn.execute("SELECT valor FROM config_sistema WHERE chave='acessos_exigir_2fa_md'").fetchone()
+        return bool(row and row['valor'] == '1')
+    empresa = acessos.empresa_de(usuario)
+    row = conn.execute('SELECT exigir_2fa FROM clientes WHERE id=?', (empresa,)).fetchone() if empresa else None
+    return bool(row and row['exigir_2fa'])
+
+
+def _iniciar_sessao(conn, user, metodo):
+    """Login concluído (senha e, se ativa, a segunda etapa): monta a sessão e registra na auditoria."""
+    user = dict(user)
+    session.clear()
+    session['logged_in'] = True; session['usuario'] = user['usuario']; session['role'] = user['role']
+    session['user_id'] = user['id']; session['logo_cliente'] = user.get('logo_url', '')
+    session['sv'] = user.get('sessao_versao') or 0
+    session['_csrf_token'] = secrets.token_urlsafe(32)
+    session.permanent = True
+    if not user.get('totp_ativo') and _exige_2fa(conn, user):
+        session['precisa_2fa'] = True
+    seguranca.limpar_falhas(conn, user['usuario'])
+    _auditar(conn, 'login', alvo=user['usuario'], autor=user, detalhes={'metodo': metodo})
+    conn.commit()
+
+
+def _mensagem_bloqueio(ate):
+    return f'Muitas tentativas. Por segurança, este acesso ficou bloqueado; tente de novo em {seguranca.minutos_restantes(ate)} min.'
+
+
+def _falha_login(conn, usuario_digitado, alvo, acao):
+    """Conta a falha (senha ou código) e devolve a mensagem para a tela."""
+    empresa = acessos.empresa_de(alvo) if alvo else None
+    acessos.registrar(conn, None, None, empresa, acao, usuario_digitado[:80])
+    ate = seguranca.registrar_falha(conn, usuario_digitado)
+    if ate:
+        acessos.registrar(conn, None, None, empresa, 'login_bloqueado', usuario_digitado[:80],
+                          {'minutos': seguranca.BLOQUEIO_S // 60})
+    conn.commit()
+    return _mensagem_bloqueio(ate) if ate else None
 
 
 def _autor(conn):
@@ -874,11 +934,16 @@ if GUARDIAO_LIGADO:
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     erro = None
+    if request.method == 'GET' and request.args.get('cancelar'):
+        session.pop('2fa_pendente', None)
     if request.method == 'POST':
         usuario_digitado = request.form.get('usuario', '').strip()
         senha_digitada = request.form.get('senha', '').strip()
         conn = database.get_db()
         try:
+            ate = seguranca.bloqueado_ate(conn, usuario_digitado)
+            if ate:
+                return render_template('login.html', erro=_mensagem_bloqueio(ate))
             user = db_execute(conn, "SELECT * FROM clientes WHERE usuario = ?", (usuario_digitado,)).fetchone()
 
             stored_password = str(user['senha']) if user else ''
@@ -888,26 +953,67 @@ def login():
                 if not is_hashed:
                     conn.execute('UPDATE clientes SET senha=? WHERE id=?', (generate_password_hash(senha_digitada), user['id']))
                     conn.commit()
-                session.clear()
-                session['logged_in'] = True; session['usuario'] = user['usuario']; session['role'] = user['role']
-                session['user_id'] = user['id']; session['logo_cliente'] = dict(user).get('logo_url', '')
-                session['_csrf_token'] = secrets.token_urlsafe(32)
-                session.permanent = True
-                _auditar(conn, 'login', alvo=user['usuario'], autor=dict(user))
-                conn.commit()
+                if dict(user).get('totp_ativo'):
+                    # Senha certa, falta o código: nada de sessão ainda, só a etapa pendente (5 minutos).
+                    session.clear()
+                    session['2fa_pendente'] = {'id': user['id'], 'ate': time.time() + 300}
+                    return redirect(url_for('login_2fa'))
+                _iniciar_sessao(conn, user, 'senha')
                 return redirect(url_for('hub'))
             else:
-                erro = "Usuário ou senha incorretos!"
-                alvo = dict(user) if user else None
-                acessos.registrar(conn, None, None, acessos.empresa_de(alvo) if alvo else None,
-                                  'login_falhou', usuario_digitado[:80])
-                conn.commit()
+                erro = _falha_login(conn, usuario_digitado, dict(user) if user else None, 'login_falhou') or 'Usuário ou senha incorretos.'
         except Exception:
             app.logger.exception('Falha no processo de autenticação')
             erro = 'Não foi possível autenticar agora. Tente novamente.'
         finally: conn.close()
 
     return render_template('login.html', erro=erro)
+
+
+@app.route('/login/2fa', methods=['GET', 'POST'])
+def login_2fa():
+    """Segunda etapa: código do aplicativo autenticador ou um código de recuperação."""
+    pendente = session.get('2fa_pendente')
+    if not pendente or pendente.get('ate', 0) < time.time():
+        session.pop('2fa_pendente', None)
+        if pendente:
+            flash('O tempo para digitar o código acabou. Entre de novo.')
+        return redirect(url_for('login'))
+    erro = None
+    if request.method == 'POST':
+        digitado = request.form.get('codigo', '').strip()
+        conn = database.get_db()
+        try:
+            user = conn.execute('SELECT * FROM clientes WHERE id=?', (pendente['id'],)).fetchone()
+            if not user or not user['ativo'] or not user['totp_ativo']:
+                session.pop('2fa_pendente', None)
+                return redirect(url_for('login'))
+            user = dict(user)
+            ate = seguranca.bloqueado_ate(conn, user['usuario'])
+            if ate:
+                session.pop('2fa_pendente', None)
+                return render_template('login.html', erro=_mensagem_bloqueio(ate))
+            segredo = seguranca.decifrar(user['totp_segredo'])
+            passo = seguranca.verificar_totp(segredo, digitado, user['totp_ultimo_passo']) if segredo else None
+            if passo is not None:
+                conn.execute('UPDATE clientes SET totp_ultimo_passo=? WHERE id=?', (passo, user['id']))
+                _iniciar_sessao(conn, user, '2fa')
+                return redirect(url_for('hub'))
+            restantes = seguranca.usar_codigo_recuperacao(user['codigos_recuperacao'], digitado)
+            if restantes is not None:
+                conn.execute('UPDATE clientes SET codigos_recuperacao=? WHERE id=?', (restantes, user['id']))
+                _iniciar_sessao(conn, user, 'codigo_recuperacao')
+                if seguranca.codigos_restantes(restantes) <= 2:
+                    flash('Você usou um código de recuperação e restam poucos. Gere novos em Minha conta.')
+                return redirect(url_for('hub'))
+            bloqueio = _falha_login(conn, user['usuario'], user, '2fa_falhou')
+            if bloqueio:
+                session.pop('2fa_pendente', None)
+                return render_template('login.html', erro=bloqueio)
+            erro = 'Código inválido ou já usado. Confira o aplicativo e tente de novo.'
+        finally:
+            conn.close()
+    return render_template('login.html', etapa='2fa', erro=erro)
 
 @app.route('/logout', methods=['POST'])
 def logout(): session.clear(); return redirect(url_for('login'))
@@ -1702,14 +1808,14 @@ def gerenciar_usuarios():
     if bloqueio: return bloqueio
     conn = database.get_db()
     if session['role'] == 'Administrador Master':
-        usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id FROM clientes ORDER BY id DESC").fetchall()
+        usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id, totp_ativo FROM clientes ORDER BY id DESC").fetchall()
         clientes_pais = conn.execute("SELECT id, nome FROM clientes WHERE role = 'Cliente'").fetchall()
     else:
         if session['role'] == 'Cliente': tenant_id = session['user_id']
         else:
             user_info = db_execute(conn, "SELECT cliente_pai_id FROM clientes WHERE id = ?", (session['user_id'],)).fetchone()
             tenant_id = user_info['cliente_pai_id']
-        usuarios = db_execute(conn, "SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id FROM clientes WHERE cliente_pai_id = ? ORDER BY id DESC", (tenant_id,)).fetchall()
+        usuarios = db_execute(conn, "SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id, totp_ativo FROM clientes WHERE cliente_pai_id = ? ORDER BY id DESC", (tenant_id,)).fetchall()
         clientes_pais = []
     try:
         usuarios = [dict(u) for u in usuarios]
@@ -1723,10 +1829,19 @@ def gerenciar_usuarios():
             u['empresa_id'] = empresa
             u['contrato'] = contratos.get(empresa, {})
             u['editavel'] = u['role'] not in acessos.ROLES_MASTER and u['id'] != session['user_id']
+            # Sessões e 2FA: qualquer usuário listado, menos a própria conta (essa vai pela Minha conta).
+            u['gerenciavel'] = u['id'] != session['user_id']
         empresas = []
+        seguranca_acesso = {}
         if session['role'] == 'Administrador Master':
             empresas = [{**dict(c), 'contrato': acessos.contrato(conn, c['id']), 'delegacao': acessos.delegacao_ativa(conn, c['id'])}
-                        for c in conn.execute("SELECT id, nome, usuario, ativo FROM clientes WHERE role='Cliente' ORDER BY nome").fetchall()]
+                        for c in conn.execute("SELECT id, nome, usuario, ativo, exigir_2fa FROM clientes WHERE role='Cliente' ORDER BY nome").fetchall()]
+            md = conn.execute("SELECT valor FROM config_sistema WHERE chave='acessos_exigir_2fa_md'").fetchone()
+            seguranca_acesso['exigir_2fa_md'] = bool(md and md['valor'] == '1')
+        else:
+            empresa_row = conn.execute('SELECT id, exigir_2fa FROM clientes WHERE id=?', (tenant_id,)).fetchone()
+            seguranca_acesso['empresa_id'] = tenant_id
+            seguranca_acesso['exigir_2fa_empresa'] = bool(empresa_row and empresa_row['exigir_2fa'])
         meu_acesso = acessos.acesso_efetivo(conn, session['user_id'])
         dados_acessos = {
             'master': session['role'] == 'Administrador Master', 'meu_acesso': meu_acesso,
@@ -1740,7 +1855,7 @@ def gerenciar_usuarios():
     return render_template('usuarios.html', usuarios=usuarios, role_atual=session['role'], telegram_tenant=locals().get('tenant_id', 0),
                            clientes_pais=[dict(c) for c in clientes_pais], empresas=empresas, meu_acesso=meu_acesso,
                            aplicativos=acessos.APLICATIVOS, rotulos_nivel=acessos.ROTULOS_NIVEL,
-                           perfis_prontos=acessos.PERFIS_PRONTOS, dados_acessos=dados_acessos)
+                           perfis_prontos=acessos.PERFIS_PRONTOS, dados_acessos=dados_acessos, seguranca_acesso=seguranca_acesso)
 
 @app.route('/api/v2/usuarios', methods=['POST'])
 def criar_usuario():
@@ -1754,6 +1869,9 @@ def criar_usuario():
         if not re.fullmatch(r'[A-Za-z0-9._@-]+', usuario):
             raise ValueError('Usuário deve usar apenas letras, números, ponto, hífen, @ ou underscore.')
         senha = bounded_secret(data.get('senha'), 'Senha')
+        fraca = seguranca.validar_senha_forte(senha, usuario)
+        if fraca:
+            raise ValueError(fraca)
         role = bounded_text(data.get('role'), 'Perfil', maximum=40)
         if role not in ALLOWED_ROLES:
             raise ValueError('Perfil inválido.')
@@ -1808,11 +1926,15 @@ def alterar_senha_user(id_user):
     data = request.json
     try:
         senha = bounded_secret(data.get('senha'), 'Senha')
+        fraca = seguranca.validar_senha_forte(senha)
+        if fraca:
+            raise ValueError(fraca)
     except ValueError as error:
         return jsonify(error=str(error)), 400
     nova_senha = generate_password_hash(senha)
     conn = database.get_db()
-    db_execute(conn, "UPDATE clientes SET senha = ? WHERE id = ?", (nova_senha, id_user))
+    # Senha redefinida por um administrador derruba as sessões abertas do usuário.
+    db_execute(conn, "UPDATE clientes SET senha = ?, sessao_versao = COALESCE(sessao_versao, 0) + 1 WHERE id = ?", (nova_senha, id_user))
     _auditar_alvo(conn, 'senha_redefinida', id_user)
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
@@ -2015,6 +2137,300 @@ def acessos_perfil(id_user):
         _auditar_alvo(conn, 'perfil_aplicado', id_user, detalhes={'perfil': acessos.PERFIS_PRONTOS[perfil]['nome'], 'niveis': mudancas})
         conn.commit()
         return jsonify(status='OK', usuario=_resumo_usuario(conn, acessos._usuario(conn, id_user)))
+    finally:
+        conn.close()
+
+
+# ==========================================
+# 🔐 SEGURANÇA DE ACESSO: Minha conta, verificação em duas etapas e sessões
+# ==========================================
+def _usuario_completo(conn, usuario_id):
+    row = conn.execute('SELECT * FROM clientes WHERE id=?', (usuario_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def _codigo_da_conta(user, digitado):
+    """Confere um código (aplicativo ou recuperação) do próprio usuário; grava o uso. True se valeu.
+
+    Erros contam no mesmo bloqueio do login: sessão aberta não vira porta para chutar códigos."""
+    conn = database.get_db()
+    try:
+        if seguranca.bloqueado_ate(conn, user['usuario']):
+            return False
+        segredo = seguranca.decifrar(user['totp_segredo']) if user.get('totp_segredo') else None
+        passo = seguranca.verificar_totp(segredo, digitado, user.get('totp_ultimo_passo')) if segredo else None
+        if passo is not None:
+            conn.execute('UPDATE clientes SET totp_ultimo_passo=? WHERE id=?', (passo, user['id']))
+            conn.commit()
+            return True
+        restantes = seguranca.usar_codigo_recuperacao(user.get('codigos_recuperacao'), digitado)
+        if restantes is not None:
+            conn.execute('UPDATE clientes SET codigos_recuperacao=? WHERE id=?', (restantes, user['id']))
+            conn.commit()
+            return True
+        seguranca.registrar_falha(conn, user['usuario'])
+        conn.commit()
+        return False
+    finally:
+        conn.close()
+
+
+def _nova_versao_de_sessao(conn, usuario_id):
+    conn.execute('UPDATE clientes SET sessao_versao = COALESCE(sessao_versao, 0) + 1 WHERE id=?', (usuario_id,))
+    return conn.execute('SELECT sessao_versao FROM clientes WHERE id=?', (usuario_id,)).fetchone()['sessao_versao']
+
+
+@app.route('/conta')
+def conta():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    conn = database.get_db()
+    try:
+        user = _usuario_completo(conn, session['user_id'])
+        empresa_id = acessos.empresa_de(user)
+        empresa = conn.execute('SELECT nome, usuario FROM clientes WHERE id=?', (empresa_id,)).fetchone() if empresa_id else None
+        return render_template('conta.html', user=user, empresa=(dict(empresa) if empresa else None),
+                               exige_2fa=_exige_2fa(conn, user), obrigatorio_agora=bool(session.get('precisa_2fa')),
+                               codigos_restantes=seguranca.codigos_restantes(user.get('codigos_recuperacao')),
+                               cifra_disponivel=seguranca.cifra_disponivel(), senha_minimo=seguranca.SENHA_MINIMO)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/conta/senha', methods=['POST'])
+def conta_senha():
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    data = request.get_json(silent=True) or {}
+    conn = database.get_db()
+    try:
+        user = _usuario_completo(conn, session['user_id'])
+        if seguranca.bloqueado_ate(conn, user['usuario']):
+            return jsonify(error='Muitas tentativas. Tente de novo em alguns minutos.'), 429
+        guardada = str(user.get('senha') or '')
+        if not guardada.startswith(('scrypt:', 'pbkdf2:')) or not check_password_hash(guardada, str(data.get('atual') or '')):
+            seguranca.registrar_falha(conn, user['usuario'])
+            conn.commit()
+            return jsonify(error='A senha atual não confere.'), 400
+        nova = data.get('nova')
+        fraca = seguranca.validar_senha_forte(nova, user['usuario'])
+        if fraca:
+            return jsonify(error=fraca), 400
+        conn.execute('UPDATE clientes SET senha=? WHERE id=?', (generate_password_hash(nova), user['id']))
+        # Troca de senha encerra as outras sessões; esta continua.
+        session['sv'] = _nova_versao_de_sessao(conn, user['id'])
+        _auditar(conn, 'senha_trocada', alvo=user['usuario'], detalhes={'propria': True})
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/conta/2fa/iniciar', methods=['POST'])
+def conta_2fa_iniciar():
+    """Gera o segredo (guardado cifrado, ainda inativo) e devolve o que o aplicativo autenticador precisa."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    if not seguranca.cifra_disponivel():
+        return jsonify(error='Verificação em duas etapas indisponível: configure FLASK_SECRET_KEY no servidor.'), 503
+    conn = database.get_db()
+    try:
+        user = _usuario_completo(conn, session['user_id'])
+        if user.get('totp_ativo'):
+            return jsonify(error='A verificação em duas etapas já está ativa.'), 409
+        segredo = seguranca.gerar_segredo()
+        conn.execute('UPDATE clientes SET totp_segredo=?, totp_ultimo_passo=NULL WHERE id=?', (seguranca.cifrar(segredo), user['id']))
+        conn.commit()
+        return jsonify(segredo=segredo, uri=seguranca.uri_otpauth(segredo, user['usuario']))
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/conta/2fa/confirmar', methods=['POST'])
+def conta_2fa_confirmar():
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    digitado = (request.get_json(silent=True) or {}).get('codigo')
+    conn = database.get_db()
+    try:
+        user = _usuario_completo(conn, session['user_id'])
+        if user.get('totp_ativo') or not user.get('totp_segredo'):
+            return jsonify(error='Comece a ativação de novo.'), 409
+        if seguranca.bloqueado_ate(conn, user['usuario']):
+            return jsonify(error='Muitas tentativas. Tente de novo em alguns minutos.'), 429
+        segredo = seguranca.decifrar(user['totp_segredo'])
+        passo = seguranca.verificar_totp(segredo, digitado) if segredo else None
+        if passo is None:
+            seguranca.registrar_falha(conn, user['usuario'])
+            conn.commit()
+            return jsonify(error='Código inválido. Confira o horário do celular e tente o código atual.'), 400
+        codigos, guardados = seguranca.gerar_codigos_recuperacao()
+        conn.execute('UPDATE clientes SET totp_ativo=1, totp_ultimo_passo=?, codigos_recuperacao=? WHERE id=?',
+                     (passo, guardados, user['id']))
+        session.pop('precisa_2fa', None)
+        _auditar(conn, '2fa_ativado', alvo=user['usuario'])
+        conn.commit()
+        return jsonify(status='OK', codigos_recuperacao=codigos)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/conta/2fa/desativar', methods=['POST'])
+def conta_2fa_desativar():
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        user = _usuario_completo(conn, session['user_id'])
+        if not user.get('totp_ativo'):
+            return jsonify(error='A verificação em duas etapas não está ativa.'), 409
+        if _exige_2fa(conn, user):
+            return jsonify(error='A verificação em duas etapas é obrigatória para a sua empresa.'), 403
+    finally:
+        conn.close()
+    if not _codigo_da_conta(user, (request.get_json(silent=True) or {}).get('codigo')):
+        return jsonify(error='Código inválido.'), 400
+    conn = database.get_db()
+    try:
+        conn.execute('UPDATE clientes SET totp_ativo=0, totp_segredo=NULL, totp_ultimo_passo=NULL, codigos_recuperacao=NULL WHERE id=?', (user['id'],))
+        _auditar(conn, '2fa_desativado', alvo=user['usuario'])
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/conta/2fa/codigos', methods=['POST'])
+def conta_2fa_codigos():
+    """Novos códigos de recuperação (os antigos deixam de valer). Pede um código atual."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        user = _usuario_completo(conn, session['user_id'])
+    finally:
+        conn.close()
+    if not user.get('totp_ativo'):
+        return jsonify(error='A verificação em duas etapas não está ativa.'), 409
+    if not _codigo_da_conta(user, (request.get_json(silent=True) or {}).get('codigo')):
+        return jsonify(error='Código inválido.'), 400
+    codigos, guardados = seguranca.gerar_codigos_recuperacao()
+    conn = database.get_db()
+    try:
+        conn.execute('UPDATE clientes SET codigos_recuperacao=? WHERE id=?', (guardados, user['id']))
+        _auditar(conn, '2fa_codigos_gerados', alvo=user['usuario'])
+        conn.commit()
+        return jsonify(status='OK', codigos_recuperacao=codigos)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/conta/sessoes/encerrar', methods=['POST'])
+def conta_encerrar_sessoes():
+    """Sai de todos os outros aparelhos; esta sessão continua."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        session['sv'] = _nova_versao_de_sessao(conn, session['user_id'])
+        _auditar(conn, 'sessoes_encerradas', alvo=session.get('usuario'), detalhes={'propria': True})
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+def _alvo_gerenciavel(conn, id_user):
+    """(alvo, None) se quem pede pode agir sobre esse usuário na Central de Acessos; senão (None, resposta de erro)."""
+    autor, alvo = _autor(conn), _usuario_completo(conn, id_user)
+    if not alvo:
+        return None, (jsonify(error='Usuário não encontrado.'), 404)
+    if alvo['id'] == autor['id']:
+        return None, (jsonify(error='Para a sua própria conta, use Minha conta.'), 403)
+    if autor['role'] == 'Administrador Master':
+        return alvo, None
+    if (alvo['role'] in acessos.ROLES_MASTER or not acessos.pode_administrar_empresa(conn, autor)
+            or acessos.empresa_de(autor) != acessos.empresa_de(alvo)):
+        return None, (jsonify(error='Sem permissão para gerenciar este usuário.'), 403)
+    return alvo, None
+
+
+@app.route('/api/v2/acessos/usuarios/<int:id_user>/encerrar_sessoes', methods=['POST'])
+def acessos_encerrar_sessoes(id_user):
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        alvo, erro = _alvo_gerenciavel(conn, id_user)
+        if erro:
+            return erro
+        _nova_versao_de_sessao(conn, alvo['id'])
+        _auditar_alvo(conn, 'sessoes_encerradas', alvo['id'])
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/usuarios/<int:id_user>/redefinir_2fa', methods=['POST'])
+def acessos_redefinir_2fa(id_user):
+    """Celular perdido: tira a verificação do usuário (e encerra as sessões dele). Se for obrigatória, ele cadastra de novo no próximo login."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        alvo, erro = _alvo_gerenciavel(conn, id_user)
+        if erro:
+            return erro
+        conn.execute('UPDATE clientes SET totp_ativo=0, totp_segredo=NULL, totp_ultimo_passo=NULL, codigos_recuperacao=NULL WHERE id=?', (alvo['id'],))
+        _nova_versao_de_sessao(conn, alvo['id'])
+        _auditar_alvo(conn, '2fa_redefinido', alvo['id'])
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/empresas/<int:empresa_id>/exigir_2fa', methods=['POST'])
+def acessos_exigir_2fa(empresa_id):
+    """A MD ou o administrador da própria empresa (com delegação) torna a verificação obrigatória."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    ativo = (request.get_json(silent=True) or {}).get('ativo')
+    if not isinstance(ativo, bool):
+        return jsonify(error='Informe ativo (true/false).'), 400
+    conn = database.get_db()
+    try:
+        autor = _autor(conn)
+        if autor['role'] != 'Administrador Master' and not (
+                acessos.pode_administrar_empresa(conn, autor) and acessos.empresa_de(autor) == empresa_id):
+            return jsonify(error='Sem permissão para esta empresa.'), 403
+        empresa = _empresa_ou_404(conn, empresa_id)
+        if not empresa:
+            return jsonify(error='Empresa não encontrada.'), 404
+        conn.execute('UPDATE clientes SET exigir_2fa=? WHERE id=?', (1 if ativo else 0, empresa_id))
+        _auditar(conn, 'exigencia_2fa_alterada', alvo=empresa['usuario'], empresa_id=empresa_id, detalhes={'ativo': ativo})
+        conn.commit()
+        return jsonify(status='OK', exigir_2fa=ativo)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/md/exigir_2fa', methods=['POST'])
+def acessos_exigir_2fa_md():
+    negado = _exigir_master()
+    if negado: return negado
+    ativo = (request.get_json(silent=True) or {}).get('ativo')
+    if not isinstance(ativo, bool):
+        return jsonify(error='Informe ativo (true/false).'), 400
+    conn = database.get_db()
+    try:
+        conn.execute("INSERT INTO config_sistema (chave, valor, atualizado_em) VALUES ('acessos_exigir_2fa_md', ?, ?) "
+                     "ON CONFLICT (chave) DO UPDATE SET valor=excluded.valor, atualizado_em=excluded.atualizado_em",
+                     ('1' if ativo else '0', time.time()))
+        _auditar(conn, 'exigencia_2fa_alterada', alvo='Equipe MD', detalhes={'ativo': ativo, 'equipe_md': True})
+        conn.commit()
+        return jsonify(status='OK', exigir_2fa_md=ativo)
     finally:
         conn.close()
 

@@ -99,6 +99,14 @@
     </div>
 
     <section class="tab-panel" id="painel-usuarios" role="tabpanel" aria-labelledby="tab-usuarios">
+    {% if role_atual != 'Administrador Master' %}
+    <div class="card seguranca-empresa">
+        <label class="switch-label"><input type="checkbox" {{ 'checked' if seguranca_acesso.exigir_2fa_empresa }}
+            onchange='mudarExigencia2fa({{ seguranca_acesso.empresa_id|tojson }}, this)'>
+            Exigir verificação em duas etapas de todos os usuários da empresa</label>
+        <p class="help-text" style="margin:6px 0 0">Quem ainda não ativou vai precisar ativar no próximo login, antes de usar o NexoHub.</p>
+    </div>
+    {% endif %}
     <div class="card">
         <h3 style="margin-top: 0;"><i class="fa-solid fa-user-plus"></i> Novo Usuário / Cliente</h3>
         <div class="form-grid">
@@ -212,6 +220,7 @@
                     <td>
                         {% if u.ativo == 1 %}
                         <span style="color: var(--status-ok); font-weight: bold; font-size: 0.85em;">● Ativo</span>
+                        {% if u.totp_ativo %}<br><span class="app-chip" title="Verificação em duas etapas ativa"><i class="fa-solid fa-mobile-screen-button"></i> 2FA</span>{% endif %}
                         {% else %}
                         <span style="color: var(--status-offline); font-weight: bold; font-size: 0.85em;">● Inativo</span>
                         {% endif %}
@@ -223,6 +232,12 @@
                         {% endif %}
                         <button class="btn-action" onclick="mudarSenha('{{ u.id }}')" title="Mudar Senha"><i class="fa-solid fa-key"></i></button>
                         <button class="btn-action power" onclick="toggleStatus('{{ u.id }}')" title="Ativar / Desativar"><i class="fa-solid fa-power-off"></i></button>
+                        {% if u.gerenciavel %}
+                        <button class="btn-action" onclick='encerrarSessoes({{ u.id|tojson }}, {{ u.usuario|tojson }})' title="Encerrar as sessões abertas"><i class="fa-solid fa-right-from-bracket"></i></button>
+                        {% if u.totp_ativo %}
+                        <button class="btn-action" onclick='redefinir2fa({{ u.id|tojson }}, {{ u.usuario|tojson }})' title="Redefinir a verificação em duas etapas (celular perdido)"><i class="fa-solid fa-mobile-screen-button"></i></button>
+                        {% endif %}
+                        {% endif %}
                         <button class="btn-action delete" onclick="deletarUsuario('{{ u.id }}')" title="Excluir Definitivamente"><i class="fa-solid fa-trash-can"></i></button>
                     </td>
                 </tr>
@@ -238,9 +253,12 @@
         <div class="card">
             <h3 style="margin-top: 0;"><i class="fa-solid fa-building"></i> Aplicativos contratados</h3>
             <p class="help-text">Ligue os aplicativos que cada empresa contratou. Desligar tira o aplicativo de todos os usuários da empresa na hora.
-            <strong>Delegação</strong> permite que os administradores da empresa gerenciem os próprios usuários; desligada, só a MD gerencia.</p>
+            <strong>Delegação</strong> permite que os administradores da empresa gerenciem os próprios usuários; desligada, só a MD gerencia.
+            <strong>2FA obrigatória</strong> faz todos os usuários da empresa ativarem a verificação em duas etapas no próximo login.</p>
+            <label class="switch-label" style="margin-bottom:12px"><input type="checkbox" {{ 'checked' if seguranca_acesso.exigir_2fa_md }}
+                onchange="mudarExigenciaMd(this)"> Exigir verificação em duas etapas da equipe MD</label>
             <table class="empresas cards-mobile">
-                <thead><tr><th>Empresa</th>{% for app, nome in aplicativos.items() %}<th class="centro">{{ nome }}</th>{% endfor %}<th class="centro">Delegação</th></tr></thead>
+                <thead><tr><th>Empresa</th>{% for app, nome in aplicativos.items() %}<th class="centro">{{ nome }}</th>{% endfor %}<th class="centro">Delegação</th><th class="centro">2FA obrigatória</th></tr></thead>
                 <tbody>
                 {% for e in empresas %}
                 <tr>
@@ -251,9 +269,11 @@
                     {% endfor %}
                     <td class="centro" data-label="Delegação"><input type="checkbox" aria-label="Delegação para {{ e.nome or e.usuario }}" {{ 'checked' if e.delegacao }}
                         onchange='mudarDelegacao({{ e.id|tojson }}, this)'></td>
+                    <td class="centro" data-label="2FA obrigatória"><input type="checkbox" aria-label="2FA obrigatória para {{ e.nome or e.usuario }}" {{ 'checked' if e.exigir_2fa }}
+                        onchange='mudarExigencia2fa({{ e.id|tojson }}, this)'></td>
                 </tr>
                 {% else %}
-                <tr><td colspan="{{ aplicativos|length + 2 }}" class="help-text">Nenhuma empresa cadastrada ainda.</td></tr>
+                <tr><td colspan="{{ aplicativos|length + 3 }}" class="help-text">Nenhuma empresa cadastrada ainda.</td></tr>
                 {% endfor %}
                 </tbody>
             </table>
@@ -544,7 +564,10 @@
             login: 'Entrou', login_falhou: 'Login recusado', usuario_criado: 'Criou usuário', usuario_editado: 'Editou usuário',
             usuario_excluido: 'Excluiu usuário', usuario_ativado: 'Ativou usuário', usuario_desativado: 'Desativou usuário',
             senha_redefinida: 'Redefiniu senha', nivel_alterado: 'Mudou nível', perfil_aplicado: 'Aplicou perfil pronto',
-            contrato_alterado: 'Mudou contrato', delegacao_alterada: 'Mudou delegação'
+            contrato_alterado: 'Mudou contrato', delegacao_alterada: 'Mudou delegação',
+            login_bloqueado: 'Login bloqueado', '2fa_falhou': 'Código 2FA recusado', '2fa_ativado': 'Ativou 2FA',
+            '2fa_desativado': 'Desativou 2FA', '2fa_redefinido': 'Redefiniu 2FA', '2fa_codigos_gerados': 'Gerou códigos de recuperação',
+            senha_trocada: 'Trocou a própria senha', sessoes_encerradas: 'Encerrou sessões', exigencia_2fa_alterada: 'Mudou exigência de 2FA'
         };
         let auditoriaCarregada = false;
         let acessosAberto = null;
@@ -555,6 +578,32 @@
             try { data = await res.json(); } catch (_) {}
             if (!res.ok) throw new Error(data.error || 'Não foi possível salvar.');
             return data;
+        }
+
+        async function encerrarSessoes(id, usuario) {
+            if (!confirm('Encerrar todas as sessões abertas de ' + usuario + '? Ele vai precisar entrar de novo.')) return;
+            try { await postJson('/api/v2/acessos/usuarios/' + id + '/encerrar_sessoes', {}); alert('✅ Sessões de ' + usuario + ' encerradas.'); auditoriaCarregada = false; }
+            catch (e) { alert('❌ ' + e.message); }
+        }
+
+        async function redefinir2fa(id, usuario) {
+            if (!confirm('Redefinir a verificação em duas etapas de ' + usuario + '? Use quando ele perder o celular. As sessões dele também serão encerradas.')) return;
+            try { await postJson('/api/v2/acessos/usuarios/' + id + '/redefinir_2fa', {}); window.location.reload(); }
+            catch (e) { alert('❌ ' + e.message); }
+        }
+
+        async function mudarExigencia2fa(empresa, caixa) {
+            caixa.disabled = true;
+            try { await postJson('/api/v2/acessos/empresas/' + empresa + '/exigir_2fa', { ativo: caixa.checked }); auditoriaCarregada = false; }
+            catch (e) { caixa.checked = !caixa.checked; alert('❌ ' + e.message); }
+            finally { caixa.disabled = false; }
+        }
+
+        async function mudarExigenciaMd(caixa) {
+            caixa.disabled = true;
+            try { await postJson('/api/v2/acessos/md/exigir_2fa', { ativo: caixa.checked }); auditoriaCarregada = false; }
+            catch (e) { caixa.checked = !caixa.checked; alert('❌ ' + e.message); }
+            finally { caixa.disabled = false; }
         }
 
         function abrirAba(nome) {
@@ -659,6 +708,10 @@
             if (registro.acao === 'delegacao_alterada') return d.ativo ? 'Delegação ligada' : 'Delegação desligada';
             if (registro.acao === 'perfil_aplicado') return d.perfil + ' (' + Object.entries(d.niveis).map(([a, n]) => app(a) + ' ' + nivel(n)).join(', ') + ')';
             if (registro.acao === 'usuario_criado') return 'Perfil: ' + d.perfil;
+            if (registro.acao === 'login') return { senha: 'Senha', '2fa': 'Senha + código 2FA', codigo_recuperacao: 'Senha + código de recuperação' }[d.metodo] || '';
+            if (registro.acao === 'login_bloqueado') return 'Bloqueado por ' + d.minutos + ' min';
+            if (registro.acao === 'exigencia_2fa_alterada') return (d.ativo ? 'Passou a exigir' : 'Deixou de exigir') + (d.equipe_md ? ' (equipe MD)' : '');
+            if (registro.acao === 'sessoes_encerradas') return d.propria ? 'Saiu dos outros aparelhos' : 'Pela Central de Acessos';
             return JSON.stringify(d);
         }
 

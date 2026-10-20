@@ -54,7 +54,8 @@ def garantir_config(conn, telegram_token=None, telegram_chat=None):
 
 def ler_config(conn):
     cfg = dict(CONFIG_PADRAO)
-    for r in conn.execute("SELECT chave, valor FROM config_sistema WHERE chave NOT LIKE 'telegram_%'").fetchall():
+    # telegram_* e acessos_* (exigência de 2FA da MD) moram na mesma tabela, mas não são configuração da saúde.
+    for r in conn.execute("SELECT chave, valor FROM config_sistema WHERE chave NOT LIKE 'telegram_%' AND chave NOT LIKE 'acessos_%'").fetchall():
         cfg[r['chave']] = r['valor']
     return cfg
 
