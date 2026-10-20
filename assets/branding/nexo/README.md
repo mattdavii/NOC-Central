@@ -2,7 +2,7 @@
 
 Kit oficial **proposto** das nove marcas da Família Nexo, ferramentas próprias da MD Soluções Tecnológicas. Ele foi recebido como `Kit_Nexo_Logos_Alta_Resolucao.zip` em 20/10/2026 e copiado sem alterações.
 
-> **Status: armazenado, não integrado.** Nenhum aplicativo usa estes arquivos ainda. A NexoPulse em produção continua com `static/brand/` e `static/icons/`. Trocar exige aprovação; veja [Diferenças da NexoPulse](#diferenças-entre-a-nexopulse-de-produção-e-o-kit).
+> **Status:** a NexoPulse do kit foi adotada pela Central (branch `feat/nexopulse-marca-kit`, aguardando aprovação), usando os [derivados](#derivados-da-nexopulse-usados-pela-central) abaixo. As outras oito marcas estão armazenadas e ainda não integradas. Os PNGs antigos de `static/brand/` e `static/icons/` continuam no repositório; voltar atrás é trocar as referências.
 
 | Marca | Descrição |
 |---|---|
@@ -25,6 +25,7 @@ assets/branding/nexo/
 ├── paleta.json            cores e tipografia (do kit)
 ├── SHA256SUMS             hash dos 138 arquivos recebidos no kit (sha256sum -c SHA256SUMS)
 ├── logos/<slug>/          uma pasta por marca, 15 arquivos cada (abaixo)
+├── derivados/nexopulse/  versões criadas a partir do kit para a Central (abaixo)
 ├── referencias/
 │   └── painel-visual-aprovado.png   painel do conceito aprovado (referência, não é master)
 └── previa/
@@ -146,12 +147,31 @@ Veja `previa/comparacao-nexopulse.png`. O kit é uma **reconstrução vetorial d
 
 As cores mudam pouco, mas o símbolo e a tipografia mudam o suficiente para quem já conhece a marca perceber. Trocar a NexoPulse é uma decisão de marca, não só técnica.
 
+## Derivados da NexoPulse usados pela Central
+
+O kit não tinha três versões que a Central precisa. Elas foram geradas a partir dos masters, por `scripts/gerar_derivados_nexopulse.py` (Playwright com Chrome), sem redesenhar a marca:
+
+| Master (`derivados/nexopulse/`) | O que é | Exportado para `static/brand/nexopulse/` |
+|---|---|---|
+| `horizontal-sem-descritor-{claro,escuro}.svg` | A horizontal do kit sem o descritor. O nome, em contornos idênticos aos do kit, fica centralizado na altura do símbolo, e o viewBox é recortado | `logo-claro.svg` e `logo-escuro.svg` (barra, login, relatório) |
+| `favicon.svg` | Versão simplificada para 16 a 48 px: hexágono e pulso mais grossos, sem os nós, sobre o azul-marinho do ícone | `favicon.svg`, `favicon-{16,32,48}.png` e `favicon.ico` (com os três tamanhos) |
+| `app-icon-maskable.svg` | O ícone do kit com fundo de ponta a ponta e o símbolo reduzido (escala 1,1), deixando os nós em 33% do centro, dentro da zona segura de 40% | `maskable-192.png`, `maskable-512.png` e `apple-touch-icon.png` (180) |
+
+Também vão para `static/brand/nexopulse/`, copiados do kit sem alteração:
+- `simbolo-{claro,escuro}.svg`, usados na Sala de Operações;
+- `icon-192.png` e `icon-512.png`, que são o `app-icon` do kit, para o PWA com `purpose: any`.
+
+Na Central:
+- **Barra:** `logo-escuro.svg` no tema escuro e `logo-claro.svg` no claro.
+- **Favicon:** SVG, com `.ico` de reserva e `apple-touch-icon`.
+- **Manifesto PWA:** ícones `any` do kit e `maskable` derivados.
+
 ## O que falta para integrar nos aplicativos
 
-1. **Aprovar** a NexoPulse do kit, ou manter a atual e usar o kit só nas demais marcas.
-2. **Versão horizontal sem descritor** para a barra superior (64 px de altura), onde o descritor fica ilegível. O kit não tem essa versão.
-3. **Favicon simplificado** (16 e 32 px) e **ícone maskable** por marca, se cada aplicativo for instalável.
-4. **PR de integração**: copiar para `static/brand/nexo/` só o que for usado e trocar os logos e o manifesto PWA. Esse PR é separado deste, que só armazena o kit.
+1. ~~Aprovar a NexoPulse do kit~~: aprovada pelo responsável em 20/10/2026. A integração está no PR de `feat/nexopulse-marca-kit`.
+2. ~~Versão sem descritor~~, ~~favicon simplificado~~ e ~~maskable~~ da NexoPulse: feitos (veja acima).
+3. **As demais marcas:** quando cada aplicativo ganhar telas próprias, vão precisar dos mesmos três derivados. O gerador pode ser estendido para elas.
+4. **Paleta da interface (opcional):** a Central ainda usa `#082E56`, `#05A9DC` e `#05A88C` nos botões e destaques, com `theme-color` `#082E56`. A diferença para o kit é pequena e pode ser alinhada depois.
 
 ## Relação com outros materiais do repositório
 

@@ -73,7 +73,8 @@ def test_nexopulse_brand_is_local_and_consistent(client, login):
     login_page = client.get('/login').get_data(as_text=True)
     assert '<title>NexoPulse Central - Acesso</title>' in login_page
     assert 'NETWORK INTELLIGENCE &amp; MONITORING' in login_page
-    assert '/static/brand/nexopulse-logo-dark.png' in login_page
+    assert '/static/brand/nexopulse/logo-escuro.svg' in login_page
+    assert '/static/brand/nexopulse/favicon.svg' in login_page
 
     manifest = client.get('/static/manifest.json').json
     assert manifest['name'] == 'NexoPulse Central'
@@ -81,7 +82,7 @@ def test_nexopulse_brand_is_local_and_consistent(client, login):
     assert manifest['id'] == '/'
     assert manifest['scope'] == '/'
     assert manifest['start_url'] == '/'
-    assert all(icon['src'].startswith('/static/icons/nexopulse-') for icon in manifest['icons'])
+    assert all(icon['src'].startswith('/static/brand/nexopulse/') for icon in manifest['icons'])
     assert {'any', 'maskable'} == {icon['purpose'] for icon in manifest['icons']}
 
     root_manifest = client.get('/manifest.json')
@@ -122,14 +123,14 @@ def test_nexopulse_brand_is_local_and_consistent(client, login):
     assert not (root / 'agente_v2.spec').exists()
 
     for relative in (
-        'static/brand/nexopulse-logo-dark.png',
-        'static/brand/nexopulse-logo-light.png',
-        'static/brand/nexopulse-symbol.png',
-        'static/icons/nexopulse-192.png',
-        'static/icons/nexopulse-512.png',
-        'static/icons/nexopulse-maskable-192.png',
-        'static/icons/nexopulse-maskable-512.png',
-        'static/favicon.png',
+        'static/brand/nexopulse/logo-escuro.svg',
+        'static/brand/nexopulse/logo-claro.svg',
+        'static/brand/nexopulse/simbolo-escuro.svg',
+        'static/brand/nexopulse/icon-192.png',
+        'static/brand/nexopulse/icon-512.png',
+        'static/brand/nexopulse/maskable-192.png',
+        'static/brand/nexopulse/maskable-512.png',
+        'static/brand/nexopulse/apple-touch-icon.png',
     ):
         assert (root / relative).stat().st_size > 1000
 
