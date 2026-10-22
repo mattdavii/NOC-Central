@@ -1,0 +1,200 @@
+<!doctype html>
+<!-- Posts do feed do Instagram da MD (1080x1350). Cada post é um <section class="post" id="pN">.
+     Para exportar o post N em PNG (nesta pasta):
+       google-chrome --headless=new --hide-scrollbars --force-device-scale-factor=1 --window-size=1080,1350 \
+         --virtual-time-budget=8000 --screenshot=posts/post-N.png "file://$PWD/posts.html#pN"
+     As telas são da plataforma NexoPulse real com dados de demonstração. -->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>MD · Posts Instagram</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root { --roxo:#670CB2; --azul:#2571AB; --turq:#00A9A7; --grad:linear-gradient(90deg,var(--roxo),var(--azul),var(--turq));
+          --tinta:#14123A; --muted:#5E6380; --linha:#E1E4F0; --escuro:#0B1026; --lilas:#B794F4; --ciano:#3FD3D0; }
+  * { box-sizing:border-box; margin:0; }
+  html,body { width:1080px; height:1350px; overflow:hidden; background:#000; }
+  body { font-family:'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  .post { width:1080px; height:1350px; position:relative; overflow:hidden; display:none; padding:90px 84px; }
+  .post.ativo { display:block; }
+  .dark { background:var(--escuro); color:#fff; }
+  .dark::before { content:''; position:absolute; inset:0; background:radial-gradient(circle at 88% 6%, rgba(103,12,178,.55), transparent 42%),
+                  radial-gradient(circle at 6% 98%, rgba(0,169,167,.38), transparent 46%); }
+  .light { background:#F5F6FC; color:var(--tinta); }
+  .light::before { content:''; position:absolute; inset:0; background:radial-gradient(circle at 92% 4%, rgba(103,12,178,.10), transparent 40%),
+                   radial-gradient(circle at 4% 100%, rgba(0,169,167,.12), transparent 45%); }
+  .post > * { position:relative; }
+  .barra { position:absolute; left:0; right:0; bottom:0; height:14px; background:var(--grad); }
+  .marca { position:absolute; left:84px; bottom:62px; height:62px; }
+  .arroba { position:absolute; right:84px; bottom:78px; font-size:24px; font-weight:700; opacity:.85; }
+  .tag { display:inline-block; font-size:24px; font-weight:800; letter-spacing:.18em; text-transform:uppercase; padding:12px 24px; border-radius:999px; }
+  .dark .tag { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.22); color:var(--ciano); }
+  .light .tag { background:#fff; border:1px solid var(--linha); color:var(--azul); }
+  h1 { font-size:96px; line-height:1.02; font-weight:900; letter-spacing:-.035em; margin-top:40px; }
+  h2 { font-size:72px; line-height:1.06; font-weight:900; letter-spacing:-.03em; margin-top:36px; }
+  .dark .d { color:var(--lilas); } .light .d { color:#5A12A6; }
+  .dark .t { color:var(--ciano); } .light .t { color:#0B7F99; }
+  .sub { font-size:36px; line-height:1.4; margin-top:34px; font-weight:500; }
+  .dark .sub { color:#C5CCE4; } .light .sub { color:var(--muted); }
+  .chips { display:flex; flex-wrap:wrap; gap:18px; margin-top:52px; }
+  .chip { font-size:34px; font-weight:800; padding:22px 34px; border-radius:22px; }
+  .light .chip { background:#fff; border:2px solid var(--linha); color:var(--tinta); box-shadow:0 12px 30px rgba(20,18,58,.07); }
+  .dark .chip { background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.18); }
+  .endosso { display:flex; align-items:center; gap:16px; font-size:26px; font-weight:600; }
+  .endosso img { height:44px; }
+  .dark .endosso { color:#AEB7D3; } .dark .endosso b { color:#fff; }
+  .light .endosso { color:var(--muted); } .light .endosso b { color:var(--tinta); }
+  .shot { border-radius:24px; box-shadow:0 30px 80px rgba(0,0,0,.5); display:block; }
+  .card { background:#fff; border:1px solid var(--linha); border-radius:28px; padding:36px 40px; box-shadow:0 16px 40px rgba(20,18,58,.08); }
+
+  /* camadas */
+  .camadas { margin-top:54px; display:flex; flex-direction:column; gap:16px; }
+  .cam { display:flex; justify-content:space-between; align-items:center; padding:26px 34px; border-radius:22px;
+         background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); font-size:36px; font-weight:700; }
+  .cam span { font-size:24px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; padding:10px 18px; border-radius:999px; }
+  .cam .ok { color:#4ADE80; background:rgba(74,222,128,.12); } .cam .na { color:#9AA3BF; background:rgba(255,255,255,.08); }
+  .cam.crit { background:rgba(248,113,113,.12); border-color:rgba(248,113,113,.55); }
+  .cam .cr { color:#FCA5A5; background:rgba(248,113,113,.18); }
+
+  /* telegram */
+  .tg { background:#17212B; border-radius:36px; padding:34px; box-shadow:0 30px 80px rgba(20,18,58,.35); margin-top:54px; }
+  .tg-h { display:flex; align-items:center; gap:20px; padding-bottom:24px; border-bottom:1px solid #26384a; margin-bottom:26px; }
+  .tg-av { width:76px; height:76px; border-radius:50%; background:var(--grad); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:900; font-size:26px; }
+  .tg-h b { color:#fff; font-size:30px; display:block; } .tg-h span { color:#8696a5; font-size:24px; }
+  .bolha { background:#182533; border:1px solid #243445; border-radius:26px 26px 26px 8px; padding:28px 30px; color:#E7EEF5; font-size:28px; line-height:1.5; }
+  .bolha b.tt { display:block; font-size:30px; margin-bottom:10px; }
+  .bolha .hr { text-align:right; color:#6d8193; font-size:22px; margin-top:8px; }
+
+  .passo { display:flex; gap:34px; align-items:flex-start; margin-top:44px; }
+  .passo .n { flex:none; width:118px; height:118px; border-radius:32px; background:var(--grad); color:#fff; font-size:62px; font-weight:900; display:flex; align-items:center; justify-content:center; }
+  .passo h3 { font-size:46px; font-weight:900; letter-spacing:-.02em; color:var(--tinta); }
+  .passo p { font-size:31px; line-height:1.45; color:var(--muted); margin-top:8px; }
+  .seta { position:absolute; right:84px; top:96px; font-size:28px; font-weight:800; display:flex; align-items:center; gap:12px; }
+</style>
+</head>
+<body>
+
+<!-- 1. LANÇAMENTO -->
+<section class="post dark" id="p1">
+  <img src="img/md-logo-branco.png" alt="MD Soluções Tecnológicas" style="height:120px">
+  <div style="margin-top:120px"><span class="tag">Novo serviço MD</span></div>
+  <h1 style="font-size:122px">Monitoramento<br>de rede<br><span class="t">24/7</span></h1>
+  <p class="sub" style="font-size:40px">Sua internet monitorada, diagnosticada<br>e cuidada por quem entende — dia e noite.</p>
+  <div class="chips" style="margin-top:64px"><span class="chip">Monitoramento</span><span class="chip">Diagnóstico</span><span class="chip">Alertas</span></div>
+  <div class="endosso" style="position:absolute; left:84px; bottom:72px"><img src="img/nexopulse-simbolo.png" alt=""><span>Tecnologia <b>NexoPulse</b> · desenvolvida pela MD</span></div>
+  <div class="barra"></div>
+</section>
+
+<!-- 2. A DOR -->
+<section class="post light" id="p2">
+  <span class="tag">Já passou por isso?</span>
+  <h1 style="font-size:150px; margin-top:80px">A internet<br>caiu.</h1>
+  <p class="sub" style="font-size:50px; color:var(--tinta); font-weight:800; margin-top:50px">E agora, de quem é a culpa?</p>
+  <div class="chips" style="margin-top:60px; gap:22px">
+    <span class="chip" style="font-size:40px">🔌 Do cabo?</span><span class="chip" style="font-size:40px">📡 Da antena?</span><span class="chip" style="font-size:40px">🌐 Do provedor?</span><span class="chip" style="font-size:40px">🧭 Do DNS?</span>
+  </div>
+  <div class="card" style="position:absolute; left:84px; right:84px; bottom:170px; display:flex; align-items:center; gap:30px">
+    <img src="img/md-simbolo.png" alt="" style="height:96px">
+    <p style="font-size:36px; line-height:1.35; font-weight:700">A MD descobre <span class="d">onde</span> está o problema — antes de você precisar perguntar.</p>
+  </div>
+  <img class="marca" src="img/md-logo.png" alt="">
+  <div class="barra"></div>
+</section>
+
+<!-- 3. DIFERENCIAL: CAMADAS -->
+<section class="post dark" id="p3">
+  <span class="tag">Nosso diferencial</span>
+  <h2>Não dizemos só<br>que caiu.<br>Dizemos <span class="d">onde</span>.</h2>
+  <div class="camadas">
+    <div class="cam">Rede interna <span class="ok">Normal</span></div>
+    <div class="cam crit">Antena Starlink <span class="cr">Causa encontrada</span></div>
+    <div class="cam">Provedor <span class="na">Explicado</span></div>
+    <div class="cam">Internet <span class="na">Explicado</span></div>
+    <div class="cam">DNS <span class="na">Explicado</span></div>
+  </div>
+  <p class="sub" style="font-size:31px; margin-top:34px">Analisamos a conexão camada por camada. Você recebe a causa real — sem alarme falso.</p>
+  <img class="marca" src="img/md-logo-branco.png" alt="" style="height:58px">
+  <div class="barra"></div>
+</section>
+
+<!-- 4. STARLINK -->
+<section class="post dark" id="p4">
+  <span class="tag">Starlink</span>
+  <h2 style="font-size:70px">Sua antena está <span class="d">obstruída</span><br>— e você nem sabe.</h2>
+  <img class="shot" src="img/starlink-card.jpg" alt="" style="width:860px; margin:50px auto 0">
+  <p style="font-size:20px; color:#8E97B5; margin-top:14px; text-align:center">Plataforma NexoPulse · dados de demonstração</p>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:22px 34px; margin-top:38px; font-size:31px; line-height:1.35; color:#D7DDF0">
+    <div>🌳 <b style="color:#fff">Obstrução</b> e quedas, com a causa</div>
+    <div>🧭 <b style="color:#fff">Alinhamento</b> em graus</div>
+    <div>⚡ <b style="color:#fff">Qualidade</b> até a estação Starlink</div>
+    <div>🔔 <b style="color:#fff">Alertas</b> da própria antena</div>
+  </div>
+  <img class="marca" src="img/md-logo-branco.png" alt="" style="height:58px">
+  <div class="barra"></div>
+</section>
+
+<!-- 5. ALERTA NO TELEGRAM -->
+<section class="post light" id="p5">
+  <span class="tag">Alertas em tempo real</span>
+  <h2>Saiba do problema<br><span class="d">antes</span> do seu<br>cliente reclamar.</h2>
+  <div class="tg">
+    <div class="tg-h"><div class="tg-av">MD</div><div><b>Alertas · Sua Empresa</b><span>MD Soluções Tecnológicas</span></div></div>
+    <div class="bolha"><b class="tt">🚨 STARLINK OBSTRUÍDA</b>Starlink do site Fazenda Boa Vista com 6% de obstrução desde 20h31 — verificar árvores ou estruturas no campo de visão da antena.<br>🎯 <b>Confiança:</b> alta<div class="hr">20:33</div></div>
+  </div>
+  <p class="sub" style="font-size:31px; margin-top:34px">Direto no grupo da sua empresa: o que aconteceu, desde quando e o que fazer.</p>
+  <img class="marca" src="img/md-logo.png" alt="">
+  <div class="barra"></div>
+</section>
+
+<!-- 6. NEXOPULSE -->
+<section class="post light" id="p6">
+  <span class="tag">Tecnologia própria</span>
+  <img src="img/nexopulse-logo.png" alt="NexoPulse" style="height:150px; margin-top:64px; display:block">
+  <p class="sub" style="font-size:40px; color:var(--tinta); font-weight:700; margin-top:30px">Ferramenta própria da MD para um<br><span class="d">monitoramento de mais qualidade.</span></p>
+  <div style="display:flex; flex-direction:column; gap:22px; margin-top:54px">
+    <div class="card"><b style="font-size:36px">📍 NexoPulse Edge</b><p style="font-size:29px; color:var(--muted); margin-top:8px">O sensor que mede sua conexão a cada 5 segundos.</p></div>
+    <div class="card"><b style="font-size:36px">🖥️ NexoPulse Central</b><p style="font-size:29px; color:var(--muted); margin-top:8px">Onde nossa equipe acompanha tudo 24/7 — e você também.</p></div>
+    <div class="card"><b style="font-size:36px">🧠 Diagnóstico inteligente</b><p style="font-size:29px; color:var(--muted); margin-top:8px">Conclui a causa provável antes de qualquer alerta.</p></div>
+  </div>
+  <img class="marca" src="img/md-logo.png" alt="">
+  <div class="barra"></div>
+</section>
+
+<!-- 7. CARROSSEL 1/3 -->
+<section class="post dark" id="p7">
+  <div class="seta" style="color:#AEB7D3">arraste <span style="font-size:40px">→</span></div>
+  <img src="img/md-logo-branco.png" alt="" style="height:96px">
+  <div style="margin-top:120px"><span class="tag">Passo a passo</span></div>
+  <h1 style="font-size:104px">Como sua<br>rede passa a<br>ser <span class="t">monitorada</span></h1>
+  <p class="sub">Em 3 passos — e sem trabalho nenhum<br>para você.</p>
+  <img src="img/tv.jpg" alt="" class="shot" style="position:absolute; right:-140px; bottom:-60px; width:700px; opacity:.55; transform:rotate(-6deg)">
+  <div class="barra"></div>
+</section>
+
+<!-- 8. CARROSSEL 2/3 -->
+<section class="post light" id="p8">
+  <div class="seta" style="color:var(--muted)">2/3 <span style="font-size:40px">→</span></div>
+  <span class="tag">Como funciona</span>
+  <div class="passo" style="margin-top:80px"><div class="n">1</div><div><h3>Avaliamos sua rede</h3><p>Entendemos seus locais, links e o que é crítico para o seu negócio.</p></div></div>
+  <div class="passo" style="margin-top:64px"><div class="n">2</div><div><h3>Instalamos o sensor</h3><p>Nossa equipe implanta e configura tudo, sem parar sua operação.</p></div></div>
+  <div class="passo" style="margin-top:64px"><div class="n">3</div><div><h3>Monitoramento 24/7</h3><p>Alertas no grupo da sua empresa e acesso à plataforma para acompanhar em tempo real.</p></div></div>
+  <img class="marca" src="img/md-logo.png" alt="">
+  <div class="barra"></div>
+</section>
+
+<!-- 9. CARROSSEL 3/3 -->
+<section class="post dark" id="p9">
+  <img src="img/md-simbolo-branco.png" alt="" style="height:150px">
+  <h1 style="font-size:100px; margin-top:80px">Vamos cuidar<br>da sua <span class="t">conexão</span>?</h1>
+  <p class="sub" style="font-size:40px">Chame a MD no direct e agende<br>uma avaliação da sua rede.</p>
+  <div style="margin-top:70px; display:inline-flex; align-items:center; gap:18px; background:#fff; color:var(--tinta); font-size:38px; font-weight:900; padding:30px 48px; border-radius:999px; box-shadow:0 20px 50px rgba(0,0,0,.35)">💬 Fale com a gente</div>
+  <div class="endosso" style="position:absolute; left:84px; bottom:72px"><img src="img/nexopulse-simbolo.png" alt=""><span>Tecnologia <b>NexoPulse</b> · desenvolvida pela MD</span></div>
+  <div class="barra"></div>
+</section>
+
+<script>
+  const id = (location.hash || '#p1').slice(1);
+  (document.getElementById(id) || document.querySelector('.post')).classList.add('ativo');
+</script>
+</body>
+</html>

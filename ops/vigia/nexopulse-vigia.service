@@ -1,0 +1,9 @@
+[Unit]
+Description=Vigia da NexoPulse (testa a Central e a máquina do banco)
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env python3 %h/.local/bin/nexopulse-vigia
+TimeoutStartSec=120

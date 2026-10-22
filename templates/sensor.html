@@ -5,7 +5,9 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#082E56">
-    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="apple-touch-icon" href="/static/brand/nexopulse/apple-touch-icon.png">
     <title>NexoPulse Central - {{ sensor.nome_local }}</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -122,7 +124,7 @@
 
     <nav class="navbar">
         <div style="display: flex; align-items: center; gap: 15px;">
-            <button onclick="window.history.back()" class="action-btn" style="background: var(--border); color: var(--text-main); font-size: 0.9em; padding: 8px 12px;"><i class="fa-solid fa-arrow-left"></i> Voltar</button>
+            <a href="/" class="back-link" title="Voltar à Central de Operações"><i class="fa-solid fa-arrow-left"></i> Operação</a>
             <div style="font-size: 1.3em; font-weight: bold; color: var(--blue); display: flex; align-items: center;">
                 <i class="fa-solid fa-server" style="margin-right: 10px;"></i> {{ sensor.nome_local }}
                 <span style="font-size: 0.6em; color: var(--text-muted); margin-left: 12px; font-weight: normal; font-family: 'JetBrains Mono', monospace; border-left: 1px solid var(--border); padding-left: 12px;">MAC: {{ sensor.mac_id }}</span>
@@ -133,11 +135,11 @@
     </nav>
 
     <div class="container">
-        <nav class="section-nav" aria-label="Seções do sensor"><a href="#host">Host</a><a href="#rede-local">Rede Local</a><a href="#wan">WAN</a><a href="#dispositivos">Dispositivos</a><a href="#incidentes">Incidentes</a><a href="#diagnosticos">Diagnósticos</a><a href="#location-editor">Configurações</a></nav>
+        <nav class="section-nav" aria-label="Seções do sensor"><a href="#host">Host</a><a href="#saude">Saúde</a><a href="#rede-local">Rede Local</a><a href="#wan">WAN</a><a href="#dispositivos">Dispositivos</a><a href="#incidentes">Incidentes</a><a href="#diagnosticos">Diagnósticos</a><a href="#location-editor">Configurações</a></nav>
         <p class="help-text">NexoPulse Edge <span id="agent-version">{{ sensor.agent_version or 'Legado · versão não informada' }}</span> · RX/TX representam somente a interface do sensor.</p>
 
         <div class="painel-grid">
-            <div class="card card-hw" id="host">
+            <div class="card card-hw card-stack" id="host">
                 <h3>
                     <span><i class="fa-solid fa-microchip"></i> Host</span>
                     <div style="display: flex; gap: 10px; align-items: center;">
@@ -147,32 +149,32 @@
                         <span id="badge-status" class="status-pill">--</span>
                     </div>
                 </h3>
-                <div class="data-row" style="margin-top:10px;">
-                    <div style="display: flex; gap: 15px; width: 100%;">
-                        <span style="flex: 1;"><i class="fa-solid fa-temperature-half" style="color:var(--yellow);"></i> CPU: <strong id="temp-text">-- °C</strong></span>
-                        <span style="flex: 1;"><i class="fa-solid fa-fire-flame-curved" style="color:var(--yellow);"></i> GPU: <strong id="gpu-text">-- °C</strong></span>
-                    </div>
+                <div class="host-chips">
+                    <span title="Tempo desde o último boot"><i class="fa-solid fa-clock"></i> <strong id="host-uptime">--</strong></span>
+                    <span title="Carga média em 1, 5 e 15 minutos"><i class="fa-solid fa-gauge"></i> <strong id="host-load">--</strong></span>
+                    <span><i class="fa-solid fa-temperature-half"></i> CPU <strong id="temp-text">-- °C</strong></span>
+                    <span><i class="fa-solid fa-fire-flame-curved"></i> GPU <strong id="gpu-text">-- °C</strong></span>
                 </div>
-                <div style="margin-bottom: 15px;">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--text-muted);">
-                        <span><i class="fa-solid fa-microchip" style="width: 20px;"></i> CPU</span> <strong id="cpu-text" style="color: var(--text-main);">0%</strong>
-                    </div>
+                <p class="host-boot" id="host-boot"></p>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-microchip"></i> CPU <small id="host-nucleos"></small></span><strong id="cpu-text">--</strong></div>
                     <div class="progress-bg"><div id="cpu-fill" class="progress-fill"></div></div>
+                    <div class="cores" id="host-cores"></div>
                 </div>
-                <div style="margin-bottom: auto;">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--text-muted);">
-                        <span><i class="fa-solid fa-memory" style="width: 20px;"></i> RAM</span> <strong id="ram-text" style="color: var(--text-main);">0%</strong>
-                    </div>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-memory"></i> RAM</span><strong id="ram-text">--</strong></div>
                     <div class="progress-bg"><div id="ram-fill" class="progress-fill"></div></div>
                 </div>
-                <div style="margin-bottom: auto; margin-top: 15px;">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--text-muted);">
-                        <span><i class="fa-solid fa-hard-drive" style="width: 20px;"></i> Disco</span> <strong id="disk-text" style="color: var(--text-main);">0%</strong>
-                    </div>
-                    <div class="progress-bg"><div id="disk-fill" class="progress-fill" style="background: var(--purple);"></div></div>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-right-left"></i> Swap</span><strong id="swap-text">--</strong></div>
+                    <div class="progress-bg"><div id="swap-fill" class="progress-fill" style="background: var(--purple);"></div></div>
                 </div>
-
-                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-hard-drive"></i> Discos</span><strong id="disk-text">--</strong></div>
+                    <div id="disk-fill" hidden></div>
+                    <div class="discos" id="host-discos"></div>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: auto;">
                     <button class="action-btn" onclick="enviarComandoEnergia('reboot')" style="background: color-mix(in srgb, var(--yellow) 20%, transparent); color: var(--yellow); flex: 1; border: 1px solid var(--yellow);"><i class="fa-solid fa-arrows-rotate"></i> Reiniciar Local</button>
                     <button class="action-btn" onclick="enviarComandoEnergia('shutdown')" style="background: color-mix(in srgb, var(--red) 20%, transparent); color: var(--red); flex: 1; border: 1px solid var(--red);"><i class="fa-solid fa-power-off"></i> Desligar</button>
                 </div>
@@ -234,6 +236,43 @@
                     <div style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Latência Sensor ➔ Gateway</div>
                     <div id="ping-local" class="highlight" style="color: var(--status-unknown); margin-top: 5px;">--</div>
                 </div>
+            </div>
+        </div>
+
+        <div class="painel-grid">
+            <div class="card card-stack" id="saude" style="border-top: 4px solid var(--status-ok);">
+                <h3><span><i class="fa-solid fa-heart-pulse"></i> Saúde do sistema</span></h3>
+                <ul class="saude-lista" id="saude-lista"><li class="hist-empty">Aguardando a primeira coleta do sensor…</li></ul>
+            </div>
+            <div class="card card-stack" style="border-top: 4px solid var(--blue);">
+                <h3><span><i class="fa-solid fa-network-wired"></i> Interfaces de rede</span></h3>
+                <div class="ifaces" id="host-ifaces"><div class="hist-empty">Aguardando a primeira coleta…</div></div>
+            </div>
+            <div class="card card-stack" style="border-top: 4px solid var(--purple);">
+                <h3><span><i class="fa-solid fa-list-ol"></i> Processos</span>
+                    <span class="seg" id="procs-modo"><button class="ativo" data-modo="cpu">CPU</button><button data-modo="memoria">Memória</button></span></h3>
+                <table class="procs"><thead><tr><th>Processo</th><th>PID</th><th>CPU</th><th>Mem.</th></tr></thead><tbody id="host-procs"><tr><td colspan="4" class="hist-empty">Aguardando…</td></tr></tbody></table>
+            </div>
+        </div>
+
+        <div class="painel-grid" id="diag-rede" data-mac="{{ sensor.mac_id }}">
+            <div class="card card-stack" style="border-top: 4px solid var(--blue);">
+                <h3><span><i class="fa-solid fa-layer-group"></i> Diagnóstico de rede</span><span class="iface-tag" id="diag-atualizado">--</span></h3>
+                <ul class="saude-lista" id="diag-camadas"><li class="hist-empty">Aguardando a primeira janela de medições do sensor…</li></ul>
+                <div id="diag-ativos"></div>
+                <div class="diag-rodape">
+                    <span><i class="fa-solid fa-building"></i> Provedor: <strong id="diag-provedor">--</strong> <span class="txt-muted" id="diag-provedor-origem"></span>
+                        <button class="edit-btn" id="diag-provedor-editar" title="Definir o provedor deste site"><i class="fa-solid fa-pen-to-square"></i></button></span>
+                    <span class="diag-rota" id="diag-rota"></span>
+                </div>
+            </div>
+            <div class="card card-stack" id="card-starlink" style="border-top: 4px solid var(--purple);">
+                <h3><span><i class="fa-solid fa-satellite-dish"></i> Starlink</span><span class="iface-tag" id="sl-firmware"></span></h3>
+                <div id="sl-corpo"><div class="hist-empty">Aguardando leitura da antena…</div></div>
+            </div>
+            <div class="card card-stack" style="border-top: 4px solid var(--yellow);">
+                <h3><span><i class="fa-solid fa-timeline"></i> Linha do tempo</span></h3>
+                <ol class="timeline" id="diag-timeline"><li class="hist-empty">Carregando…</li></ol>
             </div>
         </div>
 
@@ -348,27 +387,64 @@
         </div>
 
         <div class="painel-grid">
-            <div class="card card-hist card-half">
+            <div class="card card-hist card-half card-stack">
                 <h3 id="incidentes"><span><i class="fa-solid fa-clock-rotate-left"></i> Incidentes e auditoria</span></h3>
-                <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                    <input type="date" id="filtro-data" onchange="carregarHistorico()" style="max-width: 160px;">
-                    <button class="action-btn" onclick="document.getElementById('filtro-data').value=''; carregarHistorico();" style="background: var(--bg-input); color: var(--text-muted); font-size:0.8em;">Limpar Filtro</button>
+                <div class="hist-filter">
+                    <label for="filtro-data" class="sr-only">Filtrar por data</label>
+                    <input type="date" id="filtro-data" onchange="carregarHistorico()">
+                    <button class="action-btn btn-secondary" onclick="document.getElementById('filtro-data').value=''; carregarHistorico();">Limpar filtro</button>
                 </div>
-                <div id="lista-historico" style="background: var(--bg-input); padding: 12px; border-radius: 8px; max-height: 200px; overflow-y: auto; border: 1px solid var(--bg-input);"></div>
+                <div id="lista-historico" class="hist-list"></div>
             </div>
 
-            <div class="card card-calib" id="location-editor" data-mac="{{ sensor.mac_id }}" data-source="{{ sensor.location_source or '' }}" data-accuracy="{{ sensor.accuracy_m if sensor.accuracy_m is not none else '' }}">
-                <h3>Configurações · localização</h3>
-                <label for="edit-nome">Nome do sensor</label><input type="text" id="edit-nome" maxlength="160" value="{{ sensor.nome_local }}">
-                <p class="help-text">Capture no local de instalação, com o celular ou computador do instalador. A posição pertence ao navegador e pode ser aproximada; confira a precisão antes de salvar.</p>
-                <div class="location-actions"><button class="action-btn" id="capture-location">Capturar neste dispositivo</button><button class="action-btn" id="clear-location">Remover localização</button></div>
-                <div class="location-map" id="location-map" aria-label="Clique no mapa para ajustar a localização"></div>
-                <div class="location-fields"><label for="edit-lat">Latitude<input type="number" id="edit-lat" step="any" min="-90" max="90" value="{{ sensor.lat if sensor.lat is not none else '' }}"></label><label for="edit-lon">Longitude<input type="number" id="edit-lon" step="any" min="-180" max="180" value="{{ sensor.lon if sensor.lon is not none else '' }}"></label></div>
-                <div class="location-status" id="location-status" role="status">Fonte: {{ sensor.location_source or 'não informada' }}{% if sensor.accuracy_m is not none %} · precisão estimada: {{ sensor.accuracy_m }} m{% endif %} · atualização: {{ sensor.location_updated_at or 'não registrada' }}</div>
-                <button class="action-btn" id="save-location" onclick="salvarConfig()">Salvar informações</button>
-                <p class="help-text">Linux: atualize pelo serviço systemd. Windows: a atualização automática mantém o último executável validado.</p>
+            <div class="card card-calib card-stack" id="location-editor" data-mac="{{ sensor.mac_id }}" data-source="{{ sensor.location_source or '' }}" data-accuracy="{{ sensor.accuracy_m if sensor.accuracy_m is not none else '' }}" data-updated="{{ sensor.location_updated_at or '' }}">
+                <h3>Configurações do sensor</h3>
+                <section class="config-section">
+                    <h4>Identificação</h4>
+                    <label for="edit-nome">Nome do sensor</label>
+                    <input type="text" id="edit-nome" maxlength="160" value="{{ sensor.nome_local }}">
+                </section>
+                <section class="config-section">
+                    <h4>Localização</h4>
+                    <p class="help-text">Capture no local de instalação, com o celular ou computador do instalador, ou clique no mapa. A posição do navegador pode ser aproximada.</p>
+                    <div class="location-map" id="location-map" aria-label="Clique no mapa para ajustar a localização"></div>
+                    <div class="location-fields"><label for="edit-lat">Latitude<input type="number" id="edit-lat" step="any" min="-90" max="90" value="{{ sensor.lat if sensor.lat is not none else '' }}"></label><label for="edit-lon">Longitude<input type="number" id="edit-lon" step="any" min="-180" max="180" value="{{ sensor.lon if sensor.lon is not none else '' }}"></label></div>
+                    <div class="location-actions"><button class="action-btn btn-secondary" id="capture-location"><i class="fa-solid fa-location-crosshairs"></i> Capturar neste dispositivo</button><button class="action-btn btn-danger" id="clear-location"><i class="fa-solid fa-xmark"></i> Remover</button></div>
+                    <p class="location-meta" id="location-status" role="status">Fonte: {{ sensor.location_source or 'não informada' }}{% if sensor.accuracy_m is not none %} · precisão estimada: {{ sensor.accuracy_m }} m{% endif %}</p>
+                </section>
+                <button class="action-btn btn-primary" id="save-location" onclick="salvarConfig()">Salvar alterações</button>
             </div>
         </div>
+
+        {% if session.get('role') == 'Administrador Master' %}
+        <div class="painel-grid" style="grid-template-columns: 1fr;">
+            <div class="card card-stack card-full" id="acoes-remotas" data-mac="{{ sensor.mac_id }}">
+                <h3><span><i class="fa-solid fa-screwdriver-wrench"></i> Ações remotas</span>
+                    <label class="switch-label"><input type="checkbox" id="acoes-permitir"> <span id="acoes-permitir-texto">Desligadas</span></label>
+                </h3>
+                <p class="help-text">Comandos pré-definidos executados pelo agente nesta máquina. Cada uso pede sua senha, fica registrado em Incidentes e avisa o grupo NexoPulse no Telegram.</p>
+                <div class="auto-update">
+                    <label class="switch-label"><input type="checkbox" id="auto-atualizar"> <span>Atualização automática</span></label>
+                    <p class="help-text" id="versao-info"></p>
+                </div>
+                <div class="acoes-botoes" id="acoes-botoes"></div>
+                <div class="acoes-historico" id="acoes-historico"><div class="hist-empty">Nenhuma ação executada.</div></div>
+            </div>
+        </div>
+        <div class="modal-senha" id="modal-senha" hidden>
+            <form class="modal-senha-box" id="modal-senha-form">
+                <h4 id="modal-senha-titulo">Confirmar ação</h4>
+                <p class="help-text" id="modal-senha-texto"></p>
+                <label for="modal-senha-input">Sua senha</label>
+                <input type="password" id="modal-senha-input" autocomplete="current-password" required>
+                <p class="modal-senha-erro" id="modal-senha-erro" role="alert"></p>
+                <div class="modal-senha-acoes">
+                    <button type="button" class="action-btn btn-secondary" id="modal-senha-cancelar">Cancelar</button>
+                    <button type="submit" class="action-btn btn-primary" id="modal-senha-ok">Confirmar</button>
+                </div>
+            </form>
+        </div>
+        {% endif %}
 
         <div class="painel-grid" style="grid-template-columns: 1fr;">
             <div class="card card-trace card-full">
@@ -650,16 +726,19 @@
                     soEl.title = 'Arquitetura: ' + (data.so_arquitetura || 'Não informada');
                 }
 
-                document.getElementById('cpu-text').innerText = data.cpu_usage + '%';
-                document.getElementById('cpu-fill').style.width = data.cpu_usage + '%';
-                document.getElementById('ram-text').innerText = data.ram_usage + '%';
-                document.getElementById('ram-fill').style.width = data.ram_usage + '%';
+                // Sem medição ainda, o sensor manda null: mostra "--" em vez de "null%".
+                const pct = v => (v === null || v === undefined || v === '') ? '--' : v + '%';
+                document.getElementById('cpu-text').innerText = pct(data.cpu_usage);
+                document.getElementById('cpu-fill').style.width = (Number(data.cpu_usage) || 0) + '%';
+                document.getElementById('ram-text').innerText = pct(data.ram_usage);
+                document.getElementById('ram-fill').style.width = (Number(data.ram_usage) || 0) + '%';
 
                 document.getElementById('temp-text').innerText = (data.temp > 0 ? data.temp : '--') + ' °C';
                 if(document.getElementById('gpu-text')) document.getElementById('gpu-text').innerText = (data.gpu_temp != null ? data.gpu_temp : '--') + ' °C';
 
-                document.getElementById('disk-text').innerText = (data.disco || 0) + '%';
-                document.getElementById('disk-fill').style.width = (data.disco || 0) + '%';
+                if (!data.host_info) {  // com host_info, o host.js mostra todos os discos
+                    document.getElementById('disk-text').innerText = (data.disco || 0) + '%';
+                }
 
                 if(document.getElementById('net-down-live')) document.getElementById('net-down-live').innerText = (data.net_down || 0).toFixed(1);
                 if(document.getElementById('net-up-live')) document.getElementById('net-up-live').innerText = (data.net_up || 0).toFixed(1);
@@ -1013,7 +1092,7 @@
             const res = await fetch(`/api/v2/historico/${mac_id}${d ? '?data='+d : ''}`);
             const logs = await res.json(); let html = '';
             logs.forEach(l => { let cor = l.gravidade === 'Crítica' ? 'var(--status-crit)' : 'var(--status-warn)'; html += `<div style="padding: 8px; border-bottom: 1px dashed var(--border); font-size:0.85em;"><span style="color:var(--text-muted)">[${escapeHtml(l.data_hora)}]</span> <b style="color:${cor}">${escapeHtml(l.tipo_evento)}</b>: ${escapeHtml(l.detalhes)}</div>`; });
-            document.getElementById('lista-historico').innerHTML = html || '<div style="text-align:center; padding:10px; color:var(--text-muted);">Sem logs no período.</div>';
+            document.getElementById('lista-historico').innerHTML = html || '<div class="hist-empty"><i class="fa-regular fa-circle-check"></i> Sem incidentes no período.</div>';
         }
 
 
@@ -1052,5 +1131,8 @@
         });
     </script>
 <script src="/static/location.js?v=2.2.0-rc1"></script>
+<script src="/static/acoes.js?v=2.2.0-rc1-auto"></script>
+<script src="/static/host.js?v=2.2.0-rc1"></script>
+<script src="/static/diagnostico.js?v=2.2.0-rc1"></script>
 </body>
 </html>

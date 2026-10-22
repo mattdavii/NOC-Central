@@ -6,12 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="manifest" href="/manifest.json?v=nexopulse-2">
     <meta name="theme-color" content="#082E56">
-    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="apple-touch-icon" href="/static/brand/nexopulse/apple-touch-icon.png">
     <title>NexoPulse Central - Acesso</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body { margin: 0; padding: 24px; box-sizing: border-box; font-family: 'Inter', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-image: radial-gradient(circle at 20% 15%, rgba(5,169,220,.14), transparent 32%), radial-gradient(circle at 85% 80%, rgba(5,168,140,.12), transparent 30%); }
+        .login-privacy { display: block; margin-top: 12px; text-align: center; font-size: .82rem; color: var(--text-muted); }
         .login-shell { width: 100%; max-width: 430px; }
         .login-box { padding: 36px; border-radius: 18px; width: 100%; border: 1px solid var(--border); position: relative; overflow: hidden; }
         .login-box::before { content: ''; position: absolute; inset: 0 0 auto; height: 3px; background: var(--brand-gradient); }
@@ -29,7 +32,7 @@
         .btn-login:hover { filter: brightness(1.08); transform: translateY(-1px); }
         .btn-login:focus-visible { outline: 2px solid var(--text-main); outline-offset: 3px; }
         .flash-msg { background: color-mix(in srgb, var(--status-crit) 12%, transparent); color: var(--status-crit); border: 1px solid color-mix(in srgb, var(--status-crit) 40%, transparent); padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 20px; font-weight: bold; font-size: 0.9em; }
-        .login-tools { display:flex; justify-content:center; margin-top:18px; }
+        .login-tools { display:flex; flex-direction:column; align-items:center; margin-top:18px; }
         @media(max-width:520px) { .login-box { padding:28px 22px; } .login-header { align-items:flex-start; } }
     </style>
 <link rel="stylesheet" href="/static/product.css?v=nexopulse-2">
@@ -39,8 +42,8 @@
     <main class="login-shell">
       <div class="login-box">
         <div class="login-brand">
-            <img class="brand-logo-dark" src="/static/brand/nexopulse-logo-dark.png" alt="NexoPulse" width="310" height="94">
-            <img class="brand-logo-light" src="/static/brand/nexopulse-logo-light.png" alt="NexoPulse" width="310" height="94">
+            <img class="brand-logo-dark" src="/static/brand/nexopulse/logo-escuro.svg" alt="NexoPulse" width="310" height="90">
+            <img class="brand-logo-light" src="/static/brand/nexopulse/logo-claro.svg" alt="NexoPulse" width="310" height="90">
         </div>
         <p class="login-positioning">NETWORK INTELLIGENCE &amp; MONITORING</p>
         <p class="login-slogan">Sua rede tem um pulso. Nós damos visibilidade a ele.</p>
@@ -67,7 +70,7 @@
             </div>
             <button type="submit" class="btn-login">Entrar na NexoPulse</button>
         </form>
-        <div class="login-tools"><button class="theme-toggle" type="button" onclick="NexoPulseTheme.toggle()" aria-label="Alternar tema"><i class="fa-solid fa-sun" aria-hidden="true"></i><span>Alternar tema</span></button></div>
+        <div class="login-tools"><button class="theme-toggle" type="button" onclick="NexoPulseTheme.toggle()" aria-label="Alternar tema"><i class="fa-solid fa-sun" aria-hidden="true"></i><span>Alternar tema</span></button><a class="login-privacy" href="/privacidade">Política de privacidade</a></div>
       </div>
     </main>
 </body>

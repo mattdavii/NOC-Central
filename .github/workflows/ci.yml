@@ -32,7 +32,7 @@ jobs:
       - run: pip install -r requirements.txt -r requirements-agente.txt pytest
       - name: Compile and run regression tests
         run: |
-          python -m py_compile app.py database.py notifications.py location.py version.py agente_v2.py sensor_simulador.py
+          python -m py_compile app.py database.py notifications.py location.py version.py nexopulse_edge.py sensor_simulador.py
           python -m pytest -q
       - name: Production startup smoke test
         env:

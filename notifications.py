@@ -15,18 +15,30 @@ MAX_ATTEMPTS = 3
 
 
 def credentials(client_id, master_token, master_chat):
-    token, chat, source = master_token.strip(), master_chat.strip(), 'master'
-    if client_id:
-        conn = database.get_db()
-        try:
-            row = conn.execute('SELECT telegram_token, telegram_chat_id FROM clientes WHERE id = ?', (client_id,)).fetchone()
-            if row and (row['telegram_token'] or row['telegram_chat_id']):
-                # A partial tenant configuration must not silently route to another bot.
-                token, chat = (row['telegram_token'] or '').strip(), (row['telegram_chat_id'] or '').strip()
-                source = f'cliente:{client_id}'
-        finally:
-            conn.close()
-    return token, chat, source
+    """Destino de um evento: o grupo NexoPulse (master) ou o grupo de um cliente.
+
+    O cliente pode ter um bot próprio ou usar o bot do NexoPulse informando só o
+    Chat ID do grupo dele. Cliente sem Chat ID não recebe nada (nunca é desviado
+    para o grupo master nem para outro bot).
+    """
+    if not client_id:
+        return master_token.strip(), master_chat.strip(), 'master'
+    token, chat = '', ''
+    conn = database.get_db()
+    try:
+        row = conn.execute('SELECT telegram_token, telegram_chat_id FROM clientes WHERE id = ?', (client_id,)).fetchone()
+        if row:
+            token, chat = (row['telegram_token'] or '').strip(), (row['telegram_chat_id'] or '').strip()
+    finally:
+        conn.close()
+    if chat and not token:
+        token = master_token.strip()
+    return token, chat, f'cliente:{client_id}'
+
+
+def client_has_chat(client_id, conn):
+    row = conn.execute('SELECT telegram_chat_id FROM clientes WHERE id = ?', (client_id,)).fetchone()
+    return bool(row and (row['telegram_chat_id'] or '').strip())
 
 
 def deliver(token, chat, message):
