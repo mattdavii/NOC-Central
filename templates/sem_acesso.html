@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#082E56">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="apple-touch-icon" href="/static/brand/nexopulse/apple-touch-icon.png">
+    <title>Acesso não liberado</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/product.css?v=nexopulse-2">
+    <style>
+        body { margin: 0; background: var(--bg-base); color: var(--text-main); }
+        .sem-acesso { max-width: 520px; margin: 0 auto; padding: 72px 24px; text-align: center; line-height: 1.6; }
+        .sem-acesso i { font-size: 2.4rem; color: var(--text-muted); }
+        .sem-acesso h1 { font-size: 1.5rem; margin: 18px 0 8px; }
+        .sem-acesso p { color: var(--text-muted); margin: 0 0 28px; }
+        .sem-acesso button { font: inherit; padding: 10px 20px; border-radius: 8px; border: 1px solid var(--border);
+                             background: transparent; color: var(--text-main); cursor: pointer; }
+    </style>
+</head>
+<body>
+<script src="/static/brand.js?v=nexopulse-2"></script>
+{% set hide_nav = true %}
+{% include '_brand_bar.html' %}
+<main class="sem-acesso">
+    <i class="fa-solid fa-lock"></i>
+    <h1>Acesso não liberado</h1>
+    <p>{{ mensagem }}</p>
+    <form method="POST" action="/logout">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <button type="submit"><i class="fa-solid fa-right-from-bracket"></i> Sair</button>
+    </form>
+</main>
+</body>
+</html>
