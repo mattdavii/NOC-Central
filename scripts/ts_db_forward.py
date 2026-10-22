@@ -15,6 +15,8 @@ LISTEN_PORT = int(os.environ.get("TS_DB_LOCAL_PORT", "15432"))
 SOCKS_PORT = int(os.environ.get("TS_SOCKS_PORT", "1055"))
 TARGET_HOST = os.environ["TS_DB_HOST"]
 TARGET_PORT = int(os.environ.get("TS_DB_PORT", "5432"))
+# Tailnet instável: cada tentativa desiste rápido para o psycopg2 (connect_timeout) não ficar esperando.
+SOCKS_TIMEOUT_S = float(os.environ.get("TS_SOCKS_TIMEOUT_S", "5"))
 
 
 def _recv_exact(sock, n):
@@ -28,7 +30,7 @@ def _recv_exact(sock, n):
 
 
 def _socks5_connect():
-    sock = socket.create_connection(("127.0.0.1", SOCKS_PORT), timeout=15)
+    sock = socket.create_connection(("127.0.0.1", SOCKS_PORT), timeout=SOCKS_TIMEOUT_S)
     sock.sendall(b"\x05\x01\x00")
     if _recv_exact(sock, 2) != b"\x05\x00":
         raise ConnectionError("SOCKS5 recusou o método sem autenticação")
@@ -65,7 +67,7 @@ def _pipe(src, dst):
                 pass
 
 
-def _connect_with_retry(attempts=3, delay=1.0):
+def _connect_with_retry(attempts=3, delay=0.5):
     for attempt in range(1, attempts + 1):
         try:
             return _socks5_connect()

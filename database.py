@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import threading
+import time
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 DB_POOL_MIN = max(1, int(os.environ.get("DB_POOL_MIN", "1")))
@@ -9,6 +10,11 @@ DB_POOL_MAX = max(DB_POOL_MIN, int(os.environ.get("DB_POOL_MAX", "10")))
 _pg_pool = None
 _pg_pool_lock = threading.Lock()
 IDLE_IN_TRANSACTION_MS = max(10000, int(os.environ.get("DB_IDLE_IN_TRANSACTION_MS", "300000")))
+# Rede instável até o banco: conexão que não completa o login em DB_CONNECT_TIMEOUT_S falha
+# (sem isso fica presa até o Postgres desistir, 60 s, ocupando uma vaga do pool), e quem
+# encontra o pool cheio espera até DB_POOL_WAIT_S por uma vaga em vez de falhar na hora.
+DB_CONNECT_TIMEOUT_S = max(2, int(os.environ.get("DB_CONNECT_TIMEOUT_S", "10")))
+DB_POOL_WAIT_S = max(0.0, float(os.environ.get("DB_POOL_WAIT_S", "5")))
 
 
 def _cooperar_com_gevent():
@@ -107,6 +113,7 @@ def _get_postgres_pool():
                 # boot). O Postgres encerra transação ociosa além disso.
                 options=f"-c idle_in_transaction_session_timeout={IDLE_IN_TRANSACTION_MS}",
                 keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3,
+                connect_timeout=DB_CONNECT_TIMEOUT_S,
             )
             print(f"✅ Pool PostgreSQL iniciado ({DB_POOL_MIN}-{DB_POOL_MAX} conexões).")
     return _pg_pool
@@ -133,10 +140,29 @@ def fechar_conexoes_da_requisicao():
             pass
 
 
+def _pegar_do_pool(pool, espera_s=None):
+    """getconn que espera vaga (até espera_s) em vez de falhar na hora com o pool cheio.
+
+    Sob gevent o time.sleep cede a vez, então quem espera não trava o worker.
+    """
+    import psycopg2.pool
+    espera_s = DB_POOL_WAIT_S if espera_s is None else espera_s
+    limite = time.monotonic() + espera_s
+    intervalo = 0.05
+    while True:
+        try:
+            return pool.getconn()
+        except psycopg2.pool.PoolError:
+            if time.monotonic() >= limite:
+                raise
+            time.sleep(intervalo)
+            intervalo = min(intervalo * 2, 0.5)
+
+
 def get_db_connection():
     if DATABASE_URL:
         pool = _get_postgres_pool()
-        conn = pool.getconn()
+        conn = _pegar_do_pool(pool)
         return _registrar_na_requisicao(PostgresWrapper(conn, pool))
 
     conn = sqlite3.connect(os.environ.get("NOC_DB_PATH", "database.db"), timeout=10)
