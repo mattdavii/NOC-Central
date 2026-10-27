@@ -1,0 +1,20 @@
+# Fora da imagem: histórico, materiais e testes (a Central não usa em execução)...
+.git
+.github
+docs
+assets
+tests
+test-results
+.pytest_cache
+__pycache__
+*.pyc
+.venv
+build
+dist
+# ...e, por segurança, qualquer arquivo local de sensor ou de ambiente.
+sensor_id.txt
+sensor_key.txt
+sensor_local.db
+*.db
+.env
+.env.*
