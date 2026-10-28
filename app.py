@@ -2,7 +2,9 @@ from flask import Flask, jsonify, request, render_template, session, redirect, u
 from werkzeug.security import check_password_hash, generate_password_hash
 from flask_socketio import SocketIO
 import database
+import levantamento
 import notifications
+import oui
 import diagnostico
 import saude
 from location import parse_location, save_location
@@ -425,7 +427,7 @@ def enforce_tenant_scope():
 # 📦 PACOTE E INSTALADOR DO AGENTE
 # ==========================================
 # Só o que o sensor precisa para rodar; docs e o instalador do Windows ficam no servidor.
-ARQUIVOS_AGENTE = ['nexopulse_edge.py', 'host_metrics.py', 'starlink.py', 'netdiag.py', 'fila_envio.py', 'requirements-agente.txt',
+ARQUIVOS_AGENTE = ['nexopulse_edge.py', 'host_metrics.py', 'starlink.py', 'netdiag.py', 'nomes_rede.py', 'fila_envio.py', 'requirements-agente.txt',
                    'requirements-starlink.txt', 'linux/install.sh', 'linux/nexopulse-admin', 'linux/nexopulse-guard.sh',
                    'linux/liberar-root.sh']
 
@@ -1227,6 +1229,14 @@ def telemetria_global():
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
 
+def _texto_da_rede(valor, maximo):
+    """Texto que vem da rede do cliente (nome de equipamento): limpa em vez de recusar a lista toda."""
+    if not isinstance(valor, str):
+        return None
+    limpo = ''.join(c for c in valor if c.isprintable() and c not in '<>').strip()
+    return limpo[:maximo] or None
+
+
 @app.route('/api/v2/atualizar_dispositivos', methods=['POST'])
 def atualizar_dispositivos():
     auth_error = exigir_sensor_ou_sessao()
@@ -1240,10 +1250,24 @@ def atualizar_dispositivos():
         for item in lista:
             if not isinstance(item, dict):
                 raise ValueError('Dispositivo inválido.')
+            mac = bounded_text(item.get('mac'), 'MAC', maximum=80)
+            # A marca vem da base do IEEE na Central (vale também para sensores antigos);
+            # o que o sensor mandar só é usado se a base não conhecer o prefixo.
+            registro, fonte = oui.fabricante(mac)
+            if not registro:
+                enviado = _texto_da_rede(item.get('fabricante'), 160)
+                if enviado and enviado != 'Desconhecido':
+                    registro, fonte = enviado, 'sensor'
+            hostname_fonte = item.get('hostname_fonte') if item.get('hostname_fonte') in ('dns', 'netbios', 'mdns') else None
+            hostname = _texto_da_rede(item.get('hostname'), 120)
             normalized_devices.append({
                 'ip': bounded_text(item.get('ip'), 'IP', maximum=64),
-                'mac': bounded_text(item.get('mac'), 'MAC', maximum=80),
-                'fabricante': bounded_text(item.get('fabricante', 'Desconhecido'), 'Fabricante', maximum=160),
+                'mac': mac,
+                'fabricante': oui.marca(registro) if fonte in ('ieee', 'sensor') else (registro or 'Desconhecido'),
+                'fabricante_registro': registro if fonte in ('ieee', 'sensor') else None,
+                'fabricante_fonte': fonte,
+                'hostname': hostname,
+                'hostname_fonte': hostname_fonte if hostname else None,
                 'status': bounded_text(item.get('status', 'desconhecido'), 'Status', maximum=32),
                 'neighbor_state': bounded_text(item.get('neighbor_state', ''), 'Estado L2', maximum=64, allow_empty=True),
                 'latencia': item.get('latencia'),
@@ -1254,21 +1278,20 @@ def atualizar_dispositivos():
     sensor_data = db_execute(conn, "SELECT ip_gateway FROM sensores WHERE mac_id = ?", (sensor_mac,)).fetchone()
     ip_gw = sensor_data['ip_gateway'] if sensor_data else None
 
-
-
-
     nomes_salvos = {row['mac']: row['nome'] for row in conn.execute("SELECT mac, nome FROM nomes_conhecidos").fetchall()}
+    visto_em = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
     db_execute(conn, "DELETE FROM dispositivos WHERE sensor_mac = ?", (sensor_mac,))
     for disp in normalized_devices:
-        nome = nomes_salvos.get(disp['mac'])
-        if not nome: nome = "Gateway / Roteador" if disp['ip'] == ip_gw else "Desconhecido"
-        status_disp = disp.get('status', 'desconhecido')
+        # nome_custom é só o apelido dado pelo usuário (ou o gateway); a tela cai para hostname e marca.
+        nome = nomes_salvos.get(disp['mac']) or ("Gateway / Roteador" if disp['ip'] == ip_gw else None)
         db_execute(
             conn,
-            "INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, nome_custom, status, latencia, neighbor_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (sensor_mac, disp['ip'], disp['mac'], disp.get('fabricante', 'Desconhecido'), nome,
-             status_disp, disp.get('latencia'), disp.get('neighbor_state'))
+            "INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, nome_custom, status, latencia, neighbor_state, "
+            "fabricante_registro, fabricante_fonte, hostname, hostname_fonte, visto_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (sensor_mac, disp['ip'], disp['mac'], disp['fabricante'], nome, disp['status'], disp.get('latencia'),
+             disp.get('neighbor_state'), disp['fabricante_registro'], disp['fabricante_fonte'], disp['hostname'],
+             disp['hostname_fonte'], visto_em)
         )
     conn.commit()
     conn.close()
@@ -1560,6 +1583,30 @@ def get_dispositivos(mac_id):
     dispositivos = db_execute(conn, "SELECT * FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
     conn.close()
     return jsonify([dict(d) for d in dispositivos])
+
+@app.route('/api/v2/levantamento/<mac_id>/<formato>', methods=['GET'])
+def exportar_levantamento(mac_id, formato):
+    """Levantamento de rede do sensor em JSON (para IA e integrações) ou XLSX."""
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
+    if formato not in ('json', 'xlsx'):
+        return jsonify(error='Formato inválido: use json ou xlsx.'), 400
+    conn = database.get_db()
+    try:
+        sensor = db_execute(conn, "SELECT * FROM sensores WHERE mac_id = ?", (mac_id,)).fetchone()
+        if not sensor:
+            return jsonify(error='Sensor não encontrado.'), 404
+        dispositivos = db_execute(conn, "SELECT * FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
+    finally:
+        conn.close()
+    dados = levantamento.montar(sensor, dispositivos, CENTRAL_VERSION, ocultar_nomes=request.args.get('ocultar_nomes') == '1')
+    if formato == 'json':
+        resposta = app.response_class(json.dumps(dados, ensure_ascii=False, indent=2), mimetype='application/json')
+    else:
+        resposta = app.response_class(levantamento.para_xlsx(dados),
+                                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resposta.headers['Content-Disposition'] = f'attachment; filename="{levantamento.nome_arquivo(dados, formato)}"'
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
 
 @app.route('/manifest.json')
 def manifest():
@@ -2513,7 +2560,7 @@ def gerar_relatorio(mac_id):
         print("Erro relatorio:", e)
         logs = []
 
-    try: dispositivos = db_execute(conn, "SELECT ip, mac, fabricante, nome_custom, status FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
+    try: dispositivos = db_execute(conn, "SELECT ip, mac, fabricante, nome_custom, hostname, status FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
     except: dispositivos = []
 
     conn.close()
