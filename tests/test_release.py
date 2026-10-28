@@ -23,9 +23,9 @@ def test_legacy_report_and_migration(client, login):
         assert client.get(route).status_code == 200,route
     database.init_db();database.init_db()
     assert client.get('/api/v2/sensor_data/AA:01').json['cpu_usage']==15
-    assert client.get('/api/v2/agent_versao').json['versao']=='2.1.0'
-    assert client.get('/api/v2/agent_versao').json['update_available'] is False
-    assert client.get('/api/v2/agent_versao').json['url_download']==''
+    info = client.get('/api/v2/agent_versao').json
+    assert info['versao'] == central.CENTRAL_VERSION and info['platform'] == 'linux'
+    assert 'url_download' not in info
     assert client.get('/healthz').json['central_version']=='2.2.0-rc1'
 
 
@@ -73,7 +73,8 @@ def test_nexopulse_brand_is_local_and_consistent(client, login):
     login_page = client.get('/login').get_data(as_text=True)
     assert '<title>NexoPulse Central - Acesso</title>' in login_page
     assert 'NETWORK INTELLIGENCE &amp; MONITORING' in login_page
-    assert '/static/brand/nexopulse-logo-dark.png' in login_page
+    assert '/static/brand/nexopulse/logo-escuro.svg' in login_page
+    assert '/static/brand/nexopulse/favicon.svg' in login_page
 
     manifest = client.get('/static/manifest.json').json
     assert manifest['name'] == 'NexoPulse Central'
@@ -81,7 +82,7 @@ def test_nexopulse_brand_is_local_and_consistent(client, login):
     assert manifest['id'] == '/'
     assert manifest['scope'] == '/'
     assert manifest['start_url'] == '/'
-    assert all(icon['src'].startswith('/static/icons/nexopulse-') for icon in manifest['icons'])
+    assert all(icon['src'].startswith('/static/brand/nexopulse/') for icon in manifest['icons'])
     assert {'any', 'maskable'} == {icon['purpose'] for icon in manifest['icons']}
 
     root_manifest = client.get('/manifest.json')
@@ -118,19 +119,18 @@ def test_nexopulse_brand_is_local_and_consistent(client, login):
     assert "updateViaCache: 'none'" in brand_js
     assert 'existing.unregister()' in brand_js
 
-    agent_spec = (root / 'agente_v2.spec').read_text(encoding='utf-8')
-    assert "icon='packaging/nexopulse-edge.ico'" in agent_spec
-    assert "version='packaging/nexopulse_edge_version.txt'" in agent_spec
+    # O agente é só Linux: não há mais executável Windows empacotado.
+    assert not (root / 'agente_v2.spec').exists()
 
     for relative in (
-        'static/brand/nexopulse-logo-dark.png',
-        'static/brand/nexopulse-logo-light.png',
-        'static/brand/nexopulse-symbol.png',
-        'static/icons/nexopulse-192.png',
-        'static/icons/nexopulse-512.png',
-        'static/icons/nexopulse-maskable-192.png',
-        'static/icons/nexopulse-maskable-512.png',
-        'static/favicon.png',
+        'static/brand/nexopulse/logo-escuro.svg',
+        'static/brand/nexopulse/logo-claro.svg',
+        'static/brand/nexopulse/simbolo-escuro.svg',
+        'static/brand/nexopulse/icon-192.png',
+        'static/brand/nexopulse/icon-512.png',
+        'static/brand/nexopulse/maskable-192.png',
+        'static/brand/nexopulse/maskable-512.png',
+        'static/brand/nexopulse/apple-touch-icon.png',
     ):
         assert (root / relative).stat().st_size > 1000
 

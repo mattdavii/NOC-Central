@@ -1,0 +1,10 @@
+[Unit]
+Description=Vigia da NexoPulse a cada minuto (o intervalo real, de 2 a 5 min, vem do banco)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

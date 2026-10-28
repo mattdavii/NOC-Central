@@ -23,10 +23,13 @@ O manifesto usa o identificador estável `/`, o nome **NexoPulse Central** e
 sem cache, permitindo que instalações existentes recebam a nova identidade
 sem criar um segundo aplicativo.
 
-No Windows, o executável mantém o nome técnico `agente_v2.exe` para não quebrar
-atalhos e inicialização existentes, mas passa a publicar **NexoPulse Edge** como
-nome do produto, descrição e ícone. No Linux, o atualizador preserva o serviço
-`noc-sensor.service` e atualiza somente sua descrição visível.
+O agente também adota o nome do produto: o arquivo é `nexopulse_edge.py`
+(Python não aceita hífen em nome de módulo), o serviço Linux é
+`nexopulse-edge.service`, a configuração fica em `/etc/default/nexopulse-edge` e a
+pasta de instalação é `~/nexopulse-edge`. O instalador migra sozinho uma
+instalação antiga (`noc-sensor.service`, `/etc/default/noc-sensor`,
+`agente_v2.py`), preservando identidade, chave e configuração. No Windows o
+sensor roda dentro do WSL com o mesmo instalador.
 
 A paleta e os componentes compartilhados são centralizados em `static/product.css`. O tema escuro é prioritário, e o tema claro pode ser selecionado pelo operador. A preferência fica somente no navegador por meio de `localStorage`.
 
@@ -89,7 +92,6 @@ Os seguintes identificadores técnicos permanecem inalterados intencionalmente:
 - domínio e rotas atuais;
 - variáveis `NOC_*`;
 - cabeçalhos `X-NOC-Sensor-*`;
-- serviço Linux `noc-sensor.service`;
 - banco, IDs, credenciais e protocolos dos sensores;
 - integração Railway e compatibilidade de agentes Linux/Windows antigos.
 
