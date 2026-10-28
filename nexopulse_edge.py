@@ -52,6 +52,11 @@ try:
 except ImportError:
     netdiag = None
 
+try:
+    import nomes_rede
+except ImportError:
+    nomes_rede = None
+
 # ==========================================
 # ⚙️ CONFIGURAÇÃO DO AGENTE
 # ==========================================
@@ -1127,6 +1132,9 @@ def loop_telemetria():
             
             forcar_varredura = (agora - ultima_varredura > SCAN_REDE_INTERVALO)
             dispositivos = get_topologia_arp(rede, forcar_varredura=forcar_varredura)
+            if nomes_rede:
+                try: nomes_rede.anotar(dispositivos)
+                except Exception as e: log_local_event("Topologia", f"Falha ao anotar nomes dos dispositivos: {e}", "Alerta")
             if forcar_varredura: ultima_varredura = agora
 
             # 🌪️ MÓDULO STORM WATCH

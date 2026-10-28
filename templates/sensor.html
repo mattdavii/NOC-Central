@@ -323,6 +323,7 @@
                     <span><i class="fa-solid fa-project-diagram"></i> Dispositivos · topologia observada</span>
                     <div>
                         <button class="btn-acao" onclick="abrirModalTopologia()" style="background: var(--purple); color: white; font-size:0.8em; padding: 6px 12px; border: none; display: inline-flex; margin-right: 10px;"><i class="fa-solid fa-expand"></i> Expandir Tela Cheia</button>
+                        <button class="btn-acao" onclick="abrirModalLevantamento()" style="background: var(--green); color: var(--bg-base); font-size:0.8em; padding: 6px 12px; border: none; display: inline-flex; margin-right: 10px;"><i class="fa-solid fa-file-export"></i> Exportar levantamento</button>
                         <button class="btn-acao" onclick="carregarRadar(this)" style="background: var(--blue); color: var(--bg-base); font-size:0.8em; padding: 6px 12px; border: none; display: inline-flex;"><i class="fa-solid fa-rotate"></i> Scan Rápido</button>
                     </div>
                 </h3>
@@ -467,6 +468,27 @@
                 <span class="close-modal" onclick="fecharModalTopologia()">&times;</span>
             </div>
             <div id="network-modal-canvas"></div>
+        </div>
+    </div>
+
+    <div id="modalLevantamento" class="modal">
+        <div class="modal-content" style="width: 450px; height: auto; padding: 30px;">
+            <div class="modal-header">
+                <h2 style="margin: 0; color: var(--green);"><i class="fa-solid fa-file-export"></i> Levantamento de rede</h2>
+                <span class="close-modal" onclick="fecharModalLevantamento()">&times;</span>
+            </div>
+            <div style="margin-top: 15px;">
+                <p style="margin: 0 0 15px; font-size: 0.9em; color: var(--text-muted);">Equipamentos que o sensor enxerga na rede dele: IP, MAC, marca e nome. A planilha é para leitura; o JSON leva a fonte e a confiança de cada dado, pronto para enviar a uma IA.</p>
+                <label style="display: block; margin-bottom: 20px; cursor: pointer;">
+                    <input type="checkbox" id="lev_ocultar_nomes"> Ocultar nomes dos equipamentos (podem conter nomes de pessoas)
+                </label>
+                <button onclick="baixarLevantamento('xlsx')" style="width: 100%; padding: 12px; margin-bottom: 10px; background: var(--green); color: var(--bg-base); border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
+                    <i class="fa-solid fa-file-excel"></i> Planilha (.xlsx)
+                </button>
+                <button onclick="baixarLevantamento('json')" style="width: 100%; padding: 12px; background: var(--blue); color: var(--bg-base); border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
+                    <i class="fa-solid fa-code"></i> JSON para IA
+                </button>
+            </div>
         </div>
     </div>
 
@@ -937,7 +959,7 @@
                 dispositivos.forEach(d => {
                     if(d.ip === globalGatewayIP || d.ip === globalSensorIP) return;
 
-                    let nome = d.nome_custom || d.fabricante;
+                    let nome = d.nome_custom || d.hostname || d.fabricante || 'Desconhecido';
                     let cor_fundo = STATUS_CANVAS.crit;
                     let status_txt = 'OFF';
                     if (d.status === 'online') { cor_fundo = STATUS_CANVAS.ok; status_txt = 'ON'; }
@@ -948,7 +970,7 @@
                         id: d.ip,
                         rawName: nome,
                         label: `💻 ${nome} [${status_txt}]\n${d.ip}`,
-                        title: `MAC: ${d.mac}\nLatência ICMP: ${d.latencia || 0} ms\nVizinho: ${d.neighbor_state || 'N/D'}\nClique para ver Opções`,
+                        title: `MAC: ${d.mac}\nMarca: ${d.fabricante || 'Desconhecida'}\nNome na rede: ${d.hostname || 'N/D'}\nLatência ICMP: ${d.latencia || 0} ms\nVizinho: ${d.neighbor_state || 'N/D'}\nClique para ver Opções`,
                         mac: d.mac,
                         shape: 'box',
                         color: { background: cor_fundo, border: cor_fundo },
@@ -962,6 +984,14 @@
         }
 
         // ----- FUNÇÕES DO RELATÓRIO PDF -----
+        function abrirModalLevantamento() { document.getElementById('modalLevantamento').style.display = 'block'; }
+        function fecharModalLevantamento() { document.getElementById('modalLevantamento').style.display = 'none'; }
+        function baixarLevantamento(formato) {
+            let url = `/api/v2/levantamento/${encodeURIComponent(mac_id)}/${formato}`;
+            if (document.getElementById('lev_ocultar_nomes').checked) url += '?ocultar_nomes=1';
+            window.location.href = url;
+        }
+
         function abrirModalRelatorio() { document.getElementById('modalRelatorio').style.display = 'block'; }
         function fecharModalRelatorio() { document.getElementById('modalRelatorio').style.display = 'none'; }
 

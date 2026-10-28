@@ -114,7 +114,7 @@
                 <tr>
                     <td style="font-family: 'JetBrains Mono', monospace; font-weight: bold;">{{ d.ip }}</td>
                     <td style="font-family: 'JetBrains Mono', monospace; color: #526077;">{{ d.mac }}</td>
-                    <td>{{ d.nome_custom or d.fabricante }}</td>
+                    <td>{{ d.nome_custom or d.hostname or d.fabricante }}</td>
                     <td>
                         {% if d.status == 'online' %}<span class="badge ok">Online</span>
                         {% elif d.status == 'sem_icmp' %}<span class="badge aviso">Sem ICMP</span>
