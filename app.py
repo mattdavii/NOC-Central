@@ -7,6 +7,7 @@ import notifications
 import oui
 import diagnostico
 import saude
+import acessos
 from location import parse_location, save_location
 from version import CENTRAL_VERSION
 from urllib.parse import urlsplit
@@ -423,6 +424,77 @@ def enforce_tenant_scope():
         conn.close()
 
 
+# Rotas que, mesmo em GET, entregam poder de agir (token de acesso local ao sensor).
+ROTAS_GET_DE_OPERADOR = {'gerar_token_local'}
+
+
+def _resposta_sem_acesso(mensagem):
+    if request.path.startswith('/api/'):
+        return jsonify(error=mensagem), 403
+    return render_template('sem_acesso.html', mensagem=mensagem), 403
+
+
+@app.before_request
+def exigir_acesso_aplicativo():
+    """Acesso efetivo = aplicativo contratado pela empresa ∩ nível do usuário (Família Nexo)."""
+    if not session.get('user_id') or session.get('role') in acessos.ROLES_MASTER:
+        return None
+    aplicativo = acessos.aplicativo_da_rota(request.endpoint)
+    if not aplicativo:
+        return None
+    leitura = request.method in ('GET', 'HEAD') and request.endpoint not in ROTAS_GET_DE_OPERADOR
+    minimo = 'leitura' if leitura else 'operador'
+    conn = database.get_db()
+    try:
+        nivel = acessos.nivel_app(conn, session['user_id'], aplicativo)
+    finally:
+        conn.close()
+    if not nivel:
+        return _resposta_sem_acesso(f'O {acessos.APLICATIVOS[aplicativo]} não está liberado para você. '
+                                    'Fale com o administrador da sua empresa ou com a MD.')
+    if not acessos.nivel_suficiente(nivel, minimo):
+        return _resposta_sem_acesso('Seu acesso a este aplicativo é somente leitura.')
+    return None
+
+
+def _autor(conn):
+    return acessos._usuario(conn, session['user_id'])
+
+
+def _auditar(conn, acao, alvo=None, detalhes=None, empresa_id=None, autor=None):
+    autor = autor or _autor(conn)
+    if empresa_id is None and autor:
+        empresa_id = acessos.empresa_de(autor)
+    acessos.registrar(conn, autor['id'] if autor else None, autor['usuario'] if autor else None,
+                      empresa_id, acao, alvo, detalhes)
+
+
+def _auditar_alvo(conn, acao, id_alvo, detalhes=None):
+    alvo = acessos._usuario(conn, id_alvo)
+    _auditar(conn, acao, alvo=alvo['usuario'] if alvo else str(id_alvo), detalhes=detalhes,
+             empresa_id=acessos.empresa_de(alvo) if alvo else None)
+
+
+def _bloqueio_delegacao(api=True):
+    """Resposta 403 quando a MD desligou a delegação de acessos da empresa do autor; senão None."""
+    conn = database.get_db()
+    try:
+        if _pode_gerenciar_usuarios(conn):
+            return None
+    finally:
+        conn.close()
+    mensagem = 'A gestão de usuários da sua empresa é feita pela MD.'
+    return (jsonify(error=mensagem), 403) if api else (render_template('sem_acesso.html', mensagem=mensagem), 403)
+
+
+def _pode_gerenciar_usuarios(conn):
+    """Perfil com direito à tela de usuários e, fora da MD, delegação ligada pela MD."""
+    if session.get('role') not in ('Administrador Master', 'Cliente', 'Administrador Cliente'):
+        return False
+    autor = _autor(conn)
+    return bool(autor) and acessos.pode_administrar_empresa(conn, autor)
+
+
 # ==========================================
 # 📦 PACOTE E INSTALADOR DO AGENTE
 # ==========================================
@@ -807,9 +879,15 @@ def login():
                 session['user_id'] = user['id']; session['logo_cliente'] = dict(user).get('logo_url', '')
                 session['_csrf_token'] = secrets.token_urlsafe(32)
                 session.permanent = True
+                _auditar(conn, 'login', alvo=user['usuario'], autor=dict(user))
+                conn.commit()
                 return redirect(url_for('index'))
             else:
                 erro = "Usuário ou senha incorretos!"
+                alvo = dict(user) if user else None
+                acessos.registrar(conn, None, None, acessos.empresa_de(alvo) if alvo else None,
+                                  'login_falhou', usuario_digitado[:80])
+                conn.commit()
         except Exception:
             app.logger.exception('Falha no processo de autenticação')
             erro = 'Não foi possível autenticar agora. Tente novamente.'
@@ -1623,6 +1701,8 @@ def service_worker():
 @app.route('/usuarios')
 def gerenciar_usuarios():
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return "Acesso Negado.", 403
+    bloqueio = _bloqueio_delegacao(api=False)
+    if bloqueio: return bloqueio
     conn = database.get_db()
     if session['role'] == 'Administrador Master':
         usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id FROM clientes ORDER BY id DESC").fetchall()
@@ -1640,6 +1720,8 @@ def gerenciar_usuarios():
 @app.route('/api/v2/usuarios', methods=['POST'])
 def criar_usuario():
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return jsonify({"error": "Acesso Negado"}), 403
+    bloqueio = _bloqueio_delegacao()
+    if bloqueio: return bloqueio
     data = request.json
     try:
         nome = bounded_text(data.get('nome'), 'Nome', maximum=160)
@@ -1670,6 +1752,8 @@ def criar_usuario():
         if db_execute(conn, 'SELECT id FROM clientes WHERE usuario = ?', (usuario,)).fetchone():
             return jsonify(error='Usuário já existe.', status='Erro: Usuário já existe'), 409
         db_execute(conn, "INSERT INTO clientes (nome, usuario, senha, role, cliente_pai_id, ativo, logo_url, telegram_token, telegram_chat_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)", (nome, usuario, senha_hash, role, cliente_pai, logo_url, tg_token, tg_chat))
+        novo = db_execute(conn, 'SELECT id, role, cliente_pai_id FROM clientes WHERE usuario = ?', (usuario,)).fetchone()
+        _auditar(conn, 'usuario_criado', alvo=usuario, detalhes={'perfil': role}, empresa_id=acessos.empresa_de(dict(novo)) if novo else None)
         conn.commit(); status = "OK"
     except Exception:
         app.logger.exception('Falha ao criar usuário')
@@ -1680,17 +1764,22 @@ def criar_usuario():
 @app.route('/api/v2/usuarios/<int:id_user>/toggle_status', methods=['POST'])
 def toggle_user_status(id_user):
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return jsonify({"error": "Acesso Negado"}), 403
+    bloqueio = _bloqueio_delegacao()
+    if bloqueio: return bloqueio
     if id_user == session['user_id'] or id_user == 1: return jsonify({"error": "Ação não permitida"}), 403
     conn = database.get_db()
     user = db_execute(conn, "SELECT ativo FROM clientes WHERE id = ?", (id_user,)).fetchone()
-    novo_status = 0 if user.get('ativo', 1) == 1 else 1
+    novo_status = 0 if dict(user).get('ativo', 1) == 1 else 1
     db_execute(conn, "UPDATE clientes SET ativo = ? WHERE id = ?", (novo_status, id_user))
+    _auditar_alvo(conn, 'usuario_ativado' if novo_status else 'usuario_desativado', id_user)
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
 
 @app.route('/api/v2/usuarios/<int:id_user>/senha', methods=['POST'])
 def alterar_senha_user(id_user):
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return jsonify({"error": "Acesso Negado"}), 403
+    bloqueio = _bloqueio_delegacao()
+    if bloqueio: return bloqueio
     data = request.json
     try:
         senha = bounded_secret(data.get('senha'), 'Senha')
@@ -1699,12 +1788,15 @@ def alterar_senha_user(id_user):
     nova_senha = generate_password_hash(senha)
     conn = database.get_db()
     db_execute(conn, "UPDATE clientes SET senha = ? WHERE id = ?", (nova_senha, id_user))
+    _auditar_alvo(conn, 'senha_redefinida', id_user)
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
 
 @app.route('/api/v2/usuarios/<int:id_user>/info', methods=['PUT'])
 def editar_usuario_info(id_user):
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return jsonify({"error": "Acesso Negado"}), 403
+    bloqueio = _bloqueio_delegacao()
+    if bloqueio: return bloqueio
     data = request.json
     try:
         nome = bounded_text(data.get('nome'), 'Nome', maximum=160)
@@ -1724,6 +1816,7 @@ def editar_usuario_info(id_user):
         if existing:
             return jsonify(error='Login já está em uso.', status='Erro: Login já está em uso.'), 409
         db_execute(conn, "UPDATE clientes SET nome = ?, usuario = ?, logo_url = ?, telegram_token = ?, telegram_chat_id = ? WHERE id = ?", (nome, usuario, logo_url, tg_token, tg_chat, id_user))
+        _auditar_alvo(conn, 'usuario_editado', id_user)
         conn.commit(); status = "OK"
     except Exception:
         app.logger.exception('Falha ao editar usuário')
@@ -1734,11 +1827,169 @@ def editar_usuario_info(id_user):
 @app.route('/api/v2/usuarios/<int:id_user>', methods=['DELETE'])
 def deletar_usuario(id_user):
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return jsonify({"error": "Acesso Negado"}), 403
+    bloqueio = _bloqueio_delegacao()
+    if bloqueio: return bloqueio
     if id_user == session['user_id'] or id_user == 1: return jsonify({"error": "Ação não permitida"}), 403
     conn = database.get_db()
+    _auditar_alvo(conn, 'usuario_excluido', id_user)
+    acessos.remover_registros_do_usuario(conn, id_user)
     db_execute(conn, "DELETE FROM clientes WHERE id = ?", (id_user,))
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
+
+# ==========================================
+# 🔑 CENTRAL DE ACESSOS NEXO (contratos, níveis, delegação, auditoria)
+# ==========================================
+def _exigir_master():
+    if session.get('role') != 'Administrador Master':
+        return jsonify(error='Somente a MD gerencia contratos e delegação.'), 403
+    return None
+
+
+def _empresa_ou_404(conn, empresa_id):
+    row = conn.execute("SELECT id, nome, usuario FROM clientes WHERE id=? AND role='Cliente'", (empresa_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def _resumo_usuario(conn, usuario):
+    return {'id': usuario['id'], 'nome': usuario['nome'], 'usuario': usuario['usuario'], 'perfil': usuario['role'],
+            'ativo': bool(usuario.get('ativo', 1)), 'empresa_id': acessos.empresa_de(usuario),
+            'niveis': acessos.niveis_registrados(conn, usuario['id']),
+            'acesso_efetivo': acessos.acesso_efetivo(conn, usuario['id'])}
+
+
+@app.route('/api/v2/acessos/me')
+def acessos_me():
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        autor = _autor(conn)
+        empresa = acessos.empresa_de(autor)
+        return jsonify(aplicativos=acessos.APLICATIVOS, acesso=acessos.acesso_efetivo(conn, autor['id']),
+                       contratado=acessos.contrato(conn, empresa) if empresa else {a: True for a in acessos.APLICATIVOS},
+                       pode_gerenciar_usuarios=_pode_gerenciar_usuarios(conn))
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/empresas')
+def acessos_empresas():
+    negado = _exigir_master()
+    if negado: return negado
+    conn = database.get_db()
+    try:
+        empresas = conn.execute("SELECT id, nome, usuario, ativo FROM clientes WHERE role='Cliente' ORDER BY nome").fetchall()
+        return jsonify(empresas=[{**dict(e), 'contrato': acessos.contrato(conn, e['id']),
+                                  'delegacao': acessos.delegacao_ativa(conn, e['id'])} for e in empresas])
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/empresas/<int:empresa_id>/contrato', methods=['POST'])
+def acessos_contrato(empresa_id):
+    negado = _exigir_master()
+    if negado: return negado
+    data = request.get_json(silent=True) or {}
+    aplicativo, ativo = data.get('aplicativo'), data.get('ativo')
+    if aplicativo not in acessos.APLICATIVOS or not isinstance(ativo, bool):
+        return jsonify(error='Informe aplicativo válido e ativo (true/false).'), 400
+    conn = database.get_db()
+    try:
+        empresa = _empresa_ou_404(conn, empresa_id)
+        if not empresa:
+            return jsonify(error='Empresa não encontrada.'), 404
+        antes = acessos.contrato(conn, empresa_id)[aplicativo]
+        acessos.definir_contrato(conn, empresa_id, aplicativo, ativo)
+        _auditar(conn, 'contrato_alterado', alvo=empresa['usuario'], empresa_id=empresa_id,
+                 detalhes={'aplicativo': aplicativo, 'antes': antes, 'depois': ativo})
+        conn.commit()
+        return jsonify(status='OK', contrato=acessos.contrato(conn, empresa_id))
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/empresas/<int:empresa_id>/delegacao', methods=['POST'])
+def acessos_delegacao(empresa_id):
+    negado = _exigir_master()
+    if negado: return negado
+    ativo = (request.get_json(silent=True) or {}).get('ativo')
+    if not isinstance(ativo, bool):
+        return jsonify(error='Informe ativo (true/false).'), 400
+    conn = database.get_db()
+    try:
+        empresa = _empresa_ou_404(conn, empresa_id)
+        if not empresa:
+            return jsonify(error='Empresa não encontrada.'), 404
+        conn.execute('UPDATE clientes SET delegacao_acessos=? WHERE id=?', (1 if ativo else 0, empresa_id))
+        _auditar(conn, 'delegacao_alterada', alvo=empresa['usuario'], empresa_id=empresa_id, detalhes={'ativo': ativo})
+        conn.commit()
+        return jsonify(status='OK', delegacao=ativo)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/usuarios')
+def acessos_usuarios():
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        if not _pode_gerenciar_usuarios(conn):
+            return jsonify(error='Sem permissão para gerenciar acessos.'), 403
+        campos = 'SELECT id, nome, usuario, role, ativo, cliente_pai_id FROM clientes'
+        if session.get('role') == 'Administrador Master':
+            rows = conn.execute(f"{campos} WHERE role NOT IN ('Administrador Master', 'Operador Master') ORDER BY id").fetchall()
+        else:
+            empresa = acessos.empresa_de(_autor(conn))
+            rows = conn.execute(f'{campos} WHERE id=? OR cliente_pai_id=? ORDER BY id', (empresa, empresa)).fetchall()
+        return jsonify(usuarios=[_resumo_usuario(conn, dict(r)) for r in rows])
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/usuarios/<int:id_user>/nivel', methods=['POST'])
+def acessos_nivel(id_user):
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    data = request.get_json(silent=True) or {}
+    aplicativo, nivel = data.get('aplicativo'), data.get('nivel')
+    conn = database.get_db()
+    try:
+        erro = acessos.validar_mudanca_nivel(conn, session['user_id'], id_user, aplicativo, nivel)
+        if erro:
+            return jsonify(error=erro), 403
+        antes = acessos.niveis_registrados(conn, id_user).get(aplicativo)
+        acessos.definir_nivel(conn, id_user, aplicativo, nivel)
+        _auditar_alvo(conn, 'nivel_alterado', id_user, detalhes={'aplicativo': aplicativo, 'antes': antes or 'padrão', 'depois': nivel})
+        conn.commit()
+        return jsonify(status='OK', usuario=_resumo_usuario(conn, acessos._usuario(conn, id_user)))
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/auditoria')
+def acessos_auditoria():
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    try:
+        limite = min(max(int(request.args.get('limite', 100)), 1), 500)
+    except ValueError:
+        return jsonify(error='Limite inválido.'), 400
+    conn = database.get_db()
+    try:
+        if not _pode_gerenciar_usuarios(conn):
+            return jsonify(error='Sem permissão para ver a auditoria.'), 403
+        campos = 'SELECT id, criado_em, autor, empresa_id, acao, alvo, detalhes FROM auditoria_acessos'
+        if session.get('role') == 'Administrador Master':
+            rows = conn.execute(f'{campos} ORDER BY id DESC LIMIT ?', (limite,)).fetchall()
+        else:
+            rows = conn.execute(f'{campos} WHERE empresa_id=? ORDER BY id DESC LIMIT ?',
+                                (acessos.empresa_de(_autor(conn)), limite)).fetchall()
+        return jsonify(registros=[{**dict(r), 'criado_em': str(r['criado_em'])} for r in rows])
+    finally:
+        conn.close()
+
 
 @app.route('/sensores')
 def gerenciar_sensores():
