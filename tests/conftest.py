@@ -16,8 +16,9 @@ import database
 @pytest.fixture()
 def client():
     conn = database.get_db()
-    for table in ('sensor_credentials','sensores','clientes','telegram_outbox','telegram_status','logs_ia','dispositivos','historico_pings','historico_telemetria','comandos_pendentes','ips_custom','diagnosticos','medicoes_rede','starlink_medicoes','rotas_rede','empresa_aplicativos','usuario_aplicativos','auditoria_acessos'):
+    for table in ('sensor_credentials','sensores','clientes','telegram_outbox','telegram_status','logs_ia','dispositivos','historico_pings','historico_telemetria','comandos_pendentes','ips_custom','diagnosticos','medicoes_rede','starlink_medicoes','rotas_rede','empresa_aplicativos','usuario_aplicativos','auditoria_acessos','tentativas_login'):
         conn.execute(f'DELETE FROM {table}')
+    conn.execute("DELETE FROM config_sistema WHERE chave LIKE 'acessos_%'")  # exigência de 2FA da MD
     for ident, role, parent in ((1,'Administrador Master',None),(2,'Cliente',None),(3,'Cliente',None),(4,'Administrador Cliente',2)):
         conn.execute('INSERT INTO clientes (id, usuario, senha, role, ativo, cliente_pai_id) VALUES (?, ?, ?, ?, 1, ?)', (ident, f'user{ident}', 'not-a-real-password', role, parent))
     if database.DATABASE_URL:

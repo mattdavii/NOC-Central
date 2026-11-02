@@ -288,7 +288,7 @@ def test_csrf_required_for_browser_mutations(monkeypatch):
 def test_duplicate_username_is_rejected(client, login):
     login()
     response = client.post('/api/v2/usuarios', json={
-        'nome': 'Duplicado', 'usuario': 'user2', 'senha': 'test-only', 'role': 'Cliente',
+        'nome': 'Duplicado', 'usuario': 'user2', 'senha': 'teste-forte-42', 'role': 'Cliente',
     })
     assert response.status_code == 409
 
@@ -358,7 +358,7 @@ def test_cross_origin(client,login):
 
 def test_user_insert_after_fixture_sequence(client,login):
     login()
-    response=client.post('/api/v2/usuarios',json={'nome':'New client','usuario':'new-client','senha':'test-only','role':'Cliente'})
+    response=client.post('/api/v2/usuarios',json={'nome':'New client','usuario':'new-client','senha':'teste-forte-42','role':'Cliente'})
     assert response.status_code==200 and response.json['status']=='OK'
 
 

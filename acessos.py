@@ -39,6 +39,10 @@ ROTAS_DO_HUB = {
     'pagina_saude', 'api_saude', 'api_saude_config', 'debug_db',
     'acessos_me', 'acessos_empresas', 'acessos_contrato', 'acessos_delegacao',
     'acessos_usuarios', 'acessos_nivel', 'acessos_perfil', 'acessos_auditoria',
+    # Segurança de acesso (PR5): segunda etapa do login, Minha conta e controles da Central de Acessos.
+    'login_2fa', 'conta', 'conta_senha', 'conta_2fa_iniciar', 'conta_2fa_confirmar', 'conta_2fa_desativar',
+    'conta_2fa_codigos', 'conta_encerrar_sessoes', 'acessos_encerrar_sessoes', 'acessos_redefinir_2fa',
+    'acessos_exigir_2fa', 'acessos_exigir_2fa_md',
 }
 
 

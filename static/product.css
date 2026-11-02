@@ -71,6 +71,8 @@ html[data-theme="light"] .brand-logo-light { display:block; }
 .app-bar-actions { display:flex; align-items:center; gap:10px; margin-left:auto; flex:none; }
 .app-user { display:inline-flex; align-items:center; gap:7px; color:var(--text-main); font-size:.88rem; font-weight:600; padding-left:12px; border-left:1px solid var(--border); }
 .app-user i { color:var(--text-muted); font-size:1.1rem; }
+a.app-user { text-decoration:none; }
+a.app-user:hover, a.app-user.active { color:var(--blue); }
 .app-logout { margin:0; }
 .app-logout button { display:inline-flex; align-items:center; gap:7px; background:none; border:1px solid transparent; color:var(--text-muted); padding:7px 10px; border-radius:8px; cursor:pointer; font-size:.88rem; }
 .app-logout button:hover { color:var(--status-crit); border-color:color-mix(in srgb,var(--status-crit) 40%,transparent); }
