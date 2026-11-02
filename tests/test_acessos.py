@@ -28,7 +28,7 @@ def test_padrao_mantem_acesso_de_hoje(login):
     assert acessos.acesso_efetivo(conn, 5) == {'pulse': 'operador'}
     conn.close()
     client = login(5, 'Operador Cliente')
-    assert client.get('/').status_code == 200
+    assert client.get('/pulse').status_code == 200
     assert client.post('/api/v2/ack_alerta').status_code == 200
 
 
@@ -37,7 +37,7 @@ def test_contrato_desligado_bloqueia_empresa_inteira(login):
     r = client.post('/api/v2/acessos/empresas/2/contrato', json={'aplicativo': 'pulse', 'ativo': False})
     assert r.status_code == 200 and r.get_json()['contrato']['pulse'] is False
     client = login(4, 'Administrador Cliente')
-    assert client.get('/').status_code == 403
+    assert client.get('/pulse').status_code == 403
     assert client.get('/api/v2/diagnosticos').status_code == 403
     # Outra empresa e telas do Hub seguem funcionando.
     assert login(3, 'Cliente').get('/api/v2/diagnosticos').status_code == 200
@@ -50,11 +50,11 @@ def test_nivel_nenhum_e_leitura(login):
     client = login(1)
     assert client.post('/api/v2/acessos/usuarios/5/nivel', json={'aplicativo': 'pulse', 'nivel': 'leitura'}).status_code == 200
     operador = login(5, 'Operador Cliente')
-    assert operador.get('/').status_code == 200
+    assert operador.get('/pulse').status_code == 200
     r = operador.post('/api/v2/ack_alerta')
     assert r.status_code == 403 and 'leitura' in r.get_json()['error']
     assert login(1).post('/api/v2/acessos/usuarios/5/nivel', json={'aplicativo': 'pulse', 'nivel': 'nenhum'}).status_code == 200
-    assert login(5, 'Operador Cliente').get('/').status_code == 403
+    assert login(5, 'Operador Cliente').get('/pulse').status_code == 403
     detalhes = json.loads(_auditoria('nivel_alterado')[-1]['detalhes'])
     assert detalhes == {'aplicativo': 'pulse', 'antes': 'leitura', 'depois': 'nenhum'}
 
@@ -94,7 +94,7 @@ def test_delegacao_desligada_bloqueia_gestao_pela_empresa(login):
     assert admin.post('/api/v2/usuarios/5/toggle_status').status_code == 403
     assert admin.post('/api/v2/acessos/usuarios/5/nivel', json={'aplicativo': 'pulse', 'nivel': 'leitura'}).status_code == 403
     # O monitoramento continua; e a MD segue podendo gerenciar.
-    assert admin.get('/').status_code == 200
+    assert admin.get('/pulse').status_code == 200
     assert login(1).post('/api/v2/usuarios/5/toggle_status').status_code == 200
     assert _auditoria('usuario_desativado')[0]['empresa_id'] == 2
 

@@ -32,7 +32,7 @@ PERFIS_PRONTOS = {
 # Rotas do próprio Hub (portal, login, administração de acessos, servidor): não pertencem
 # a um aplicativo. Toda outra rota acessada com sessão de usuário é da NexoPulse.
 ROTAS_DO_HUB = {
-    'static', 'login', 'logout', 'healthz', 'manifest', 'service_worker', 'privacidade',
+    'static', 'hub', 'login', 'logout', 'healthz', 'manifest', 'service_worker', 'privacidade',
     'pacote_agente', 'instalar_sh', 'instalar_windows', 'agent_versao', 'public_cron_trigger',
     'gerenciar_usuarios', 'criar_usuario', 'deletar_usuario', 'editar_usuario_info',
     'alterar_senha_user', 'toggle_user_status', 'testar_telegram',
