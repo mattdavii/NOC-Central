@@ -2,9 +2,10 @@
 {% set _path = request.path %}
 {% set _role = session.get('role') %}
 <header class="app-bar">
-    <a class="brand-lockup" href="/" aria-label="NexoPulse Central — início">
-        <img class="brand-logo brand-logo-dark" src="/static/brand/nexopulse/logo-escuro.svg" alt="NexoPulse" width="166" height="48">
-        <img class="brand-logo brand-logo-light" src="/static/brand/nexopulse/logo-claro.svg" alt="NexoPulse" width="166" height="48">
+    <a class="brand-lockup" href="/" aria-label="NexoHub, da MD Soluções Tecnológicas — início">
+        <img class="brand-logo brand-logo-dark" src="/static/brand/nexohub/logo-escuro.svg" alt="NexoHub" width="166" height="48">
+        <img class="brand-logo brand-logo-light" src="/static/brand/nexohub/logo-claro.svg" alt="NexoHub" width="166" height="48">
+        <span class="brand-by" aria-hidden="true">por MD Soluções<br>Tecnológicas</span>
     </a>
     {% if session.get('usuario') and not hide_nav %}
     {% set _menu = menu_nexo() %}

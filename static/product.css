@@ -46,7 +46,8 @@ a { color:var(--link); }
 .btn-acao { text-transform:none; letter-spacing:0; }
 /* Barra superior única: marca, navegação principal e conta. */
 .app-bar { position:sticky; top:0; z-index:1000; min-height:64px; display:flex; align-items:center; gap:28px; padding:8px 28px; background:var(--overlay); border-bottom:1px solid var(--border); backdrop-filter:blur(16px); }
-.brand-lockup { display:inline-flex; align-items:center; text-decoration:none; min-width:0; flex:none; }
+.brand-lockup { display:inline-flex; align-items:center; gap:12px; text-decoration:none; min-width:0; flex:none; }
+.brand-by { padding-left:12px; border-left:1px solid var(--border); color:var(--text-muted); font-size:.68rem; font-weight:600; line-height:1.25; white-space:nowrap; }
 .brand-logo { width:168px; max-width:40vw; height:42px; object-fit:contain; object-position:left center; }
 .brand-logo-light { display:none; }
 html[data-theme="light"] .brand-logo-dark { display:none; }
@@ -86,7 +87,7 @@ html[data-theme="light"] .brand-logo-light { display:block; }
 .breadcrumb { display:flex; align-items:center; gap:8px; font-size:.82rem; color:var(--text-muted); margin-bottom:6px; }
 .breadcrumb a { color:var(--text-muted); text-decoration:none; }
 .breadcrumb a:hover { color:var(--blue); }
-@media(max-width:1100px) { .app-nav a span, .nav-group-btn span { display:none; } .app-nav .nav-menu a span { display:inline; } .app-nav a { padding:9px 11px; } .product-version { display:none; } }
+@media(max-width:1100px) { .app-nav a span, .nav-group-btn span, .brand-by { display:none; } .app-nav .nav-menu a span { display:inline; } .app-nav a { padding:9px 11px; } .product-version { display:none; } }
 @media(max-width:700px) { .app-bar { flex-wrap:wrap; gap:10px; padding:8px 14px; } .app-nav { order:3; flex-basis:100%; overflow-x:auto; scrollbar-width:none; } .app-nav::-webkit-scrollbar { display:none; } .app-nav a span { display:inline; } .nav-group { display:contents; } .nav-group-btn { display:none; } .nav-menu { display:contents; } .app-nav .nav-menu a { width:auto; } .app-nav .nav-menu a.active { box-shadow:inset 0 -2px 0 var(--blue); } .app-user span,.app-logout span { display:none; } .brand-logo { width:130px; height:36px; } }
 .section-nav { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 24px; }
 .section-nav a { padding:8px 14px; border:1px solid var(--border); border-radius:7px; text-decoration:none; color:var(--text-main); background:var(--bg-card); }

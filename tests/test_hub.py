@@ -99,3 +99,20 @@ def test_menu_por_aplicativo(login):
     login(1).post('/api/v2/acessos/empresas/2/delegacao', json={'ativo': False})
     page = login(4, 'Administrador Cliente').get('/').get_data(as_text=True)
     assert 'href="/usuarios"' not in page and 'id="menu-admin"' not in page
+
+
+def test_identidade_nexohub(client, login):
+    manifest = client.get('/manifest.json').get_json()
+    # O id não muda: quem já instalou o app recebe a atualização no mesmo app.
+    assert (manifest['id'], manifest['name'], manifest['start_url']) == ('/', 'NexoHub', '/')
+    assert {(a['short_name'], a['url']) for a in manifest['shortcuts']} == {('Operação', '/pulse'), ('Sala', '/tv')}
+    login(1)
+    hub_page = client.get('/').get_data(as_text=True)
+    assert '/static/brand/nexohub/logo-escuro.svg' in hub_page and 'por MD Soluções' in hub_page
+    assert '/static/brand/nexohub/favicon.svg' in hub_page
+    # Páginas do módulo NexoPulse: marca do portal na barra, favicon da NexoPulse na aba.
+    pulse_page = client.get('/pulse').get_data(as_text=True)
+    assert '<title>NexoPulse - Operação</title>' in pulse_page
+    assert '/static/brand/nexohub/logo-escuro.svg' in pulse_page and '/static/brand/nexopulse/favicon.svg' in pulse_page
+    acessos_page = client.get('/usuarios').get_data(as_text=True)
+    assert '<title>NexoHub - Central de Acessos</title>' in acessos_page
