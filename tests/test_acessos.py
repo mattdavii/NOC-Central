@@ -134,3 +134,57 @@ def test_excluir_usuario_apaga_registros_de_acesso(login):
 def central_hash(senha):
     from werkzeug.security import generate_password_hash
     return generate_password_hash(senha)
+
+
+# ===== PR2: Central de Acessos (tela e perfis prontos) =====
+
+def test_perfil_pronto_aplica_so_no_contratado(login):
+    _add_operador()
+    r = login(1).post('/api/v2/acessos/usuarios/5/perfil', json={'perfil': 'diretoria'})
+    assert r.status_code == 200
+    # Só a NexoPulse está contratada: Report (leitura) não é gravado.
+    assert r.get_json()['usuario']['acesso_efetivo'] == {'pulse': 'leitura'}
+    conn = database.get_db()
+    assert acessos.niveis_registrados(conn, 5) == {'pulse': 'leitura'}
+    conn.close()
+    detalhes = json.loads(_auditoria('perfil_aplicado')[0]['detalhes'])
+    assert detalhes == {'perfil': 'Diretoria', 'niveis': {'pulse': 'leitura'}}
+
+
+def test_perfil_pronto_e_tudo_ou_nada(login):
+    _add_operador()
+    conn = database.get_db()
+    acessos.definir_contrato(conn, 2, 'guard', True)
+    acessos.definir_nivel(conn, 4, 'guard', 'leitura')  # o admin só lê o Guard
+    conn.commit(); conn.close()
+    r = login(4, 'Administrador Cliente').post('/api/v2/acessos/usuarios/5/perfil', json={'perfil': 'tecnico'})
+    assert r.status_code == 403
+    conn = database.get_db()
+    assert acessos.niveis_registrados(conn, 5) == {}  # nem a NexoPulse foi gravada
+    conn.close()
+    assert login(4, 'Administrador Cliente').post('/api/v2/acessos/usuarios/5/perfil', json={'perfil': 'xyz'}).status_code == 400
+
+
+def test_tela_central_de_acessos_master(login):
+    _add_operador()
+    page = login(1).get('/usuarios').get_data(as_text=True)
+    assert 'Central de Acessos' in page
+    assert 'id="painel-empresas"' in page and 'Aplicativos contratados' in page
+    assert 'Acesso total (MD)' in page
+    assert 'NexoPulse · <strong>Operador</strong>' in page
+    assert 'value="Operador Cliente"' in page and 'value="Operador"' not in page
+    assert "abrirAcessos(5)" in page
+
+
+def test_tela_central_de_acessos_admin_da_empresa(login):
+    _add_operador()
+    page = login(4, 'Administrador Cliente').get('/usuarios').get_data(as_text=True)
+    assert 'Central de Acessos' in page
+    assert 'id="painel-empresas"' not in page  # contratos são só da MD
+    assert 'value="Administrador Master"' not in page and 'value="Cliente"' not in page
+    assert "abrirAcessos(5)" in page
+    assert "abrirAcessos(4)" not in page  # não edita o próprio acesso
+    dados = page.split('id="dados-acessos" type="application/json">')[1].split('</script>')[0]
+    dados = json.loads(dados)
+    assert dados['master'] is False and set(dados['usuarios']) == {'5'}
+    assert dados['meu_acesso'] == {'pulse': 'admin'}
