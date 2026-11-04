@@ -2039,7 +2039,7 @@ def gerenciar_usuarios():
         }
     finally:
         conn.close()
-    return render_template('usuarios.html', usuarios=usuarios, role_atual=session['role'], telegram_tenant=locals().get('tenant_id', 0),
+    return render_template('usuarios.html', usuarios=usuarios, senha_minimo=seguranca.SENHA_MINIMO, role_atual=session['role'], telegram_tenant=locals().get('tenant_id', 0),
                            clientes_pais=[dict(c) for c in clientes_pais], empresas=empresas, meu_acesso=meu_acesso,
                            aplicativos=acessos.APLICATIVOS, rotulos_nivel=acessos.ROTULOS_NIVEL,
                            perfis_prontos=acessos.PERFIS_PRONTOS, dados_acessos=dados_acessos, seguranca_acesso=seguranca_acesso)

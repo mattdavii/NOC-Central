@@ -114,3 +114,13 @@ def test_hub_mostra_a_empresa_master_primeiro(client):
     linhas = hub.visao_md(conn)
     conn.close()
     assert linhas[0]['id'] == md and linhas[0]['master'] and not any(l['master'] for l in linhas[1:])
+
+
+def test_tela_de_acessos_mostra_a_regra_da_senha_e_o_motivo_do_erro(login):
+    page = login().get('/usuarios').get_data(as_text=True)
+    assert 'id="senha-regra"' in page and 'alert(r.error ||' in page
+    # O motivo vem no campo "error" da resposta, que a tela agora mostra.
+    r = login().post('/api/v2/usuarios', json={'nome': 'Fazenda Sol', 'usuario': 'fazenda.sol', 'senha': 'curta123', 'role': 'Cliente'})
+    assert r.status_code == 400 and 'pelo menos' in r.get_json()['error']
+    ok = login().post('/api/v2/usuarios', json={'nome': 'Fazenda Sol', 'usuario': 'fazenda.sol', 'senha': 'Girassol2026x', 'role': 'Cliente'})
+    assert ok.get_json()['status'] == 'OK'

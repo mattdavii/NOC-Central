@@ -117,11 +117,13 @@
             </div>
             <div class="input-group">
                 <label>Login de Usuário</label>
-                <input type="text" id="usuario" placeholder="usuario.exemplo">
+                <input type="text" id="usuario" placeholder="usuario.exemplo" aria-describedby="usuario-regra">
+                <small class="help-text" id="usuario-regra">Letras, números, ponto, hífen, @ ou _ (sem espaço).</small>
             </div>
             <div class="input-group">
                 <label>Senha de Acesso</label>
-                <input type="password" id="senha" placeholder="••••••••">
+                <input type="password" id="senha" placeholder="••••••••" aria-describedby="senha-regra" autocomplete="new-password">
+                <small class="help-text" id="senha-regra">Mínimo de {{ senha_minimo }} caracteres, com letras e números, sem conter o login.</small>
             </div>
             <div class="input-group">
                 <label>Nível de Permissão</label>
@@ -434,7 +436,8 @@
                 const res = await fetch('/api/v2/usuarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 const r = await res.json();
                 if (r.status === "OK") window.location.reload();
-                else alert("Erro: " + r.status);
+                // Mostra o motivo de verdade (ex.: senha fraca), não só "Erro de validação".
+                else alert(r.error || ("Erro: " + r.status));
             } catch (e) { alert("Erro de conexão."); }
         }
 
@@ -529,23 +532,29 @@
                 telegram_chat_id: document.getElementById('edit_telegram_chat_id').value
             };
 
-            await fetch('/api/v2/usuarios/' + id + '/info', {
+            const res = await fetch('/api/v2/usuarios/' + id + '/info', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+            if (!res.ok) {
+                const r = await res.json().catch(() => ({}));
+                alert(r.error || 'Não foi possível salvar as alterações.');
+                return;
+            }
             window.location.reload();
         }
 
         async function mudarSenha(id) {
-            const novaSenha = prompt("Digite a nova senha para este usuário:");
+            const novaSenha = prompt("Nova senha para este usuário (mínimo de {{ senha_minimo }} caracteres, com letras e números):");
             if (novaSenha && novaSenha.trim() !== "") {
-                await fetch('/api/v2/usuarios/' + id + '/senha', {
+                const res = await fetch('/api/v2/usuarios/' + id + '/senha', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ senha: novaSenha })
                 });
-                alert("Senha alterada com sucesso!");
+                const r = await res.json().catch(() => ({}));
+                alert(res.ok ? "Senha alterada com sucesso!" : (r.error || 'Não foi possível alterar a senha.'));
             }
         }
 
