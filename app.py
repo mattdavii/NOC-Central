@@ -3152,10 +3152,16 @@ def acoes_remotas(mac_id):
             # No Postgres o horário é do fuso da sessão: devolve com o deslocamento para o navegador converter certo.
             campos = ("criado_em AT TIME ZONE current_setting('TimeZone') AS criado_em, concluido_em AT TIME ZONE current_setting('TimeZone') AS concluido_em"
                       if os.environ.get("DATABASE_URL") else 'criado_em, concluido_em')
-            linhas = conn.execute(f'SELECT id, acao, solicitante, status, codigo, saida, {campos} FROM acoes_remotas WHERE sensor_mac=? ORDER BY id DESC LIMIT 15', (mac_id,)).fetchall()
+            try:
+                limite = max(1, min(100, int(request.args.get('limite', 15))))
+            except ValueError:
+                limite = 15
+            total = conn.execute('SELECT COUNT(*) AS n FROM acoes_remotas WHERE sensor_mac=?', (mac_id,)).fetchone()['n']
+            linhas = conn.execute(f'SELECT id, acao, solicitante, status, codigo, saida, {campos} FROM acoes_remotas WHERE sensor_mac=? ORDER BY id DESC LIMIT ?', (mac_id, limite)).fetchall()
             return jsonify(permitido=bool(sensor['acoes_remotas']), acoes=ACOES_REMOTAS,
                            auto_atualizar=bool(sensor['auto_atualizar']), guarda=bool(sensor['auto_update_guard']),
                            build_sensor=sensor['agent_build'], build_central=AGENT_BUILD, build_recusado=sensor['build_recusado'] or None,
+                           total_historico=total,
                            historico=[{k: (str(v) if k in ('criado_em', 'concluido_em') and v is not None else v) for k, v in dict(r).items()} for r in linhas])
     finally:
         conn.close()
