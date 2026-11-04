@@ -267,3 +267,12 @@ def test_eventos_repetidos_viram_uma_linha(client):
     instab = [e for e in eventos if e['titulo'] == 'Instabilidade no provedor']
     assert len(instab) == 1 and instab[0]['vezes'] == 6 and instab[0]['tipo'] == 'volta'
     assert instab[0]['primeiro'] < instab[0]['quando']
+
+
+def test_toda_tela_do_app_permite_instalar_o_pwa():
+    # Sem o manifesto na página, o navegador não oferece "Instalar NexoHub" (caso real: a página inicial).
+    from pathlib import Path
+    raiz = Path(__file__).resolve().parents[1] / 'templates'
+    faltando = [p.name for p in raiz.glob('*.html')
+                if "_brand_bar.html" in p.read_text(encoding='utf-8') and 'rel="manifest"' not in p.read_text(encoding='utf-8')]
+    assert faltando == []
