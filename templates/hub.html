@@ -148,6 +148,7 @@
         .ev-titulo a:hover { text-decoration: underline; }
         .ev-meta, .ev-detalhe { font-size: .78rem; color: var(--text-muted); }
         .ev-detalhe { margin-top: 2px !important; overflow-wrap: anywhere; }
+        .ev-vezes { font-weight: 700; color: var(--text-main); }
 
         @media (max-width: 1080px) {
             .painel-md { grid-template-columns: 1fr; grid-template-areas: "atencao" "mes" "clientes" "eventos"; }
@@ -293,7 +294,8 @@
                 <div>
                     <p class="ev-titulo">{% if ev.link %}<a href="{{ ev.link }}">{{ ev.titulo }}</a>{% else %}{{ ev.titulo }}{% endif %}</p>
                     <p class="ev-meta">{% if ev.site %}{{ ev.site }} · {% endif %}<span data-ts="{{ ev.quando }}"></span></p>
-                    {% if ev.detalhe and ev.detalhe != ev.titulo %}<p class="ev-detalhe">{{ ev.detalhe }}</p>{% endif %}
+                    {% if ev.vezes > 1 %}<p class="ev-detalhe"><span class="ev-vezes">{{ ev.vezes }} vezes</span> desde <span data-ts="{{ ev.primeiro }}"></span>{% if ev.detalhe == 'Em aberto' %} · em aberto agora{% endif %}</p>
+                    {% elif ev.detalhe and ev.detalhe != ev.titulo %}<p class="ev-detalhe">{{ ev.detalhe }}</p>{% endif %}
                 </div>
             </li>
             {% endfor %}
