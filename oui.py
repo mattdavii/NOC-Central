@@ -69,6 +69,16 @@ def fabricante(mac):
 # social ("Hangzhou Hikvision Digital Technology Co.,Ltd."); na tela e na planilha a marca curta
 # ajuda mais, e a razão social continua no JSON. A ordem importa: o primeiro termo que casar vale.
 MARCAS = (
+    # CFTV primeiro: 'SAMSUNG TECHWIN' e 'DAHUA SCALE' precisam vencer 'SAMSUNG' e 'DAHUA'.
+    ('SAMSUNG TECHWIN', 'Hanwha (Samsung Techwin)'), ('HANWHA', 'Hanwha Vision'), ('DAHUA SCALE', 'Dahua Scale'),
+    ('EZVIZ', 'EZVIZ'), ('UNIVIEW', 'Uniview'), ('AXIS COMMUNICATIONS', 'Axis'), ('MILESIGHT', 'Milesight'),
+    ('TIANDY', 'Tiandy'), ('TVT CO', 'TVT'), ('REOLINK', 'Reolink'), ('JOVISION', 'Jovision'), ('VIVOTEK', 'Vivotek'),
+    ('BOSCH SECURITY', 'Bosch Security'), ('XIONGMAI', 'Xiongmai (XMeye/iCSee)'),
+    # Rede e comunicação
+    ('SPACE EXPLORATION', 'Starlink'), ('FIBERHOME', 'FiberHome'), ('CAMBIUM', 'Cambium'), ('MIMOSA', 'Mimosa'),
+    ('RUCKUS', 'Ruckus'), ('EXTREME NETWORKS', 'Extreme'), ('ZYXEL', 'Zyxel'), ('NETGEAR', 'Netgear'),
+    ('HIRSCHMANN', 'Hirschmann'), ('TELTONIKA', 'Teltonika'), ('ADVANTECH', 'Advantech'), ('MOXA', 'Moxa'),
+    ('PHOENIX CONTACT', 'Phoenix Contact'), ('SIEMENS', 'Siemens'), ('ARUBA', 'Aruba'),
     ('HIKVISION', 'Hikvision'), ('DAHUA', 'Dahua'), ('INTELBRAS', 'Intelbras'), ('UBIQUITI', 'Ubiquiti'),
     ('ROUTERBOARD', 'MikroTik'), ('MIKROTIK', 'MikroTik'), ('TP-LINK', 'TP-Link'), ('MERCUSYS', 'Mercusys'),
     ('TENDA', 'Tenda'), ('D-LINK', 'D-Link'), ('MOTOROLA', 'Motorola'), ('LENOVO', 'Lenovo'),

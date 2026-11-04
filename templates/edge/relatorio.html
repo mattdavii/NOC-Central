@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.svg" type="image/svg+xml">
+    <title>NexoPulse Edge - Relatório - {{ sensor.nome_local }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* Mesmo documento do relatório da Central (templates/relatorio.html): cores fixas de papel. */
+        body { font-family: 'Inter', system-ui, sans-serif; color: #333; margin: 0; padding: 0; background: #eee; }
+        .a4-page { color: #1f2937; color-scheme: light; background: #fff; width: 210mm; min-height: 297mm; margin: 20px auto; padding: 40px; box-sizing: border-box; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; margin-bottom: 30px; border-bottom: 3px solid #05A9DC; border-image: linear-gradient(90deg, #05A9DC, #05A88C) 1; }
+        .header img { max-height: 60px; }
+        .title { font-size: 24px; font-weight: bold; color: #082E56; margin: 0; }
+        .subtitle { font-size: 14px; color: #526077; }
+        .section-title { font-size: 18px; color: #082E56; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; margin-top: 30px; margin-bottom: 15px; page-break-after: avoid; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+        .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        .grid5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+        .risco { color: #92400E; }
+        .box { background: #f9fafb; border: 1px solid #e5e7eb; padding: 15px; border-radius: 8px; }
+        .box strong { display: block; font-size: 12px; color: #526077; text-transform: uppercase; margin-bottom: 5px; }
+        .box span { font-size: 20px; font-weight: bold; color: #082E56; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+        th { background: #f3f4f6; color: #374151; }
+        tr { page-break-inside: avoid; }
+        .badge { padding: 3px 7px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; white-space: nowrap; }
+        .badge.critica { background: #fee2e2; color: #B91C1C; }
+        .badge.ok { background: #dcfce7; color: #166534; }
+        .badge.aviso { background: #fef3c7; color: #92400E; }
+        .badge.desconhecido { background: transparent; color: #526077; border: 1px dashed #526077; }
+        .nota { font-size: 11px; color: #526077; margin: 6px 0 0; }
+        .footer { text-align: center; margin-top: 50px; font-size: 12px; color: #526077; border-top: 1px solid #e5e7eb; padding-top: 20px; }
+        .barra-acoes { position: sticky; top: 0; background: #082E56; color: #fff; padding: 10px 20px; display: flex; gap: 12px; align-items: center; justify-content: space-between; font-size: 14px; }
+        .barra-acoes button { background: #05A9DC; color: #082E56; border: 0; border-radius: 6px; padding: 8px 14px; font-weight: 700; cursor: pointer; }
+        @media print { body { background: #fff; } .a4-page { box-shadow: none; margin: 0; width: auto; min-height: auto; padding: 0; } .barra-acoes { display: none; } }
+    </style>
+</head>
+<body>
+    <div class="barra-acoes"><span>Relatório gerado pelo sensor · {{ periodo_str }}</span><button onclick="window.print()">Imprimir / salvar em PDF</button></div>
+    <script>
+        // O token veio na URL só para abrir esta aba: tira da barra de endereço (e do PDF impresso).
+        if (location.search.includes('token=')) {
+            const q = new URLSearchParams(location.search); q.delete('token');
+            history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : ''));
+        }
+    </script>
+    <div class="a4-page">
+        <div class="header">
+            <div>
+                <h1 class="title">Relatório de Saúde da Rede</h1>
+                <div class="subtitle">Emitido localmente pelo sensor NexoPulse Edge</div>
+            </div>
+            <img src="/static/brand/nexopulse/logo-claro.svg" alt="NexoPulse">
+        </div>
+
+        <div class="grid" style="margin-bottom: 30px;">
+            <div class="box">
+                <strong>Local / Sensor</strong>
+                <span style="font-size: 16px;">{{ sensor.nome_local }}</span>
+                <strong style="margin-top: 8px;">Versão do agente</strong>
+                <span class="mono" style="font-size: 12px;">{{ sensor.agent_version }}</span>
+            </div>
+            <div class="box">
+                <strong>Gateway Padrão</strong>
+                <span class="mono" style="font-size: 16px;">{{ sensor.ip_gateway or 'Desconhecido' }}</span>
+                <strong style="margin-top: 8px;">Rede / Equipamento Agente</strong>
+                <span class="mono" style="font-size: 12px;">{{ sensor.rede_cidr or '--' }} · {{ sensor.mac_id }}</span>
+            </div>
+            <div class="box" style="background: #f0f9ff; border-color: #bae6fd;">
+                <strong>Filtro de Extração</strong>
+                <span style="font-size: 14px; color: #0369a1;">{{ periodo_str }}</span>
+                <strong style="margin-top: 8px;">Data de Emissão</strong>
+                <span style="font-size: 13px; color: #0369a1;">{{ data_emissao }}</span>
+            </div>
+        </div>
+
+        {% set g = resumo.por_gravidade %}
+        {% set r = inventario.resumo %}
+        <h3 class="section-title">Resumo do período</h3>
+        <div class="grid4">
+            <div class="box"><strong>Críticos</strong><span style="color:#B91C1C">{{ g.get('Crítica', 0) }}</span></div>
+            <div class="box"><strong>Alertas / avisos</strong><span style="color:#92400E">{{ g.get('Alerta', 0) + g.get('Aviso', 0) }}</span></div>
+            <div class="box"><strong>Normalizações</strong><span style="color:#166534">{{ g.get('OK', 0) }}</span></div>
+            <div class="box"><strong>Total de eventos</strong><span>{{ g.values()|sum }}</span></div>
+        </div>
+        {% if resumo.por_tipo %}
+        <table>
+            <thead><tr><th>Evento mais frequente</th><th style="width:90px">Ocorrências</th></tr></thead>
+            <tbody>{% for tipo, n in resumo.por_tipo %}<tr><td>{{ tipo }}</td><td>{{ n }}</td></tr>{% endfor %}</tbody>
+        </table>
+        {% endif %}
+        {% if resumo.primeiro_registro %}<p class="nota">O registro local deste sensor começa em {{ resumo.primeiro_registro }}; períodos anteriores não têm eventos guardados aqui.</p>{% endif %}
+
+        <h3 class="section-title">Estado no momento da emissão</h3>
+        <div class="grid5">
+            <div class="box"><strong>Internet (WAN)</strong><span style="font-size:16px; color: {{ '#166534' if wan_ok else '#B91C1C' }}">{{ 'Online' if wan_ok else 'Sem internet' }}</span></div>
+            <div class="box"><strong>Latência ao gateway</strong><span style="font-size:16px">{{ (ping_gateway|string + ' ms') if ping_gateway else 'Sem resposta' }}</span></div>
+            <div class="box"><strong>Dispositivos na rede</strong><span>{{ r.get('total', 0) }}</span></div>
+            <div class="box"><strong>Equipamentos de CFTV</strong><span>{{ r.get('cftv', 0) }}</span></div>
+            <div class="box"><strong>Equipamentos de comunicação</strong><span>{{ r.get('comunicacao', 0) }}</span></div>
+        </div>
+
+        {% set cftv = inventario.dispositivos|selectattr('cftv')|list %}
+        {% if cftv %}
+        <h3 class="section-title">Equipamentos de CFTV</h3>
+        <table>
+            <thead><tr><th>IP</th><th>Tipo</th><th>Fabricante / modelo</th><th>Status</th><th>Evidências</th></tr></thead>
+            <tbody>
+                {% for d in cftv %}
+                <tr>
+                    <td class="mono" style="font-weight:bold">{{ d.ip }}<br><span style="font-weight:normal; color:#526077">{{ d.mac }}</span></td>
+                    <td>{{ d.tipo }}<br><span style="color:#526077">confiança {{ d.cftv.confianca }}</span></td>
+                    <td>{{ d.cftv.fabricante or d.marca.valor or '—' }}{% if d.modelo %}<br><b>{{ d.modelo }}</b>{% endif %}</td>
+                    <td>{% if d.status == 'online' %}<span class="badge ok">Online</span>{% elif d.status == 'sem_icmp' %}<span class="badge aviso">Sem ICMP</span>{% else %}<span class="badge critica">Sem resposta</span>{% endif %}</td>
+                    <td style="color:#526077">{{ d.cftv.evidencias|join(' · ') }}{% if d.cftv.portas %}<br>Portas: {{ d.cftv.portas|join(', ') }}{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        {% set com = inventario.dispositivos|selectattr('comunicacao')|list %}
+        {% if com %}
+        <h3 class="section-title">Equipamentos de comunicação</h3>
+        <table>
+            <thead><tr><th>IP</th><th>Tipo</th><th>Fabricante / modelo / firmware</th><th>Status</th><th>Evidências e riscos</th></tr></thead>
+            <tbody>
+                {% for d in com %}
+                <tr>
+                    <td class="mono" style="font-weight:bold">{{ d.ip }}<br><span style="font-weight:normal; color:#526077">{{ d.mac }}</span></td>
+                    <td>{{ d.tipo }}{% if d.papel == 'gateway' %} (gateway){% endif %}<br><span style="color:#526077">confiança {{ d.comunicacao.confianca }}</span></td>
+                    <td>{{ d.comunicacao.fabricante or d.marca.valor or '—' }}{% if d.modelo %}<br><b>{{ d.modelo }}</b>{% endif %}{% if d.firmware %}<br><span style="color:#526077">{{ d.firmware }}</span>{% endif %}</td>
+                    <td>{% if d.status == 'online' %}<span class="badge ok">Online</span>{% elif d.status == 'sem_icmp' %}<span class="badge aviso">Sem ICMP</span>{% else %}<span class="badge critica">Sem resposta</span>{% endif %}</td>
+                    <td style="color:#526077">{{ d.comunicacao.evidencias|join(' · ') }}{% if d.comunicacao.portas %}<br>Portas: {{ d.comunicacao.portas|join(', ') }}{% endif %}
+                        {% for risco in d.comunicacao.riscos or [] %}<br><b class="risco">⚠ {{ risco }}</b>{% endfor %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        <h3 class="section-title">Eventos de auditoria e ocorrências</h3>
+        <table>
+            <thead><tr><th style="width:120px">Data / Hora</th><th>Gravidade</th><th>Evento</th><th>Detalhes Técnicos</th></tr></thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td class="mono" style="white-space: nowrap;">{{ log.data_hora }}</td>
+                    <td><span class="badge {% if log.gravidade == 'Crítica' %}critica{% elif log.gravidade == 'OK' %}ok{% else %}aviso{% endif %}">{{ log.gravidade }}</span></td>
+                    <td><b>{{ log.tipo }}</b></td>
+                    <td>{{ log.detalhes }}</td>
+                </tr>
+                {% endfor %}
+                {% if not logs %}<tr><td colspan="4" style="text-align: center; color: #526077; padding: 20px;">Nenhuma ocorrência registrada no período.</td></tr>{% endif %}
+            </tbody>
+        </table>
+        {% if truncado %}<p class="nota">Mostrando os 2.000 eventos mais recentes do período. Para a lista completa, exporte o CSV no painel local.</p>{% endif %}
+
+        <h3 class="section-title">Dispositivos descobertos na rede local</h3>
+        <table>
+            <thead><tr><th>IP Local</th><th>MAC Address</th><th>Identificação</th><th>Marca</th><th>Tipo / modelo</th><th>Último estado</th></tr></thead>
+            <tbody>
+                {% for d in inventario.dispositivos %}
+                <tr>
+                    <td class="mono" style="font-weight: bold;">{{ d.ip }}</td>
+                    <td class="mono" style="color: #526077;">{{ d.mac or '' }}</td>
+                    <td>{{ d.apelido or d.nome.valor or (d.cftv.nome if d.cftv) or (d.comunicacao.nome if d.comunicacao) or '—' }}</td>
+                    <td>{{ d.marca.valor or ('MAC privado' if d.mac_privado else '—') }}</td>
+                    <td>{{ d.tipo or '' }}{% if d.modelo %} {{ d.modelo }}{% endif %}</td>
+                    <td>
+                        {% if d.status == 'online' %}<span class="badge ok">Online</span>
+                        {% elif d.status == 'sem_icmp' %}<span class="badge aviso">Sem ICMP</span>
+                        {% elif d.status == 'offline' %}<span class="badge critica">Offline</span>
+                        {% else %}<span class="badge desconhecido">Desconhecido</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not inventario.dispositivos %}<tr><td colspan="6" style="text-align: center; color: #526077;">Nenhum dispositivo mapeado.</td></tr>{% endif %}
+            </tbody>
+        </table>
+        <p class="nota">Inventário da última varredura do sensor (mesma rede/VLAN). Marca pelo prefixo do MAC; modelo e firmware quando o equipamento anuncia (ONVIF, UPnP, MikroTik MNDP, Ubiquiti).</p>
+
+        <div class="footer">
+            <img src="/static/brand/nexopulse/logo-claro.svg" alt="NexoPulse" width="140" height="40" style="display:block; margin: 0 auto 8px;">
+            <strong>NexoPulse Edge</strong> · Network Intelligence &amp; Monitoring<br>
+            Gerado pelo próprio sensor a partir do registro local de eventos e da última varredura da rede.
+        </div>
+    </div>
+</body>
+</html>

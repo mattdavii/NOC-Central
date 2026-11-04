@@ -3,7 +3,9 @@
 O JSON é pensado para ser entregue a uma IA: cada informação inferida diz de onde veio e com que
 confiança, e o próprio arquivo explica os campos ("sobre", "glossario", "limitacoes").
 """
+import csv
 import io
+import json
 import unicodedata
 from collections import Counter
 from datetime import datetime, timezone
@@ -33,13 +35,33 @@ LIMITACOES = [
     'O nome vem do que o próprio equipamento ou o roteador anunciam (DNS reverso, NetBIOS, mDNS) e pode '
     'ter sido definido pelo usuário do equipamento.',
     'Equipamentos desligados ou que não falaram na rede durante a varredura não aparecem.',
+    'Modelo, firmware e tipo vêm do que o equipamento anuncia (ONVIF, UPnP, MikroTik MNDP, descoberta '
+    'da Ubiquiti); quem não anuncia fica sem modelo. O tipo também usa portas típicas, a marca e o papel '
+    'de gateway, por isso traz o nível de confiança e as evidências usadas.',
+    'Switches não gerenciáveis e equipamentos sem IP na rede do sensor não aparecem: não falam IP.',
 ]
 GLOSSARIO = {
     'status': STATUS,
     'mac_privado': 'MAC com o bit "administrado localmente" ligado: gerado pelo sistema, não de fábrica.',
     'papel': {'gateway': 'Gateway padrão da rede do sensor', 'sensor': 'O próprio sensor NexoPulse'},
     'estado_vizinho': 'Estado da entrada na tabela de vizinhos do sensor (REACHABLE, STALE, DELAY...).',
+    'tipo': 'Classe do equipamento quando identificada: CFTV (Câmera IP, NVR/DVR, Equipamento de CFTV) ou '
+            'comunicação (Roteador/Firewall, Switch, Access Point/Rádio, ONU/ONT, Starlink, Roteador 4G/LTE, '
+            'Gateway industrial, Equipamento de comunicação).',
+    'cftv': 'Detalhes da identificação de CFTV: confiança (alta, media, baixa), evidências e portas abertas.',
+    'comunicacao': 'Detalhes da identificação de equipamento de comunicação: confiança, evidências, portas, '
+                   'firmware e riscos observados (ex.: Telnet aberto).',
 }
+
+
+def _cftv(valor):
+    """Na Central o campo chega do banco como texto JSON; no Edge, como dicionário."""
+    if isinstance(valor, str):
+        try:
+            valor = json.loads(valor)
+        except ValueError:
+            return None
+    return valor if isinstance(valor, dict) else None
 
 
 def _agora():
@@ -53,8 +75,12 @@ def _chave_ip(ip):
         return (1, str(ip))
 
 
-def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False):
-    """Dicionário do levantamento a partir da linha do sensor e das linhas de dispositivos."""
+def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False, gerado_por=None):
+    """Dicionário do levantamento a partir da linha do sensor e das linhas de dispositivos.
+
+    Usado pela Central (dados do banco) e pelo painel local do Edge (dados da última varredura);
+    gerado_por diz qual dos dois montou o arquivo.
+    """
     sensor = dict(sensor)
     ip_gw, ip_sensor = sensor.get('ip_gateway'), sensor.get('ip_sensor')
     itens = []
@@ -67,6 +93,9 @@ def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False):
         hostname = linha.get('hostname')
         papel = 'gateway' if linha.get('ip') == ip_gw else ('sensor' if linha.get('ip') == ip_sensor else None)
         vistos.add(linha.get('ip'))
+        cftv = _cftv(linha.get('cftv'))
+        com = _cftv(linha.get('comunicacao'))
+        ident = cftv or com or {}
         itens.append({
             'ip': linha.get('ip'),
             'mac': linha.get('mac'),
@@ -83,6 +112,11 @@ def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False):
             'latencia_ms': linha.get('latencia') if (linha.get('latencia') or 0) > 0 else None,
             'estado_vizinho': linha.get('neighbor_state') or None,
             'visto_em': linha.get('visto_em'),
+            'tipo': linha.get('tipo_equipamento') or ident.get('tipo'),
+            'modelo': linha.get('modelo') or ident.get('modelo'),
+            'firmware': linha.get('firmware') or ident.get('firmware'),
+            'cftv': cftv,
+            'comunicacao': com,
         })
     if ip_sensor and ip_sensor not in vistos:
         # O sensor não aparece na própria tabela ARP; entra para o inventário ficar completo.
@@ -97,6 +131,7 @@ def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False):
                       'fonte': FONTES_MARCA.get(fonte), 'confianca': CONFIANCA_MARCA.get(fonte)},
             'mac_privado': fonte == 'mac_privado', 'papel': 'sensor', 'status': 'online',
             'latencia_ms': None, 'estado_vizinho': None, 'visto_em': None,
+            'tipo': 'Sensor NexoPulse', 'modelo': None, 'firmware': None, 'cftv': None, 'comunicacao': None,
         })
         itens.sort(key=lambda d: _chave_ip(d['ip']))
 
@@ -105,7 +140,7 @@ def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False):
         'formato': FORMATO,
         'versao_formato': VERSAO_FORMATO,
         'gerado_em': _agora(),
-        'gerado_por': f'NexoPulse Central {versao_central}'.strip(),
+        'gerado_por': gerado_por or f'NexoPulse Central {versao_central}'.strip(),
         'sobre': SOBRE,
         'nomes_ocultos': bool(ocultar_nomes),
         'sensor': {
@@ -134,6 +169,10 @@ def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False):
             'por_marca': dict(marcas.most_common()),
             'com_nome': sum(1 for d in itens if d['nome']['valor'] or d['apelido']),
             'mac_privado': sum(1 for d in itens if d['mac_privado']),
+            'cftv': sum(1 for d in itens if d['cftv']),
+            'comunicacao': sum(1 for d in itens if d['comunicacao']),
+            'por_tipo': dict(Counter(d['tipo'] for d in itens if d['tipo']).most_common()),
+            'com_modelo': sum(1 for d in itens if d['modelo']),
         },
         'dispositivos': itens,
         'glossario': GLOSSARIO,
@@ -143,14 +182,24 @@ def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False):
 # ---------------------------------------------------------------- XLSX
 COLUNAS = (('IP', 16), ('MAC', 19), ('Apelido', 24), ('Nome na rede', 28), ('Fonte do nome', 14),
            ('Marca', 20), ('Fabricante (registro IEEE)', 38), ('MAC privado', 12), ('Papel', 10),
-           ('Status', 34), ('Latência (ms)', 13), ('Estado L2', 12), ('Visto em (UTC)', 21))
+           ('Status', 34), ('Latência (ms)', 13), ('Estado L2', 12), ('Visto em (UTC)', 21),
+           ('Categoria', 14), ('Tipo', 22), ('Modelo', 26), ('Firmware', 24), ('Confiança', 11),
+           ('Evidências', 60), ('Portas', 30), ('Riscos', 40))
 
 
 def _linha_planilha(d):
     return [d['ip'], d['mac'], d['apelido'], d['nome']['valor'], d['nome']['fonte'], d['marca']['valor'],
             d['marca']['razao_social'], 'Sim' if d['mac_privado'] else 'Não',
             {'gateway': 'Gateway', 'sensor': 'Sensor'}.get(d['papel'], ''), STATUS.get(d['status'], d['status']),
-            d['latencia_ms'], d['estado_vizinho'], d['visto_em']]
+            d['latencia_ms'], d['estado_vizinho'], d['visto_em'],
+            'CFTV' if d['cftv'] else 'Comunicação' if d.get('comunicacao') else None, d['tipo'], d['modelo'],
+            d.get('firmware'), ident(d).get('confianca'), '; '.join(ident(d).get('evidencias') or []) or None,
+            ', '.join(ident(d).get('portas') or []) or None, '; '.join(ident(d).get('riscos') or []) or None]
+
+
+def ident(d):
+    """A identificação do dispositivo, seja de CFTV ou de comunicação ({} se nenhuma)."""
+    return d.get('cftv') or d.get('comunicacao') or {}
 
 
 def _texto(celula, valor):
@@ -187,14 +236,18 @@ def para_xlsx(dados):
     linhas = [('Levantamento de rede', None), ('Gerado em (UTC)', dados['gerado_em']), ('Sensor', s['nome']),
               ('Cliente', s['cliente']), ('IP do sensor', s['ip']), ('Gateway', s['gateway']), ('Rede', e['rede']),
               ('Faixa varrida', e['faixa_varrida']), ('Provedor', s['provedor']), ('Total de dispositivos', r['total']),
-              ('Com nome identificado', r['com_nome']), ('Com MAC privado', r['mac_privado']), (None, None),
+              ('Com nome identificado', r['com_nome']), ('Com modelo identificado', r['com_modelo']),
+              ('Equipamentos de CFTV', r['cftv']), ('Equipamentos de comunicação', r['comunicacao']),
+              ('Com MAC privado', r['mac_privado']), (None, None),
               ('Status', 'Quantidade')]
     linhas += [(STATUS.get(k, k), v) for k, v in r['por_status'].items()]
+    if r['por_tipo']:
+        linhas += [(None, None), ('Tipo', 'Quantidade')] + list(r['por_tipo'].items())
     linhas += [(None, None), ('Marca', 'Quantidade')] + list(r['por_marca'].items())
     for lin, (rotulo, valor) in enumerate(linhas, start=1):
         _texto(resumo.cell(row=lin, column=1), rotulo)
         _texto(resumo.cell(row=lin, column=2), valor)
-        if rotulo in ('Levantamento de rede', 'Status', 'Marca'):
+        if rotulo in ('Levantamento de rede', 'Status', 'Tipo', 'Marca'):
             for col in (1, 2):
                 resumo.cell(row=lin, column=col).font = cabecalho
                 resumo.cell(row=lin, column=col).fill = fundo
@@ -211,6 +264,21 @@ def para_xlsx(dados):
     saida = io.BytesIO()
     livro.save(saida)
     return saida.getvalue()
+
+
+def para_csv(dados):
+    """Planilha simples (separador ';', UTF-8 com BOM) que o Excel em português abre direto."""
+    saida = io.StringIO()
+    escritor = csv.writer(saida, delimiter=';', lineterminator='\r\n')
+    escritor.writerow([titulo for titulo, _ in COLUNAS])
+    for d in dados['dispositivos']:
+        linha = []
+        for valor in _linha_planilha(d):
+            texto = '' if valor is None else str(valor)
+            # Mesmo cuidado do XLSX: texto que começa com =, +, - ou @ não vira fórmula.
+            linha.append("'" + texto if texto[:1] in ('=', '+', '-', '@') else texto)
+        escritor.writerow(linha)
+    return ('\ufeff' + saida.getvalue()).encode('utf-8')
 
 
 def nome_arquivo(dados, extensao):

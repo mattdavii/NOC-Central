@@ -53,6 +53,11 @@ except ImportError:
     netdiag = None
 
 try:
+    import descoberta   # CFTV e equipamentos de comunicação (cftv.py, comunicacao.py)
+except ImportError:
+    descoberta = None
+import edge_local
+try:
     import nomes_rede
 except ImportError:
     nomes_rede = None
@@ -515,15 +520,25 @@ def init_local_db():
     conn.execute('''CREATE TABLE IF NOT EXISTS servicos_os (id INTEGER PRIMARY KEY, nome_servico TEXT, descricao TEXT)''')
     conn.commit()
     conn.close()
+    EVENTOS_LOCAIS.iniciar()
+
+# Registro de eventos do painel local: guarda NOC_LOG_DIAS dias (padrão 90), até NOC_LOG_MAX linhas.
+EVENTOS_LOCAIS = edge_local.Eventos('sensor_local.db')
 
 def log_local_event(tipo, detalhes, gravidade="Alerta"):
-    try:
-        conn = sqlite3.connect('sensor_local.db')
-        conn.execute("INSERT INTO logs_locais (tipo, detalhes, gravidade) VALUES (?, ?, ?)", (tipo, detalhes, gravidade))
-        conn.execute("DELETE FROM logs_locais WHERE id NOT IN (SELECT id FROM logs_locais ORDER BY id DESC LIMIT 30)")
-        conn.commit()
-        conn.close()
-    except: pass
+    EVENTOS_LOCAIS.registrar(tipo, detalhes, gravidade)
+
+def enviar_alertas(url, alertas, timeout=5, registrar_local=True):
+    """Manda alertas à Central e, se ela recebeu, guarda uma cópia no registro local (painel e relatório
+    do Edge). Se o envio falhar a exceção sobe: quem chamou já registra o alerta com o motivo da falha."""
+    urllib.request.urlopen(
+        urllib.request.Request(url, data=json.dumps({"mac_id": get_mac(), "alertas": alertas}).encode('utf-8'),
+                               headers=api_headers(), method='POST'),
+        timeout=timeout,
+    )
+    if registrar_local:
+        for alerta in alertas:
+            log_local_event(alerta.get("tipo", "Alerta"), alerta.get("detalhes", ""), alerta.get("gravidade", "Alerta"))
 
 def verificar_atualizacao(mac):
     """Avisa quando a Central tem uma versão do agente diferente da instalada.
@@ -567,8 +582,7 @@ def executar_speedtest(mac, url_central):
             try:
                 url_log = url_central.replace('report_data', 'alertas_ia')
                 alerta = [{"tipo": "Falha de Speedtest", "gravidade": "Aviso", "detalhes": f"Ookla: {erro_principal} | Tele2: {str(e2)}"}]
-                req_log = urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": alerta}).encode('utf-8'), headers=api_headers(), method='POST')
-                urllib.request.urlopen(req_log, timeout=5)
+                enviar_alertas(url_log, alerta, timeout=5)
             except:
                 log_local_event("Speedtest", f"Falha total: Ookla={erro_principal} | Tele2={str(e2)} | e não conseguiu nem reportar à central (sem internet?)", "Crítica")
             return
@@ -611,16 +625,11 @@ def acordar_pc(macaddress):
 def executar_scan_loop(mac, url_central, gateway_ip):
     """Heurística de anomalia L2. Não confirma loop nem tempestade de broadcast."""
     try:
-        req = urllib.request.Request(
-            url_central.replace('report_data', 'alertas_ia'),
-            data=json.dumps({"mac_id": mac, "alertas": [{
-                "tipo": "🔍 Análise de Tráfego L2 Iniciada",
-                "gravidade": "Aviso",
-                "detalhes": "Executando uma heurística de variação de tráfego no sensor. O resultado não confirma loop ou broadcast storm."
-            }]}).encode('utf-8'),
-            headers=api_headers(), method='POST'
-        )
-        urllib.request.urlopen(req, timeout=3)
+        enviar_alertas(url_central.replace('report_data', 'alertas_ia'), [{
+            "tipo": "🔍 Análise de Tráfego L2 Iniciada",
+            "gravidade": "Aviso",
+            "detalhes": "Executando uma heurística de variação de tráfego no sensor. O resultado não confirma loop ou broadcast storm."
+        }], timeout=3)
         if not psutil or gateway_ip == "Desconhecido":
             return
 
@@ -661,18 +670,11 @@ def executar_scan_loop(mac, url_central, gateway_ip):
             )
             grav = "OK"
 
-        urllib.request.urlopen(
-            urllib.request.Request(
-                url_central.replace('report_data', 'alertas_ia'),
-                data=json.dumps({"mac_id": mac, "alertas": [{
-                    "tipo": "Resultado: Análise de Tráfego L2",
-                    "gravidade": grav,
-                    "detalhes": msg
-                }]}).encode('utf-8'),
-                headers=api_headers(), method='POST'
-            ),
-            timeout=5
-        )
+        enviar_alertas(url_central.replace('report_data', 'alertas_ia'), [{
+            "tipo": "Resultado: Análise de Tráfego L2",
+            "gravidade": grav,
+            "detalhes": msg
+        }], timeout=5)
     except Exception:
         pass
 
@@ -726,11 +728,12 @@ def executar_admin_linux(acao, alvo=None):
 # ==========================================
 HOST_INFO_INTERVALO = max(15, int(os.environ.get("NOC_HOST_INFO_INTERVALO", "30")))
 _host_info_pendente = None
+_host_info_ultimo = None   # cópia para o painel local (a pendente é consumida no envio à Central)
 _host_info_lock = threading.Lock()
 
 
 def loop_host_info():
-    global _host_info_pendente
+    global _host_info_pendente, _host_info_ultimo
     if host_metrics is None:
         return
     host_metrics.coletar()  # primeira leitura só prepara as taxas de rede e de CPU
@@ -743,6 +746,7 @@ def loop_host_info():
             continue
         with _host_info_lock:
             _host_info_pendente = info
+            _host_info_ultimo = info
 
 
 def pegar_host_info():
@@ -1121,7 +1125,7 @@ def loop_telemetria():
                     log_local_event("Auto-Cura", "Queda de DNS/WAN detectada. O Agente executou limpeza de DNS.", "Aviso")
                     try:
                         url_log = URL_CENTRAL.replace('report_data', 'alertas_ia')
-                        urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "⚙️ Sistema de Auto-Cura", "gravidade": "Aviso", "detalhes": "Agente executou script de Flush DNS localmente."}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
+                        enviar_alertas(url_log, [{"tipo": "⚙️ Sistema de Auto-Cura", "gravidade": "Aviso", "detalhes": "Agente executou script de Flush DNS localmente."}], timeout=3, registrar_local=False)
                     except Exception as e:
                         log_local_event("Auto-Cura", f"Flush DNS rodou, mas falhou ao reportar à central: {e}", "Alerta")
                 except Exception as e:
@@ -1135,7 +1139,13 @@ def loop_telemetria():
             if nomes_rede:
                 try: nomes_rede.anotar(dispositivos)
                 except Exception as e: log_local_event("Topologia", f"Falha ao anotar nomes dos dispositivos: {e}", "Alerta")
-            if forcar_varredura: ultima_varredura = agora
+            if descoberta:
+                # CFTV e comunicação: ONVIF, UPnP, MNDP, Ubiquiti, portas típicas e marca (ver descoberta.py)
+                try: descoberta.anotar(dispositivos, ip_local=rede.get("ip"), gateway_ip=gateway_ip)
+                except Exception as e: log_local_event("Descoberta", f"Falha ao identificar equipamentos: {e}", "Alerta")
+            if forcar_varredura:
+                ultima_varredura = agora
+                dados_sensores["visto_em"] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
 
             # 🌪️ MÓDULO STORM WATCH
             gw_mac_atual = None
@@ -1156,10 +1166,15 @@ def loop_telemetria():
                     )
                 })
 
+            if descoberta:
+                alertas_rede += [{"tipo": t, "gravidade": g, "detalhes": d} for t, d, g in descoberta.eventos()]
+
             if alertas_rede:
-                try: urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": alertas_rede}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
+                try: enviar_alertas(URL_CENTRAL.replace('report_data', 'alertas_ia'), alertas_rede, timeout=3)
                 except Exception as e:
-                    log_local_event("Alerta de Rede", f"Detectou {[a['tipo'] for a in alertas_rede]} mas falhou ao reportar à central: {e}", "Crítica")
+                    # Sem a Central, o registro local é o único lugar do alerta: guarda cada um por inteiro.
+                    for a in alertas_rede:
+                        log_local_event(a["tipo"], f"{a['detalhes']} (não enviado à Central: {e})", a["gravidade"])
 
             dados_sensores["cpu"] = cpu; dados_sensores["ram"] = ram; dados_sensores["disco"] = disco; dados_sensores["temp"] = cpu_temp; dados_sensores["gpu_temp"] = gpu_temp; dados_sensores["net_down"] = net_down; dados_sensores["net_up"] = net_up; dados_sensores["portas"] = str_portas; dados_sensores["meu_ip"] = meu_ip; dados_sensores["gateway_ip"] = gateway_ip; dados_sensores["ping_gateway"] = ping_gw; dados_sensores["pings"] = pings; dados_sensores["topologia"] = dispositivos
             dados_sensores["interface"] = interface_rede; dados_sensores["rede_cidr"] = rede.get("cidr", ""); dados_sensores["mac_interface"] = rede.get("mac_interface", "")
@@ -1223,7 +1238,7 @@ def loop_telemetria():
                                 num_cores = psutil.cpu_count() or 1
                                 procs = sorted(psutil.process_iter(['name', 'cpu_percent']), key=lambda p: p.info.get('cpu_percent') or 0, reverse=True)[:5]
                                 lista_procs = " | ".join([f"{p.info['name']} ({round((p.info.get('cpu_percent') or 0) / num_cores, 1)}%)" for p in procs])
-                                urllib.request.urlopen(urllib.request.Request(URL_CENTRAL.replace('report_data', 'alertas_ia'), data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Diagnóstico", "gravidade": "Aviso", "detalhes": lista_procs}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
+                                enviar_alertas(URL_CENTRAL.replace('report_data', 'alertas_ia'), [{"tipo": "Diagnóstico", "gravidade": "Aviso", "detalhes": lista_procs}], timeout=5)
                             except Exception as e:
                                 log_local_event("Diagnóstico Remoto", f"top_processos falhou: {e}", "Alerta")
                 
@@ -1292,11 +1307,11 @@ def loop_watchdog_local():
                 
                 estado_anterior = cache_alvos.get(ip, {}).get('online', True)
                 if ta_online and not estado_anterior:
-                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Alvo Restaurado", "gravidade": "OK", "detalhes": f"{desc} ({ip}) voltou."}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
+                    try: enviar_alertas(url_log, [{"tipo": "Alvo Restaurado", "gravidade": "OK", "detalhes": f"{desc} ({ip}) voltou."}], timeout=5)
                     except Exception as e:
                         log_local_event("Alvo Restaurado", f"{desc} ({ip}) voltou mas falhou ao reportar: {e}", "Alerta")
                 elif not ta_online and estado_anterior:
-                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Queda de Alvo", "gravidade": "Crítica", "detalhes": f"{desc} ({ip}) parou!"}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
+                    try: enviar_alertas(url_log, [{"tipo": "Queda de Alvo", "gravidade": "Crítica", "detalhes": f"{desc} ({ip}) parou!"}], timeout=5)
                     except Exception as e:
                         log_local_event("Queda de Alvo", f"{desc} ({ip}) caiu mas falhou ao reportar: {e}", "Crítica")
                 cache_alvos[ip] = {'online': ta_online, 'latencia': latencia}
@@ -1308,11 +1323,11 @@ def loop_watchdog_local():
                 
                 estado_anterior = cache_alvos.get('ENERGIA_'+ip, {}).get('online', True)
                 if ta_online and not estado_anterior:
-                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Energia Restaurada", "gravidade": "OK", "detalhes": f"Energia em {desc} ({ip})."}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
+                    try: enviar_alertas(url_log, [{"tipo": "Energia Restaurada", "gravidade": "OK", "detalhes": f"Energia em {desc} ({ip})."}], timeout=5)
                     except Exception as e:
                         log_local_event("Energia Restaurada", f"Energia em {desc} ({ip}) voltou mas falhou ao reportar: {e}", "Alerta")
                 elif not ta_online and estado_anterior:
-                    try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Queda de Energia", "gravidade": "Crítica", "detalhes": f"FALTA DE ENERGIA em {desc} ({ip})!"}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=5)
+                    try: enviar_alertas(url_log, [{"tipo": "Queda de Energia", "gravidade": "Crítica", "detalhes": f"FALTA DE ENERGIA em {desc} ({ip})!"}], timeout=5)
                     except Exception as e:
                         log_local_event("Queda de Energia", f"Falta de energia em {desc} ({ip}) mas falhou ao reportar: {e}", "Crítica")
                 cache_alvos['ENERGIA_'+ip] = {'online': ta_online, 'latencia': latencia}
@@ -1375,11 +1390,11 @@ def loop_watchdog_local():
                     estado_anterior = cache_alvos.get('SRV_ANT_'+nome_srv, 'ONLINE')
                     if 'ONLINE' in status_atual and estado_anterior == 'OFFLINE':
                         msg = f"O serviço {desc_srv} ({nome_srv}) foi religado pela Auto-Cura." if "Recuperado" in status_atual else f"O serviço {desc_srv} foi restaurado."
-                        try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Serviço Restaurado", "gravidade": "OK", "detalhes": msg}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
+                        try: enviar_alertas(url_log, [{"tipo": "Serviço Restaurado", "gravidade": "OK", "detalhes": msg}], timeout=3)
                         except Exception as e:
                             log_local_event("Serviço Restaurado", f"{msg} mas falhou ao reportar: {e}", "Alerta")
                     elif status_atual == 'OFFLINE' and estado_anterior != 'OFFLINE':
-                        try: urllib.request.urlopen(urllib.request.Request(url_log, data=json.dumps({"mac_id": mac, "alertas": [{"tipo": "Falha de Serviço Crítico", "gravidade": "Crítica", "detalhes": f"O serviço {desc_srv} parou! Requer intervenção."}]}).encode('utf-8'), headers=api_headers(), method='POST'), timeout=3)
+                        try: enviar_alertas(url_log, [{"tipo": "Falha de Serviço Crítico", "gravidade": "Crítica", "detalhes": f"O serviço {desc_srv} parou! Requer intervenção."}], timeout=3)
                         except Exception as e:
                             log_local_event("Falha de Serviço Crítico", f"{desc_srv} parou mas falhou ao reportar: {e}", "Crítica")
                     cache_alvos['SRV_ANT_'+nome_srv] = status_atual
@@ -1403,8 +1418,38 @@ def verificar_token_local(req):
 
 @app.before_request
 def exigir_token_local():
+    # CSS, logos e scripts da tela são públicos (não têm dado do site); todo o resto exige o token.
+    if request.endpoint in ('static', 'painel_local.service_worker'):
+        return None
     if not verificar_token_local(request):
-        return jsonify({"erro": "Acesso negado. Token ausente, inválido ou expirado. Gere um novo token no painel da central."}), 401
+        mensagem = "Acesso negado. Token ausente, inválido ou expirado. Gere um novo token no painel da central."
+        if request.path == '/' or 'text/html' in request.headers.get('Accept', ''):
+            return (f"<!doctype html><meta charset=utf-8><title>NexoPulse Edge</title><body style='font-family:sans-serif;"
+                    f"background:#0B1728;color:#E8F1FA;display:grid;place-items:center;min-height:90vh'><div style='max-width:460px'>"
+                    f"<h2>NexoPulse Edge · acesso local</h2><p>{mensagem}</p><p style='color:#94A3B8'>Na Central, abra o sensor "
+                    f"e use <b>Acesso local</b> para gerar o link com o token.</p></div>"), 401
+        return jsonify({"erro": mensagem}), 401
+
+
+class _EstadoPainel:
+    """O que o painel local lê do agente (edge_local.criar_blueprint)."""
+    dados = staticmethod(lambda: dados_sensores)
+    mac = staticmethod(lambda: get_mac())
+    nome = staticmethod(lambda: NOME_SENSOR)
+    versao = staticmethod(lambda: BUILD_AGENTE or VERSAO_AGENTE)
+    host_info = staticmethod(lambda: _host_info_ultimo)
+    visto_em = staticmethod(lambda: dados_sensores.get("visto_em"))
+
+    @staticmethod
+    def nomes_salvos():
+        conn = sqlite3.connect('sensor_local.db')
+        try:
+            return {mac: nome for mac, nome in conn.execute("SELECT mac, nome FROM nomes_topologia").fetchall()}
+        finally:
+            conn.close()
+
+
+app.register_blueprint(edge_local.criar_blueprint(EVENTOS_LOCAIS, _EstadoPainel))
 
 @app.route('/api/scada', methods=['GET'])
 def api_scada():
@@ -1523,297 +1568,6 @@ def rename_topo():
     finally:
         conn.close()
     return jsonify({"status": "OK"})
-
-@app.route('/')
-def index():
-    HTML_CYBERPUNK = """
-    <!DOCTYPE html>
-    <html lang="pt-BR">
-    <head>
-        <meta charset="UTF-8">
-        <title>Acesso Local - NexoPulse Edge</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-        <style>
-            :root { --bg-base: #0B1728; --bg-card: #12263D; --bg-input: #0E2035; --border: #29445F; --text-main: #E8F1FA; --text-muted: #94A3B8; --blue: #05A9DC; --green: #05A88C; --red: #F87171; --yellow: #FBBF24; --purple: #7DD3FC; }
-            body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-base); color: var(--text-main); }
-            .navbar { background: rgba(21,21,33,0.9); padding: 15px 30px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-            .container { padding: 30px; max-width: 1600px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; }
-            .painel-grid-duo { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; grid-column: span 3; }
-            .painel-grid-trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; grid-column: span 3; }
-            .card { background: linear-gradient(145deg, var(--bg-card) 0%, #11111b 100%); border: 1px solid var(--border); border-radius: 12px; padding: 22px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5);}
-            .card h3 { margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 15px; display: flex; justify-content: space-between; color: var(--text-main);}
-            .card-hw { border-top: 4px solid var(--blue); } .card-net { border-top: 4px solid var(--green); } .card-speed { border-top: 4px solid var(--purple); }
-            .card-radar { border-top: 4px solid var(--blue); grid-column: 1 / -1; } .card-global { border-top: 4px solid var(--yellow); grid-column: span 3;}
-            .card-custom { border-top: 4px solid var(--red); justify-content: flex-start; } .card-energia { border-top: 4px solid #fab387; justify-content: flex-start; } 
-            .card-hist { border-top: 4px solid var(--text-muted); grid-column: span 3;}
-            .data-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px dashed var(--bg-input); padding-bottom: 8px;}
-            .highlight { font-family: 'JetBrains Mono', monospace; font-size: 2.2em; font-weight: bold; }
-            .progress-bg { background: rgba(0,0,0,0.4); border: 1px solid var(--bg-input); border-radius: 10px; height: 12px; width: 100%; margin-top: 6px; overflow: hidden;}
-            .progress-fill { background: linear-gradient(90deg, var(--blue), #b4befe); height: 100%; width: 0%; transition: 0.5s; box-shadow: 0 0 10px var(--blue); }
-            .global-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-top: 10px;}
-            .g-card { background: rgba(0,0,0,0.3); border: 1px solid var(--bg-input); border-radius: 8px; padding: 15px; text-align: center; }
-            .ms { font-family: 'JetBrains Mono', monospace; font-size: 1.4em; font-weight: bold; margin-top: 5px; color: var(--green);}
-            .pill-ok { background: rgba(166,227,161,0.1); color: var(--green); border: 1px solid var(--green); padding: 5px 12px; border-radius: 6px; font-size: 0.75em; font-weight: bold;}
-            .pill-fail { background: rgba(243,139,168,0.1); color: var(--red); border: 1px solid var(--red); padding: 5px 12px; border-radius: 6px; font-size: 0.75em; font-weight: bold;}
-            input { width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); color: var(--text-main); border-radius: 6px; box-sizing: border-box; outline: none; transition: 0.2s;} input:focus { border-color: var(--blue); }
-            button.action-btn { cursor: pointer; padding: 10px 15px; border: none; border-radius: 6px; font-weight: bold; color: var(--bg-base); transition: 0.2s;}
-            .topology-box { display: flex; flex-direction: column; align-items: center; justify-content: center; flex-grow: 1; background: rgba(0,0,0,0.2); padding: 30px; border-radius: 8px; border: 1px solid var(--bg-input); overflow-x: auto; min-height: 300px;}
-            .t-card { background: var(--bg-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border); width: 170px; text-align: center; position: relative; border-top: 4px solid var(--blue);}
-            .t-gateway { border-top: 4px solid var(--red); } .t-sensor { border-top: 4px solid var(--purple); }
-            .t-ip { font-family: 'JetBrains Mono', monospace; color: var(--green); font-weight: bold; } .t-mac { font-size: 0.7em; color: var(--text-muted); margin: 5px 0;} .t-name { font-size: 0.85em; color: var(--blue); font-weight: bold; }
-            .t-line-v { width: 3px; height: 25px; background: var(--border); } .t-line-h { height: 3px; background: var(--border); }
-            .speed-box { text-align: center; background: rgba(0,0,0,0.3); padding: 18px; border-radius: 8px; border: 1px solid var(--bg-input); box-shadow: inset 0 0 10px rgba(0,0,0,0.5);}
-            .speed-val { font-family: 'JetBrains Mono', monospace; font-size: 2.5em; font-weight: bold; margin-top: 8px; }
-        </style>
-    </head>
-    <body>
-        <nav class="navbar">
-            <div style="font-size: 1.3em; font-weight: bold; color: var(--blue);"><i class="fa-solid fa-tower-broadcast"></i> NEXOPULSE EDGE</div>
-            <div style="color: var(--text-muted);"><i class="fa-solid fa-microchip"></i> MAC: <strong style="color:var(--text-main)" id="mac-id">--</strong></div>
-        </nav>
-        <div class="container">
-            <div class="card card-hw">
-                <h3><span><i class="fa-solid fa-microchip"></i> Telemetria Local</span> <span class="pill-ok">ONLINE</span></h3>
-                <div class="data-row" style="margin-top:10px;">
-                    <div style="display: flex; gap: 15px; width: 100%;">
-                        <span style="flex: 1;"><i class="fa-solid fa-temperature-half" style="color:var(--yellow);"></i> CPU: <strong id="temp-text" style="color:var(--yellow);">-- °C</strong></span> 
-                        <span style="flex: 1;"><i class="fa-solid fa-fire-flame-curved" style="color:var(--red);"></i> GPU: <strong id="gpu-text" style="color:var(--red);">-- °C</strong></span>
-                    </div>
-                </div>
-                <div style="margin-bottom: 15px;">
-                    <div style="display: flex; justify-content: space-between;"><span><i class="fa-solid fa-microchip"></i> CPU</span> <strong id="cpu-text">0%</strong></div>
-                    <div class="progress-bg"><div id="cpu-fill" class="progress-fill"></div></div>
-                </div>
-                <div style="margin-bottom: 15px;">
-                    <div style="display: flex; justify-content: space-between;"><span><i class="fa-solid fa-memory"></i> RAM</span> <strong id="ram-text">0%</strong></div>
-                    <div class="progress-bg"><div id="ram-fill" class="progress-fill"></div></div>
-                </div>
-                <div>
-                    <div style="display: flex; justify-content: space-between;"><span><i class="fa-solid fa-hard-drive"></i> Disco</span> <strong id="disk-text">0%</strong></div>
-                    <div class="progress-bg"><div id="disk-fill" class="progress-fill" style="background: linear-gradient(90deg, #cba6f7, #f5c2e7); box-shadow: 0 0 10px #cba6f7;"></div></div>
-                </div>
-            </div>
-
-            <div class="card card-net">
-                <h3><span><i class="fa-solid fa-shield-heart"></i> Integridade da Rede</span></h3>
-                <div class="data-row"><span><i class="fa-solid fa-network-wired" style="color:var(--green)"></i> Gateway (<span id="gw-ip">--</span>):</span> <span id="status-local" class="pill-ok">ESTÁVEL</span></div>
-                <div class="data-row"><span><i class="fa-solid fa-ethernet" style="color:var(--blue)"></i> Interface:</span> <span id="iface-local" style="font-family:'JetBrains Mono'; font-size:0.75em;">--</span></div>
-                <div class="data-row"><span><i class="fa-solid fa-diagram-project" style="color:var(--purple)"></i> Rede / CIDR:</span> <span id="cidr-local" style="font-family:'JetBrains Mono'; font-size:0.75em;">--</span></div>
-                <div class="data-row"><span><i class="fa-solid fa-globe" style="color:var(--blue)"></i> Internet (WAN):</span> <span id="status-wan" class="pill-ok">ONLINE</span></div>
-                <div class="data-row"><span><i class="fa-solid fa-door-open" style="color:var(--purple)"></i> Portas do Sensor:</span> <span id="portas-text" style="font-family: 'JetBrains Mono'; font-size: 0.75em; color: var(--text-muted);">--</span></div>
-                <div style="margin-top: auto; background: rgba(0,0,0,0.3); padding: 18px; border-radius: 8px; text-align: center; border: 1px solid var(--bg-input);">
-                    <div style="font-size: 0.75em; color: var(--text-muted);">Latência Sensor ➔ Gateway</div>
-                    <div id="ping-local" class="highlight" style="color: var(--green);">0 ms</div>
-                </div>
-            </div>
-
-            <div class="card card-speed">
-                <h3><span><i class="fa-solid fa-arrow-right-arrow-left"></i> Tráfego da Interface do Sensor</span></h3>
-                <div style="flex-grow: 1; display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-top: 10px;">
-                    <div class="speed-box" style="flex: 1;">
-                        <div style="font-size: 0.75em; color: var(--text-muted); letter-spacing: 1px;"><i class="fa-solid fa-arrow-down" style="color:var(--green)"></i> RX</div>
-                        <div id="live-down" class="speed-val" style="color: var(--green); text-shadow: 0 0 15px rgba(166,227,161,0.4);">0.0</div><span style="font-size: 0.6em; color: var(--text-muted);">Mbps</span>
-                    </div>
-                    <div class="speed-box" style="flex: 1;">
-                        <div style="font-size: 0.75em; color: var(--text-muted); letter-spacing: 1px;"><i class="fa-solid fa-arrow-up" style="color:var(--red)"></i> TX</div>
-                        <div id="live-up" class="speed-val" style="color: var(--red); text-shadow: 0 0 15px rgba(243,139,168,0.4);">0.0</div><span style="font-size: 0.6em; color: var(--text-muted);">Mbps</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card card-radar">
-                <h3><span><i class="fa-solid fa-project-diagram"></i> Topologia de Rede (Scanner ARP Local)</span></h3>
-                <div class="topology-box">
-                    <div style="text-align: center;"><i class="fa-solid fa-cloud" style="font-size: 3.2em; color: var(--blue);"></i><div style="font-size: 0.8em; font-weight: bold; margin-top: 8px; color: var(--blue);">INTERNET / WAN</div></div>
-                    <div class="t-line-v"></div>
-                    <div style="display: flex; align-items: center; justify-content: center;">
-                        <div id="diag-gateway"></div>
-                        <div class="t-line-h" style="width: 60px;"></div>
-                        <div class="t-card t-sensor"><div class="t-ip" id="meu-ip">ESTE PC</div><div class="t-mac" id="topo-mac"></div><div class="t-name">NEXOPULSE EDGE</div></div>
-                    </div>
-                    <div class="t-line-v"></div>
-                    <div class="t-line-h" style="width: 70%; max-width: 800px;"></div>
-                    <div id="diag-outros" style="display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; margin-top: 12px;"></div>
-                </div>
-            </div>
-
-            <div class="card card-global">
-                <h3><span><i class="fa-solid fa-earth-americas"></i> Disponibilidade (Live Local)</span></h3>
-                <div class="global-grid">
-                    <div class="g-card"><i class="fa-brands fa-google"></i> Google <div id="pg-google" class="ms">--</div></div>
-                    <div class="g-card"><i class="fa-solid fa-cloud"></i> Cloudflare <div id="pg-cf" class="ms">--</div></div>
-                    <div class="g-card"><i class="fa-brands fa-aws"></i> AWS <div id="pg-aws" class="ms">--</div></div>
-                    <div class="g-card"><i class="fa-solid fa-shield-halved"></i> Quad9 <div id="pg-quad9" class="ms">--</div></div>
-                </div>
-                <div style="height: 220px; width: 100%; margin-top: 15px; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid var(--bg-input); padding: 10px; box-sizing: border-box;"><canvas id="chartPing"></canvas></div>
-            </div>
-
-            <div class="painel-grid-trio">
-                <div class="card card-custom">
-                    <h3 style="margin-bottom: 15px;"><span><i class="fa-solid fa-crosshairs"></i> Pings Locais</span></h3>
-                    <div style="display: flex; gap: 5px; margin-bottom: 15px;">
-                        <input type="text" id="new-ip" placeholder="IP Alvo">
-                        <input type="text" id="new-desc" placeholder="Apelido">
-                        <button class="action-btn" onclick="addIP()" style="background: var(--red); color: white;"><i class="fa-solid fa-plus"></i></button>
-                    </div>
-                    <div id="lista-custom-ips" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
-                </div>
-
-                <div class="card card-energia">
-                    <h3 style="margin-bottom: 15px; color: #fab387;"><span><i class="fa-solid fa-plug-circle-bolt"></i> Energia</span></h3>
-                    <div style="display: flex; gap: 5px; margin-bottom: 15px;">
-                        <input type="text" id="new-ip-energia" placeholder="IP Tomada">
-                        <input type="text" id="new-desc-energia" placeholder="Apelido">
-                        <button class="action-btn" onclick="addEnergia()" style="background: #fab387; color: var(--bg-base);"><i class="fa-solid fa-plus"></i></button>
-                    </div>
-                    <div id="lista-energia-ips" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
-                </div>
-
-                <div class="card card-speed">
-                    <h3 style="margin-bottom: 15px; color: var(--purple);"><span><i class="fa-solid fa-cogs"></i> Serviços SO</span></h3>
-                    <div style="display: flex; gap: 5px; margin-bottom: 15px;">
-                        <input type="text" id="new-srv-nome" placeholder="Serviço Exato">
-                        <input type="text" id="new-srv-desc" placeholder="Apelido">
-                        <button class="action-btn" onclick="addServicoOS()" style="background: var(--purple); color: var(--bg-base);"><i class="fa-solid fa-plus"></i></button>
-                    </div>
-                    <div id="lista-servicos-os" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
-                </div>
-            </div>
-            
-            <div class="card card-hist">
-                <h3><span><i class="fa-solid fa-clock-rotate-left"></i> Histórico de Eventos (Memória do Sensor)</span></h3>
-                <div id="lista-historico" style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; max-height: 250px; overflow-y: auto; border: 1px solid var(--bg-input);"></div>
-            </div>
-        </div>
-
-        <script>
-            // Repassa o token JWT (recebido na própria URL do painel) em toda chamada fetch feita por esta página
-            const TOKEN_LOCAL = new URLSearchParams(window.location.search).get('token') || '';
-            const _fetchOriginal = window.fetch;
-            window.fetch = function(url, opcoes) {
-                opcoes = opcoes || {};
-                opcoes.headers = Object.assign({}, opcoes.headers, {'X-Auth-Token': TOKEN_LOCAL});
-                return _fetchOriginal(url, opcoes);
-            };
-            let chartPingInstance = null; let historicoHoras = [], dGoogle = [], dCf = [], dAws = [], dQuad = [];
-            async function addIP() { const ip = document.getElementById('new-ip').value; const desc = document.getElementById('new-desc').value; if(!ip) return; await fetch('/api/alvos', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip, descricao:desc}) }); document.getElementById('new-ip').value=''; document.getElementById('new-desc').value=''; }
-            async function excluirIP(id) { if(confirm("Remover alvo local?")) { await fetch('/api/alvos/' + id, { method: 'DELETE' }); } }
-            
-            async function addEnergia() { const ip = document.getElementById('new-ip-energia').value; const desc = document.getElementById('new-desc-energia').value; if(!ip) return; await fetch('/api/energia', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip, descricao:desc}) }); document.getElementById('new-ip-energia').value=''; document.getElementById('new-desc-energia').value=''; }
-            async function excluirEnergia(id) { if(confirm("Parar monitoramento de energia?")) { await fetch('/api/energia/' + id, { method: 'DELETE' }); } }
-
-            async function addServicoOS() { const nome = document.getElementById('new-srv-nome').value; const desc = document.getElementById('new-srv-desc').value; if(!nome) return; await fetch('/api/servicos_os', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({nome_servico:nome, descricao:desc}) }); document.getElementById('new-srv-nome').value=''; document.getElementById('new-srv-desc').value=''; }
-            async function excluirServicoOS(id) { if(confirm("Parar de monitorar este serviço?")) { await fetch('/api/servicos_os/' + id, { method: 'DELETE' }); } }
-
-            async function renomearTopo(mac, atual) { let n = prompt("Novo nome para este dispositivo na topologia:", atual); if(n) { await fetch('/api/topologia/nome', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mac, nome:n}) }); } }
-            
-            async function monitorarIP(ip, nome) {
-                if(confirm(`Deseja adicionar ${nome} (${ip}) ao Watchdog de 5 segundos?`)) {
-                    await fetch('/api/alvos', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ip: ip, descricao: nome}) });
-                    atualizarLocal();
-                }
-            }
-
-            async function atualizarLocal() {
-                try {
-                    const res = await fetch('/api/local_data'); const data = await res.json();
-                    document.getElementById('mac-id').innerText = data.mac; document.getElementById('topo-mac').innerText = data.mac;
-                    document.getElementById('meu-ip').innerText = data.meu_ip;
-                    
-                    document.getElementById('cpu-text').innerText = data.cpu + '%'; document.getElementById('cpu-fill').style.width = data.cpu + '%';
-                    document.getElementById('ram-text').innerText = data.ram + '%'; document.getElementById('ram-fill').style.width = data.ram + '%';
-                    
-                    // AQUI ESTÁ A "FUGA ELEGANTE" NA TELA LOCAL:
-                    document.getElementById('temp-text').innerText = (data.temp > 0 ? data.temp : '--') + ' °C'; 
-                    document.getElementById('gpu-text').innerText = (data.gpu_temp > 0 ? data.gpu_temp : '--') + ' °C';
-                    
-                    if(document.getElementById('disk-text')) { document.getElementById('disk-text').innerText = data.disco + '%'; document.getElementById('disk-fill').style.width = data.disco + '%'; }
-                    if(document.getElementById('portas-text')) document.getElementById('portas-text').innerText = data.portas || 'Nenhuma';
-                    if(document.getElementById('live-down')) document.getElementById('live-down').innerText = data.net_down || '0.0';
-                    if(document.getElementById('live-up')) document.getElementById('live-up').innerText = data.net_up || '0.0';
-                    if(document.getElementById('iface-local')) document.getElementById('iface-local').innerText = (data.interface || 'N/D') + (data.mac_interface ? ' • ' + data.mac_interface : '');
-                    if(document.getElementById('cidr-local')) document.getElementById('cidr-local').innerText = data.rede_cidr || 'N/D';
-
-                    document.getElementById('gw-ip').innerText = data.gateway_ip;
-                    const pl = data.ping_gateway;
-                    document.getElementById('ping-local').innerText = pl > 0 ? pl + ' ms' : 'Sem resposta ICMP';
-                    if(pl === 0) { document.getElementById('status-local').className = ""; document.getElementById('status-local').style.color = 'var(--yellow)'; document.getElementById('status-local').innerText = "SEM ICMP"; }
-                    else if(pl > 50) { document.getElementById('status-local').className = ""; document.getElementById('status-local').style.color = 'var(--yellow)'; document.getElementById('status-local').innerText = "DEGRADADA"; }
-                    else { document.getElementById('status-local').className = "pill-ok"; document.getElementById('status-local').style.color = ''; document.getElementById('status-local').innerText = "ESTÁVEL"; }
-                    if(data.pings.Google === 0 && data.pings.Cloudflare === 0) { document.getElementById('status-wan').className = "pill-fail"; document.getElementById('status-wan').innerText = "OFFLINE"; }
-                    else { document.getElementById('status-wan').className = "pill-ok"; document.getElementById('status-wan').innerText = "ONLINE"; }
-                    document.getElementById('pg-google').innerText = data.pings.Google + ' ms'; document.getElementById('pg-cf').innerText = data.pings.Cloudflare + ' ms';
-                    document.getElementById('pg-aws').innerText = data.pings.AWS + ' ms'; document.getElementById('pg-quad9').innerText = data.pings.Quad9 + ' ms';
-
-                    let htmlAlvos = '';
-                    data.custom_ips.forEach(item => {
-                        let cor = item.latencia === 0 ? 'var(--red)' : 'var(--green)'; let latText = item.latencia === 0 ? 'FALHA' : item.latencia + ' ms';
-                        htmlAlvos += `<div style="background:var(--bg-input); padding:8px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; border-left:4px solid ${cor};">
-                            <div><b style="color:var(--blue); font-size:1.1em;">${item.descricao}</b><br><small style="color:var(--text-muted); font-family:monospace;">${item.ip}</small></div>
-                            <div style="display:flex; align-items:center; gap:12px;"><b style="color:${cor};">${latText}</b><button onclick="excluirIP(${item.id})" style="background:none; border:none; color:var(--text-muted); cursor:pointer;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-muted)'"><i class="fa-solid fa-trash"></i></button></div></div>`;
-                    });
-                    document.getElementById('lista-custom-ips').innerHTML = htmlAlvos || '<div style="text-align:center; padding:15px; color:var(--text-muted);">Nenhum alvo.</div>';
-
-                    let htmlEnergia = '';
-                    data.energia_ips.forEach(item => {
-                        let isOnline = item.latencia > 0;
-                        let cor = isOnline ? 'var(--green)' : 'var(--red)';
-                        let statusText = isOnline ? 'COM ENERGIA' : 'SEM ENERGIA';
-                        let icone = isOnline ? 'fa-plug-circle-check' : 'fa-plug-circle-xmark';
-                        htmlEnergia += `<div style="background:var(--bg-input); padding:10px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; border-left:4px solid ${cor};">
-                            <div style="display:flex; align-items:center; gap:12px;">
-                                <i class="fa-solid ${icone}" style="color:${cor}; font-size:1.5em;"></i>
-                                <div><b style="color:var(--text-main); font-size:1.1em;">${item.descricao}</b><br><small style="color:var(--text-muted); font-family:monospace;">${item.ip}</small></div>
-                            </div>
-                            <div style="display:flex; align-items:center; gap:15px;"><b style="color:${cor}; font-size:0.9em;">${statusText}</b><button onclick="excluirEnergia(${item.id})" style="background:none; border:none; color:var(--text-muted); cursor:pointer;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-muted)'"><i class="fa-solid fa-trash"></i></button></div></div>`;
-                    });
-                    document.getElementById('lista-energia-ips').innerHTML = htmlEnergia || '<div style="text-align:center; padding:15px; color:var(--text-muted);">Nenhum ponto monitorado.</div>';
-
-                    let htmlServicos = '';
-                    data.servicos_os.forEach(item => {
-                        let isOnline = item.status.includes('ONLINE');
-                        let cor = isOnline ? 'var(--green)' : 'var(--red)';
-                        let icone = isOnline ? 'fa-check-circle' : 'fa-triangle-exclamation';
-                        htmlServicos += `<div style="background:var(--bg-input); padding:8px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; border-left:4px solid ${cor};">
-                            <div><b style="color:var(--purple); font-size:1.1em;">${item.descricao}</b><br><small style="color:var(--text-muted); font-family:monospace;">${item.nome_servico}</small></div>
-                            <div style="display:flex; align-items:center; gap:12px;"><i class="fa-solid ${icone}" style="color:${cor}; font-size:1.2em;" title="${item.status}"></i>
-                            <button onclick="excluirServicoOS(${item.id})" style="background:none; border:none; color:var(--text-muted); cursor:pointer;"><i class="fa-solid fa-trash"></i></button></div></div>`;
-                    });
-                    document.getElementById('lista-servicos-os').innerHTML = htmlServicos || '<div style="text-align:center; padding:15px; color:var(--text-muted);">Nenhum serviço monitorado.</div>';
-
-                    let gHtml = `<div class="t-card t-gateway"><div class="t-ip">${data.gateway_ip}</div><div class="t-mac">ROTEADOR</div><div class="t-name">GATEWAY PADRÃO</div></div>`;
-                    let oHtml = '';
-                    data.topologia.forEach(t => {
-                        if(t.ip === data.gateway_ip || t.ip === data.meu_ip) return;
-                        const estadoTopo = t.status === 'online' ? 'ON' : (t.status === 'sem_icmp' ? 'SEM ICMP' : 'N/D');
-                        const corTopo = t.status === 'online' ? 'var(--green)' : (t.status === 'sem_icmp' ? 'var(--yellow)' : 'var(--text-muted)');
-                        oHtml += `<div class="t-card"><div class="t-ip">${t.ip}</div><div class="t-mac">${t.mac}</div><div style="font-size:0.7em;color:${corTopo};margin-bottom:5px;">${estadoTopo}${t.latencia ? ' • ' + t.latencia + ' ms' : ''}</div><div class="t-name">${t.nome} <button onclick="renomearTopo('${t.mac}','${t.nome}')" style="background:none; border:none; color:var(--yellow); cursor:pointer;" title="Renomear"><i class="fa-solid fa-pen-to-square"></i></button> <button onclick="monitorarIP('${t.ip}', '${t.nome}')" style="background:none; border:none; color:var(--blue); cursor:pointer;" title="Adicionar ao Watchdog"><i class="fa-solid fa-eye"></i></button></div></div>`;
-                    });
-                    document.getElementById('diag-gateway').innerHTML = gHtml; document.getElementById('diag-outros').innerHTML = oHtml;
-
-                    let htmlLogs = '';
-                    data.logs.forEach(l => {
-                        let cor = l.gravidade === 'Crítica' ? 'var(--red)' : (l.gravidade === 'OK' ? 'var(--green)' : 'var(--yellow)');
-                        htmlLogs += `<div style="padding: 8px; border-bottom: 1px dashed var(--border); font-size:0.85em;"><span style="color:var(--text-muted)">[${l.hora}]</span> <b style="color:${cor}">${l.tipo}</b>: ${l.detalhes}</div>`;
-                    });
-                    document.getElementById('lista-historico').innerHTML = htmlLogs || '<div style="text-align:center; padding:10px; color:var(--text-muted);">Sem logs detectados.</div>';
-
-                    if(historicoHoras.length > 20) { historicoHoras.shift(); dGoogle.shift(); dCf.shift(); dAws.shift(); dQuad.shift(); }
-                    historicoHoras.push(data.hora); dGoogle.push(data.pings.Google); dCf.push(data.pings.Cloudflare); dAws.push(data.pings.AWS); dQuad.push(data.pings.Quad9);
-                    if (chartPingInstance) { chartPingInstance.update('none'); } 
-                    else {
-                        chartPingInstance = new Chart(document.getElementById('chartPing').getContext('2d'), { type: 'line', data: { labels: historicoHoras, datasets: [ { label: 'Google', data: dGoogle, borderColor: '#a6e3a1', tension: 0.3 }, { label: 'Cloudflare', data: dCf, borderColor: '#89b4fa', tension: 0.3 }, { label: 'AWS', data: dAws, borderColor: '#f9e2af', tension: 0.3 }, { label: 'Quad9', data: dQuad, borderColor: '#cba6f7', tension: 0.3 }]}, options: { responsive: true, maintainAspectRatio: false, animation: false, scales: { x: { display: false } } } });
-                    }
-                } catch(e) {}
-            }
-            setInterval(atualizarLocal, 2000); atualizarLocal();
-        </script>
-    </body>
-    </html>
-    """
-    return render_template_string(HTML_CYBERPUNK)
 
 if __name__ == "__main__":
     try:

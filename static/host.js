@@ -1,8 +1,9 @@
 // Métricas estendidas do host (host_info enviado pelo agente a cada ~30 s).
 (() => {
-    const ed = document.getElementById('location-editor');
+    // Central: #location-editor; painel local do Edge: [data-host-mac].
+    const ed = document.getElementById('location-editor') || document.querySelector('[data-host-mac]');
     if (!ed || !document.getElementById('host')) return;
-    const mac = ed.dataset.mac;
+    const mac = ed.dataset.mac || ed.dataset.hostMac;
     const $ = id => document.getElementById(id);
     const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
     let modoProcs = 'cpu', ultimo = null;
