@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#082E56">
-    <meta name="referrer" content="no-referrer">
+    <meta name="referrer" content="same-origin">
     <link rel="icon" href="/static/brand/nexopulse/favicon.svg" type="image/svg+xml">
     <link rel="icon" href="/static/brand/nexopulse/favicon.ico" sizes="16x16 32x32 48x48">
     <title>NexoPulse Edge · {{ sensor.nome_local }}</title>
@@ -98,6 +98,7 @@
         <div class="app-bar-actions">
             <span class="product-version">{{ sensor.agent_version }}</span>
             <button type="button" class="theme-toggle" onclick="NexoPulseTheme.toggle()" aria-label="Alternar tema"><i class="fa-solid fa-sun"></i> Tema</button>
+            <form method="post" action="/sair" style="margin:0"><button type="submit" class="theme-toggle" title="Sair do painel local">Sair</button></form>
         </div>
     </header>
 
@@ -114,7 +115,6 @@
 
     <div class="container" data-host-mac="{{ sensor.mac_id }}">
         <nav class="section-nav" aria-label="Seções do painel local"><a href="#host">Host</a><a href="#rede-local">Rede local</a><a href="#wan">WAN</a><a href="#dispositivos">Dispositivos</a><a href="#cftv">CFTV</a><a href="#comunicacao">Comunicação</a><a href="#watchdog">Watchdog</a><a href="#eventos">Eventos</a><a href="#relatorio">Relatório</a></nav>
-        <p class="aviso-central" id="aviso-sessao" hidden role="alert"></p>
         <p class="aviso-central" id="aviso-rede" hidden role="alert"></p>
         <p class="help-text">Painel servido pelo próprio sensor: continua funcionando sem internet. O registro de eventos guarda {{ retencao_dias }} dias.</p>
 
@@ -330,27 +330,15 @@
     </div>
 
     <script>
-    // O token chega na URL (link gerado na Central). Fica só nesta aba (sessionStorage), sai da barra de
-    // endereço e vai no cabeçalho X-Auth-Token de cada chamada.
-    const TOKEN = (() => {
-        const daUrl = new URLSearchParams(location.search).get('token');
-        try { if (daUrl) sessionStorage.setItem('nexopulse-edge-token', daUrl); } catch (e) {}
-        if (daUrl) history.replaceState(null, '', location.pathname + location.hash);
-        try { return daUrl || sessionStorage.getItem('nexopulse-edge-token') || ''; } catch (e) { return daUrl || ''; }
-    })();
+    // Sessão por cookie (login em /login). Sessão vencida: volta para a tela de login.
     const _fetch = window.fetch.bind(window);
-    window.fetch = (url, opcoes = {}) => {
-        const headers = new Headers(opcoes.headers || {});
-        if (String(url).startsWith('/')) headers.set('X-Auth-Token', TOKEN);
-        return _fetch(url, {...opcoes, headers}).then(r => {
-            if (r.status === 401) avisarSessao('Token expirado ou inválido. Gere um novo link de acesso local na Central.');
-            return r;
-        });
-    };
+    window.fetch = (url, opcoes = {}) => _fetch(url, {credentials: 'same-origin', ...opcoes}).then(r => {
+        if (r.status === 401 && String(url).startsWith('/')) location.href = '/login?proximo=' + encodeURIComponent(location.pathname);
+        return r;
+    });
     const $ = id => document.getElementById(id);
     const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
     const json = (url, metodo = 'GET', corpo) => fetch(url, {method: metodo, headers: {'Content-Type': 'application/json'}, body: corpo ? JSON.stringify(corpo) : undefined});
-    function avisarSessao(texto) { const a = $('aviso-sessao'); a.textContent = texto; a.hidden = false; }
 
     async function baixar(url) {
         const sep = url.includes('?') ? '&' : '?';
@@ -638,8 +626,6 @@
             if (!$('rel-de').value && !$('rel-ate').value) return alert('Escolha o início e/ou o fim do período.');
             q.set('de', $('rel-de').value); q.set('ate', $('rel-ate').value);
         }
-        // Navegação não leva cabeçalho: aqui o token vai na URL da aba do relatório (que ele também remove).
-        q.set('token', TOKEN);
         window.open('/relatorio?' + q, '_blank', 'noopener');
     }
 

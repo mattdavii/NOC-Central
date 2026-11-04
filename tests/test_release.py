@@ -160,7 +160,7 @@ def test_tenant_access(client,login):
     client.post('/api/v2/report_data',json={'mac_id':'foreign'})
     conn=database.get_db();conn.execute("UPDATE sensores SET cliente_id=3 WHERE mac_id='foreign'");conn.commit();conn.close()
     login(2,'Cliente')
-    for route in ('/sensor/foreign','/api/v2/sensor_data/foreign','/api/v2/gerar_token_local/foreign','/api/v2/dispositivos/foreign'):
+    for route in ('/sensor/foreign','/api/v2/sensor_data/foreign','/api/v2/dispositivos/foreign'):
         assert client.get(route).status_code==403
     assert client.post('/api/v2/configurar_sensor',json={'mac_id':'foreign','nome':'hack','lat':1,'lon':1}).status_code==403
     assert client.put('/api/v2/usuarios/3/info',json={}).status_code==403

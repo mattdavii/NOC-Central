@@ -4,11 +4,9 @@ import json
 import time
 from datetime import datetime, timedelta, timezone
 
-import jwt
 import openpyxl
 import pytest
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
+from werkzeug.security import generate_password_hash
 
 import cftv
 import descoberta
@@ -151,11 +149,13 @@ def test_alerta_enviado_fica_no_registro_local(monkeypatch, tmp_path):
 # ===================================================================== painel local (HTTP)
 @pytest.fixture()
 def edge(monkeypatch, tmp_path):
-    chave = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    publica = chave.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
-    monkeypatch.setattr(agent, 'CHAVE_PUBLICA_JWT', publica)
     monkeypatch.setattr(agent, 'get_mac', lambda: MAC_EDGE)
     monkeypatch.chdir(tmp_path)          # sensor_local.db do teste
+    acesso = edge_local.AcessoLocal('sensor_local.db')
+    monkeypatch.setattr(agent, 'ACESSO_LOCAL', acesso)
+    monkeypatch.setattr(agent._EstadoPainel, 'acesso', acesso)
+    monkeypatch.delenv('NOC_EDGE_SENHA', raising=False)
+    acesso.receber_da_central({'usuario': 'nexopulse', 'senha_hash': generate_password_hash('senha-do-painel', method='pbkdf2:sha256')})
     ev = edge_local.Eventos('sensor_local.db')
     monkeypatch.setattr(agent, 'EVENTOS_LOCAIS', ev)
     agent.init_local_db()
@@ -168,19 +168,60 @@ def edge(monkeypatch, tmp_path):
     monkeypatch.setitem(agent.dados_sensores, 'gateway_ip', '192.168.0.1')
     monkeypatch.setitem(agent.dados_sensores, 'meu_ip', '192.168.0.10')
     agent.app.config['TESTING'] = True
-    token = jwt.encode({'mac': MAC_EDGE, 'exp': datetime.now(timezone.utc) + timedelta(hours=1)}, chave, algorithm='RS256')
-    outro = jwt.encode({'mac': 'AA:AA:AA:AA:AA:AA', 'exp': datetime.now(timezone.utc) + timedelta(hours=1)}, chave, algorithm='RS256')
-    return agent.app.test_client(), {'X-Auth-Token': token}, token, outro, ev
+    cli = agent.app.test_client()
+    assert cli.post('/login', data={'usuario': 'nexopulse', 'senha': 'senha-do-painel'}).status_code == 302
+    return cli, {}, '', acesso, ev
 
 
-def test_painel_exige_token_do_proprio_sensor(edge):
-    cli, _, token, outro, _ = edge
-    assert cli.get('/').status_code == 401 and b'Acesso local' in cli.get('/').data      # página, não JSON
-    assert cli.get('/api/eventos').status_code == 401 and cli.get('/api/eventos').json['erro']
-    assert cli.get('/?token=' + outro).status_code == 401                               # token de outro sensor
-    assert cli.get('/static/sensor.css').status_code == 200                             # visual é público
-    pagina = cli.get('/?token=' + token)
-    assert pagina.status_code == 200 and b'card-hw' in pagina.data and b'/static/sensor.css' in pagina.data
+def test_painel_exige_login(edge):
+    _, _, _, acesso, ev = edge
+    anon = agent.app.test_client()
+    r = anon.get('/')
+    assert r.status_code == 302 and r.headers['Location'].startswith('/login')
+    assert anon.get('/api/eventos').status_code == 401 and anon.get('/api/eventos').json['erro']
+    assert anon.get('/static/sensor.css').status_code == 200                            # visual é público
+    assert b'Painel local do sensor' in anon.get('/login').data
+    assert anon.get('/?token=qualquer-coisa').status_code == 302                         # token não abre mais nada
+    errado = anon.post('/login', data={'usuario': 'nexopulse', 'senha': 'errada'})
+    assert errado.status_code == 401 and 'incorretos'.encode() in errado.data
+    ok = anon.post('/login', data={'usuario': 'nexopulse', 'senha': 'senha-do-painel', 'proximo': '/relatorio?periodo=dia'})
+    assert ok.status_code == 302 and ok.headers['Location'] == '/relatorio?periodo=dia'
+    pagina = anon.get('/')
+    assert pagina.status_code == 200 and b'card-hw' in pagina.data and b'/sair' in pagina.data
+    assert [e['tipo'] for e in ev.listar(busca='painel local')[1]] == ['Acesso local', 'Acesso local']
+    # escrita vinda de outro site é barrada; da própria página passa
+    assert anon.post('/api/alvos', json={'ip': '1.1.1.1', 'descricao': 'x'}, headers={'Origin': 'http://malicioso.com'}).status_code == 403
+    assert anon.post('/api/alvos', json={'ip': '1.1.1.1', 'descricao': 'x'}, headers={'Origin': 'http://localhost'}).status_code == 200
+    # redirecionamento só para dentro do próprio sensor
+    fora = agent.app.test_client().post('/login', data={'usuario': 'nexopulse', 'senha': 'senha-do-painel', 'proximo': '//malicioso.com'})
+    assert fora.headers['Location'] == '/'
+    # credencial nova da Central derruba as sessões abertas
+    acesso.receber_da_central({'usuario': 'nexopulse', 'senha_hash': generate_password_hash('outra-senha-123', method='pbkdf2:sha256')})
+    assert anon.get('/').status_code == 302
+    anon.post('/sair')
+
+
+def test_bloqueio_por_tentativas(edge):
+    anon = agent.app.test_client()
+    for _ in range(edge_local.MAX_FALHAS):
+        anon.post('/login', data={'usuario': 'nexopulse', 'senha': 'errada'})
+    r = anon.post('/login', data={'usuario': 'nexopulse', 'senha': 'senha-do-painel'})
+    assert r.status_code == 401 and 'Muitas tentativas'.encode() in r.data      # nem a certa entra durante o bloqueio
+    edge[3]._falhas.clear()
+
+
+def test_credencial_da_central_e_do_ambiente(tmp_path, monkeypatch):
+    acesso = edge_local.AcessoLocal(str(tmp_path / 'c.db'))
+    monkeypatch.delenv('NOC_EDGE_SENHA', raising=False)
+    assert acesso.credencial() == (None, None, None)
+    monkeypatch.setenv('NOC_EDGE_SENHA', 'instalacao-123'); monkeypatch.setenv('NOC_EDGE_USUARIO', 'campo')
+    assert acesso.credencial()[0::2] == ('campo', 'ambiente') and acesso.conferir('1.2.3.4', 'campo', 'instalacao-123')
+    assert not acesso.receber_da_central({'usuario': 'x', 'senha_hash': 'texto-puro'})      # só aceita hash
+    assert acesso.receber_da_central({'usuario': 'nexopulse', 'senha_hash': generate_password_hash('da-central-1', method='pbkdf2:sha256')})
+    assert acesso.credencial()[0::2] == ('nexopulse', 'central')                           # a da Central vale mais
+    assert not acesso.conferir('1.2.3.4', 'campo', 'instalacao-123') and acesso.conferir('1.2.3.4', 'nexopulse', 'da-central-1')
+    v = acesso.versao()
+    assert not acesso.receber_da_central(edge_local.ler_config(str(tmp_path / 'c.db'), 'painel_credencial')) and acesso.versao() == v
 
 
 def test_painel_exporta_levantamento_com_cftv(edge):
@@ -221,4 +262,14 @@ def test_painel_configura_redes_extras(edge):
     assert [str(x) for x in agent.redes_extras()] == ['192.168.10.0/24', '192.168.20.0/24']
     ruim = cli.post('/api/config/redes_extras', headers=h, json={'redes': ['8.8.8.0/24']})
     assert ruim.status_code == 400 and '8.8.8.0/24' in ruim.json['erro']
-    assert cli.post('/api/config/redes_extras', json={'redes': []}).status_code == 401
+    assert agent.app.test_client().post('/api/config/redes_extras', json={'redes': []}).status_code == 401
+
+
+def test_central_manda_credencial_do_painel(client, monkeypatch):
+    import app as central
+    monkeypatch.setattr(central, 'PAINEL_LOCAL', {'usuario': 'nexopulse', 'senha_hash': 'pbkdf2:sha256:1$x$y'})
+    r = client.post('/api/v2/report_data', json={'mac_id': MAC_EDGE, 'nome_local': 'Teste'})
+    assert r.status_code == 200 and r.json['painel_local']['usuario'] == 'nexopulse'
+    assert 'senha' not in json.dumps(r.json).replace('senha_hash', '')       # nunca a senha em texto
+    monkeypatch.setattr(central, 'PAINEL_LOCAL', None)
+    assert 'painel_local' not in client.post('/api/v2/report_data', json={'mac_id': MAC_EDGE, 'nome_local': 'Teste'}).json

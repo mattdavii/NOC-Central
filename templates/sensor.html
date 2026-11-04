@@ -31,7 +31,7 @@
                 <span id="sensor-os" style="font-size: 0.6em; color: var(--text-muted); margin-left: 12px; font-weight: normal; font-family: 'JetBrains Mono', monospace; border-left: 1px solid var(--border); padding-left: 12px;" title="Arquitetura: {{ sensor.so_arquitetura or 'Não informada' }}">SO: {{ sensor.so_nome or 'Não informado' }}{% if sensor.so_versao %} {{ sensor.so_versao }}{% endif %}</span>
             </div>
         </div>
-        <div style="font-size: 0.9em; color: var(--text-muted);"><i class="fa-solid fa-wifi"></i> Acesso Local: <strong style="color: var(--blue);" id="access-ip">--</strong>:10000</div>
+        <div style="font-size: 0.9em; color: var(--text-muted);" title="Abre só de dentro da rede do site; entre com o usuário e a senha do painel local"><i class="fa-solid fa-wifi"></i> Acesso Local: <a id="access-link" href="#" target="_blank" rel="noopener noreferrer" style="color: var(--blue); font-weight: bold; text-decoration: none;"><span id="access-ip">--</span>:10000</a></div>
     </nav>
 
     <div class="container">
@@ -686,7 +686,7 @@
                     linkEl.innerText = (speed > 0 ? speed + ' Mbps' : 'Velocidade não informada') + ' • ' + estado;
                 }
 
-                if(data.ip_sensor) { document.getElementById('access-ip').innerText = data.ip_sensor; globalSensorIP = data.ip_sensor; }
+                if(data.ip_sensor) { document.getElementById('access-ip').innerText = data.ip_sensor; document.getElementById('access-link').href = `http://${data.ip_sensor}:10000/`; globalSensorIP = data.ip_sensor; }
                 if(data.ip_gateway) globalGatewayIP = data.ip_gateway;
 
                 // null/undefined = ainda sem medição; 0 = medido sem resposta ICMP.

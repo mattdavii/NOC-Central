@@ -2,20 +2,27 @@
 sensor na porta local (10000), para quem está na rede do site, inclusive quando a internet caiu.
 
 Aqui ficam o registro de eventos local (SQLite, com retenção configurável), o levantamento de rede
-montado a partir da última varredura e as rotas do painel. O acesso continua o mesmo: token JWT
-emitido pela Central para este sensor (verificado em nexopulse_edge.verificar_token_local).
+montado a partir da última varredura, as rotas do painel e o acesso por usuário e senha.
+
+Acesso: http://<ip do sensor>:10000 com o usuário e a senha do painel local, iguais em todos os
+sensores. A Central define a credencial (EDGE_USUARIO / EDGE_SENHA) e manda só o hash a cada
+contato; o sensor guarda e continua aceitando o login sem internet. Para instalar sem Central,
+NOC_EDGE_USUARIO / NOC_EDGE_SENHA no sensor valem até a Central mandar a dela.
 """
 import csv
+import hmac
 import io
 import ipaddress
 import json
 import os
+import secrets
 import sqlite3
 import threading
 import time
 from datetime import datetime, timedelta
 
-from flask import Blueprint, Response, jsonify, render_template, request
+from flask import Blueprint, Response, jsonify, redirect, render_template, request, session
+from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
     import levantamento
@@ -159,6 +166,105 @@ def gravar_config(caminho, chave, valor):
         conn.execute('INSERT OR REPLACE INTO config_local (chave, valor) VALUES (?, ?)', (chave, json.dumps(valor)))
 
 
+# ------------------------------------------------------------------ acesso por usuário e senha
+SESSAO_HORAS = 12
+MAX_FALHAS, BLOQUEIO_S = 5, 300          # 5 senhas erradas do mesmo IP: 5 minutos de espera
+ROTAS_PUBLICAS = {'static', 'painel_local.login', 'painel_local.service_worker'}
+
+
+class AcessoLocal:
+    """Credencial do painel local e controle de tentativas. O hash vem da Central (ou do ambiente,
+    na instalação sem Central) e fica no sensor_local.db, para o login funcionar sem internet."""
+
+    def __init__(self, caminho='sensor_local.db'):
+        self.caminho = caminho
+        self._falhas = {}                    # ip -> [quantidade, bloqueado_ate]
+        self._trava = threading.Lock()
+
+    def chave_sessao(self):
+        """Chave do cookie de sessão: gerada uma vez por sensor e guardada (sessões sobrevivem ao restart)."""
+        chave = ler_config(self.caminho, 'chave_sessao')
+        if not chave:
+            chave = secrets.token_hex(32)
+            gravar_config(self.caminho, 'chave_sessao', chave)
+        return chave
+
+    def credencial(self):
+        """(usuario, hash) em uso: o da Central, se já chegou; senão o do ambiente do sensor."""
+        da_central = ler_config(self.caminho, 'painel_credencial')
+        if da_central and da_central.get('usuario') and da_central.get('senha_hash'):
+            return da_central['usuario'], da_central['senha_hash'], 'central'
+        senha = os.environ.get('NOC_EDGE_SENHA', '')
+        if senha:
+            usuario = os.environ.get('NOC_EDGE_USUARIO', 'nexopulse').strip() or 'nexopulse'
+            local = ler_config(self.caminho, 'painel_credencial_ambiente') or {}
+            if local.get('usuario') != usuario or not check_password_hash(local.get('senha_hash', ''), senha):
+                local = {'usuario': usuario, 'senha_hash': generate_password_hash(senha, method='pbkdf2:sha256')}
+                gravar_config(self.caminho, 'painel_credencial_ambiente', local)
+            return local['usuario'], local['senha_hash'], 'ambiente'
+        return None, None, None
+
+    def receber_da_central(self, dados):
+        """Guarda a credencial enviada pela Central; devolve True se mudou."""
+        if not isinstance(dados, dict):
+            return False
+        usuario, senha_hash = str(dados.get('usuario') or '')[:64], str(dados.get('senha_hash') or '')[:300]
+        if not usuario or not senha_hash.startswith(('pbkdf2:', 'scrypt:')):
+            return False
+        atual = ler_config(self.caminho, 'painel_credencial') or {}
+        if atual.get('usuario') == usuario and atual.get('senha_hash') == senha_hash:
+            return False
+        gravar_config(self.caminho, 'painel_credencial', {'usuario': usuario, 'senha_hash': senha_hash})
+        # Credencial nova derruba as sessões abertas com a anterior.
+        gravar_config(self.caminho, 'credencial_versao', (ler_config(self.caminho, 'credencial_versao', 0) or 0) + 1)
+        return True
+
+    def versao(self):
+        return ler_config(self.caminho, 'credencial_versao', 0) or 0
+
+    def bloqueado(self, ip):
+        with self._trava:
+            ate = self._falhas.get(ip, (0, 0))[1]
+            return int(ate - time.time()) if ate > time.time() else 0
+
+    def conferir(self, ip, usuario, senha):
+        usuario_ok, senha_hash, _ = self.credencial()
+        valido = bool(usuario_ok and senha_hash) and hmac.compare_digest(str(usuario), usuario_ok) \
+            and check_password_hash(senha_hash, str(senha))
+        with self._trava:
+            if valido:
+                self._falhas.pop(ip, None)
+            else:
+                qtd = self._falhas.get(ip, (0, 0))[0] + 1
+                # Na 5ª erro: bloqueia por BLOQUEIO_S e zera a contagem para depois do bloqueio.
+                self._falhas[ip] = (0, time.time() + BLOQUEIO_S) if qtd >= MAX_FALHAS else (qtd, 0)
+        return valido
+
+
+def exigir_login(acesso):
+    """before_request do app do Edge: tudo exige sessão, menos a tela de login e o visual (CSS, logos)."""
+    if request.endpoint in ROTAS_PUBLICAS:
+        return None
+    if session.get('ok') and session.get('versao') == acesso.versao() and \
+            time.time() - session.get('desde', 0) < SESSAO_HORAS * 3600:
+        # Escrita só da própria página: outro site aberto no navegador não manda comando ao sensor.
+        if request.method not in ('GET', 'HEAD') and not _mesma_origem():
+            return jsonify(erro='Origem não permitida.'), 403
+        return None
+    session.clear()
+    if request.path.startswith('/api/'):
+        return jsonify(erro='Sessão expirada. Entre de novo no painel local.'), 401
+    return redirect('/login?proximo=' + (request.full_path.rstrip('?') if request.path != '/' else '/'))
+
+
+def _mesma_origem():
+    origem = request.headers.get('Origin') or request.headers.get('Referer') or ''
+    if not origem:
+        return True   # navegador antigo/ferramenta: o cookie SameSite=Strict já barra o envio entre sites
+    from urllib.parse import urlparse
+    return urlparse(origem).netloc == request.host
+
+
 # ------------------------------------------------------------------ levantamento local
 def linhas_dispositivos(topologia, nomes_salvos, visto_em):
     """Converte a última varredura do Edge para o formato de linhas que levantamento.montar usa."""
@@ -205,6 +311,36 @@ def criar_blueprint(eventos, estado):
          visto_em()     -> horário (UTC, ISO) da última varredura
     """
     bp = Blueprint('painel_local', __name__)
+
+    @bp.route('/login', methods=['GET', 'POST'])
+    def login():
+        proximo = request.values.get('proximo') or '/'
+        if not proximo.startswith('/') or proximo.startswith('//'):
+            proximo = '/'
+        acesso = estado.acesso   # lido a cada pedido (o agente pode trocar o objeto)
+        usuario_cfg, _, _ = acesso.credencial()
+        erro, ip = None, request.remote_addr or '?'
+        if request.method == 'POST':
+            espera = acesso.bloqueado(ip)
+            if espera:
+                erro = f'Muitas tentativas erradas. Tente de novo em {espera // 60 + 1} min.'
+            elif acesso.conferir(ip, request.form.get('usuario', ''), request.form.get('senha', '')):
+                session.clear()
+                session.update(ok=True, desde=time.time(), versao=acesso.versao())
+                session.permanent = True
+                eventos.registrar('Acesso local', f'Entrada no painel local a partir de {ip}.', 'OK')
+                return redirect(proximo)
+            else:
+                erro = 'Usuário ou senha incorretos.'
+                eventos.registrar('Acesso local', f'Tentativa de entrada com senha errada a partir de {ip}.', 'Aviso')
+        pagina = render_template('edge/login.html', sensor=contexto_sensor(), erro=erro, proximo=proximo,
+                                 sem_credencial=usuario_cfg is None, usuario=request.form.get('usuario', '')[:64])
+        return pagina, (401 if erro else 200)
+
+    @bp.route('/sair', methods=['POST'])
+    def sair():
+        session.clear()
+        return redirect('/login')
 
     def contexto_sensor():
         d = estado.dados()
