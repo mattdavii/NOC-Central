@@ -108,18 +108,29 @@ Describe 'Tarefa de inicialização (de verdade, no Windows do CI)' {
         Register-TarefaInicializacao -Distro 'Ubuntu'
         $t = Get-ScheduledTask -TaskName 'NexoPulse Edge (WSL)'
         $t.Actions[0].Execute | Should -Be 'wsl.exe'
-        $t.Actions[0].Arguments | Should -Be '-d Ubuntu --exec /bin/true'
+        $t.Actions[0].Arguments | Should -Be '-d Ubuntu --exec /bin/sleep infinity'
+        # Sem limite de tempo e reinicia se cair: é ela que mantém o Ubuntu ligado.
+        $t.Settings.ExecutionTimeLimit | Should -Be 'PT0S'
+        $t.Settings.RestartCount | Should -Be 999
         @($t.Triggers).Count | Should -Be 2
         $t.Principal.LogonType | Should -Be 'S4U'
         $t.Settings.DisallowStartIfOnBatteries | Should -BeFalse
     }
     It 'pode ser refeita para rodar no logon (quando o S4U não sobe o WSL)' {
         Register-TarefaInicializacao -Distro 'Ubuntu' -LogonType Interactive
-        (Get-ScheduledTask -TaskName 'NexoPulse Edge (WSL)').Principal.LogonType | Should -Be 'Interactive'
+        $t = Get-ScheduledTask -TaskName 'NexoPulse Edge (WSL)'
+        $t.Principal.LogonType | Should -Be 'Interactive'
+        $t.Actions[0].Execute | Should -Be 'conhost.exe'
+        $t.Actions[0].Arguments | Should -Be '--headless wsl.exe -d Ubuntu --exec /bin/sleep infinity'
     }
 }
 
 Describe 'Painel e IP' {
+    It 'Wait-Painel desiste no prazo e devolve 0 quando nada responde' {
+        $inicio = Get-Date
+        Wait-Painel 'http://127.0.0.1:9/' -Segundos 4 | Should -Be 0
+        ((Get-Date) - $inicio).TotalSeconds | Should -BeLessThan 30
+    }
     It 'Test-Painel devolve 0 quando nada responde' {
         Test-Painel 'http://127.0.0.1:1/login' | Should -Be 0
     }

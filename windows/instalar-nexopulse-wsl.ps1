@@ -105,9 +105,16 @@ function Set-RegrasFirewall([int]$Porta) {
             -Protocol $r.Protocolo -LocalPort $r.Porta -RemoteAddress LocalSubnet -Profile Any | Out-Null
         $hyperv = $false
         if (Get-Command New-NetFirewallHyperVRule -ErrorAction SilentlyContinue) {
-            Remove-NetFirewallHyperVRule -Name $r.Nome -ErrorAction SilentlyContinue
-            New-NetFirewallHyperVRule -Name $r.Nome -DisplayName $r.Exibir -Direction Inbound -Action Allow `
-                -VMCreatorId $script:WSL_VM_CREATOR_ID -Protocol $r.Protocolo -LocalPorts $r.Porta | Out-Null
+            # Tira a regra antiga (de uma instalação anterior) antes de criar; se ainda assim já existir
+            # (o Remove por nome nem sempre acha a regra do Hyper-V), a regra que está lá serve.
+            Get-NetFirewallHyperVRule -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $r.Nome } |
+                Remove-NetFirewallHyperVRule -ErrorAction SilentlyContinue
+            try {
+                New-NetFirewallHyperVRule -Name $r.Nome -DisplayName $r.Exibir -Direction Inbound -Action Allow `
+                    -VMCreatorId $script:WSL_VM_CREATOR_ID -Protocol $r.Protocolo -LocalPorts $r.Porta -ErrorAction Stop | Out-Null
+            } catch {
+                if (-not (Get-NetFirewallHyperVRule -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $r.Nome })) { throw }
+            }
             $hyperv = $true
         }
         $resultado += [pscustomobject]@{ Regra = $r.Nome; Windows = $true; HyperV = $hyperv }
@@ -123,28 +130,49 @@ function Get-IpRedeLocal {
     return $null
 }
 
+$script:ARG_TAREFA = '--exec /bin/sleep infinity'
+
 function Register-TarefaInicializacao([string]$Distro, [string]$LogonType = 'S4U') {
-    $acao = New-ScheduledTaskAction -Execute 'wsl.exe' -Argument "-d $Distro --exec /bin/true"
+    <# O WSL desliga a distribuição uns segundos depois que o último wsl.exe termina, mesmo com
+       vmIdleTimeout=-1 (caso real: o serviço parava ~20 s depois de subir). A tarefa mantém um
+       wsl.exe aberto para sempre ("sleep infinity"), sem limite de tempo, e volta se cair. #>
+    $acao = if ($LogonType -eq 'Interactive') {
+        # Com usuário logado, a tarefa abriria uma janela preta; o conhost sem janela evita isso.
+        New-ScheduledTaskAction -Execute 'conhost.exe' -Argument "--headless wsl.exe -d $Distro $script:ARG_TAREFA"
+    } else {
+        New-ScheduledTaskAction -Execute 'wsl.exe' -Argument "-d $Distro $script:ARG_TAREFA"
+    }
     $gatilhos = @((New-ScheduledTaskTrigger -AtStartup), (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME))
     $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType $LogonType -RunLevel Limited
-    $config = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+    $config = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) `
+        -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew
     Register-ScheduledTask -TaskName $script:NOME_TAREFA -Action $acao -Trigger $gatilhos -Principal $principal -Settings $config -Force | Out-Null
 }
 
 function Test-TarefaInicializacao([string]$Distro) {
-    <# Roda a tarefa agora e vê se terminou bem. Algumas versões do WSL não sobem pela tarefa
-       "sem usuário logado" (S4U); nesse caso a tarefa é refeita para rodar no logon. #>
+    <# Liga a tarefa agora: ela deve continuar rodando (é ela que mantém o Ubuntu ligado). Algumas
+       versões do WSL não sobem pela tarefa "sem usuário logado" (S4U); se ela cair logo, é refeita
+       para rodar no logon. #>
+    Stop-ScheduledTask -TaskName $script:NOME_TAREFA -ErrorAction SilentlyContinue
     Start-ScheduledTask -TaskName $script:NOME_TAREFA
-    for ($i = 0; $i -lt 30; $i++) {
-        Start-Sleep -Seconds 1
-        $info = Get-ScheduledTaskInfo -TaskName $script:NOME_TAREFA
-        if ((Get-ScheduledTask -TaskName $script:NOME_TAREFA).State -ne 'Running' -and $info.LastRunTime -gt (Get-Date).AddMinutes(-2)) { break }
-    }
+    Start-Sleep -Seconds 15
+    if ((Get-ScheduledTask -TaskName $script:NOME_TAREFA).State -eq 'Running') { return 'boot' }
     $codigo = (Get-ScheduledTaskInfo -TaskName $script:NOME_TAREFA).LastTaskResult
-    if ($codigo -eq 0) { return 'boot' }
-    Write-Host "  A tarefa sem usuário logado falhou (código $codigo). Refazendo para rodar no logon do Windows." -ForegroundColor Yellow
+    Write-Host "  A tarefa sem usuário logado não ficou de pé (código $codigo). Refazendo para rodar no logon do Windows." -ForegroundColor Yellow
     Register-TarefaInicializacao -Distro $Distro -LogonType Interactive
+    Start-ScheduledTask -TaskName $script:NOME_TAREFA
     return 'logon'
+}
+
+function Wait-Painel([string]$Url, [int]$Segundos = 90) {
+    <# Tenta o painel até ele responder 200 ou acabar o prazo; devolve o último código (0 = nada respondeu). #>
+    $fim = (Get-Date).AddSeconds($Segundos)
+    do {
+        $codigo = Test-Painel $Url
+        if ($codigo -eq 200) { return $codigo }
+        Start-Sleep -Seconds 3
+    } while ((Get-Date) -lt $fim)
+    return $codigo
 }
 
 function Test-Painel([string]$Url) {
@@ -224,8 +252,9 @@ function Invoke-Instalacao {
         if (-not $ativo) { Start-Sleep -Seconds 2 }
     }
     $ip = Get-IpRedeLocal
-    $local = Test-Painel "http://127.0.0.1:$PortaPainel/login"
-    $rede = if ($ip) { Test-Painel "http://${ip}:$PortaPainel/login" } else { 0 }
+    # O serviço fica "active" assim que o processo nasce; o painel abre alguns segundos depois.
+    $local = Wait-Painel "http://127.0.0.1:$PortaPainel/login"
+    $rede = if ($ip) { Wait-Painel "http://${ip}:$PortaPainel/login" -Segundos 20 } else { 0 }
     $ok = { param($c) if ($c) { 'OK' } else { 'FALHOU' } }
     Write-Host ("  Serviço nexopulse-edge ........ " + (& $ok $ativo))
     Write-Host ("  Painel neste PC (127.0.0.1) .... " + (& $ok ($local -eq 200)))
