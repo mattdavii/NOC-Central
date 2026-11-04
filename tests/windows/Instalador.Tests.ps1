@@ -32,7 +32,9 @@ Describe 'Versão do Windows' {
 
 Describe '.wslconfig' {
     It 'cria a seção [wsl2] num arquivo vazio' {
-        Get-WslConfigAtualizado @() | Should -Be @('[wsl2]', 'networkingMode=mirrored', 'vmIdleTimeout=-1')
+        $saida = @(Get-WslConfigAtualizado @())
+        $saida | Should -Be @('[wsl2]', 'networkingMode=mirrored', 'vmIdleTimeout=-1')
+        $saida.Count | Should -Be 3
     }
     It 'troca o modo NAT e preserva o resto do arquivo' {
         $antes = @('[wsl2]', 'memory=4GB', 'networkingMode=NAT', 'vmIdleTimeout=60000', '', '[experimental]', 'autoMemoryReclaim=gradual')
@@ -41,6 +43,12 @@ Describe '.wslconfig' {
         ($depois -match '^vmIdleTimeout=') | Should -Be @('vmIdleTimeout=-1')
         $depois | Should -Contain 'memory=4GB'
         $depois | Should -Contain 'autoMemoryReclaim=gradual'
+    }
+    It 'grava o arquivo linha a linha (não "System.Object[]")' {
+        $arquivo = Join-Path $env:TEMP 'wslconfig-teste'
+        Set-Content -Path $arquivo -Value @(Get-WslConfigAtualizado @('[wsl2]', 'memory=4GB')) -Encoding ASCII
+        Get-Content $arquivo | Should -Be @('[wsl2]', 'networkingMode=mirrored', 'vmIdleTimeout=-1', 'memory=4GB')
+        Remove-Item $arquivo
     }
     It 'é idempotente (rodar o instalador de novo não duplica nada)' {
         $uma = Get-WslConfigAtualizado @('[wsl2]', 'memory=4GB')

@@ -59,7 +59,7 @@ function Get-WslConfigAtualizado([string[]]$Linhas) {
         $saida += $l
         if ($l -match '^\s*\[wsl2\]\s*$') { $saida += 'networkingMode=mirrored'; $saida += 'vmIdleTimeout=-1' }
     }
-    return ,$saida
+    return $saida
 }
 
 function Set-RegrasFirewall([int]$Porta) {
@@ -159,7 +159,7 @@ function Invoke-Instalacao {
         Copy-Item $wslconfig "$wslconfig.bak-$(Get-Date -Format yyyyMMddHHmmss)"
         $linhas = @(Get-Content $wslconfig)
     }
-    Set-Content -Path $wslconfig -Value (Get-WslConfigAtualizado $linhas) -Encoding ASCII
+    Set-Content -Path $wslconfig -Value @(Get-WslConfigAtualizado $linhas) -Encoding ASCII
 
     # 4. systemd dentro da distribuição.
     Passo 'Ativando o systemd no WSL'
