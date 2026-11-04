@@ -1470,7 +1470,7 @@ def _texto_da_rede(valor, maximo):
     return limpo[:maximo] or None
 
 
-TIPOS_CFTV = ('Câmera IP', 'NVR/DVR', 'Equipamento de CFTV')
+TIPOS_CFTV = ('Câmera IP', 'NVR/DVR', 'Equipamento de CFTV', 'Controle de acesso/Interfone')
 TIPOS_COMUNICACAO = ('Roteador/Firewall', 'Switch', 'Access Point/Rádio', 'ONU/ONT', 'Starlink', 'Roteador 4G/LTE',
                      'Gateway industrial', 'Equipamento de comunicação')
 TIPOS_EQUIPAMENTO = TIPOS_CFTV + TIPOS_COMUNICACAO
@@ -1517,7 +1517,9 @@ def atualizar_dispositivos():
         for item in lista:
             if not isinstance(item, dict):
                 raise ValueError('Dispositivo inválido.')
-            mac = bounded_text(item.get('mac'), 'MAC', maximum=80)
+            # Equipamento de outra VLAN (rede roteada) chega sem MAC, com a rede de origem.
+            rede_origem = _texto_da_rede(item.get('rede'), 43)
+            mac = bounded_text(item.get('mac'), 'MAC', maximum=80, allow_empty=bool(rede_origem)) or None
             # A marca vem da base do IEEE na Central (vale também para sensores antigos);
             # o que o sensor mandar só é usado se a base não conhecer o prefixo.
             registro, fonte = oui.fabricante(mac)
@@ -1543,6 +1545,7 @@ def atualizar_dispositivos():
                 'cftv': _cftv_da_rede(item.get('cftv')),
                 'comunicacao': _comunicacao_da_rede(item.get('comunicacao')),
                 'firmware': _texto_da_rede(item.get('firmware'), 120),
+                'rede_origem': rede_origem,
             })
     except ValueError as error:
         return jsonify(error=str(error)), 400
@@ -1561,11 +1564,11 @@ def atualizar_dispositivos():
             conn,
             "INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, nome_custom, status, latencia, neighbor_state, "
             "fabricante_registro, fabricante_fonte, hostname, hostname_fonte, visto_em, modelo, tipo_equipamento, cftv, "
-            "comunicacao, firmware) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "comunicacao, firmware, rede_origem) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (sensor_mac, disp['ip'], disp['mac'], disp['fabricante'], nome, disp['status'], disp.get('latencia'),
              disp.get('neighbor_state'), disp['fabricante_registro'], disp['fabricante_fonte'], disp['hostname'],
              disp['hostname_fonte'], visto_em, disp['modelo'], disp['tipo_equipamento'], disp['cftv'],
-             disp['comunicacao'], disp['firmware'])
+             disp['comunicacao'], disp['firmware'], disp['rede_origem'])
         )
     conn.commit()
     conn.close()

@@ -26,8 +26,8 @@ SOBRE = ('Levantamento dos equipamentos que o sensor NexoPulse enxerga na rede l
          'pelo prefixo do MAC (registro público do IEEE) e o nome anunciado na rede, sempre com a fonte. '
          'Campos com valor null não foram identificados; não os trate como ausência do equipamento.')
 LIMITACOES = [
-    'Só aparecem equipamentos no mesmo segmento de rede (mesma VLAN/sub-rede) do sensor; '
-    'equipamentos atrás de outros roteadores não entram nesta versão.',
+    'Equipamentos de outras VLANs só aparecem se a rede foi cadastrada como adicional no sensor, e '
+    'apenas os que respondem a ping; deles não se vê o MAC (rede roteada) e, portanto, nem a marca.',
     'A marca vem do prefixo do MAC: indica quem fabricou a placa de rede, que pode ser um fornecedor '
     'de módulos (ex.: Foxconn, AzureWave, Espressif) e não a marca do produto final.',
     'Celulares e notebooks atuais usam MAC privado (aleatório) por rede; nesses casos a marca não pode '
@@ -117,6 +117,8 @@ def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False, gerado_
             'firmware': linha.get('firmware') or ident.get('firmware'),
             'cftv': cftv,
             'comunicacao': com,
+            # Equipamento de outra VLAN, alcançado por roteamento: sem MAC visível.
+            'rede_origem': linha.get('rede_origem'),
         })
     if ip_sensor and ip_sensor not in vistos:
         # O sensor não aparece na própria tabela ARP; entra para o inventário ficar completo.
@@ -132,6 +134,7 @@ def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False, gerado_
             'mac_privado': fonte == 'mac_privado', 'papel': 'sensor', 'status': 'online',
             'latencia_ms': None, 'estado_vizinho': None, 'visto_em': None,
             'tipo': 'Sensor NexoPulse', 'modelo': None, 'firmware': None, 'cftv': None, 'comunicacao': None,
+            'rede_origem': None,
         })
         itens.sort(key=lambda d: _chave_ip(d['ip']))
 
@@ -156,6 +159,7 @@ def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False, gerado_
         },
         'escopo': {
             'rede': sensor.get('rede_cidr'),
+            'redes_adicionais': sorted({d['rede_origem'] for d in itens if d.get('rede_origem')}),
             'faixa_varrida': sensor.get('scan_rede') or sensor.get('rede_cidr'),
             'varredura_limitada': bool(sensor.get('scan_limitado')),
             'metodo': ['Tabela de vizinhos (ARP) do sensor após varredura por ping',
@@ -184,7 +188,7 @@ COLUNAS = (('IP', 16), ('MAC', 19), ('Apelido', 24), ('Nome na rede', 28), ('Fon
            ('Marca', 20), ('Fabricante (registro IEEE)', 38), ('MAC privado', 12), ('Papel', 10),
            ('Status', 34), ('Latência (ms)', 13), ('Estado L2', 12), ('Visto em (UTC)', 21),
            ('Categoria', 14), ('Tipo', 22), ('Modelo', 26), ('Firmware', 24), ('Confiança', 11),
-           ('Evidências', 60), ('Portas', 30), ('Riscos', 40))
+           ('Evidências', 60), ('Portas', 30), ('Riscos', 40), ('Rede de origem', 18))
 
 
 def _linha_planilha(d):
@@ -194,7 +198,8 @@ def _linha_planilha(d):
             d['latencia_ms'], d['estado_vizinho'], d['visto_em'],
             'CFTV' if d['cftv'] else 'Comunicação' if d.get('comunicacao') else None, d['tipo'], d['modelo'],
             d.get('firmware'), ident(d).get('confianca'), '; '.join(ident(d).get('evidencias') or []) or None,
-            ', '.join(ident(d).get('portas') or []) or None, '; '.join(ident(d).get('riscos') or []) or None]
+            ', '.join(ident(d).get('portas') or []) or None, '; '.join(ident(d).get('riscos') or []) or None,
+            d.get('rede_origem') or 'Rede do sensor']
 
 
 def ident(d):

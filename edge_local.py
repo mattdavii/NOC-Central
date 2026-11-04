@@ -7,6 +7,8 @@ emitido pela Central para este sensor (verificado em nexopulse_edge.verificar_to
 """
 import csv
 import io
+import ipaddress
+import json
 import os
 import sqlite3
 import threading
@@ -126,6 +128,37 @@ def periodo_da_requisicao(args):
     return (hoje - timedelta(days=dias - 1)).isoformat(), hoje.isoformat(), f'Últimos {dias} dias'
 
 
+# ------------------------------------------------------------------ configuração local
+MAX_REDES_EXTRAS = 8
+
+
+def validar_rede(texto):
+    """Rede extra aceita: IPv4 privada, de /20 (4.096 endereços) a /32. None se não servir."""
+    try:
+        rede = ipaddress.ip_network(str(texto).strip(), strict=False)
+    except ValueError:
+        return None
+    if rede.version != 4 or not rede.is_private or rede.is_loopback or rede.is_link_local or rede.prefixlen < 20:
+        return None
+    return rede
+
+
+def ler_config(caminho, chave, padrao=None):
+    try:
+        with sqlite3.connect(caminho, timeout=5) as conn:
+            conn.execute('CREATE TABLE IF NOT EXISTS config_local (chave TEXT PRIMARY KEY, valor TEXT)')
+            linha = conn.execute('SELECT valor FROM config_local WHERE chave = ?', (chave,)).fetchone()
+        return json.loads(linha[0]) if linha else padrao
+    except (sqlite3.Error, ValueError):
+        return padrao
+
+
+def gravar_config(caminho, chave, valor):
+    with sqlite3.connect(caminho, timeout=5) as conn:
+        conn.execute('CREATE TABLE IF NOT EXISTS config_local (chave TEXT PRIMARY KEY, valor TEXT)')
+        conn.execute('INSERT OR REPLACE INTO config_local (chave, valor) VALUES (?, ?)', (chave, json.dumps(valor)))
+
+
 # ------------------------------------------------------------------ levantamento local
 def linhas_dispositivos(topologia, nomes_salvos, visto_em):
     """Converte a última varredura do Edge para o formato de linhas que levantamento.montar usa."""
@@ -145,7 +178,7 @@ def linhas_dispositivos(topologia, nomes_salvos, visto_em):
             'status': d.get('status'), 'latencia': d.get('latencia'),
             'neighbor_state': d.get('neighbor_state'), 'visto_em': visto_em,
             'modelo': d.get('modelo'), 'tipo_equipamento': d.get('tipo_equipamento'), 'cftv': d.get('cftv'),
-            'comunicacao': d.get('comunicacao'), 'firmware': d.get('firmware'),
+            'comunicacao': d.get('comunicacao'), 'firmware': d.get('firmware'), 'rede_origem': d.get('rede'),
         })
     return linhas
 
@@ -250,6 +283,35 @@ def criar_blueprint(eventos, estado):
                           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                           levantamento.nome_arquivo(dados, 'xlsx'))
         return jsonify(erro='Formato inválido: use json, csv ou xlsx.'), 400
+
+    @bp.route('/api/config/redes_extras', methods=['GET', 'POST'])
+    def config_redes_extras():
+        caminho = eventos.caminho
+        if request.method == 'GET':
+            return jsonify(redes=ler_config(caminho, 'redes_extras', []), maximo=MAX_REDES_EXTRAS,
+                           varredura=estado.dados().get('varredura'))
+        itens = (request.json or {}).get('redes')
+        if isinstance(itens, str):
+            itens = [p for p in itens.replace(';', ',').replace('\n', ',').split(',')]
+        if not isinstance(itens, list):
+            return jsonify(erro='Envie as redes como lista, ex.: ["192.168.10.0/24"].'), 400
+        redes, invalidas = [], []
+        for item in (str(i).strip() for i in itens):
+            if not item:
+                continue
+            rede = validar_rede(item)
+            if rede is None:
+                invalidas.append(item)
+            elif str(rede) not in redes:
+                redes.append(str(rede))
+        if invalidas:
+            return jsonify(erro='Rede inválida (use faixa privada de /20 a /32, ex.: 192.168.10.0/24): '
+                                + ', '.join(invalidas)), 400
+        if len(redes) > MAX_REDES_EXTRAS:
+            return jsonify(erro=f'No máximo {MAX_REDES_EXTRAS} redes adicionais.'), 400
+        gravar_config(caminho, 'redes_extras', redes)
+        eventos.registrar('Configuração', 'Redes adicionais da varredura: ' + (', '.join(redes) or 'nenhuma'), 'OK')
+        return jsonify(redes=redes)
 
     @bp.route('/api/dispositivos')
     def api_dispositivos():
