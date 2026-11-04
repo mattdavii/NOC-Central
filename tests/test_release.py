@@ -62,10 +62,12 @@ def test_dashboard_uses_real_online_sensor_measurements(client, login):
     assert connectivity['Quad9']['latency_ms'] == 50.0
 
 
-def test_login_version_is_beside_credentials(client):
+def test_login_does_not_show_version_to_clients(client):
     page = client.get('/login').get_data(as_text=True)
     assert '<div class="login-header">' in page
-    assert '<span class="version-badge">v2.2.0-rc1</span>' in page
+    # A versão (ex.: rc) não aparece para quem ainda não entrou; ela fica no /healthz e na barra interna.
+    assert 'version-badge' not in page and '2.2.0-rc1' not in page
+    assert 'href="https://www.mdsolucoes.eng.br"' in page and 'Ex: admin' not in page
     assert 'class="product-bar"' not in page
 
 
@@ -465,9 +467,8 @@ def test_login_and_base_layout_accessibility(client):
     for template in (root / 'templates').glob('*.html'):
         source = template.read_text(encoding='utf-8')
         assert 'nexopulse-1' not in source, template.name
-        if 'fonts.googleapis.com' in source:
-            assert 'family=Inter:wght@400;600;700' in source, template.name
-            assert 'family=JetBrains+Mono:wght@400;700' in source, template.name
+        # Fontes servidas pela própria Central: nenhuma página chama o Google Fonts.
+        assert 'fonts.googleapis.com' not in source, template.name
 
 
 def test_unverified_sensor_state_is_never_shown_as_healthy(client, login):

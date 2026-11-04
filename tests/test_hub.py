@@ -116,3 +116,76 @@ def test_identidade_nexohub(client, login):
     assert '/static/brand/nexohub/logo-escuro.svg' in pulse_page and '/static/brand/nexopulse/favicon.svg' in pulse_page
     acessos_page = client.get('/usuarios').get_data(as_text=True)
     assert '<title>NexoHub - Central de Acessos</title>' in acessos_page
+
+
+def test_disponibilidade_do_mes_conta_quedas_cortadas_no_inicio_do_mes(client):
+    import hub
+    conn = database.get_db()
+    conn.execute("INSERT INTO sensores (mac_id, nome_local, status, cliente_id, em_manutencao) VALUES ('DD:01', 'Delta A', 'online', 2, 0)")
+    conn.execute("INSERT INTO sensores (mac_id, nome_local, status, cliente_id, em_manutencao) VALUES ('DD:02', 'Delta B', 'online', 2, 0)")
+    conn.execute("INSERT INTO sensores (mac_id, nome_local, status, cliente_id, em_manutencao) VALUES ('DD:03', 'Delta C', 'offline', 2, 1)")
+    inicio, mes = hub.inicio_do_mes(time.time())
+    agora = inicio + 10 * 86400  # dia 11, 00:00 de Brasília
+    sql = "INSERT INTO diagnosticos (sensor_mac, chave, causa, gravidade, inicio, fim, estado) VALUES (?, 'sem_comunicacao', 'x', 'Crítica', ?, ?, ?)"
+    # Começou no mês anterior: só conta a partir do dia 1 (2 h).
+    conn.execute(sql, ('DD:01', inicio - 3600, inicio + 7200, 'resolvido'))
+    # Registro duplicado sobreposto ao primeiro não conta duas vezes.
+    conn.execute(sql, ('DD:01', inicio + 3600, inicio + 5400, 'resolvido'))
+    # Em andamento: conta até agora (4 h).
+    conn.execute(sql, ('DD:02', agora - 4 * 3600, None, 'ativo'))
+    # Site em manutenção fica fora da conta.
+    conn.execute(sql, ('DD:03', inicio, None, 'ativo'))
+    conn.commit()
+    d = hub.disponibilidade_mes(conn, 2, agora=agora)
+    conn.close()
+    fora = 6 * 3600
+    assert d['fora_s'] == fora and d['fora_txt'] == '6 h'
+    esperado = 100 * (1 - fora / (2 * 10 * 86400))  # 98,75%
+    assert d['pct'] == 98.7 and abs(d['pct'] - esperado) < 0.1
+    assert d['faixa'] == 'atencao' and d['mes'] == mes
+
+
+def test_disponibilidade_nunca_mostra_100_com_queda_e_some_sem_sites(client):
+    import hub
+    conn = database.get_db()
+    assert hub.disponibilidade_mes(conn, 2) is None
+    conn.execute("INSERT INTO sensores (mac_id, nome_local, status, cliente_id, em_manutencao) VALUES ('EE:01', 'Eco', 'online', 2, 0)")
+    inicio, _ = hub.inicio_do_mes(time.time())
+    agora = inicio + 20 * 86400
+    conn.execute("INSERT INTO diagnosticos (sensor_mac, chave, causa, gravidade, inicio, fim, estado) VALUES ('EE:01', 'sem_comunicacao', 'x', 'Crítica', ?, ?, 'resolvido')",
+                 (agora - 300, agora - 200))
+    conn.commit()
+    d = hub.disponibilidade_mes(conn, 2, agora=agora)
+    conn.close()
+    assert d['pct'] == 99.9 and d['faixa'] == 'ok' and d['fora_txt'] == '1 min'
+
+
+def test_hub_mostra_disponibilidade_no_card_e_na_visao_md(login):
+    _cenario()
+    page = login(2, 'Cliente').get('/').get_data(as_text=True)
+    assert 'de disponibilidade em' in page and 'sem comunicação' in page
+    md = login(1, 'Administrador Master').get('/').get_data(as_text=True)
+    assert 'Disponibilidade no mês' in md and 'data-ordem="disp"' in md and '/usuarios#empresas' in md
+    assert 'window.location.reload' not in md
+    # Versão (rc) só para a MD.
+    assert 'product-version' in md and 'product-version' not in page
+
+
+def test_disponibilidade_de_site_instalado_no_meio_do_mes(client):
+    import hub
+    agora = time.time()
+    inicio, _ = hub.inicio_do_mes(agora)
+    if agora - inicio < 3 * 3600:
+        import pytest
+        pytest.skip('primeiras horas do mês: o site "instalado há 2 h" cairia no mês anterior')
+    conn = database.get_db()
+    conn.execute("INSERT INTO sensores (mac_id, nome_local, status, cliente_id) VALUES ('N1', 'Novo', 'online', 2)")
+    instalado = agora - 2 * 3600
+    conn.execute("INSERT INTO medicoes_rede (sensor_mac, coletado_em, tipo) VALUES ('N1', ?, 'ping')", (instalado,))
+    conn.execute("INSERT INTO diagnosticos (sensor_mac, chave, causa, gravidade, inicio, fim, estado) "
+                 "VALUES ('N1', 'sem_comunicacao', 'Site sem comunicação', 'Crítica', ?, ?, 'resolvido')", (agora - 3600, agora - 2400))
+    conn.commit()
+    d = hub.disponibilidade_mes(conn, 2, agora=agora)
+    conn.close()
+    # 20 min fora em 2 h monitoradas (não no mês inteiro): 83,3%.
+    assert 83.0 <= d['pct'] <= 83.4

@@ -9,7 +9,7 @@
     <link rel="icon" href="/static/brand/nexohub/favicon.ico" sizes="16x16 32x32 48x48">
     <link rel="apple-touch-icon" href="/static/brand/nexohub/apple-touch-icon.png">
     <title>NexoHub - Central de Acessos</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/fontes/fontes.css?v=1">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
 
@@ -750,7 +750,10 @@
         }
 
         try {
-            const aba = sessionStorage.getItem('central-acessos-aba');
+            // Link direto para uma aba (ex.: /usuarios#empresas, vindo do Início) vale mais que a última aba aberta.
+            const pedida = location.hash.slice(1);
+            let aba = pedida && document.getElementById('tab-' + pedida) ? pedida : null;
+            if (!aba) { try { aba = sessionStorage.getItem('central-acessos-aba'); } catch (_) {} }
             if (aba && document.getElementById('tab-' + aba)) abrirAba(aba);
         } catch (_) {}
     </script>

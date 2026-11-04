@@ -10,7 +10,7 @@
     <link rel="icon" href="/static/brand/nexohub/favicon.ico" sizes="16x16 32x32 48x48">
     <link rel="apple-touch-icon" href="/static/brand/nexohub/apple-touch-icon.png">
     <title>NexoHub - Acesso</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/fontes/fontes.css?v=1">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body { margin: 0; padding: 24px; box-sizing: border-box; font-family: 'Inter', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-image: radial-gradient(circle at 20% 15%, rgba(5,169,220,.14), transparent 32%), radial-gradient(circle at 85% 80%, rgba(5,168,140,.12), transparent 30%); }
@@ -22,7 +22,6 @@
         .login-brand img { width: 310px; max-width: 88%; height: auto; }
         .login-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 22px 0 26px; padding-top: 20px; border-top: 1px solid var(--border); }
         .login-box h1 { color: var(--text-main); margin: 0; font-size: 1.15em; }
-        .version-badge { color: var(--text-muted); background: var(--bg-input); border: 1px solid var(--border); border-radius: 999px; padding: 5px 9px; font-size: 0.72em; font-weight: 700; white-space: nowrap; }
         .login-positioning { margin: 0; text-align: center; color: var(--text-muted); font-size: .78em; letter-spacing: .05em; }
         .login-slogan { margin: 8px 0 0; text-align: center; color: var(--text-muted); font-size: .78em; }
         .input-group { margin-bottom: 20px; }
@@ -33,6 +32,9 @@
         .btn-login:focus-visible { outline: 2px solid var(--text-main); outline-offset: 3px; }
         .flash-msg { background: color-mix(in srgb, var(--status-crit) 12%, transparent); color: var(--status-crit); border: 1px solid color-mix(in srgb, var(--status-crit) 40%, transparent); padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 20px; font-weight: bold; font-size: 0.9em; }
         .login-2fa-ajuda { margin: 0 0 16px; color: var(--text-muted); font-size: .88rem; line-height: 1.5; }
+        .login-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 18px; margin: 14px 0 0; font-size: .82rem; }
+        .login-links a { color: var(--text-muted); }
+        .login-links a:hover { color: var(--text-main); }
         .login-tools { display:flex; flex-direction:column; align-items:center; margin-top:18px; }
         @media(max-width:520px) { .login-box { padding:28px 22px; } .login-header { align-items:flex-start; } }
     </style>
@@ -50,7 +52,6 @@
         <p class="login-slogan">As ferramentas Nexo dos serviços da MD Soluções Tecnológicas, num só acesso.</p>
         <div class="login-header">
             <h1><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> {{ 'Segunda etapa' if etapa == '2fa' else 'Acesso' }}</h1>
-            <span class="version-badge">v{{ central_version }}</span>
         </div>
         
         {% with messages = get_flashed_messages() %}
@@ -80,7 +81,7 @@
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <div class="input-group">
                 <label for="login-usuario">Usuário</label>
-                <input id="login-usuario" type="text" name="usuario" required autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Ex: admin">
+                <input id="login-usuario" type="text" name="usuario" required autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Seu usuário">
             </div>
             <div class="input-group">
                 <label for="login-senha">Senha</label>
@@ -89,7 +90,7 @@
             <button type="submit" class="btn-login">Entrar no NexoHub</button>
         </form>
         {% endif %}
-        <div class="login-tools"><button class="theme-toggle" type="button" onclick="NexoPulseTheme.toggle()" aria-label="Alternar tema"><i class="fa-solid fa-sun" aria-hidden="true"></i><span>Alternar tema</span></button><a class="login-privacy" href="/privacidade">Política de privacidade</a></div>
+        <div class="login-tools"><button class="theme-toggle" type="button" onclick="NexoPulseTheme.toggle()" aria-label="Alternar tema"><i class="fa-solid fa-sun" aria-hidden="true"></i><span>Alternar tema</span></button><p class="login-links"><a href="{{ site_url }}">Site da MD Soluções</a><a href="/privacidade">Política de privacidade</a></p></div>
       </div>
     </main>
 </body>
