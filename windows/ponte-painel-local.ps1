@@ -3,7 +3,7 @@
 
   Na rede espelhada do WSL, em algumas versões do Windows 11 o próprio PC não alcança o Ubuntu
   (nem por 127.0.0.1 nem pelo IP da rede), embora os outros aparelhos da rede alcancem. Esta ponte
-  escuta em http://127.0.0.1:10080 no Windows e leva cada conexão até o painel pelo próprio
+  escuta em http://127.0.0.1:10010 no Windows (a 10080 os navegadores bloqueiam: ERR_UNSAFE_PORT) e leva cada conexão até o painel pelo próprio
   wsl.exe (entrada e saída padrão), sem depender da rede entre Windows e WSL.
 
   Uso:
@@ -14,7 +14,7 @@ param(
     [switch]$Instalar,
     [string]$Distro = 'Ubuntu',
     [int]$PortaPainel = 10000,
-    [int]$PortaLocal = 10080
+    [int]$PortaLocal = 10010
 )
 
 $script:PASTA = Join-Path $env:ProgramData 'NexoPulse'
