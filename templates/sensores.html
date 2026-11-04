@@ -102,7 +102,7 @@
                             <select id="cliente-{{ s.mac_id | replace(':', '') }}">
                                 <option value="null">-- Desvinculado (Sem Dono) --</option>
                                 {% for c in clientes %}
-                                    <option value="{{ c.id }}" {% if s.cliente_id == c.id %}selected{% endif %}>{{ c.nome }}</option>
+                                    <option value="{{ c.id }}" {% if s.cliente_id == c.id %}selected{% endif %}>{{ c.nome or c.usuario }}{% if c.empresa_master %} (Empresa Master){% endif %}</option>
                                 {% endfor %}
                             </select>
                         </td>

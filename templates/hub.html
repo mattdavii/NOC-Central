@@ -82,7 +82,7 @@
     </div>
 
     <div class="kpis-md">
-        <div class="kpi"><strong>{{ empresas|length }}</strong><span>empresas clientes</span></div>
+        <div class="kpi"><strong>{{ empresas|rejectattr('master')|list|length }}</strong><span>empresas clientes</span></div>
         <div class="kpi"><strong class="status-ok">{{ total.online }}</strong><span>sites online</span></div>
         <div class="kpi"><strong class="{{ 'num-off' if total.offline }}">{{ total.offline }}</strong><span>sites offline</span></div>
         <div class="kpi"><strong class="{{ 'num-off' if total.total_diagnosticos }}">{{ total.total_diagnosticos }}</strong><span>alertas ativos</span></div>
@@ -101,7 +101,7 @@
             <tbody>
             {% for e in empresas %}
             <tr data-nome="{{ e.nome|lower }}" data-problema="{{ 1 if e.offline or e.alertas else 0 }}">
-                <td data-label="Empresa"><strong>{{ e.nome }}</strong>{% if not e.ativo %} <span class="chip vazio">inativa</span>{% endif %}</td>
+                <td data-label="Empresa"><strong>{{ e.nome }}</strong>{% if e.master %} <span class="chip">Empresa Master</span>{% endif %}{% if not e.ativo %} <span class="chip vazio">inativa</span>{% endif %}</td>
                 <td data-label="Aplicativos"><div class="chips">
                     {% for app, nome in aplicativos.items() if e.contrato[app] %}<span class="chip">{{ nome }}</span>{% else %}<span class="chip vazio">Nenhum</span>{% endfor %}
                 </div></td>

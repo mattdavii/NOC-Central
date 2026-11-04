@@ -46,6 +46,49 @@ ROTAS_DO_HUB = {
 }
 
 
+EMPRESA_MASTER_NOME = 'MD Soluções'
+EMPRESA_MASTER_USUARIO = 'md-solucoes'
+
+
+def empresa_master_id(conn):
+    """Id da Empresa Master (dona da plataforma) ou None."""
+    row = conn.execute("SELECT id FROM clientes WHERE role='Cliente' AND empresa_master=1 ORDER BY id LIMIT 1").fetchone()
+    return row['id'] if row else None
+
+
+def garantir_empresa_master(conn, hash_senha_inutil):
+    """Cria (uma vez) a Empresa Master, vincula a equipe Master a ela e passa para ela os sensores
+    alocados direto numa conta Master (o jeito antigo de marcar "é da MD"). Idempotente.
+
+    A conta da empresa não é para login: recebe uma senha aleatória que ninguém conhece.
+    Sensores sem empresa continuam sem empresa (são alocados depois, na tela Sensores)."""
+    resumo = {'criada': False, 'masters': 0, 'sensores': 0}
+    empresa = empresa_master_id(conn)
+    if empresa is None:
+        existente = conn.execute("SELECT id FROM clientes WHERE role='Cliente' AND (usuario=? OR lower(nome)=lower(?)) ORDER BY id LIMIT 1",
+                                 (EMPRESA_MASTER_USUARIO, EMPRESA_MASTER_NOME)).fetchone()
+        if existente:
+            empresa = existente['id']
+        else:
+            usuario = EMPRESA_MASTER_USUARIO
+            if conn.execute('SELECT 1 FROM clientes WHERE usuario=?', (usuario,)).fetchone():
+                usuario = f'{EMPRESA_MASTER_USUARIO}-empresa'
+            conn.execute("INSERT INTO clientes (nome, usuario, senha, role, ativo, empresa_master) VALUES (?, ?, ?, 'Cliente', 1, 1)",
+                         (EMPRESA_MASTER_NOME, usuario, hash_senha_inutil))
+            empresa = conn.execute('SELECT id FROM clientes WHERE usuario=?', (usuario,)).fetchone()['id']
+            resumo['criada'] = True
+            for app in APLICATIVOS:
+                definir_contrato(conn, empresa, app, True)
+        conn.execute('UPDATE clientes SET empresa_master=1, ativo=1 WHERE id=?', (empresa,))
+    marcadores = ','.join('?' * len(ROLES_MASTER))
+    resumo['masters'] = conn.execute(f'UPDATE clientes SET cliente_pai_id=? WHERE role IN ({marcadores}) AND cliente_pai_id IS NULL',
+                                     (empresa, *ROLES_MASTER)).rowcount or 0
+    resumo['sensores'] = conn.execute(f'UPDATE sensores SET cliente_id=? WHERE cliente_id IN (SELECT id FROM clientes WHERE role IN ({marcadores}))',
+                                      (empresa, *ROLES_MASTER)).rowcount or 0
+    resumo['id'] = empresa
+    return resumo
+
+
 def aplicativo_da_rota(endpoint):
     if not endpoint or endpoint in ROTAS_DO_HUB:
         return None

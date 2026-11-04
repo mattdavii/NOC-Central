@@ -331,6 +331,19 @@ def testar_telegram(cliente_id):
 
 # Migrations are explicit and fail fast instead of serving against a partial schema.
 database.init_db()
+# Empresa Master (MD Soluções): criada uma vez, com a equipe Master vinculada a ela.
+try:
+    _conn = database.get_db()
+    try:
+        _md = acessos.garantir_empresa_master(_conn, generate_password_hash(os.urandom(32).hex()))
+        _conn.commit()
+        if _md['criada'] or _md['masters'] or _md['sensores']:
+            print(f"✅ Empresa Master #{_md['id']}: criada={_md['criada']}, usuários Master vinculados={_md['masters']}, "
+                  f"sensores transferidos={_md['sensores']}.")
+    finally:
+        _conn.close()
+except Exception as _erro:
+    print(f'⚠️ Não foi possível garantir a Empresa Master: {_erro}')
 conn = database.get_db()
 try:
     if not conn.execute("SELECT id FROM clientes WHERE usuario='admin'").fetchone():
@@ -1915,14 +1928,14 @@ def gerenciar_usuarios():
     if bloqueio: return bloqueio
     conn = database.get_db()
     if session['role'] == 'Administrador Master':
-        usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id, totp_ativo FROM clientes ORDER BY id DESC").fetchall()
-        clientes_pais = conn.execute("SELECT id, nome FROM clientes WHERE role = 'Cliente'").fetchall()
+        usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id, totp_ativo, empresa_master FROM clientes ORDER BY id DESC").fetchall()
+        clientes_pais = conn.execute("SELECT id, nome, usuario, empresa_master FROM clientes WHERE role = 'Cliente' ORDER BY empresa_master DESC, nome").fetchall()
     else:
         if session['role'] == 'Cliente': tenant_id = session['user_id']
         else:
             user_info = db_execute(conn, "SELECT cliente_pai_id FROM clientes WHERE id = ?", (session['user_id'],)).fetchone()
             tenant_id = user_info['cliente_pai_id']
-        usuarios = db_execute(conn, "SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id, totp_ativo FROM clientes WHERE cliente_pai_id = ? ORDER BY id DESC", (tenant_id,)).fetchall()
+        usuarios = db_execute(conn, "SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id, totp_ativo, empresa_master FROM clientes WHERE cliente_pai_id = ? ORDER BY id DESC", (tenant_id,)).fetchall()
         clientes_pais = []
     try:
         usuarios = [dict(u) for u in usuarios]
@@ -1942,7 +1955,7 @@ def gerenciar_usuarios():
         seguranca_acesso = {}
         if session['role'] == 'Administrador Master':
             empresas = [{**dict(c), 'contrato': acessos.contrato(conn, c['id']), 'delegacao': acessos.delegacao_ativa(conn, c['id'])}
-                        for c in conn.execute("SELECT id, nome, usuario, ativo, exigir_2fa FROM clientes WHERE role='Cliente' ORDER BY nome").fetchall()]
+                        for c in conn.execute("SELECT id, nome, usuario, ativo, exigir_2fa, empresa_master FROM clientes WHERE role='Cliente' ORDER BY empresa_master DESC, nome").fetchall()]
             md = conn.execute("SELECT valor FROM config_sistema WHERE chave='acessos_exigir_2fa_md'").fetchone()
             seguranca_acesso['exigir_2fa_md'] = bool(md and md['valor'] == '1')
         else:
@@ -1998,6 +2011,8 @@ def criar_usuario():
     else:
         cliente_pai = data.get('cliente_pai')
         if not cliente_pai or cliente_pai == "null": cliente_pai = None
+    if role in acessos.ROLES_MASTER:
+        cliente_pai = acessos.empresa_master_id(conn)   # a equipe Master pertence à Empresa Master
     try:
         if db_execute(conn, 'SELECT id FROM clientes WHERE usuario = ?', (usuario,)).fetchone():
             return jsonify(error='Usuário já existe.', status='Erro: Usuário já existe'), 409
@@ -2018,6 +2033,9 @@ def toggle_user_status(id_user):
     if bloqueio: return bloqueio
     if id_user == session['user_id'] or id_user == 1: return jsonify({"error": "Ação não permitida"}), 403
     conn = database.get_db()
+    if id_user == acessos.empresa_master_id(conn):
+        conn.close()
+        return jsonify({"error": "A Empresa Master não pode ser desativada."}), 403
     user = db_execute(conn, "SELECT ativo FROM clientes WHERE id = ?", (id_user,)).fetchone()
     novo_status = 0 if dict(user).get('ativo', 1) == 1 else 1
     db_execute(conn, "UPDATE clientes SET ativo = ? WHERE id = ?", (novo_status, id_user))
@@ -2085,6 +2103,9 @@ def deletar_usuario(id_user):
     if bloqueio: return bloqueio
     if id_user == session['user_id'] or id_user == 1: return jsonify({"error": "Ação não permitida"}), 403
     conn = database.get_db()
+    if id_user == acessos.empresa_master_id(conn):
+        conn.close()
+        return jsonify({"error": "A Empresa Master não pode ser excluída."}), 403
     _auditar_alvo(conn, 'usuario_excluido', id_user)
     acessos.remover_registros_do_usuario(conn, id_user)
     db_execute(conn, "DELETE FROM clientes WHERE id = ?", (id_user,))
@@ -2579,7 +2600,9 @@ def gerenciar_sensores():
         LEFT JOIN sensor_credentials sc ON sc.sensor_mac = s.mac_id
         ORDER BY s.cliente_id ASC''').fetchall()
     sensores = [{**dict(r), 'camadas': _json_ou(r['camadas_rede'], None)} for r in sensores]
-    clientes = conn.execute("SELECT id, nome FROM clientes WHERE role IN ('Cliente', 'Administrador Master')").fetchall()
+    # Destinos: só empresas, a Empresa Master primeiro.
+    clientes = conn.execute("SELECT id, nome, usuario, empresa_master FROM clientes WHERE role = 'Cliente' "
+                            "ORDER BY empresa_master DESC, nome").fetchall()
     conn.close()
     return render_template('sensores.html', sensores=[dict(s) for s in sensores], clientes=[dict(c) for c in clientes])
 
@@ -3255,6 +3278,9 @@ def alocar_sensor():
     data = request.json; cliente_id = data.get('cliente_id')
     if not cliente_id or cliente_id == "null": cliente_id = None
     conn = database.get_db()
+    if cliente_id is not None and not conn.execute("SELECT 1 FROM clientes WHERE id = ? AND role = 'Cliente'", (cliente_id,)).fetchone():
+        conn.close()
+        return jsonify({"error": "Escolha uma empresa."}), 400
     db_execute(conn, "UPDATE sensores SET cliente_id = ? WHERE mac_id = ?", (cliente_id, data.get('mac_id')))
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
