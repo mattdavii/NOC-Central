@@ -1648,11 +1648,7 @@ def alertas_ia():
 
     for alerta in normalized_alerts:
         db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, ?, ?, ?)", (mac, alerta['tipo'], alerta['gravidade'], alerta['detalhes']))
-        if alerta['gravidade'] == 'Crítica':
-            icone = "🔥" if "Superaquecimento" in alerta['tipo'] else ("🌪️" if "Tempestade" in alerta['tipo'] else "🖥️")
-            enviar_telegram(f"🚨 <b>ALERTA CRÍTICO</b>\n\n{icone} <b>Sensor:</b> {html.escape(str(nome_sensor))}\n⚠️ <b>Evento:</b> {html.escape(str(alerta['tipo']))}\n❌ <b>Detalhe:</b> {html.escape(str(alerta['detalhes']))}", cliente_id=cid, conn=conn)
-        elif alerta['gravidade'] == 'OK' and ('Restaurad' in alerta['tipo']):
-            enviar_telegram(f"✅ <b>SISTEMA NORMALIZADO</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(nome_sensor))}\n🟢 <b>Evento:</b> {html.escape(str(alerta['tipo']))}\nℹ️ <b>Detalhe:</b> {html.escape(str(alerta['detalhes']))}", cliente_id=cid, conn=conn)
+        _notificar_alerta(conn, {'mac_id': mac, 'nome_local': nome_sensor, 'cliente_id': cid}, alerta)
 
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
@@ -2731,8 +2727,21 @@ def _num_ou_none(v):
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else None
 
 
+GRAVIDADES_ALERTA = ('Crítica', 'Alerta', 'Aviso', 'OK')
+ATRASO_OFFLINE_S = 120          # alerta que chega mais de 2 min depois de acontecer = registrado com a Central fora
+RESUMO_MAX_EVENTOS = 10
+
+
+def _alerta_valido(item):
+    a = item.get('alerta')
+    return (isinstance(item.get('id'), str) and 8 <= len(item['id']) <= 64 and isinstance(a, dict)
+            and all(isinstance(a.get(k), str) for k in ('tipo', 'gravidade', 'detalhes')) and a['tipo'].strip())
+
+
 def _item_medicao_valido(item, agora):
-    if not isinstance(item, dict) or item.get('tipo') not in ('rede', 'starlink', 'rota'):
+    if not isinstance(item, dict) or item.get('tipo') not in ('rede', 'starlink', 'rota', 'alerta'):
+        return False
+    if item['tipo'] == 'alerta' and not _alerta_valido(item):
         return False
     ts = _num_ou_none(item.get('coletado_em'))
     if ts is None or not agora - 8 * 86400 <= ts <= agora + 300:
@@ -2897,6 +2906,8 @@ def processar_medicoes(conn, sensor, itens, provedor_info=None):
             if nova and (not starlink_atual or ts >= (starlink_atual.get('coletado_em') or 0)):
                 starlink_atual = dados
                 conn.execute('UPDATE sensores SET starlink_info=? WHERE mac_id=?', (json.dumps(dados, ensure_ascii=False), mac))
+        elif item['tipo'] == 'alerta':
+            _receber_alerta_guardado(conn, sensor, item, agora)
         elif item['tipo'] == 'rota':
             conn.execute('INSERT INTO rotas_rede (sensor_mac, coletado_em, motivo, ferramenta, saltos, pior_salto) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
                          (mac, ts, str(item.get('motivo'))[:20], str(item.get('ferramenta'))[:20],
@@ -2919,6 +2930,80 @@ def processar_medicoes(conn, sensor, itens, provedor_info=None):
     return len(validos), len(itens) - len(validos)
 
 
+def _notificar_alerta(conn, sensor, alerta):
+    """Telegram de um alerta do sensor: crítico e normalização (o resto fica só no histórico)."""
+    nome_sensor, cid = sensor.get('nome_local') or sensor.get('mac_id'), sensor.get('cliente_id')
+    if alerta['gravidade'] == 'Crítica':
+        icone = "🔥" if "Superaquecimento" in alerta['tipo'] else ("🌪️" if "Tempestade" in alerta['tipo'] else "🖥️")
+        enviar_telegram(f"🚨 <b>ALERTA CRÍTICO</b>\n\n{icone} <b>Sensor:</b> {html.escape(str(nome_sensor))}\n⚠️ <b>Evento:</b> {html.escape(str(alerta['tipo']))}\n❌ <b>Detalhe:</b> {html.escape(str(alerta['detalhes']))}", cliente_id=cid, conn=conn)
+    elif alerta['gravidade'] == 'OK' and ('Restaurad' in alerta['tipo'] or 'Restabelecid' in alerta['tipo']):
+        enviar_telegram(f"✅ <b>SISTEMA NORMALIZADO</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(nome_sensor))}\n🟢 <b>Evento:</b> {html.escape(str(alerta['tipo']))}\nℹ️ <b>Detalhe:</b> {html.escape(str(alerta['detalhes']))}", cliente_id=cid, conn=conn)
+
+
+def _sql_epoch():
+    # Mesmo relógio do DEFAULT CURRENT_TIMESTAMP de logs_ia: UTC no SQLite, fuso da sessão no PostgreSQL.
+    return "(to_timestamp(?) AT TIME ZONE current_setting('TimeZone'))" if os.environ.get('DATABASE_URL') else "datetime(?, 'unixepoch')"
+
+
+def _limpo(texto, maximo):
+    return ''.join(c for c in str(texto) if c.isprintable() and c not in '<>').strip()[:maximo]
+
+
+def _receber_alerta_guardado(conn, sensor, item, agora):
+    """Alerta que o sensor não conseguiu entregar na hora e mandou pela fila. Entra no histórico com o
+    horário em que aconteceu; se chegou com atraso (Central fora), não vira mensagem avulsa no Telegram:
+    soma no resumo do período, mandado quando a fila do sensor esvazia."""
+    a, ts = item['alerta'], item['coletado_em']
+    tipo, detalhes = _limpo(a['tipo'], 160), _limpo(a['detalhes'], 1000)
+    gravidade = a['gravidade'] if a['gravidade'] in GRAVIDADES_ALERTA else 'Alerta'
+    atrasado = agora - ts > ATRASO_OFFLINE_S
+    if atrasado:
+        detalhes = f"{detalhes} · registrado pelo sensor com a Central indisponível"[:1100]
+    nova = conn.execute(
+        f"INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes, data_hora, origem_id, registrado_offline) "
+        f"VALUES (?, ?, ?, ?, {_sql_epoch()}, ?, ?) ON CONFLICT (sensor_mac, origem_id) DO NOTHING",
+        (sensor['mac_id'], tipo, gravidade, detalhes, ts, item['id'], 1 if atrasado else 0)).rowcount != 0
+    if not nova:
+        return   # reenvio do mesmo alerta (resposta anterior se perdeu): já está no histórico
+    if not atrasado:
+        _notificar_alerta(conn, sensor, {'tipo': tipo, 'gravidade': gravidade, 'detalhes': detalhes})
+        return
+    linha = conn.execute('SELECT dados FROM resumos_offline WHERE sensor_mac=?', (sensor['mac_id'],)).fetchone()
+    r = _json_ou(linha['dados'], None) if linha else None
+    r = r or {'total': 0, 'por_gravidade': {}, 'inicio': ts, 'fim': ts, 'eventos': []}
+    r['total'] += 1
+    r['por_gravidade'][gravidade] = r['por_gravidade'].get(gravidade, 0) + 1
+    r['inicio'], r['fim'] = min(r['inicio'], ts), max(r['fim'], ts)
+    r['eventos'].append({'ts': ts, 'tipo': tipo, 'gravidade': gravidade})
+    # Guarda os mais importantes: críticos primeiro, depois os mais recentes.
+    r['eventos'] = sorted(r['eventos'], key=lambda e: (e['gravidade'] != 'Crítica', -e['ts']))[:RESUMO_MAX_EVENTOS]
+    conn.execute('INSERT INTO resumos_offline (sensor_mac, dados) VALUES (?, ?) ON CONFLICT (sensor_mac) DO UPDATE SET dados=excluded.dados',
+                 (sensor['mac_id'], json.dumps(r, ensure_ascii=False)))
+
+
+def _enviar_resumo_offline(conn, sensor):
+    """Um resumo só no Telegram com os alertas que chegaram atrasados, quando a fila do sensor esvazia."""
+    linha = conn.execute('SELECT dados FROM resumos_offline WHERE sensor_mac=?', (sensor['mac_id'],)).fetchone()
+    if not linha:
+        return False
+    conn.execute('DELETE FROM resumos_offline WHERE sensor_mac=?', (sensor['mac_id'],))
+    r = _json_ou(linha['dados'], None)
+    if not r or not r.get('total'):
+        return False
+    hora = lambda ts: datetime.fromtimestamp(ts, timezone.utc).astimezone(FUSO_BRASIL).strftime('%d/%m %H:%M')
+    g = r['por_gravidade']
+    contagem = ' · '.join(f"{n} {rotulo}" for rotulo, n in (('crítico(s)', g.get('Crítica', 0)), ('alerta(s)', g.get('Alerta', 0) + g.get('Aviso', 0)),
+                                                            ('normalização(ões)', g.get('OK', 0))) if n)
+    icones = {**ICONES_GRAVIDADE, 'OK': '✅'}
+    linhas = '\n'.join(f"{icones.get(e['gravidade'], '•')} {hora(e['ts'])} · {html.escape(e['tipo'])}" for e in sorted(r['eventos'], key=lambda e: e['ts']))
+    resto = r['total'] - len(r['eventos'])
+    texto = (f"📥 <b>EVENTOS DURANTE A INDISPONIBILIDADE</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor.get('nome_local') or sensor['mac_id']))}\n"
+             f"🕒 <b>Período:</b> {hora(r['inicio'])} a {hora(r['fim'])}\n📊 <b>Total:</b> {r['total']} evento(s) — {contagem}\n\n{linhas}"
+             + (f"\n… e mais {resto} no histórico do sensor." if resto > 0 else ''))
+    enviar_telegram(texto, cliente_id=sensor.get('cliente_id'), conn=conn)
+    return True
+
+
 @app.route('/api/v2/medicoes', methods=['POST'])
 def receber_medicoes():
     auth_error = exigir_sensor_ou_sessao()
@@ -2934,6 +3019,10 @@ def receber_medicoes():
         if not sensor:
             return jsonify(error='Sensor ainda não registrado.'), 404
         aceitos, descartados = processar_medicoes(conn, dict(sensor), itens, data.get('provedor'))
+        # Fila do sensor esvaziou (ou sensor antigo, que não informa): manda o resumo do período fora.
+        restantes = data.get('restantes')
+        if not isinstance(restantes, int) or restantes <= 0:
+            _enviar_resumo_offline(conn, dict(sensor))
         conn.commit()
         # Item inválido é descartado, não devolvido: senão travaria a fila do Edge.
         return jsonify(status='OK', aceitos=aceitos, descartados=descartados)

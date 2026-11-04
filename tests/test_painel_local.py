@@ -141,9 +141,9 @@ def test_alerta_enviado_fica_no_registro_local(monkeypatch, tmp_path):
 
     def falha(*a, **k): raise OSError('sem internet')
     monkeypatch.setattr(agent.urllib.request, 'urlopen', falha)
-    with pytest.raises(OSError):
-        agent.enviar_alertas('https://central/api/v2/alertas_ia', [{'tipo': 'X', 'gravidade': 'OK', 'detalhes': 'y'}])
-    assert ev.listar()[0] == 1     # quem chamou registra com o motivo da falha
+    monkeypatch.setattr(agent.fila_envio, 'DB', str(tmp_path / 'fila.db'))
+    assert agent.enviar_alertas('https://central/api/v2/alertas_ia', [{'tipo': 'X', 'gravidade': 'OK', 'detalhes': 'y'}]) is False
+    assert ev.listar()[0] == 2 and 'guardado para enviar' in ev.listar()[1][0]['detalhes']   # não levanta mais exceção
 
 
 # ===================================================================== painel local (HTTP)

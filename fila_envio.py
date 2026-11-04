@@ -111,7 +111,10 @@ def enviar_lote(rotas, mac, headers, extra=None, timeout=60):
     ids, itens = _proximo_lote()
     if not ids:
         return 0
-    corpo = json.dumps({"mac_id": mac, "itens": itens, **(extra or {})}).encode("utf-8")
+    # "restantes": quantos itens ainda ficam na fila depois deste lote. Com 0, a Central sabe que o
+    # atraso acabou e manda o resumo dos alertas do período (um só, não um por lote).
+    restantes = max(0, pendentes() - len(ids))
+    corpo = json.dumps({"mac_id": mac, "itens": itens, "restantes": restantes, **(extra or {})}).encode("utf-8")
     ultimo_erro = None
     for rota in rotas:
         try:

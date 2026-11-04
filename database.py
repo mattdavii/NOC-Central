@@ -228,6 +228,11 @@ def init_db():
                                               'modelo TEXT', 'tipo_equipamento TEXT', 'cftv TEXT',
                                               'comunicacao TEXT', 'firmware TEXT', 'rede_origem TEXT'])
         conn.execute('CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)')
+        # Alertas que o sensor guardou com a Central fora: id de origem (sem duplicar no reenvio)
+        # e marca de "registrado com a Central indisponível"; resumo pendente por sensor.
+        ensure_columns(conn, 'logs_ia', ['origem_id TEXT', 'registrado_offline INTEGER DEFAULT 0'])
+        conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_logs_ia_origem ON logs_ia (sensor_mac, origem_id)')
+        conn.execute('CREATE TABLE IF NOT EXISTS resumos_offline (sensor_mac TEXT PRIMARY KEY, dados TEXT NOT NULL)')
         conn.execute('''CREATE TABLE IF NOT EXISTS sensor_credentials (
             sensor_mac TEXT PRIMARY KEY,
             key_hash TEXT NOT NULL,
