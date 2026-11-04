@@ -145,6 +145,7 @@ def linhas_dispositivos(topologia, nomes_salvos, visto_em):
             'status': d.get('status'), 'latencia': d.get('latencia'),
             'neighbor_state': d.get('neighbor_state'), 'visto_em': visto_em,
             'modelo': d.get('modelo'), 'tipo_equipamento': d.get('tipo_equipamento'), 'cftv': d.get('cftv'),
+            'comunicacao': d.get('comunicacao'), 'firmware': d.get('firmware'),
         })
     return linhas
 

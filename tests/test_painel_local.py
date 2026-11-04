@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 import cftv
+import descoberta
 import database
 import edge_local
 import levantamento
@@ -62,27 +63,27 @@ def test_classificacao_por_evidencias():
 def test_upnp_descricao():
     xml = ('<root><device><deviceType>urn:schemas-upnp-org:device:Basic:1</deviceType><friendlyName>NVR Portaria</friendlyName>'
            '<manufacturer>Hikvision</manufacturer><modelName>DS-7608NI-K2</modelName></device></root>')
-    assert cftv.interpretar_upnp(xml) == {'fabricante': 'Hikvision', 'modelo': 'DS-7608NI-K2', 'nome': 'NVR Portaria',
+    assert descoberta.interpretar_upnp(xml) == {'fabricante': 'Hikvision', 'modelo': 'DS-7608NI-K2', 'nome': 'NVR Portaria',
                                           'tipo_upnp': 'Basic'}
 
 
 def test_anotar_usa_cache_e_avisa_queda(monkeypatch):
-    cftv._cache.clear(); cftv._vistos.clear(); cftv._eventos.clear()
-    monkeypatch.setattr(cftv, '_avaliar', lambda mac, ip, ip_local: (cftv.classificar('Hikvision', [554, 8000]), None))
+    descoberta._cache.clear(); descoberta._vistos.clear(); descoberta._eventos.clear()
+    monkeypatch.setattr(descoberta, '_avaliar', lambda mac, ip, ip_local: {'marca': 'Hikvision', 'portas': [554, 8000]})
+    descoberta.anotar([{'ip': '192.168.0.64', 'mac': HIK, 'status': 'online'}])
+    descoberta._fila.join()
     lista = [{'ip': '192.168.0.64', 'mac': HIK, 'status': 'online'}]
-    cftv.anotar(lista)
-    cftv._fila.join()
-    lista = [{'ip': '192.168.0.64', 'mac': HIK, 'status': 'online'}]
-    cftv.anotar(lista)
+    descoberta.anotar(lista)
     assert lista[0]['tipo_equipamento'] == cftv.CFTV and lista[0]['cftv']['confianca'] == 'alta'
+    assert 'comunicacao' not in lista[0]
     # some da rede por mais que QUEDA_APOS_S: um evento crítico, uma vez; ao voltar, um OK
-    cftv._vistos[HIK]['ultimo_ok'] -= cftv.QUEDA_APOS_S + 1
-    cftv.anotar([]); cftv.anotar([])
-    eventos = cftv.eventos()
+    descoberta._vistos[HIK]['ultimo_ok'] -= descoberta.QUEDA_APOS_S + 1
+    descoberta.anotar([]); descoberta.anotar([])
+    eventos = descoberta.eventos()
     assert [e[0] for e in eventos] == ['Queda de CFTV'] and eventos[0][2] == 'Crítica'
-    cftv.anotar([{'ip': '192.168.0.64', 'mac': HIK, 'status': 'online'}])
-    assert [e[0] for e in cftv.eventos()] == ['CFTV Restabelecido']
-    cftv._cache.clear(); cftv._vistos.clear()
+    descoberta.anotar([{'ip': '192.168.0.64', 'mac': HIK, 'status': 'online'}])
+    assert [e[0] for e in descoberta.eventos()] == ['CFTV Restabelecido']
+    descoberta._cache.clear(); descoberta._vistos.clear()
 
 
 def test_central_guarda_cftv_e_exporta(client, login):

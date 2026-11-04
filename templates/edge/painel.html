@@ -37,15 +37,31 @@
         .tag { display:inline-block; font-size:.7rem; padding:1px 7px; border-radius:999px; border:1px solid var(--border); color:var(--text-muted); white-space:nowrap; }
         .tag.cam { color:var(--purple); border-color:var(--purple); }
         .tag.grav { color:var(--yellow); border-color:var(--yellow); }
+        .tag.com { color:var(--brand-green); border-color:var(--brand-green); }
+        table.disp tr.com td:first-child { box-shadow:inset 3px 0 0 var(--brand-green); }
+        /* Listas de CFTV e comunicação: uma linha por equipamento, detalhes ao clicar, grupos recolhíveis. */
+        table.ident tr.item { cursor:pointer; }
+        table.ident tr.item:hover td { background:color-mix(in srgb,var(--blue) 6%,transparent); }
+        table.ident tr.item td:first-child { box-shadow:inset 3px 0 0 var(--purple); }
+        table.ident.com tr.item td:first-child { box-shadow:inset 3px 0 0 var(--brand-green); }
+        table.ident tr.item.fora td:first-child { box-shadow:inset 3px 0 0 var(--status-crit); }
+        table.ident tr.item .seta { display:inline-block; width:12px; color:var(--text-muted); transition:transform .15s; }
+        table.ident tr.item.aberto .seta { transform:rotate(90deg); }
+        table.ident tr.detalhe td { background:var(--bg-card); font-size:.78rem; color:var(--text-muted); padding:8px 12px 10px 30px; }
+        table.ident tr.detalhe b { color:var(--text-main); font-weight:600; }
+        table.ident tr.grupo td { position:sticky; top:33px; z-index:1; background:color-mix(in srgb,var(--bg-card) 92%,var(--blue)); font-size:.72rem;
+            text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); cursor:pointer; padding:7px 8px; }
+        table.ident tr.grupo .alerta { color:var(--status-crit); text-transform:none; letter-spacing:0; }
+        .risco-tag { color:var(--status-warn); border-color:var(--status-warn); }
+        .chips { display:flex; flex-wrap:wrap; gap:6px; }
+        .chips button { background:var(--bg-input); border:1px solid var(--border); color:var(--text-muted); border-radius:999px; padding:4px 10px; font-size:.75rem; cursor:pointer; }
+        .chips button.ativo { color:var(--text-main); border-color:var(--blue); background:color-mix(in srgb,var(--blue) 14%,transparent); }
+        .chips button b { color:var(--text-main); }
         .sub { display:block; font-size:.72rem; color:var(--text-muted); }
-        .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:14px; }
+        .kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:14px; }
         .kpi { background:var(--bg-input); border:1px solid var(--border); border-radius:8px; padding:12px; text-align:center; }
         .kpi strong { display:block; font-size:1.6rem; font-family:'JetBrains Mono',monospace; }
         .kpi span { font-size:.75rem; color:var(--text-muted); }
-        .cftv-lista { display:flex; flex-direction:column; gap:8px; }
-        .cftv-item { border:1px solid var(--border); border-left:3px solid var(--purple); border-radius:8px; padding:10px 12px; background:var(--bg-input); display:grid; grid-template-columns:1fr auto; gap:4px 12px; }
-        .cftv-item.fora { border-left-color:var(--status-crit); }
-        .cftv-item .ev { grid-column:1 / -1; font-size:.75rem; color:var(--text-muted); }
         .ev-lista { display:flex; flex-direction:column; max-height:520px; overflow:auto; border:1px solid var(--border); border-radius:8px; background:var(--bg-input); }
         .ev-item { display:grid; grid-template-columns:150px 84px 1fr; gap:10px; padding:8px 12px; border-bottom:1px solid color-mix(in srgb,var(--border) 60%,transparent); font-size:.83rem; }
         .ev-item .quando { font-family:'JetBrains Mono',monospace; font-size:.75rem; color:var(--text-muted); }
@@ -95,7 +111,7 @@
     </nav>
 
     <div class="container" data-host-mac="{{ sensor.mac_id }}">
-        <nav class="section-nav" aria-label="Seções do painel local"><a href="#host">Host</a><a href="#rede-local">Rede local</a><a href="#wan">WAN</a><a href="#dispositivos">Dispositivos</a><a href="#cftv">CFTV</a><a href="#watchdog">Watchdog</a><a href="#eventos">Eventos</a><a href="#relatorio">Relatório</a></nav>
+        <nav class="section-nav" aria-label="Seções do painel local"><a href="#host">Host</a><a href="#rede-local">Rede local</a><a href="#wan">WAN</a><a href="#dispositivos">Dispositivos</a><a href="#cftv">CFTV</a><a href="#comunicacao">Comunicação</a><a href="#watchdog">Watchdog</a><a href="#eventos">Eventos</a><a href="#relatorio">Relatório</a></nav>
         <p class="aviso-central" id="aviso-sessao" hidden role="alert"></p>
         <p class="help-text">Painel servido pelo próprio sensor: continua funcionando sem internet. O registro de eventos guarda {{ retencao_dias }} dias.</p>
 
@@ -187,7 +203,8 @@
                     <input type="search" id="disp-busca" class="cresce" placeholder="Buscar por IP, MAC, nome, marca ou modelo">
                     <label class="sr-only" for="disp-status">Status</label>
                     <select id="disp-status"><option value="">Todos os status</option><option value="online">Online</option><option value="sem_icmp">Sem ICMP</option><option value="desconhecido">Desconhecido</option></select>
-                    <label class="chk"><input type="checkbox" id="disp-cftv"> Só CFTV</label>
+                    <label class="sr-only" for="disp-categoria">Categoria</label>
+                    <select id="disp-categoria"><option value="">Todas as categorias</option><option value="cftv">Só CFTV</option><option value="comunicacao">Só comunicação</option><option value="outros">Outros</option></select>
                     <label class="chk"><input type="checkbox" id="disp-ocultar"> Ocultar nomes na exportação</label>
                 </div>
                 <div class="tabela-wrap">
@@ -196,15 +213,43 @@
                         <tbody id="disp-corpo"><tr><td colspan="8" class="hist-empty">Aguardando a primeira varredura…</td></tr></tbody>
                     </table>
                 </div>
-                <p class="help-text" style="margin:0;">Marca pelo prefixo do MAC (registro IEEE). Modelo quando o equipamento anuncia por ONVIF ou UPnP. Só aparece o que está na mesma rede (VLAN) do sensor.</p>
+                <p class="help-text" style="margin:0;">Marca pelo prefixo do MAC (registro IEEE). Modelo e firmware quando o equipamento anuncia (ONVIF, UPnP, MikroTik MNDP, Ubiquiti). Só aparece o que está na mesma rede (VLAN) do sensor.</p>
             </div>
         </div>
 
         <div class="painel-grid" style="grid-template-columns: 1fr;">
             <div class="card card-full card-stack" id="cftv" style="border-top: 4px solid var(--purple);">
                 <h3><span><i class="fa-solid fa-video"></i> CFTV · câmeras e gravadores</span><span class="iface-tag" id="cftv-resumo">--</span></h3>
-                <div class="cftv-lista" id="cftv-lista"><div class="hist-empty">Nenhum equipamento de CFTV identificado até agora. A identificação roda em segundo plano e pode levar alguns minutos após a instalação.</div></div>
+                <div class="barra-ferramentas" style="margin:0;">
+                    <label class="sr-only" for="cftv-busca">Buscar</label><input type="search" id="cftv-busca" class="cresce" placeholder="Buscar câmera ou gravador por modelo, IP, nome ou fabricante">
+                    <label class="chk"><input type="checkbox" id="cftv-problema"> Só com problema</label>
+                </div>
+                <div class="chips" id="cftv-chips"></div>
+                <div class="tabela-wrap" style="max-height:440px;">
+                    <table class="disp ident">
+                        <thead><tr><th>Equipamento</th><th>IP</th><th>Fabricante</th><th>Nome</th><th>Status</th><th>Confiança</th></tr></thead>
+                        <tbody id="cftv-corpo"><tr><td colspan="6" class="hist-empty">Nenhum equipamento identificado até agora. A identificação roda em segundo plano e pode levar alguns minutos após a instalação.</td></tr></tbody>
+                    </table>
+                </div>
                 <p class="help-text" style="margin:0;">Identificação por ONVIF, portas típicas (RTSP 554, Hikvision 8000, Dahua 37777, XMeye/iCSee 34567) e marca. Quando uma câmera ou gravador para de responder por 3 minutos, o evento entra no registro e vai para a Central.</p>
+            </div>
+        </div>
+
+        <div class="painel-grid" style="grid-template-columns: 1fr;">
+            <div class="card card-full card-stack" id="comunicacao" style="border-top: 4px solid var(--brand-green);">
+                <h3><span><i class="fa-solid fa-tower-broadcast"></i> Comunicação · roteadores, switches, rádios e ONUs</span><span class="iface-tag" id="com-resumo">--</span></h3>
+                <div class="barra-ferramentas" style="margin:0;">
+                    <label class="sr-only" for="com-busca">Buscar</label><input type="search" id="com-busca" class="cresce" placeholder="Buscar por modelo, IP, nome, fabricante ou firmware">
+                    <label class="chk"><input type="checkbox" id="com-problema"> Só com problema</label>
+                </div>
+                <div class="chips" id="com-chips"></div>
+                <div class="tabela-wrap" style="max-height:440px;">
+                    <table class="disp ident com">
+                        <thead><tr><th>Equipamento</th><th>IP</th><th>Fabricante</th><th>Firmware</th><th>Status</th><th>Confiança</th></tr></thead>
+                        <tbody id="com-corpo"><tr><td colspan="6" class="hist-empty">Nenhum equipamento identificado até agora. A identificação roda em segundo plano e pode levar alguns minutos após a instalação.</td></tr></tbody>
+                    </table>
+                </div>
+                <p class="help-text" style="margin:0;">Identificação pelo que o equipamento anuncia (MikroTik MNDP, descoberta da Ubiquiti, UPnP), por portas de gerência (Winbox, API MikroTik, TR-069, SSH/Telnet), pela marca e pelo papel de gateway. Portas industriais (Modbus, S7, DNP3, IEC 104) nunca são testadas. Switches não gerenciáveis não aparecem porque não têm IP. Quedas viram evento após 3 minutos (o gateway já é coberto pelo alerta de rede local).</p>
             </div>
         </div>
 
@@ -254,7 +299,7 @@
 
             <div class="card card-trace card-stack" id="relatorio">
                 <h3><span><i class="fa-solid fa-file-pdf"></i> Relatório</span></h3>
-                <p class="help-text" style="margin:0;">Abre o relatório em uma nova aba, pronto para imprimir ou salvar em PDF. Inclui eventos do período, estado atual, equipamentos de CFTV e inventário da rede.</p>
+                <p class="help-text" style="margin:0;">Abre o relatório em uma nova aba, pronto para imprimir ou salvar em PDF. Inclui eventos do período, estado atual, CFTV, equipamentos de comunicação e inventário da rede.</p>
                 <div class="rel-opcoes">
                     <label><input type="radio" name="rel-periodo" value="ultimos" checked> Últimos
                         <select id="rel-dias" style="width:auto; padding:4px 8px; background:var(--bg-input); color:var(--text-main); border:1px solid var(--border); border-radius:6px;">
@@ -376,55 +421,119 @@
         } catch (e) { $('badge-status').className = 'status-pill pill-fail'; $('badge-status').textContent = 'SEM CONTATO'; }
     }
 
-    // ---------- dispositivos e CFTV (a cada 20 s)
+    // ---------- dispositivos, CFTV e comunicação (a cada 20 s)
     let dispositivos = [];
     const rotuloStatus = {online: ['pill-ok', 'Online'], sem_icmp: ['pill-warn', 'Sem ICMP'], desconhecido: ['pill-unknown', 'Desconhecido'], offline: ['pill-fail', 'Offline']};
-    function nomeDe(d) { return d.apelido || d.nome.valor || (d.cftv && d.cftv.nome) || ''; }
+    const ident = d => d.cftv || d.comunicacao || null;
+    const presente = d => d.status === 'online' || d.status === 'sem_icmp';   // sem ICMP = está na rede, só não responde a ping
+    const categoria = d => d.cftv ? 'cftv' : d.comunicacao ? 'comunicacao' : 'outros';
+    function nomeDe(d) { return d.apelido || d.nome.valor || (ident(d) && ident(d).nome) || ''; }
+    function classeTag(d) { return d.tipo === 'NVR/DVR' ? 'grav' : d.cftv ? 'cam' : d.comunicacao ? 'com' : ''; }
 
     function desenharDispositivos() {
-        const busca = $('disp-busca').value.trim().toLowerCase(), st = $('disp-status').value, soCftv = $('disp-cftv').checked;
-        const lista = dispositivos.filter(d => (!st || d.status === st) && (!soCftv || d.cftv) &&
-            (!busca || [d.ip, d.mac, nomeDe(d), d.marca.valor, d.modelo, d.tipo].join(' ').toLowerCase().includes(busca)));
+        const busca = $('disp-busca').value.trim().toLowerCase(), st = $('disp-status').value, cat = $('disp-categoria').value;
+        const lista = dispositivos.filter(d => (!st || d.status === st) && (!cat || categoria(d) === cat) &&
+            (!busca || [d.ip, d.mac, nomeDe(d), d.marca.valor, d.modelo, d.tipo, d.firmware].join(' ').toLowerCase().includes(busca)));
         $('disp-corpo').innerHTML = lista.length ? lista.map(d => {
             const [cls, txt] = rotuloStatus[d.status] || rotuloStatus.desconhecido;
-            const tipo = d.tipo ? `<span class="tag ${d.tipo === 'NVR/DVR' ? 'grav' : d.cftv ? 'cam' : ''}">${esc(d.tipo)}</span>` : '';
+            const tipo = d.tipo ? `<span class="tag ${classeTag(d)}">${esc(d.tipo)}</span>` : '';
             const papel = d.papel ? `<span class="tag">${d.papel === 'gateway' ? 'Gateway' : 'Sensor'}</span>` : '';
-            return `<tr class="${d.cftv ? 'cftv' : ''}"><td class="mono">${esc(d.ip)} ${papel}</td><td class="mono" style="font-size:.75rem">${esc(d.mac || '')}</td>
+            return `<tr class="${d.cftv ? 'cftv' : d.comunicacao ? 'com' : ''}"><td class="mono">${esc(d.ip)} ${papel}</td><td class="mono" style="font-size:.75rem">${esc(d.mac || '')}</td>
                 <td>${esc(nomeDe(d)) || '<span class="txt-muted">—</span>'}${d.nome.fonte && !d.apelido ? `<span class="sub">${esc(d.nome.fonte)}</span>` : ''}</td>
                 <td>${esc(d.marca.valor || (d.mac_privado ? 'MAC privado' : '—'))}</td>
-                <td>${tipo} ${esc(d.modelo || '')}</td><td><span class="status-pill ${cls}">${txt}</span></td>
+                <td>${tipo} ${esc(d.modelo || '')}${d.firmware ? `<span class="sub">${esc(d.firmware)}</span>` : ''}</td><td><span class="status-pill ${cls}">${txt}</span></td>
                 <td class="mono">${d.latencia_ms ? d.latencia_ms + ' ms' : '—'}</td>
                 <td><span class="acoes-linha">${d.papel === 'sensor' ? '' : `<button title="Renomear" data-acao="renomear" data-mac="${esc(d.mac)}" data-nome="${esc(nomeDe(d))}">Renomear</button>
                     <button title="Vigiar no Radar de Pings" data-acao="vigiar" data-ip="${esc(d.ip)}" data-nome="${esc(nomeDe(d) || d.modelo || d.ip)}">Vigiar</button>`}</span></td></tr>`;
         }).join('') : '<tr><td colspan="8" class="hist-empty">Nenhum dispositivo com esses filtros.</td></tr>';
     }
 
-    function desenharCftv(resumo) {
-        const cftv = dispositivos.filter(d => d.cftv);
-        const cams = cftv.filter(d => d.tipo === 'Câmera IP').length, grav = cftv.filter(d => d.tipo === 'NVR/DVR').length;
-        const fora = cftv.filter(d => d.status !== 'online').length;
-        $('cftv-resumo').textContent = cftv.length ? `${cams} câmeras · ${grav} gravadores · ${cftv.length - cams - grav} outros` : 'nenhum identificado';
-        $('disp-kpis').innerHTML = [[resumo.total || 0, 'Dispositivos'], [resumo.com_modelo || 0, 'Com modelo'], [cftv.length, 'CFTV'],
-            [fora, 'CFTV sem resposta']].map(([n, t], i) => `<div class="kpi"><strong style="${i === 3 && n ? 'color:var(--status-crit)' : ''}">${n}</strong><span>${t}</span></div>`).join('');
-        if (!cftv.length) return;
-        $('cftv-lista').innerHTML = cftv.map(d => `<div class="cftv-item ${d.status !== 'online' ? 'fora' : ''}">
-            <div><b>${esc(d.modelo || d.tipo)}</b> <span class="tag ${d.tipo === 'NVR/DVR' ? 'grav' : 'cam'}">${esc(d.tipo)}</span>
-                <span class="sub mono">${esc(d.ip)} · ${esc(d.mac || '')} · ${esc(d.cftv.fabricante || d.marca.valor || 'fabricante não identificado')}${nomeDe(d) ? ' · ' + esc(nomeDe(d)) : ''}</span></div>
-            <div style="text-align:right"><span class="status-pill ${(rotuloStatus[d.status] || rotuloStatus.desconhecido)[0]}">${(rotuloStatus[d.status] || rotuloStatus.desconhecido)[1]}</span>
-                <span class="sub">confiança ${esc(d.cftv.confianca)}</span></div>
-            <div class="ev">${esc((d.cftv.evidencias || []).join(' · '))}${d.cftv.portas && d.cftv.portas.length ? ' · portas: ' + esc(d.cftv.portas.join(', ')) : ''}</div></div>`).join('');
+    // Listas de CFTV e comunicação. Problemas primeiro (sem resposta, depois com risco), e o que está
+    // aberto ou recolhido continua assim entre as atualizações automáticas.
+    const abertos = new Set(), recolhidos = new Set(), filtroTipo = {cftv: '', com: ''};
+    let ultimoResumo = {};
+    const ORDEM_COM = ['Starlink', 'ONU/ONT', 'Roteador 4G/LTE', 'Roteador/Firewall', 'Switch', 'Access Point/Rádio', 'Gateway industrial', 'Equipamento de comunicação'];
+    const ORDEM_CFTV = ['NVR/DVR', 'Câmera IP', 'Equipamento de CFTV'];
+    const problema = d => (!presente(d) && d.papel !== 'gateway') || (ident(d).riscos || []).length > 0;
+    const peso = d => (!presente(d) && d.papel !== 'gateway') ? 0 : (ident(d).riscos || []).length ? 1 : 2;
+    const ipNum = ip => String(ip).split('.').reduce((n, p) => n * 256 + (+p || 0), 0);
+
+    function linhas(d, pre) {
+        const id = ident(d), [cls, txt] = rotuloStatus[d.status] || rotuloStatus.desconhecido, aberto = abertos.has(d.mac);
+        const riscos = id.riscos || [];
+        const coluna5 = pre === 'com' ? esc(d.firmware || '—') : esc(nomeDe(d) || '—');
+        let html = `<tr class="item ${presente(d) || d.papel === 'gateway' ? '' : 'fora'} ${aberto ? 'aberto' : ''}" data-mac="${esc(d.mac)}">
+            <td><span class="seta">›</span> <b>${esc(d.modelo || id.nome || d.tipo)}</b>${d.papel === 'gateway' ? ' <span class="tag">Gateway</span>' : ''}${riscos.length ? ` <span class="tag risco-tag" title="${esc(riscos.join(' · '))}">⚠ risco</span>` : ''}</td>
+            <td class="mono">${esc(d.ip)}</td>
+            <td>${esc(id.fabricante || d.marca.valor || '—')}</td><td>${coluna5}</td>
+            <td><span class="status-pill ${cls}">${txt}</span></td><td>${esc(id.confianca)}</td></tr>`;
+        if (aberto) html += `<tr class="detalhe"><td colspan="6"><b>MAC</b> <span class="mono">${esc(d.mac || '')}</span>${nomeDe(d) ? ` · <b>Nome</b> ${esc(nomeDe(d))}` : ''}${d.firmware ? ` · <b>Firmware</b> ${esc(d.firmware)}` : ''}${d.latencia_ms ? ` · <b>Latência</b> ${d.latencia_ms} ms` : ''}<br>
+            <b>Evidências:</b> ${esc((id.evidencias || []).join(' · '))}${id.portas && id.portas.length ? `<br><b>Portas:</b> ${esc(id.portas.join(', '))}` : ''}
+            ${riscos.map(r => `<br><b style="color:var(--status-warn)">⚠ ${esc(r)}</b>`).join('')}</td></tr>`;
+        return html;
     }
 
+    function desenharLista(pre, lista, ordem) {
+        const busca = $(pre + '-busca').value.trim().toLowerCase(), soProblema = $(pre + '-problema').checked;
+        const porTipo = {};
+        lista.forEach(d => (porTipo[d.tipo] = porTipo[d.tipo] || []).push(d));
+        const tipos = Object.keys(porTipo).sort((a, b) => ordem.indexOf(a) - ordem.indexOf(b));
+        $(pre + '-chips').innerHTML = lista.length ? [['', 'Todos', lista.length]].concat(tipos.map(t => [t, t, porTipo[t].length]))
+            .map(([v, rot, n]) => `<button type="button" data-tipo="${esc(v)}" class="${filtroTipo[pre] === v ? 'ativo' : ''}">${esc(rot)} <b>${n}</b></button>`).join('') : '';
+        const visiveis = d => (!filtroTipo[pre] || d.tipo === filtroTipo[pre]) && (!soProblema || problema(d)) &&
+            (!busca || [d.ip, d.mac, nomeDe(d), d.modelo, d.tipo, d.firmware, ident(d).fabricante, d.marca.valor].join(' ').toLowerCase().includes(busca));
+        let html = '';
+        for (const t of tipos) {
+            const itens = porTipo[t].filter(visiveis).sort((a, b) => peso(a) - peso(b) || ipNum(a.ip) - ipNum(b.ip));
+            if (!itens.length) continue;
+            const fora = porTipo[t].filter(d => !presente(d) && d.papel !== 'gateway').length;
+            const chave = pre + ':' + t, recolhido = recolhidos.has(chave);
+            html += `<tr class="grupo" data-grupo="${esc(chave)}"><td colspan="6">${recolhido ? '▸' : '▾'} ${esc(t)} · ${porTipo[t].length}${fora ? ` <span class="alerta">· ${fora} sem resposta</span>` : ''}</td></tr>`;
+            if (!recolhido) html += itens.map(d => linhas(d, pre)).join('');
+        }
+        $(pre + '-corpo').innerHTML = html || `<tr><td colspan="6" class="hist-empty">${lista.length ? 'Nenhum equipamento com esses filtros.' : 'Nenhum equipamento identificado até agora. A identificação roda em segundo plano e pode levar alguns minutos após a instalação.'}</td></tr>`;
+    }
+
+    function desenharIdentificados(resumo) {
+        const cftv = dispositivos.filter(d => d.cftv), com = dispositivos.filter(d => d.comunicacao);
+        const cams = cftv.filter(d => d.tipo === 'Câmera IP').length, grav = cftv.filter(d => d.tipo === 'NVR/DVR').length;
+        const foraC = cftv.filter(d => !presente(d)).length, foraM = com.filter(d => !presente(d) && d.papel !== 'gateway').length;
+        const riscos = com.filter(d => (d.comunicacao.riscos || []).length).length;
+        $('cftv-resumo').textContent = cftv.length ? `${cams} câmeras · ${grav} gravadores${foraC ? ` · ${foraC} sem resposta` : ''}` : 'nenhum identificado';
+        $('com-resumo').textContent = com.length ? `${com.length} equipamentos${foraM ? ` · ${foraM} sem resposta` : ''}${riscos ? ` · ${riscos} com risco` : ''}` : 'nenhum identificado';
+        $('disp-kpis').innerHTML = [[resumo.total || 0, 'Dispositivos'], [resumo.com_modelo || 0, 'Com modelo'], [cftv.length, 'CFTV'],
+            [com.length, riscos ? `Comunicação · ${riscos} com risco` : 'Comunicação'], [foraC + foraM, 'CFTV/comunicação sem resposta']]
+            .map(([n, t], i) => `<div class="kpi"><strong style="${i === 4 && n ? 'color:var(--status-crit)' : ''}">${n}</strong><span>${t}</span></div>`).join('');
+        desenharLista('cftv', cftv, ORDEM_CFTV);
+        desenharLista('com', com, ORDEM_COM);
+    }
+
+    for (const pre of ['cftv', 'com']) {
+        $(pre + '-corpo').addEventListener('click', ev => {
+            const grupo = ev.target.closest('tr.grupo'), item = ev.target.closest('tr.item');
+            if (grupo) { const k = grupo.dataset.grupo; recolhidos.has(k) ? recolhidos.delete(k) : recolhidos.add(k); }
+            else if (item) { const m = item.dataset.mac; abertos.has(m) ? abertos.delete(m) : abertos.add(m); }
+            else return;
+            desenharIdentificados(ultimoResumo);
+        });
+        $(pre + '-chips').addEventListener('click', ev => {
+            const b = ev.target.closest('button[data-tipo]');
+            if (b) { filtroTipo[pre] = b.dataset.tipo; desenharIdentificados(ultimoResumo); }
+        });
+        $(pre + '-busca').addEventListener('input', () => desenharIdentificados(ultimoResumo));
+        $(pre + '-problema').addEventListener('change', () => desenharIdentificados(ultimoResumo));
+    }
     async function carregarDispositivos() {
         try {
             const r = await fetch('/api/dispositivos');
             if (!r.ok) return;
             const d = await r.json();
             dispositivos = d.dispositivos || [];
-            desenharDispositivos(); desenharCftv(d.resumo || {});
+            ultimoResumo = d.resumo || {};
+            desenharDispositivos(); desenharIdentificados(ultimoResumo);
         } catch (e) { /* tenta de novo */ }
     }
-    ['disp-busca', 'disp-status', 'disp-cftv'].forEach(id => $(id).addEventListener('input', desenharDispositivos));
+    ['disp-busca', 'disp-status', 'disp-categoria'].forEach(id => $(id).addEventListener('input', desenharDispositivos));
     $('disp-corpo').addEventListener('click', ev => {
         const b = ev.target.closest('button[data-acao]');
         if (!b) return;

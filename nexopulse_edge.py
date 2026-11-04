@@ -53,9 +53,9 @@ except ImportError:
     netdiag = None
 
 try:
-    import cftv
+    import descoberta   # CFTV e equipamentos de comunicação (cftv.py, comunicacao.py)
 except ImportError:
-    cftv = None
+    descoberta = None
 import edge_local
 try:
     import nomes_rede
@@ -1139,10 +1139,10 @@ def loop_telemetria():
             if nomes_rede:
                 try: nomes_rede.anotar(dispositivos)
                 except Exception as e: log_local_event("Topologia", f"Falha ao anotar nomes dos dispositivos: {e}", "Alerta")
-            if cftv:
-                # Câmeras, NVR e DVR: marca, ONVIF/UPnP e portas típicas (ver cftv.py)
-                try: cftv.anotar(dispositivos, ip_local=rede.get("ip"))
-                except Exception as e: log_local_event("CFTV", f"Falha ao identificar equipamentos de CFTV: {e}", "Alerta")
+            if descoberta:
+                # CFTV e comunicação: ONVIF, UPnP, MNDP, Ubiquiti, portas típicas e marca (ver descoberta.py)
+                try: descoberta.anotar(dispositivos, ip_local=rede.get("ip"), gateway_ip=gateway_ip)
+                except Exception as e: log_local_event("Descoberta", f"Falha ao identificar equipamentos: {e}", "Alerta")
             if forcar_varredura:
                 ultima_varredura = agora
                 dados_sensores["visto_em"] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
@@ -1166,8 +1166,8 @@ def loop_telemetria():
                     )
                 })
 
-            if cftv:
-                alertas_rede += [{"tipo": t, "gravidade": g, "detalhes": d} for t, d, g in cftv.eventos()]
+            if descoberta:
+                alertas_rede += [{"tipo": t, "gravidade": g, "detalhes": d} for t, d, g in descoberta.eventos()]
 
             if alertas_rede:
                 try: enviar_alertas(URL_CENTRAL.replace('report_data', 'alertas_ia'), alertas_rede, timeout=3)

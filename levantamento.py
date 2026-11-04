@@ -35,17 +35,22 @@ LIMITACOES = [
     'O nome vem do que o próprio equipamento ou o roteador anunciam (DNS reverso, NetBIOS, mDNS) e pode '
     'ter sido definido pelo usuário do equipamento.',
     'Equipamentos desligados ou que não falaram na rede durante a varredura não aparecem.',
-    'Modelo e tipo vêm do que o equipamento anuncia por ONVIF ou UPnP; equipamentos que não '
-    'anunciam ficam sem modelo. O tipo de CFTV (câmera, NVR/DVR) também usa portas típicas e a marca, '
-    'por isso traz o nível de confiança e as evidências usadas.',
+    'Modelo, firmware e tipo vêm do que o equipamento anuncia (ONVIF, UPnP, MikroTik MNDP, descoberta '
+    'da Ubiquiti); quem não anuncia fica sem modelo. O tipo também usa portas típicas, a marca e o papel '
+    'de gateway, por isso traz o nível de confiança e as evidências usadas.',
+    'Switches não gerenciáveis e equipamentos sem IP na rede do sensor não aparecem: não falam IP.',
 ]
 GLOSSARIO = {
     'status': STATUS,
     'mac_privado': 'MAC com o bit "administrado localmente" ligado: gerado pelo sistema, não de fábrica.',
     'papel': {'gateway': 'Gateway padrão da rede do sensor', 'sensor': 'O próprio sensor NexoPulse'},
     'estado_vizinho': 'Estado da entrada na tabela de vizinhos do sensor (REACHABLE, STALE, DELAY...).',
-    'tipo': 'Classe do equipamento quando identificada (Câmera IP, NVR/DVR, Equipamento de CFTV).',
+    'tipo': 'Classe do equipamento quando identificada: CFTV (Câmera IP, NVR/DVR, Equipamento de CFTV) ou '
+            'comunicação (Roteador/Firewall, Switch, Access Point/Rádio, ONU/ONT, Starlink, Roteador 4G/LTE, '
+            'Gateway industrial, Equipamento de comunicação).',
     'cftv': 'Detalhes da identificação de CFTV: confiança (alta, media, baixa), evidências e portas abertas.',
+    'comunicacao': 'Detalhes da identificação de equipamento de comunicação: confiança, evidências, portas, '
+                   'firmware e riscos observados (ex.: Telnet aberto).',
 }
 
 
@@ -89,6 +94,8 @@ def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False, gerado_
         papel = 'gateway' if linha.get('ip') == ip_gw else ('sensor' if linha.get('ip') == ip_sensor else None)
         vistos.add(linha.get('ip'))
         cftv = _cftv(linha.get('cftv'))
+        com = _cftv(linha.get('comunicacao'))
+        ident = cftv or com or {}
         itens.append({
             'ip': linha.get('ip'),
             'mac': linha.get('mac'),
@@ -105,9 +112,11 @@ def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False, gerado_
             'latencia_ms': linha.get('latencia') if (linha.get('latencia') or 0) > 0 else None,
             'estado_vizinho': linha.get('neighbor_state') or None,
             'visto_em': linha.get('visto_em'),
-            'tipo': linha.get('tipo_equipamento') or (cftv or {}).get('tipo'),
-            'modelo': linha.get('modelo') or (cftv or {}).get('modelo'),
+            'tipo': linha.get('tipo_equipamento') or ident.get('tipo'),
+            'modelo': linha.get('modelo') or ident.get('modelo'),
+            'firmware': linha.get('firmware') or ident.get('firmware'),
             'cftv': cftv,
+            'comunicacao': com,
         })
     if ip_sensor and ip_sensor not in vistos:
         # O sensor não aparece na própria tabela ARP; entra para o inventário ficar completo.
@@ -122,7 +131,7 @@ def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False, gerado_
                       'fonte': FONTES_MARCA.get(fonte), 'confianca': CONFIANCA_MARCA.get(fonte)},
             'mac_privado': fonte == 'mac_privado', 'papel': 'sensor', 'status': 'online',
             'latencia_ms': None, 'estado_vizinho': None, 'visto_em': None,
-            'tipo': 'Sensor NexoPulse', 'modelo': None, 'cftv': None,
+            'tipo': 'Sensor NexoPulse', 'modelo': None, 'firmware': None, 'cftv': None, 'comunicacao': None,
         })
         itens.sort(key=lambda d: _chave_ip(d['ip']))
 
@@ -161,6 +170,7 @@ def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False, gerado_
             'com_nome': sum(1 for d in itens if d['nome']['valor'] or d['apelido']),
             'mac_privado': sum(1 for d in itens if d['mac_privado']),
             'cftv': sum(1 for d in itens if d['cftv']),
+            'comunicacao': sum(1 for d in itens if d['comunicacao']),
             'por_tipo': dict(Counter(d['tipo'] for d in itens if d['tipo']).most_common()),
             'com_modelo': sum(1 for d in itens if d['modelo']),
         },
@@ -173,16 +183,23 @@ def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False, gerado_
 COLUNAS = (('IP', 16), ('MAC', 19), ('Apelido', 24), ('Nome na rede', 28), ('Fonte do nome', 14),
            ('Marca', 20), ('Fabricante (registro IEEE)', 38), ('MAC privado', 12), ('Papel', 10),
            ('Status', 34), ('Latência (ms)', 13), ('Estado L2', 12), ('Visto em (UTC)', 21),
-           ('Tipo', 20), ('Modelo', 26), ('Confiança CFTV', 15), ('Evidências CFTV', 60), ('Portas', 30))
+           ('Categoria', 14), ('Tipo', 22), ('Modelo', 26), ('Firmware', 24), ('Confiança', 11),
+           ('Evidências', 60), ('Portas', 30), ('Riscos', 40))
 
 
 def _linha_planilha(d):
     return [d['ip'], d['mac'], d['apelido'], d['nome']['valor'], d['nome']['fonte'], d['marca']['valor'],
             d['marca']['razao_social'], 'Sim' if d['mac_privado'] else 'Não',
             {'gateway': 'Gateway', 'sensor': 'Sensor'}.get(d['papel'], ''), STATUS.get(d['status'], d['status']),
-            d['latencia_ms'], d['estado_vizinho'], d['visto_em'], d['tipo'], d['modelo'],
-            (d['cftv'] or {}).get('confianca'), '; '.join((d['cftv'] or {}).get('evidencias') or []) or None,
-            ', '.join((d['cftv'] or {}).get('portas') or []) or None]
+            d['latencia_ms'], d['estado_vizinho'], d['visto_em'],
+            'CFTV' if d['cftv'] else 'Comunicação' if d.get('comunicacao') else None, d['tipo'], d['modelo'],
+            d.get('firmware'), ident(d).get('confianca'), '; '.join(ident(d).get('evidencias') or []) or None,
+            ', '.join(ident(d).get('portas') or []) or None, '; '.join(ident(d).get('riscos') or []) or None]
+
+
+def ident(d):
+    """A identificação do dispositivo, seja de CFTV ou de comunicação ({} se nenhuma)."""
+    return d.get('cftv') or d.get('comunicacao') or {}
 
 
 def _texto(celula, valor):
@@ -220,7 +237,8 @@ def para_xlsx(dados):
               ('Cliente', s['cliente']), ('IP do sensor', s['ip']), ('Gateway', s['gateway']), ('Rede', e['rede']),
               ('Faixa varrida', e['faixa_varrida']), ('Provedor', s['provedor']), ('Total de dispositivos', r['total']),
               ('Com nome identificado', r['com_nome']), ('Com modelo identificado', r['com_modelo']),
-              ('Equipamentos de CFTV', r['cftv']), ('Com MAC privado', r['mac_privado']), (None, None),
+              ('Equipamentos de CFTV', r['cftv']), ('Equipamentos de comunicação', r['comunicacao']),
+              ('Com MAC privado', r['mac_privado']), (None, None),
               ('Status', 'Quantidade')]
     linhas += [(STATUS.get(k, k), v) for k, v in r['por_status'].items()]
     if r['por_tipo']:
