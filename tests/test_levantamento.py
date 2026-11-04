@@ -188,5 +188,7 @@ def test_exportacao_respeita_cliente_e_formato(client, login):
     assert client.get(f'/api/v2/levantamento/{MAC_SENSOR}/json').status_code == 403          # sem sessão
     assert login(3, 'Cliente').get(f'/api/v2/levantamento/{MAC_SENSOR}/json').status_code == 403
     assert login(2, 'Cliente').get(f'/api/v2/levantamento/{MAC_SENSOR}/xlsx').status_code == 200
-    assert login(1).get(f'/api/v2/levantamento/{MAC_SENSOR}/csv').status_code == 400
+    csv = login(1).get(f'/api/v2/levantamento/{MAC_SENSOR}/csv')
+    assert csv.status_code == 200 and csv.data.startswith('\ufeff'.encode()) and b'IP;MAC;' in csv.data
+    assert login(1).get(f'/api/v2/levantamento/{MAC_SENSOR}/pdf').status_code == 400
     assert login(1).get('/api/v2/levantamento/00:00:00:00:00:99/json').status_code == 404

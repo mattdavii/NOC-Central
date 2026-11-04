@@ -224,7 +224,8 @@ def init_db():
             conn.execute(f'CREATE TABLE IF NOT EXISTS {table} (id {identity}, {definition})')
         ensure_columns(conn, 'dispositivos', ["status TEXT DEFAULT 'desconhecido'", 'latencia REAL', 'neighbor_state TEXT',
                                               'fabricante_registro TEXT', 'fabricante_fonte TEXT', 'hostname TEXT',
-                                              'hostname_fonte TEXT', 'visto_em TEXT'])
+                                              'hostname_fonte TEXT', 'visto_em TEXT',
+                                              'modelo TEXT', 'tipo_equipamento TEXT', 'cftv TEXT'])
         conn.execute('CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)')
         conn.execute('''CREATE TABLE IF NOT EXISTS sensor_credentials (
             sensor_mac TEXT PRIMARY KEY,

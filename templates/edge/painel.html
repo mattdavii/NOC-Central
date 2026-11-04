@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#082E56">
+    <meta name="referrer" content="no-referrer">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.ico" sizes="16x16 32x32 48x48">
+    <title>NexoPulse Edge · {{ sensor.nome_local }}</title>
+    {# Fontes e ícones vêm da internet; sem ela a tela continua legível (fontes do sistema, ícones somem). #}
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/sensor.css?v=sensor-1">
+    <link rel="stylesheet" href="/static/product.css?v=nexopulse-3">
+    <script src="/static/brand.js?v=nexopulse-2"></script>
+    <style>
+        /* Só o que é próprio do painel local; o resto vem de sensor.css e product.css, como na Central. */
+        .edge-badge { display:inline-flex; align-items:center; gap:6px; font-size:.75rem; font-weight:600; color:var(--brand-cyan); border:1px solid color-mix(in srgb,var(--brand-cyan) 50%,transparent); border-radius:999px; padding:3px 10px; }
+        .navbar-meta { display:flex; gap:14px; flex-wrap:wrap; align-items:center; font-size:.85rem; color:var(--text-muted); }
+        .navbar-meta strong { color:var(--text-main); font-family:'JetBrains Mono',monospace; }
+        .barra-ferramentas { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:4px 0 12px; }
+         [hidden] { display:none !important; }
+        .barra-ferramentas input:not([type=checkbox]), .barra-ferramentas select { width:auto; min-width:140px; padding:8px 10px; background:var(--bg-input); border:1px solid var(--border); color:var(--text-main); border-radius:6px; }
+        .barra-ferramentas .cresce { flex:1; min-width:180px; }
+        .chk { display:inline-flex; align-items:center; gap:6px; font-size:.85rem; color:var(--text-muted); }
+        .chk input { width:auto; }
+        .tabela-wrap { overflow:auto; max-height:520px; border:1px solid var(--border); border-radius:8px; background:var(--bg-input); }
+        table.disp { width:100%; border-collapse:collapse; font-size:.83rem; }
+        table.disp th { position:sticky; top:0; background:var(--bg-card); text-align:left; font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); padding:9px 8px; border-bottom:1px solid var(--border); white-space:nowrap; }
+        table.disp td { padding:8px; border-top:1px solid color-mix(in srgb,var(--border) 60%,transparent); vertical-align:top; }
+        table.disp td.mono, .mono { font-family:'JetBrains Mono',monospace; }
+        table.disp tr.cftv td:first-child { box-shadow:inset 3px 0 0 var(--purple); }
+        .acoes-linha { display:flex; gap:4px; }
+        .acoes-linha button { background:none; border:1px solid var(--border); color:var(--text-muted); border-radius:6px; padding:3px 8px; cursor:pointer; font-size:.75rem; white-space:nowrap; }
+        .acoes-linha button:hover { color:var(--blue); border-color:var(--blue); }
+        .tag { display:inline-block; font-size:.7rem; padding:1px 7px; border-radius:999px; border:1px solid var(--border); color:var(--text-muted); white-space:nowrap; }
+        .tag.cam { color:var(--purple); border-color:var(--purple); }
+        .tag.grav { color:var(--yellow); border-color:var(--yellow); }
+        .sub { display:block; font-size:.72rem; color:var(--text-muted); }
+        .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:14px; }
+        .kpi { background:var(--bg-input); border:1px solid var(--border); border-radius:8px; padding:12px; text-align:center; }
+        .kpi strong { display:block; font-size:1.6rem; font-family:'JetBrains Mono',monospace; }
+        .kpi span { font-size:.75rem; color:var(--text-muted); }
+        .cftv-lista { display:flex; flex-direction:column; gap:8px; }
+        .cftv-item { border:1px solid var(--border); border-left:3px solid var(--purple); border-radius:8px; padding:10px 12px; background:var(--bg-input); display:grid; grid-template-columns:1fr auto; gap:4px 12px; }
+        .cftv-item.fora { border-left-color:var(--status-crit); }
+        .cftv-item .ev { grid-column:1 / -1; font-size:.75rem; color:var(--text-muted); }
+        .ev-lista { display:flex; flex-direction:column; max-height:520px; overflow:auto; border:1px solid var(--border); border-radius:8px; background:var(--bg-input); }
+        .ev-item { display:grid; grid-template-columns:150px 84px 1fr; gap:10px; padding:8px 12px; border-bottom:1px solid color-mix(in srgb,var(--border) 60%,transparent); font-size:.83rem; }
+        .ev-item .quando { font-family:'JetBrains Mono',monospace; font-size:.75rem; color:var(--text-muted); }
+        .ev-item b { display:block; }
+        .grav-Crítica { color:var(--status-crit); } .grav-Alerta, .grav-Aviso { color:var(--status-warn); } .grav-OK { color:var(--status-ok); }
+        .wd-item { display:flex; justify-content:space-between; align-items:center; gap:8px; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:8px 10px; font-size:.83rem; }
+        .wd-item button { background:none; border:0; color:var(--red); cursor:pointer; }
+        .spark { width:100%; height:180px; margin-top:12px; background:var(--bg-input); border:1px solid var(--border); border-radius:8px; }
+        .rel-opcoes { display:flex; flex-direction:column; gap:10px; }
+        .rel-opcoes label { display:flex; align-items:center; gap:8px; font-size:.88rem; }
+        .rel-opcoes input[type=radio] { width:auto; }
+        .rel-campos { display:flex; gap:8px; flex-wrap:wrap; padding-left:26px; }
+        .rel-campos input { width:auto; }
+        .aviso-central { margin:0 0 18px; padding:10px 14px; border-radius:8px; border:1px solid var(--status-warn); color:var(--status-warn); background:color-mix(in srgb,var(--status-warn) 8%,transparent); font-size:.88rem; }
+        .aviso-central[hidden] { display:none; }
+        @media (max-width: 1100px) { .painel-grid { grid-template-columns:1fr 1fr !important; } }
+        @media (max-width: 720px) {
+            .painel-grid { grid-template-columns:1fr !important; } .container { padding:16px; }
+            .kpis { grid-template-columns:1fr 1fr; } .ev-item { grid-template-columns:1fr; gap:2px; }
+            .global-grid { grid-template-columns:1fr 1fr; } .navbar { flex-direction:column; align-items:flex-start; gap:8px; padding:12px 16px; }
+        }
+    </style>
+</head>
+<body>
+    <header class="app-bar">
+        <span class="brand-lockup" aria-label="NexoPulse">
+            <img class="brand-logo brand-logo-dark" src="/static/brand/nexopulse/logo-escuro.svg" alt="NexoPulse" width="166" height="48">
+            <img class="brand-logo brand-logo-light" src="/static/brand/nexopulse/logo-claro.svg" alt="NexoPulse" width="166" height="48">
+            <span class="brand-by" aria-hidden="true">por MD Soluções<br>Tecnológicas</span>
+        </span>
+        <span class="edge-badge"><i class="fa-solid fa-house-signal"></i> Edge · acesso local</span>
+        <div class="app-bar-actions">
+            <span class="product-version">{{ sensor.agent_version }}</span>
+            <button type="button" class="theme-toggle" onclick="NexoPulseTheme.toggle()" aria-label="Alternar tema"><i class="fa-solid fa-sun"></i> Tema</button>
+        </div>
+    </header>
+
+    <nav class="navbar">
+        <div style="font-size: 1.3em; font-weight: bold; color: var(--blue); display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <span><i class="fa-solid fa-server" style="margin-right: 8px;"></i>{{ sensor.nome_local }}</span>
+            <span style="font-size: 0.55em; color: var(--text-muted); font-weight: normal; font-family: 'JetBrains Mono', monospace; border-left: 1px solid var(--border); padding-left: 12px;">MAC: {{ sensor.mac_id }}</span>
+        </div>
+        <div class="navbar-meta">
+            <span><i class="fa-solid fa-wifi"></i> <strong id="access-ip">{{ sensor.ip_sensor or '--' }}</strong>:10000</span>
+            <span><i class="fa-solid fa-clock"></i> Atualizado <strong id="hora-atual">--</strong></span>
+        </div>
+    </nav>
+
+    <div class="container" data-host-mac="{{ sensor.mac_id }}">
+        <nav class="section-nav" aria-label="Seções do painel local"><a href="#host">Host</a><a href="#rede-local">Rede local</a><a href="#wan">WAN</a><a href="#dispositivos">Dispositivos</a><a href="#cftv">CFTV</a><a href="#watchdog">Watchdog</a><a href="#eventos">Eventos</a><a href="#relatorio">Relatório</a></nav>
+        <p class="aviso-central" id="aviso-sessao" hidden role="alert"></p>
+        <p class="help-text">Painel servido pelo próprio sensor: continua funcionando sem internet. O registro de eventos guarda {{ retencao_dias }} dias.</p>
+
+        <div class="painel-grid">
+            <div class="card card-hw card-stack" id="host">
+                <h3><span><i class="fa-solid fa-microchip"></i> Host</span><span id="badge-status" class="status-pill pill-unknown">AGUARDANDO</span></h3>
+                <div class="host-chips">
+                    <span title="Tempo desde o último boot"><i class="fa-solid fa-clock"></i> <strong id="host-uptime">--</strong></span>
+                    <span title="Carga média em 1, 5 e 15 minutos"><i class="fa-solid fa-gauge"></i> <strong id="host-load">--</strong></span>
+                    <span><i class="fa-solid fa-temperature-half"></i> CPU <strong id="temp-text">-- °C</strong></span>
+                    <span><i class="fa-solid fa-fire-flame-curved"></i> GPU <strong id="gpu-text">-- °C</strong></span>
+                </div>
+                <p class="host-boot" id="host-boot"></p>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-microchip"></i> CPU <small id="host-nucleos"></small></span><strong id="cpu-text">--</strong></div>
+                    <div class="progress-bg"><div id="cpu-fill" class="progress-fill"></div></div>
+                    <div class="cores" id="host-cores"></div>
+                </div>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-memory"></i> RAM</span><strong id="ram-text">--</strong></div>
+                    <div class="progress-bg"><div id="ram-fill" class="progress-fill"></div></div>
+                </div>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-right-left"></i> Swap</span><strong id="swap-text">--</strong></div>
+                    <div class="progress-bg"><div id="swap-fill" class="progress-fill" style="background: var(--purple);"></div></div>
+                </div>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-hard-drive"></i> Discos</span><strong id="disk-text">--</strong></div>
+                    <div id="disk-fill" hidden></div>
+                    <div class="discos" id="host-discos"></div>
+                </div>
+            </div>
+
+            <div class="card card-net" id="rede-local">
+                <h3><span><i class="fa-solid fa-shield-heart"></i> Rede Local</span></h3>
+                <div class="data-row"><span><i class="fa-solid fa-network-wired" style="color:var(--green); width: 20px;"></i> Rede Local:</span><span id="status-local" class="status-pill pill-unknown">AGUARDANDO</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-ethernet" style="color:var(--blue); width: 20px;"></i> Interface:</span><span id="rede-interface" class="mono" style="font-size:0.78em;">--</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-diagram-project" style="color:var(--purple); width: 20px;"></i> Rede / CIDR:</span><span id="rede-cidr" class="mono" style="font-size:0.78em;">--</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-route" style="color:var(--yellow); width: 20px;"></i> Gateway:</span><span id="rede-gateway" class="mono" style="font-size:0.78em;">--</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-globe" style="color:var(--blue); width: 20px;"></i> Internet (WAN):</span><span id="status-wan" class="status-pill pill-unknown">AGUARDANDO</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-arrow-right-arrow-left" style="color:var(--yellow); width: 20px;"></i> Tráfego do Sensor:</span>
+                    <span class="mono" style="font-size: 0.85em;"><i class="fa-solid fa-arrow-down" style="color:var(--brand-green)"></i> <span id="net-down-live">0.0</span> Mb &nbsp;<i class="fa-solid fa-arrow-up" style="color:var(--brand-cyan)"></i> <span id="net-up-live">0.0</span> Mb</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-door-open" style="color:var(--purple); width: 20px;"></i> Portas do Sensor:</span><span id="portas-abertas" class="mono" style="font-size: 0.75em; color: var(--blue);">Analisando...</span></div>
+                <div style="margin-top: auto; background: var(--bg-input); padding: 18px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Latência Sensor ➔ Gateway</div>
+                    <div id="ping-local" class="highlight" style="color: var(--status-unknown); margin-top: 5px;">--</div>
+                </div>
+            </div>
+
+            <div class="card card-stack" id="saude" style="border-top: 4px solid var(--status-ok);">
+                <h3><span><i class="fa-solid fa-heart-pulse"></i> Saúde do sistema</span></h3>
+                <ul class="saude-lista" id="saude-lista"><li class="hist-empty">Aguardando a primeira coleta do sensor…</li></ul>
+            </div>
+        </div>
+
+        <div class="painel-grid" style="grid-template-columns: 2fr 1fr;">
+            <div class="card card-global" id="wan">
+                <h3><span><i class="fa-solid fa-earth-americas"></i> WAN · conectividade externa</span><span class="iface-tag">últimos minutos</span></h3>
+                <div class="global-grid">
+                    <div id="card-google" class="g-card"><i class="fa-brands fa-google"></i> Google <div id="pg-google" class="ms">--</div></div>
+                    <div id="card-cf" class="g-card"><i class="fa-solid fa-cloud"></i> Cloudflare <div id="pg-cf" class="ms">--</div></div>
+                    <div id="card-aws" class="g-card"><i class="fa-brands fa-aws"></i> AWS Amazon <div id="pg-aws" class="ms">--</div></div>
+                    <div id="card-quad9" class="g-card"><i class="fa-solid fa-shield-halved"></i> DNS Quad9 <div id="pg-quad9" class="ms">--</div></div>
+                </div>
+                <svg class="spark" id="spark-wan" viewBox="0 0 600 180" preserveAspectRatio="none" role="img" aria-label="Latência WAN e do gateway nos últimos minutos"></svg>
+                <p class="help-text" id="spark-legenda" style="margin:6px 0 0;"></p>
+            </div>
+            <div class="card card-stack" style="border-top: 4px solid var(--purple);">
+                <h3><span><i class="fa-solid fa-list-ol"></i> Processos</span>
+                    <span class="seg" id="procs-modo"><button class="ativo" data-modo="cpu">CPU</button><button data-modo="memoria">Memória</button></span></h3>
+                <table class="procs"><thead><tr><th>Processo</th><th>PID</th><th>CPU</th><th>Mem.</th></tr></thead><tbody id="host-procs"><tr><td colspan="4" class="hist-empty">Aguardando…</td></tr></tbody></table>
+                <h3 style="margin-top:10px;"><span><i class="fa-solid fa-network-wired"></i> Interfaces de rede</span></h3>
+                <div class="ifaces" id="host-ifaces"><div class="hist-empty">Aguardando a primeira coleta…</div></div>
+            </div>
+        </div>
+
+        <div class="painel-grid" style="grid-template-columns: 1fr;">
+            <div class="card card-radar card-full card-stack" id="dispositivos">
+                <h3><span><i class="fa-solid fa-project-diagram"></i> Dispositivos · levantamento da rede</span>
+                    <span style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="action-btn btn-secondary" onclick="baixar('/api/levantamento.csv')"><i class="fa-solid fa-file-csv"></i> CSV</button>
+                        {% if xlsx %}<button class="action-btn btn-secondary" onclick="baixar('/api/levantamento.xlsx')"><i class="fa-solid fa-file-excel"></i> XLSX</button>{% endif %}
+                        <button class="action-btn btn-secondary" onclick="baixar('/api/levantamento.json')" title="Formato para IA e integrações"><i class="fa-solid fa-file-code"></i> JSON</button>
+                    </span>
+                </h3>
+                <div class="kpis" id="disp-kpis"></div>
+                <div class="barra-ferramentas">
+                    <label class="sr-only" for="disp-busca">Buscar dispositivo</label>
+                    <input type="search" id="disp-busca" class="cresce" placeholder="Buscar por IP, MAC, nome, marca ou modelo">
+                    <label class="sr-only" for="disp-status">Status</label>
+                    <select id="disp-status"><option value="">Todos os status</option><option value="online">Online</option><option value="sem_icmp">Sem ICMP</option><option value="desconhecido">Desconhecido</option></select>
+                    <label class="chk"><input type="checkbox" id="disp-cftv"> Só CFTV</label>
+                    <label class="chk"><input type="checkbox" id="disp-ocultar"> Ocultar nomes na exportação</label>
+                </div>
+                <div class="tabela-wrap">
+                    <table class="disp">
+                        <thead><tr><th>IP</th><th>MAC</th><th>Nome</th><th>Marca</th><th>Tipo / modelo</th><th>Status</th><th>Latência</th><th></th></tr></thead>
+                        <tbody id="disp-corpo"><tr><td colspan="8" class="hist-empty">Aguardando a primeira varredura…</td></tr></tbody>
+                    </table>
+                </div>
+                <p class="help-text" style="margin:0;">Marca pelo prefixo do MAC (registro IEEE). Modelo quando o equipamento anuncia por ONVIF ou UPnP. Só aparece o que está na mesma rede (VLAN) do sensor.</p>
+            </div>
+        </div>
+
+        <div class="painel-grid" style="grid-template-columns: 1fr;">
+            <div class="card card-full card-stack" id="cftv" style="border-top: 4px solid var(--purple);">
+                <h3><span><i class="fa-solid fa-video"></i> CFTV · câmeras e gravadores</span><span class="iface-tag" id="cftv-resumo">--</span></h3>
+                <div class="cftv-lista" id="cftv-lista"><div class="hist-empty">Nenhum equipamento de CFTV identificado até agora. A identificação roda em segundo plano e pode levar alguns minutos após a instalação.</div></div>
+                <p class="help-text" style="margin:0;">Identificação por ONVIF, portas típicas (RTSP 554, Hikvision 8000, Dahua 37777, XMeye/iCSee 34567) e marca. Quando uma câmera ou gravador para de responder por 3 minutos, o evento entra no registro e vai para a Central.</p>
+            </div>
+        </div>
+
+        <div class="painel-grid" id="watchdog">
+            <div class="card card-custom">
+                <h3 style="margin-bottom: 15px;"><span><i class="fa-solid fa-crosshairs"></i> Radar de Pings (local)</span></h3>
+                <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+                    <input type="text" id="new-ip" placeholder="IP Alvo"><input type="text" id="new-desc" placeholder="Ex: Câmera">
+                    <button class="action-btn" onclick="addAlvo('/api/alvos','new-ip','new-desc')" style="background: var(--blue); color: var(--bg-base);" aria-label="Adicionar">+</button>
+                </div>
+                <div id="lista-custom-ips" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
+            </div>
+            <div class="card card-energia">
+                <h3 style="margin-bottom: 15px; color: var(--yellow);"><span><i class="fa-solid fa-plug-circle-bolt"></i> Watchdog de Energia</span></h3>
+                <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+                    <input type="text" id="new-ip-energia" placeholder="IP fora do Nobreak"><input type="text" id="new-desc-energia" placeholder="Roteador">
+                    <button class="action-btn" onclick="addAlvo('/api/energia','new-ip-energia','new-desc-energia')" style="background: var(--yellow); color: var(--bg-base);" aria-label="Adicionar">+</button>
+                </div>
+                <div id="lista-energia-ips" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
+            </div>
+            <div class="card card-speed">
+                <h3 style="margin-bottom: 15px; color: var(--purple);"><span><i class="fa-solid fa-cogs"></i> Serviços do SO (Auto-Cura)</span></h3>
+                <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+                    <input type="text" id="new-srv-nome" placeholder="Nome exato do serviço"><input type="text" id="new-srv-desc" placeholder="Apelido">
+                    <button class="action-btn" onclick="addServico()" style="background: var(--purple); color: var(--bg-base);" aria-label="Adicionar">+</button>
+                </div>
+                <div id="lista-servicos-os" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
+            </div>
+        </div>
+        <p class="help-text" style="margin-top:-12px;">Alvos cadastrados aqui ficam só neste sensor; os cadastrados na Central também são vigiados e aparecem lá.</p>
+
+        <div class="painel-grid" style="grid-template-columns: 2fr 1fr;">
+            <div class="card card-hist card-stack" id="eventos">
+                <h3><span><i class="fa-solid fa-clock-rotate-left"></i> Registro de eventos</span><span class="iface-tag" id="ev-total">--</span></h3>
+                <div class="barra-ferramentas">
+                    <label class="sr-only" for="ev-de">De</label><input type="date" id="ev-de" title="De">
+                    <label class="sr-only" for="ev-ate">Até</label><input type="date" id="ev-ate" title="Até">
+                    <label class="sr-only" for="ev-grav">Gravidade</label>
+                    <select id="ev-grav"><option value="">Todas as gravidades</option><option>Crítica</option><option>Alerta</option><option>Aviso</option><option>OK</option></select>
+                    <label class="sr-only" for="ev-busca">Buscar</label><input type="search" id="ev-busca" class="cresce" placeholder="Buscar no evento ou nos detalhes">
+                    <button class="action-btn btn-secondary" onclick="limparFiltrosEventos()">Limpar</button>
+                    <button class="action-btn btn-secondary" onclick="baixarEventosCsv()"><i class="fa-solid fa-file-csv"></i> CSV</button>
+                </div>
+                <div class="ev-lista" id="ev-lista"><div class="hist-empty">Carregando…</div></div>
+                <button class="action-btn btn-secondary" id="ev-mais" onclick="carregarEventos(true)" hidden>Carregar mais</button>
+            </div>
+
+            <div class="card card-trace card-stack" id="relatorio">
+                <h3><span><i class="fa-solid fa-file-pdf"></i> Relatório</span></h3>
+                <p class="help-text" style="margin:0;">Abre o relatório em uma nova aba, pronto para imprimir ou salvar em PDF. Inclui eventos do período, estado atual, equipamentos de CFTV e inventário da rede.</p>
+                <div class="rel-opcoes">
+                    <label><input type="radio" name="rel-periodo" value="ultimos" checked> Últimos
+                        <select id="rel-dias" style="width:auto; padding:4px 8px; background:var(--bg-input); color:var(--text-main); border:1px solid var(--border); border-radius:6px;">
+                            <option value="1">24 horas</option><option value="7" selected>7 dias</option><option value="30">30 dias</option><option value="{{ retencao_dias }}">{{ retencao_dias }} dias</option>
+                        </select></label>
+                    <label><input type="radio" name="rel-periodo" value="dia"> Um dia específico</label>
+                    <div class="rel-campos"><input type="date" id="rel-data" aria-label="Dia do relatório"></div>
+                    <label><input type="radio" name="rel-periodo" value="periodo"> Período customizado</label>
+                    <div class="rel-campos"><input type="date" id="rel-de" aria-label="Início"><input type="date" id="rel-ate" aria-label="Fim"></div>
+                </div>
+                <button class="action-btn btn-primary" onclick="abrirRelatorio()" style="margin-top:auto;"><i class="fa-solid fa-file-lines"></i> Gerar relatório</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // O token chega na URL (link gerado na Central). Fica só nesta aba (sessionStorage), sai da barra de
+    // endereço e vai no cabeçalho X-Auth-Token de cada chamada.
+    const TOKEN = (() => {
+        const daUrl = new URLSearchParams(location.search).get('token');
+        try { if (daUrl) sessionStorage.setItem('nexopulse-edge-token', daUrl); } catch (e) {}
+        if (daUrl) history.replaceState(null, '', location.pathname + location.hash);
+        try { return daUrl || sessionStorage.getItem('nexopulse-edge-token') || ''; } catch (e) { return daUrl || ''; }
+    })();
+    const _fetch = window.fetch.bind(window);
+    window.fetch = (url, opcoes = {}) => {
+        const headers = new Headers(opcoes.headers || {});
+        if (String(url).startsWith('/')) headers.set('X-Auth-Token', TOKEN);
+        return _fetch(url, {...opcoes, headers}).then(r => {
+            if (r.status === 401) avisarSessao('Token expirado ou inválido. Gere um novo link de acesso local na Central.');
+            return r;
+        });
+    };
+    const $ = id => document.getElementById(id);
+    const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+    const json = (url, metodo = 'GET', corpo) => fetch(url, {method: metodo, headers: {'Content-Type': 'application/json'}, body: corpo ? JSON.stringify(corpo) : undefined});
+    function avisarSessao(texto) { const a = $('aviso-sessao'); a.textContent = texto; a.hidden = false; }
+
+    async function baixar(url) {
+        const sep = url.includes('?') ? '&' : '?';
+        const alvo = $('disp-ocultar') && $('disp-ocultar').checked && url.includes('levantamento') ? url + sep + 'ocultar_nomes=1' : url;
+        const r = await fetch(alvo);
+        if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.erro || 'Não foi possível exportar.'); return; }
+        const nome = ((r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/) || [])[1] || 'exportacao';
+        const a = Object.assign(document.createElement('a'), {href: URL.createObjectURL(await r.blob()), download: nome});
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    }
+
+    // ---------- estado ao vivo (a cada 3 s)
+    const historico = [];
+    const pill = (el, ok, txtOk, txtFalha, desconhecido) => {
+        el.className = 'status-pill ' + (desconhecido ? 'pill-unknown' : ok ? 'pill-ok' : 'pill-fail');
+        el.textContent = desconhecido ? 'AGUARDANDO' : ok ? txtOk : txtFalha;
+    };
+    const ms = v => v > 0 ? `${Math.round(v)} ms` : 'falha';
+    function barra(idTexto, idFill, valor) {
+        $(idTexto).textContent = valor != null ? `${valor}%` : '--';
+        $(idFill).style.width = Math.min(valor || 0, 100) + '%';
+        $(idFill).className = 'progress-fill nivel-' + (valor >= 90 ? 'crit' : valor >= 75 ? 'warn' : 'ok');
+    }
+
+    function desenharSpark() {
+        const svg = $('spark-wan'), W = 600, H = 180, P = 8;
+        if (historico.length < 2) { svg.innerHTML = ''; return; }
+        const series = [['gw', 'var(--brand-green)', 'Gateway'], ['Google', 'var(--blue)', 'Google'], ['Cloudflare', 'var(--purple)', 'Cloudflare']];
+        const max = Math.max(20, ...historico.flatMap(h => series.map(([k]) => h[k] || 0)));
+        const x = i => P + i * (W - 2 * P) / (historico.length - 1), y = v => H - P - (v / max) * (H - 2 * P);
+        let out = `<line x1="0" y1="${y(max / 2)}" x2="${W}" y2="${y(max / 2)}" stroke="var(--border)" stroke-dasharray="4 4"/>`;
+        for (const [k, cor] of series) {
+            const pts = historico.map((h, i) => `${x(i).toFixed(1)},${y(h[k] || 0).toFixed(1)}`).join(' ');
+            out += `<polyline points="${pts}" fill="none" stroke="${cor}" stroke-width="2" vector-effect="non-scaling-stroke"/>`;
+            historico.forEach((h, i) => { if (!(h[k] > 0)) out += `<circle cx="${x(i)}" cy="${H - P}" r="3" fill="var(--status-crit)"/>`; });
+        }
+        svg.innerHTML = out;
+        const ult = historico[historico.length - 1];
+        $('spark-legenda').innerHTML = series.map(([k, cor, n]) => `<span style="color:${cor}">■</span> ${n} ${ms(ult[k])}`).join(' &nbsp; ') +
+            ` &nbsp; · escala até ${Math.round(max)} ms · pontos vermelhos = sem resposta`;
+    }
+
+    function listaWatchdog(id, itens, rotaDel, rotulo) {
+        $(id).innerHTML = itens.length ? itens.map(i => `<div class="wd-item"><span><b>${esc(i.descricao)}</b><span class="sub mono">${esc(i.ip || i.nome_servico)}</span></span>
+            <span style="display:flex;align-items:center;gap:8px;"><span class="${rotulo(i).cls}">${esc(rotulo(i).txt)}</span>
+            <button onclick="removerAlvo('${rotaDel}/${Number(i.id)}')" aria-label="Remover">Remover</button></span></div>`).join('')
+            : '<div class="hist-empty" style="padding:10px;">Nada cadastrado neste sensor.</div>';
+    }
+
+    async function atualizarLocal() {
+        try {
+            const r = await fetch('/api/local_data');
+            if (!r.ok) return;
+            const d = await r.json();
+            $('hora-atual').textContent = d.hora;
+            $('access-ip').textContent = d.meu_ip || '--';
+            barra('cpu-text', 'cpu-fill', d.cpu); barra('ram-text', 'ram-fill', d.ram);
+            $('temp-text').textContent = d.temp ? `${d.temp} °C` : '-- °C';
+            $('gpu-text').textContent = d.gpu_temp ? `${d.gpu_temp} °C` : '-- °C';
+            const p = d.pings || {}, wanOk = p.Google > 0 || p.Cloudflare > 0;
+            pill($('badge-status'), true, 'ONLINE', '', false);
+            pill($('status-local'), d.ping_gateway > 0, 'OK', 'SEM GATEWAY', d.gateway_ip === 'Detectando...');
+            pill($('status-wan'), wanOk, 'ONLINE', 'SEM INTERNET', false);
+            $('rede-interface').textContent = d.interface || '--';
+            $('rede-cidr').textContent = d.rede_cidr || '--';
+            $('rede-gateway').textContent = d.gateway_ip || '--';
+            $('net-down-live').textContent = Number(d.net_down || 0).toFixed(1);
+            $('net-up-live').textContent = Number(d.net_up || 0).toFixed(1);
+            $('portas-abertas').textContent = d.portas || '--';
+            $('ping-local').textContent = d.ping_gateway > 0 ? `${d.ping_gateway} ms` : 'FALHA';
+            $('ping-local').style.color = d.ping_gateway > 0 ? (d.ping_gateway > 50 ? 'var(--status-warn)' : 'var(--status-ok)') : 'var(--status-crit)';
+            for (const [nome, id, card] of [['Google', 'pg-google', 'card-google'], ['Cloudflare', 'pg-cf', 'card-cf'], ['AWS', 'pg-aws', 'card-aws'], ['Quad9', 'pg-quad9', 'card-quad9']]) {
+                $(id).textContent = p[nome] > 0 ? `${p[nome]} ms` : 'falha';
+                $(card).classList.toggle('fail', !(p[nome] > 0));
+            }
+            historico.push({gw: d.ping_gateway, Google: p.Google, Cloudflare: p.Cloudflare});
+            if (historico.length > 120) historico.shift();
+            desenharSpark();
+            listaWatchdog('lista-custom-ips', d.custom_ips || [], '/api/alvos', i => i.latencia > 0 ? {cls: 'grav-OK', txt: `${i.latencia} ms`} : {cls: 'grav-Crítica', txt: 'sem resposta'});
+            listaWatchdog('lista-energia-ips', d.energia_ips || [], '/api/energia', i => i.latencia > 0 ? {cls: 'grav-OK', txt: 'com energia'} : {cls: 'grav-Crítica', txt: 'sem energia'});
+            listaWatchdog('lista-servicos-os', d.servicos_os || [], '/api/servicos_os', i => ({cls: String(i.status).startsWith('ONLINE') ? 'grav-OK' : 'grav-Crítica', txt: i.status}));
+        } catch (e) { $('badge-status').className = 'status-pill pill-fail'; $('badge-status').textContent = 'SEM CONTATO'; }
+    }
+
+    // ---------- dispositivos e CFTV (a cada 20 s)
+    let dispositivos = [];
+    const rotuloStatus = {online: ['pill-ok', 'Online'], sem_icmp: ['pill-warn', 'Sem ICMP'], desconhecido: ['pill-unknown', 'Desconhecido'], offline: ['pill-fail', 'Offline']};
+    function nomeDe(d) { return d.apelido || d.nome.valor || (d.cftv && d.cftv.nome) || ''; }
+
+    function desenharDispositivos() {
+        const busca = $('disp-busca').value.trim().toLowerCase(), st = $('disp-status').value, soCftv = $('disp-cftv').checked;
+        const lista = dispositivos.filter(d => (!st || d.status === st) && (!soCftv || d.cftv) &&
+            (!busca || [d.ip, d.mac, nomeDe(d), d.marca.valor, d.modelo, d.tipo].join(' ').toLowerCase().includes(busca)));
+        $('disp-corpo').innerHTML = lista.length ? lista.map(d => {
+            const [cls, txt] = rotuloStatus[d.status] || rotuloStatus.desconhecido;
+            const tipo = d.tipo ? `<span class="tag ${d.tipo === 'NVR/DVR' ? 'grav' : d.cftv ? 'cam' : ''}">${esc(d.tipo)}</span>` : '';
+            const papel = d.papel ? `<span class="tag">${d.papel === 'gateway' ? 'Gateway' : 'Sensor'}</span>` : '';
+            return `<tr class="${d.cftv ? 'cftv' : ''}"><td class="mono">${esc(d.ip)} ${papel}</td><td class="mono" style="font-size:.75rem">${esc(d.mac || '')}</td>
+                <td>${esc(nomeDe(d)) || '<span class="txt-muted">—</span>'}${d.nome.fonte && !d.apelido ? `<span class="sub">${esc(d.nome.fonte)}</span>` : ''}</td>
+                <td>${esc(d.marca.valor || (d.mac_privado ? 'MAC privado' : '—'))}</td>
+                <td>${tipo} ${esc(d.modelo || '')}</td><td><span class="status-pill ${cls}">${txt}</span></td>
+                <td class="mono">${d.latencia_ms ? d.latencia_ms + ' ms' : '—'}</td>
+                <td><span class="acoes-linha">${d.papel === 'sensor' ? '' : `<button title="Renomear" data-acao="renomear" data-mac="${esc(d.mac)}" data-nome="${esc(nomeDe(d))}">Renomear</button>
+                    <button title="Vigiar no Radar de Pings" data-acao="vigiar" data-ip="${esc(d.ip)}" data-nome="${esc(nomeDe(d) || d.modelo || d.ip)}">Vigiar</button>`}</span></td></tr>`;
+        }).join('') : '<tr><td colspan="8" class="hist-empty">Nenhum dispositivo com esses filtros.</td></tr>';
+    }
+
+    function desenharCftv(resumo) {
+        const cftv = dispositivos.filter(d => d.cftv);
+        const cams = cftv.filter(d => d.tipo === 'Câmera IP').length, grav = cftv.filter(d => d.tipo === 'NVR/DVR').length;
+        const fora = cftv.filter(d => d.status !== 'online').length;
+        $('cftv-resumo').textContent = cftv.length ? `${cams} câmeras · ${grav} gravadores · ${cftv.length - cams - grav} outros` : 'nenhum identificado';
+        $('disp-kpis').innerHTML = [[resumo.total || 0, 'Dispositivos'], [resumo.com_modelo || 0, 'Com modelo'], [cftv.length, 'CFTV'],
+            [fora, 'CFTV sem resposta']].map(([n, t], i) => `<div class="kpi"><strong style="${i === 3 && n ? 'color:var(--status-crit)' : ''}">${n}</strong><span>${t}</span></div>`).join('');
+        if (!cftv.length) return;
+        $('cftv-lista').innerHTML = cftv.map(d => `<div class="cftv-item ${d.status !== 'online' ? 'fora' : ''}">
+            <div><b>${esc(d.modelo || d.tipo)}</b> <span class="tag ${d.tipo === 'NVR/DVR' ? 'grav' : 'cam'}">${esc(d.tipo)}</span>
+                <span class="sub mono">${esc(d.ip)} · ${esc(d.mac || '')} · ${esc(d.cftv.fabricante || d.marca.valor || 'fabricante não identificado')}${nomeDe(d) ? ' · ' + esc(nomeDe(d)) : ''}</span></div>
+            <div style="text-align:right"><span class="status-pill ${(rotuloStatus[d.status] || rotuloStatus.desconhecido)[0]}">${(rotuloStatus[d.status] || rotuloStatus.desconhecido)[1]}</span>
+                <span class="sub">confiança ${esc(d.cftv.confianca)}</span></div>
+            <div class="ev">${esc((d.cftv.evidencias || []).join(' · '))}${d.cftv.portas && d.cftv.portas.length ? ' · portas: ' + esc(d.cftv.portas.join(', ')) : ''}</div></div>`).join('');
+    }
+
+    async function carregarDispositivos() {
+        try {
+            const r = await fetch('/api/dispositivos');
+            if (!r.ok) return;
+            const d = await r.json();
+            dispositivos = d.dispositivos || [];
+            desenharDispositivos(); desenharCftv(d.resumo || {});
+        } catch (e) { /* tenta de novo */ }
+    }
+    ['disp-busca', 'disp-status', 'disp-cftv'].forEach(id => $(id).addEventListener('input', desenharDispositivos));
+    $('disp-corpo').addEventListener('click', ev => {
+        const b = ev.target.closest('button[data-acao]');
+        if (!b) return;
+        if (b.dataset.acao === 'renomear') renomear(b.dataset.mac, b.dataset.nome);
+        else vigiar(b.dataset.ip, b.dataset.nome);
+    });
+
+    async function renomear(mac, atual) {
+        const nome = prompt('Nome para este dispositivo:', atual || '');
+        if (nome) { await json('/api/topologia/nome', 'POST', {mac, nome}); carregarDispositivos(); }
+    }
+    async function vigiar(ip, descricao) {
+        if (confirm(`Adicionar ${ip} ao Radar de Pings deste sensor?`)) { await json('/api/alvos', 'POST', {ip, descricao}); atualizarLocal(); }
+    }
+    async function addAlvo(rota, idIp, idDesc) {
+        const ip = $(idIp).value.trim(), descricao = $(idDesc).value.trim() || ip;
+        if (!ip) return;
+        await json(rota, 'POST', {ip, descricao}); $(idIp).value = ''; $(idDesc).value = ''; atualizarLocal();
+    }
+    async function addServico() {
+        const nome_servico = $('new-srv-nome').value.trim(), descricao = $('new-srv-desc').value.trim() || nome_servico;
+        if (!nome_servico) return;
+        await json('/api/servicos_os', 'POST', {nome_servico, descricao}); $('new-srv-nome').value = ''; $('new-srv-desc').value = ''; atualizarLocal();
+    }
+    async function removerAlvo(rota) { if (confirm('Remover este item?')) { await fetch(rota, {method: 'DELETE'}); atualizarLocal(); } }
+
+    // ---------- registro de eventos
+    let evDeslocamento = 0;
+    function filtrosEventos() {
+        return new URLSearchParams(Object.entries({de: $('ev-de').value, ate: $('ev-ate').value, gravidade: $('ev-grav').value, busca: $('ev-busca').value.trim()}).filter(([, v]) => v));
+    }
+    async function carregarEventos(mais = false) {
+        evDeslocamento = mais ? evDeslocamento + 100 : 0;
+        const q = filtrosEventos(); q.set('limite', 100); q.set('deslocamento', evDeslocamento);
+        try {
+            const r = await fetch('/api/eventos?' + q);
+            if (!r.ok) return;
+            const d = await r.json();
+            const html = d.eventos.map(e => `<div class="ev-item"><span class="quando">${esc(e.data_hora)}</span><span class="grav-${esc(e.gravidade)}" style="font-weight:600">${esc(e.gravidade)}</span>
+                <span><b>${esc(e.tipo)}</b>${esc(e.detalhes)}</span></div>`).join('');
+            if (mais) $('ev-lista').insertAdjacentHTML('beforeend', html);
+            else $('ev-lista').innerHTML = html || '<div class="hist-empty" style="padding:20px;">Nenhum evento com esses filtros.</div>';
+            $('ev-total').textContent = `${d.total} evento${d.total === 1 ? '' : 's'}`;
+            $('ev-mais').hidden = evDeslocamento + d.eventos.length >= d.total;
+        } catch (e) { /* tenta de novo */ }
+    }
+    let evTimer;
+    ['ev-de', 'ev-ate', 'ev-grav'].forEach(id => $(id).addEventListener('change', () => carregarEventos()));
+    $('ev-busca').addEventListener('input', () => { clearTimeout(evTimer); evTimer = setTimeout(() => carregarEventos(), 300); });
+    function limparFiltrosEventos() { ['ev-de', 'ev-ate', 'ev-grav', 'ev-busca'].forEach(id => $(id).value = ''); carregarEventos(); }
+    function baixarEventosCsv() {
+        const q = filtrosEventos();
+        q.set('periodo', 'periodo');
+        if (!q.get('de') && !q.get('ate')) { q.set('periodo', 'ultimos'); q.set('dias', {{ retencao_dias }}); }
+        baixar('/api/eventos.csv?' + q);
+    }
+
+    // ---------- relatório
+    function abrirRelatorio() {
+        const tipo = document.querySelector('input[name=rel-periodo]:checked').value;
+        const q = new URLSearchParams({periodo: tipo});
+        if (tipo === 'ultimos') q.set('dias', $('rel-dias').value);
+        if (tipo === 'dia') { if (!$('rel-data').value) return alert('Escolha o dia.'); q.set('data', $('rel-data').value); }
+        if (tipo === 'periodo') {
+            if (!$('rel-de').value && !$('rel-ate').value) return alert('Escolha o início e/ou o fim do período.');
+            q.set('de', $('rel-de').value); q.set('ate', $('rel-ate').value);
+        }
+        // Navegação não leva cabeçalho: aqui o token vai na URL da aba do relatório (que ele também remove).
+        q.set('token', TOKEN);
+        window.open('/relatorio?' + q, '_blank', 'noopener');
+    }
+
+    atualizarLocal(); carregarDispositivos(); carregarEventos();
+    setInterval(atualizarLocal, 3000);
+    setInterval(carregarDispositivos, 20000);
+    setInterval(() => { if (evDeslocamento === 0 && !document.hidden) carregarEventos(); }, 15000);
+    </script>
+    <script src="/static/host.js?v=edge-1"></script>
+</body>
+</html>
