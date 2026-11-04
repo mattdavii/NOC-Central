@@ -249,14 +249,14 @@ def precisa_de_atencao(conn, build_atual=None):
     soltos = sem_empresa(conn)
     if soltos:
         itens.append({'nivel': 'atencao', 'titulo': f"{soltos} sensor{'es' if soltos != 1 else ''} sem empresa",
-                      'site': 'Alocar a um cliente ou à MD', 'empresa': None, 'desde': None, 'link': '/sensores'})
+                      'site': 'Alocar a um cliente ou à MD', 'empresa': None, 'desde': None, 'link': '/sensores?filtro=sem_empresa'})
     if build_atual:
         antigos = conn.execute(
             "SELECT COUNT(*) AS n FROM sensores WHERE agent_build IS NOT NULL AND agent_build <> '' AND agent_build <> ? "
             "AND COALESCE(status, '') = 'online'", (build_atual,)).fetchone()['n']
         if antigos:
             itens.append({'nivel': 'info', 'titulo': f"{antigos} sensor{'es' if antigos != 1 else ''} com versão antiga",
-                          'site': 'Atualizar pela tela de sensores', 'empresa': None, 'desde': None, 'link': '/sensores'})
+                          'site': 'Atualizar pela tela de sensores', 'empresa': None, 'desde': None, 'link': '/sensores?filtro=versao'})
     ordem = {'critico': 0, 'atencao': 1, 'info': 2}
     return sorted(itens, key=lambda i: (ordem[i['nivel']], -(i['desde'] or 0)))
 

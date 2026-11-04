@@ -2596,18 +2596,50 @@ def gerenciar_sensores():
     if 'user_id' not in session or session.get('role') != 'Administrador Master': return "Acesso Negado.", 403
     conn = database.get_db()
     sensores = conn.execute('''SELECT s.mac_id, s.nome_local, s.status, s.ip_sensor, s.cliente_id, s.camadas_rede, s.provedor,
-        c.nome as cliente_nome, sc.key_prefix,
+        s.agent_build, s.build_recusado, s.auto_atualizar, s.acoes_remotas, s.auto_update_guard, s.em_manutencao, s.last_seen,
+        c.nome as cliente_nome, c.empresa_master, sc.key_prefix,
         CASE WHEN sc.key_hash IS NOT NULL AND sc.revoked_at IS NULL THEN 1 ELSE 0 END AS credential_active
         FROM sensores s
         LEFT JOIN clientes c ON s.cliente_id = c.id
         LEFT JOIN sensor_credentials sc ON sc.sensor_mac = s.mac_id
         ORDER BY s.cliente_id ASC''').fetchall()
-    sensores = [{**dict(r), 'camadas': _json_ou(r['camadas_rede'], None)} for r in sensores]
+    # Atualização do agente que ainda está na fila ou rodando, por sensor (a tela mostra "Atualizando…").
+    atualizando = {r['sensor_mac'] for r in conn.execute(
+        "SELECT DISTINCT sensor_mac FROM acoes_remotas WHERE acao='atualizar_agente' AND status IN ('pendente', 'enviada')").fetchall()}
+    sensores = [{**dict(r), 'camadas': _json_ou(r['camadas_rede'], None), 'last_seen_ts': hub._epoch(r['last_seen']),
+                 'versao': _situacao_versao(r, r['mac_id'] in atualizando)} for r in sensores]
+    # Sem empresa primeiro (precisa alocar), depois a Empresa Master e os clientes por nome; dentro, offline primeiro.
+    sensores.sort(key=lambda s: (s['cliente_id'] is not None, not s['empresa_master'], (s['cliente_nome'] or '').lower(),
+                                 s['status'] == 'online', (s['nome_local'] or '').lower()))
     # Destinos: só empresas, a Empresa Master primeiro.
     clientes = conn.execute("SELECT id, nome, usuario, empresa_master FROM clientes WHERE role = 'Cliente' "
                             "ORDER BY empresa_master DESC, nome").fetchall()
     conn.close()
-    return render_template('sensores.html', sensores=[dict(s) for s in sensores], clientes=[dict(c) for c in clientes])
+    resumo = {'total': len(sensores), 'online': sum(1 for x in sensores if x['status'] == 'online'),
+              'offline': sum(1 for x in sensores if x['status'] and x['status'] != 'online'),
+              'sem_empresa': sum(1 for x in sensores if not x['cliente_id']),
+              'antigos': sum(1 for x in sensores if x['versao']['estado'] in ('antiga', 'desfeita'))}
+    grupos = []
+    for sensor in sensores:  # já em ordem: cada empresa vira um bloco na tela
+        if not grupos or grupos[-1]['cliente_id'] != sensor['cliente_id']:
+            grupos.append({'cliente_id': sensor['cliente_id'], 'nome': sensor['cliente_nome'], 'master': bool(sensor['empresa_master']), 'sensores': []})
+        grupos[-1]['sensores'].append(sensor)
+    return render_template('sensores.html', grupos=grupos, clientes=[dict(c) for c in clientes], resumo=resumo,
+                           build_central=AGENT_BUILD, filtro=request.args.get('filtro', 'todos'))
+
+
+def _situacao_versao(sensor, atualizando=False):
+    """Versão do agente frente à da Central, em linguagem da tela: em dia, antiga, desfeita, atualizando ou desconhecida."""
+    build = sensor['agent_build']
+    if atualizando:
+        return {'estado': 'atualizando', 'rotulo': 'Atualizando…', 'build': build}
+    if not build:
+        return {'estado': 'desconhecida', 'rotulo': 'Não informada', 'build': None}
+    if build == AGENT_BUILD:
+        return {'estado': 'em_dia', 'rotulo': 'Em dia', 'build': build}
+    if sensor['build_recusado'] and sensor['build_recusado'] == AGENT_BUILD:
+        return {'estado': 'desfeita', 'rotulo': 'Versão nova falhou', 'build': build}
+    return {'estado': 'antiga', 'rotulo': 'Versão antiga', 'build': build}
 
 
 @app.route('/api/v2/sensor_credential/<mac_id>', methods=['POST', 'DELETE'])
