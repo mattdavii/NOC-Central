@@ -59,7 +59,7 @@ Windows 11 versão 22H2 ou mais nova.
 5. **Reinicie o Windows uma vez** e rode a verificação (não muda nada, só confere):
 
    ```powershell
-   irm https://nexopulse.up.railway.app/verificar-windows.ps1 -OutFile $env:TEMPerificar.ps1; powershell -ExecutionPolicy Bypass -File $env:TEMPerificar.ps1
+   irm https://nexopulse.up.railway.app/verificar-windows.ps1 -OutFile $env:TEMP\verificar.ps1; powershell -ExecutionPolicy Bypass -File $env:TEMP\verificar.ps1
    ```
 
    Ela mostra OK / AVISO / FALHA para Windows, virtualização, WSL, rede espelhada,
