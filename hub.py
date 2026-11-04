@@ -29,14 +29,14 @@ def resumo_pulse(conn, empresa_id=None):
     junta = '' if empresa_id is None else ' AND s.cliente_id = ?'
     diags = conn.execute(
         "SELECT d.causa, d.gravidade, d.inicio, d.sensor_mac, s.nome_local FROM diagnosticos d "
-        "LEFT JOIN sensores s ON s.mac_id = d.sensor_mac WHERE d.estado = 'ativo'" + junta +
+        "JOIN sensores s ON s.mac_id = d.sensor_mac WHERE d.estado = 'ativo'" + junta +
         ' ORDER BY d.inicio DESC LIMIT 5', params).fetchall()
     total_diags = conn.execute(
-        "SELECT COUNT(*) AS n FROM diagnosticos d LEFT JOIN sensores s ON s.mac_id = d.sensor_mac "
+        "SELECT COUNT(*) AS n FROM diagnosticos d JOIN sensores s ON s.mac_id = d.sensor_mac "
         "WHERE d.estado = 'ativo'" + junta, params).fetchone()['n']
     queda = conn.execute(
         "SELECT d.inicio, d.fim, d.estado, s.nome_local, d.sensor_mac FROM diagnosticos d "
-        "LEFT JOIN sensores s ON s.mac_id = d.sensor_mac WHERE d.chave = 'sem_comunicacao'" + junta +
+        "JOIN sensores s ON s.mac_id = d.sensor_mac WHERE d.chave = 'sem_comunicacao'" + junta +
         ' ORDER BY d.inicio DESC LIMIT 1', params).fetchone()
     return {
         'sites': len(sites), 'online': online, 'offline': offline, 'manutencao': manutencao,
@@ -231,8 +231,8 @@ def precisa_de_atencao(conn, build_atual=None):
     itens = []
     diags = conn.execute(
         "SELECT d.sensor_mac, d.causa, d.gravidade, d.inicio, d.chave, s.nome_local, c.nome AS empresa FROM diagnosticos d "
-        "LEFT JOIN sensores s ON s.mac_id = d.sensor_mac LEFT JOIN clientes c ON c.id = s.cliente_id "
-        "WHERE d.estado = 'ativo' ORDER BY d.inicio DESC LIMIT 50").fetchall()
+        "JOIN sensores s ON s.mac_id = d.sensor_mac LEFT JOIN clientes c ON c.id = s.cliente_id "
+        "WHERE d.estado = 'ativo' AND COALESCE(s.em_manutencao, 0) = 0 ORDER BY d.inicio DESC LIMIT 50").fetchall()
     com_queda = set()
     for d in diags:
         if d['chave'] == 'sem_comunicacao':
