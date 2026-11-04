@@ -136,11 +136,11 @@
 
     {% for grupo in grupos %}
     <section class="grupo {{ 'sem-dono' if not grupo.cliente_id }}" data-grupo>
-        <header class="grupo-cab">
+        <div class="grupo-cab">
             <h2>{% if grupo.cliente_id %}{{ grupo.nome or 'Empresa #' ~ grupo.cliente_id }}{% else %}Sem empresa{% endif %}</h2>
             {% if grupo.master %}<span class="chip">Empresa Master</span>{% endif %}
             <span class="nota">{% if not grupo.cliente_id %}escolha a empresa de cada sensor novo · {% endif %}{{ grupo.sensores|length }} sensor{{ 'es' if grupo.sensores|length != 1 }}</span>
-        </header>
+        </div>
         <table class="sensores">
             <thead><tr><th>Sensor</th><th>Situação</th><th>Rede</th><th>Versão</th><th>Empresa</th><th><span class="sr-only">Ações</span></th></tr></thead>
             <tbody>
