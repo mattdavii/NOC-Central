@@ -52,10 +52,25 @@ Windows 11 versão 22H2 ou mais nova.
    Iniciar, crie o usuário e a senha do Linux, feche, e **rode o passo 2 de novo**
    (se o Windows pedir, reinicie antes).
 4. Na segunda execução ele configura a rede espelhada e o systemd, instala o sensor
-   dentro do Ubuntu (pede a senha do Linux) e cria a tarefa **"NexoPulse Edge (WSL)"**.
-   Essa tarefa liga o WSL sempre que o Windows inicia.
+   dentro do Ubuntu (pede a senha do Linux), libera a porta do painel local (10000) nos
+   firewalls do Windows e do Hyper-V (só para a rede local) e cria a tarefa
+   **"NexoPulse Edge (WSL)"**, que liga o WSL sempre que o Windows inicia. No fim ele
+   confere o serviço e o painel pelo IP da rede e mostra o endereço do painel.
+5. **Reinicie o Windows uma vez** e rode a verificação (não muda nada, só confere):
 
-Conferir: `wsl -d Ubuntu -- systemctl status nexopulse-edge --no-pager`.
+   ```powershell
+   irm https://nexopulse.up.railway.app/verificar-windows.ps1 -OutFile $env:TEMPerificar.ps1; powershell -ExecutionPolicy Bypass -File $env:TEMPerificar.ps1
+   ```
+
+   Ela mostra OK / AVISO / FALHA para Windows, virtualização, WSL, rede espelhada,
+   systemd, serviço, IP visto pelo sensor, painel pelo IP, firewalls e inicialização
+   automática, com o que fazer em cada falha. `-Relatorio C:\verificacao.txt` grava o
+   resultado num arquivo.
+
+**Painel local:** `http://<ip do Windows>:10000`, com o usuário e a senha do painel local.
+
+**Limites do Windows:** a máquina não pode suspender nem hibernar (o sensor para junto);
+deixe a energia em "Nunca suspender". Com o Windows desligado ou suspenso, o sensor fica fora.
 
 ---
 
@@ -80,5 +95,7 @@ Conferir: `wsl -d Ubuntu -- systemctl status nexopulse-edge --no-pager`.
 |---|---|
 | Sensor não aparece | `journalctl -u nexopulse-edge -n 50 --no-pager` e veja o erro |
 | `401 Sensor não autenticado` no log | A chave mudou. Na Central, **Sensores → excluir** o sensor e reinicie o serviço: ele se vincula de novo |
-| Não volta depois de reiniciar o PC (Windows) | Confira se a tarefa **"NexoPulse Edge (WSL)"** existe no Agendador de Tarefas |
+| Não volta depois de reiniciar o PC (Windows) | Rode a verificação do Windows; se a tarefa só roda no logon, o sensor volta quando alguém entra no Windows |
+| Painel não abre de outro computador (Windows) | Rode o instalador de novo (libera a porta nos firewalls) e confira a verificação |
+| Sensor vê poucos equipamentos (Windows) | Verificação → "IP visto pelo sensor": se for 172.x, o WSL está em NAT |
 | Reinstalar | Rode o mesmo comando de instalação: identidade e chave são preservadas |

@@ -653,6 +653,17 @@ echo "Pasta do agente: $DESTINO"
     return app.response_class(script, mimetype='text/x-shellscript', headers={'Cache-Control': 'no-store'})
 
 
+@app.route('/verificar-windows.ps1')
+def verificar_windows():
+    """Verificação do sensor no Windows (só lê e testa; não muda nada na máquina)."""
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(raiz, 'windows', 'verificar-nexopulse-windows.ps1'), encoding='utf-8') as arquivo:
+        resposta = app.response_class(arquivo.read(), mimetype='text/plain')
+    resposta.headers['Content-Disposition'] = 'attachment; filename=verificar-nexopulse.ps1'
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
+
+
 @app.route('/instalar-windows.ps1')
 def instalar_windows():
     """Instalador para Windows (via WSL), já apontando para esta Central."""
