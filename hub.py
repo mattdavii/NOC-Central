@@ -78,28 +78,39 @@ def duracao(segundos):
 def disponibilidade_mes(conn, empresa_id=None, agora=None):
     """Percentual do mês corrente em que os sites tiveram comunicação com a Central.
 
-    Conta as quedas "sem comunicação" de cada site fora de manutenção, cortadas no início do mês.
-    Devolve None quando não há site para medir."""
+    Conta as quedas "sem comunicação" de cada site fora de manutenção, cortadas no início do período do site
+    (início do mês ou primeira medição dele no mês). Devolve None quando não há site para medir."""
     agora = agora or time.time()
     inicio, mes = inicio_do_mes(agora)
     filtro, params = ('', ()) if empresa_id is None else (' AND cliente_id = ?', (empresa_id,))
     macs = [r['mac_id'] for r in conn.execute(
         'SELECT mac_id FROM sensores WHERE COALESCE(em_manutencao, 0) = 0' + filtro, params).fetchall()]
-    periodo = agora - inicio
-    if not macs or periodo <= 0:
+    # Cada site conta do início do mês ou da primeira medição dele no mês: sensor instalado no meio do mês
+    # não ganha dias que não monitorou. Uma queda aberta antes do mês prova que o site já existia no dia 1.
+    comeco = {}
+    for mac in macs:
+        aberta = conn.execute("SELECT 1 FROM diagnosticos WHERE sensor_mac = ? AND chave = 'sem_comunicacao' "
+                              'AND inicio < ? AND (fim IS NULL OR fim > ?) LIMIT 1', (mac, inicio, inicio)).fetchone()
+        primeira = conn.execute('SELECT MIN(coletado_em) AS t FROM medicoes_rede WHERE sensor_mac = ? AND coletado_em >= ?',
+                                (mac, inicio)).fetchone()['t']
+        # Sem medição no mês (agente antigo, que não envia medições): conta o mês inteiro, como antes.
+        comeco[mac] = inicio if aberta or primeira is None else min(agora, max(inicio, primeira))
+    periodo = sum(agora - c for c in comeco.values())
+    if periodo <= 0:
         return None
-    marcas = ','.join('?' * len(macs))
+    marcas = ','.join('?' * len(comeco))
     quedas = conn.execute(
         "SELECT sensor_mac, inicio, fim FROM diagnosticos WHERE chave = 'sem_comunicacao' "
         f'AND sensor_mac IN ({marcas}) AND inicio < ? AND (fim IS NULL OR fim > ?)',
-        (*macs, agora, inicio)).fetchall()
+        (*comeco, agora, inicio)).fetchall()
     por_site = {}
     for q in quedas:
-        ini, fim = max(q['inicio'], inicio), min(q['fim'] or agora, agora)
+        ini, fim = max(q['inicio'], comeco[q['sensor_mac']]), min(q['fim'] or agora, agora)
         if fim > ini:
             por_site.setdefault(q['sensor_mac'], []).append((ini, fim))
+    quedas = [q for q in quedas if q['sensor_mac'] in por_site and (q['fim'] or agora) > comeco[q['sensor_mac']]]
     fora = sum(fim - ini for trechos in por_site.values() for ini, fim in _unir(trechos))
-    pct = 100 * (1 - fora / (periodo * len(macs)))
+    pct = 100 * (1 - fora / periodo)
     # Arredonda para baixo: com qualquer queda no mês o número nunca chega a 100%.
     exibido = math.floor(pct * 10) / 10
     if fora > 0 and exibido >= 100:

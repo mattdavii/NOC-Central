@@ -169,3 +169,23 @@ def test_hub_mostra_disponibilidade_no_card_e_na_visao_md(login):
     assert 'window.location.reload' not in md
     # Versão (rc) só para a MD.
     assert 'product-version' in md and 'product-version' not in page
+
+
+def test_disponibilidade_de_site_instalado_no_meio_do_mes(client):
+    import hub
+    agora = time.time()
+    inicio, _ = hub.inicio_do_mes(agora)
+    if agora - inicio < 3 * 3600:
+        import pytest
+        pytest.skip('primeiras horas do mês: o site "instalado há 2 h" cairia no mês anterior')
+    conn = database.get_db()
+    conn.execute("INSERT INTO sensores (mac_id, nome_local, status, cliente_id) VALUES ('N1', 'Novo', 'online', 2)")
+    instalado = agora - 2 * 3600
+    conn.execute("INSERT INTO medicoes_rede (sensor_mac, coletado_em, tipo) VALUES ('N1', ?, 'ping')", (instalado,))
+    conn.execute("INSERT INTO diagnosticos (sensor_mac, chave, causa, gravidade, inicio, fim, estado) "
+                 "VALUES ('N1', 'sem_comunicacao', 'Site sem comunicação', 'Crítica', ?, ?, 'resolvido')", (agora - 3600, agora - 2400))
+    conn.commit()
+    d = hub.disponibilidade_mes(conn, 2, agora=agora)
+    conn.close()
+    # 20 min fora em 2 h monitoradas (não no mês inteiro): 83,3%.
+    assert 83.0 <= d['pct'] <= 83.4
