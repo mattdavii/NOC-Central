@@ -77,11 +77,11 @@
         table.clientes th button i { font-size: .75em; opacity: .45; }
         table.clientes th[aria-sort] button i { opacity: 1; }
         /* Início da MD: atenção, mês e eventos ao redor da tabela de clientes. */
-        .painel-md { display: grid; gap: 18px; grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr);
-                     grid-template-areas: "mes atencao" "clientes eventos"; align-items: start; }
-        .resumo-mes { grid-area: mes; } .atencao { grid-area: atencao; } .eventos { grid-area: eventos; } .clientes-bloco { grid-area: clientes; }
+        /* Duas colunas independentes: um bloco curto de um lado não abre buraco no outro. */
+        .painel-md { display: grid; gap: 18px; grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr); align-items: start; }
+        .col-principal, .col-lateral { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
         .bloco { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; min-width: 0; }
-        .bloco-cab { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+        .bloco-cab { display: flex; align-items: baseline; gap: 10px; margin: 0 0 14px; padding: 0; }
         .bloco-cab h2 { margin: 0; font-size: 1rem; }
         .bloco-nota { margin-left: auto; font-size: .78rem; color: var(--text-muted); }
         .contagem { margin-left: auto; min-width: 24px; text-align: center; font-size: .8rem; font-weight: 700; padding: 2px 8px; border-radius: 999px;
@@ -152,7 +152,10 @@
         .ev-vezes { font-weight: 700; color: var(--text-main); }
 
         @media (max-width: 1080px) {
-            .painel-md { grid-template-columns: 1fr; grid-template-areas: "atencao" "mes" "clientes" "eventos"; }
+            .painel-md { display: flex; flex-direction: column; }
+            .col-principal, .col-lateral { display: contents; }
+            .painel-md > * , .painel-md .bloco { min-width: 0; max-width: 100%; box-sizing: border-box; }
+            .bloco.atencao { order: 1; } .bloco.resumo-mes { order: 2; } .bloco.clientes-bloco { order: 3; } .bloco.eventos { order: 4; }
         }
         table.clientes tr[hidden] { display: none !important; }
         @media (max-width: 640px) {
@@ -188,9 +191,10 @@
     </div>
 
     <div class="painel-md">
+    <div class="col-principal">
     <section class="bloco resumo-mes" id="resumo-mes" aria-labelledby="t-mes">
-        <header class="bloco-cab"><h2 id="t-mes">{{ grafico.mes|capitalize }} até agora</h2>
-            <span class="bloco-nota">todos os sites fora de manutenção</span></header>
+        <div class="bloco-cab"><h2 id="t-mes">{{ grafico.mes|capitalize }} até agora</h2>
+            <span class="bloco-nota">todos os sites fora de manutenção</span></div>
         <div class="mes-topo">
             <div class="mes-numero {{ disponibilidade.faixa if disponibilidade else '' }}">
                 <strong>{% if disponibilidade %}{{ pct(disponibilidade) }}{% else %}—{% endif %}</strong>
@@ -205,6 +209,7 @@
         </div>
 
         {% set dias = grafico.dias %}
+        {% set hoje_dia = (dias|selectattr('hoje')|map(attribute='dia')|first) or 0 %}
         {% set larg = 24 %}
         {% set alto = 110 %}
         {% set teto = [grafico.pior_s, 600]|max %}
@@ -233,7 +238,7 @@
                     {% elif not d.futuro and d.pct is not none %}
                     <rect class="zero" x="{{ x + 5 }}" y="{{ alto + 5 }}" width="{{ larg - 10 }}" height="3" rx="1.5"></rect>
                     {% endif %}
-                    {% if d.dia == 1 or d.dia % 5 == 0 or d.hoje %}
+                    {% if d.hoje or ((d.dia == 1 or d.dia % 5 == 0) and (d.dia - hoje_dia)|abs > 1) %}
                     <text class="eixo-txt{% if d.hoje %} hoje-txt{% endif %}" x="{{ x + larg / 2 }}" y="{{ alto + 23 }}" text-anchor="middle">{{ 'hoje' if d.hoje else d.dia }}</text>
                     {% endif %}
                 </g>
@@ -257,57 +262,8 @@
         </figure>
     </section>
 
-    <section class="bloco atencao" id="atencao" aria-labelledby="t-atencao">
-        <header class="bloco-cab"><h2 id="t-atencao">Precisa de atenção</h2>
-            {% if atencao %}<span class="contagem">{{ atencao|length }}</span>{% endif %}</header>
-        {% if atencao %}
-        <ul class="lista-atencao">
-            {% for i in atencao[:8] %}
-            <li class="{{ i.nivel }}">
-                <a href="{{ i.link }}">
-                    <span class="marca" aria-hidden="true"><i class="fa-solid {{ {'critico': 'fa-circle-exclamation', 'atencao': 'fa-triangle-exclamation', 'info': 'fa-circle-info'}[i.nivel] }}"></i></span>
-                    <span class="texto">
-                        <strong>{{ i.titulo }}</strong>
-                        <span>{{ i.site }}{% if i.empresa %} · {{ i.empresa }}{% endif %}</span>
-                    </span>
-                    {% if i.desde %}<span class="quando" data-ts="{{ i.desde }}"></span>{% endif %}
-                    <span class="sr-only">({{ {'critico': 'crítico', 'atencao': 'atenção', 'info': 'informativo'}[i.nivel] }})</span>
-                </a>
-            </li>
-            {% endfor %}
-        </ul>
-        {% if atencao|length > 8 %}<p class="mais">E mais {{ atencao|length - 8 }}. Veja todos na <a href="/pulse">Operação</a>.</p>{% endif %}
-        {% else %}
-        <div class="nada-pendente">
-            <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
-            <div><strong>Nada pendente agora</strong><span>Todos os sites estão comunicando e sem diagnóstico aberto.</span></div>
-        </div>
-        {% endif %}
-    </section>
-
-    <section class="bloco eventos" id="eventos" aria-labelledby="t-eventos">
-        <header class="bloco-cab"><h2 id="t-eventos">Últimos eventos</h2><span class="bloco-nota">7 dias</span></header>
-        {% if eventos %}
-        <ol class="linha-tempo">
-            {% for ev in eventos %}
-            <li class="ev-{{ ev.tipo }}">
-                <span class="ponto" aria-hidden="true"></span>
-                <div>
-                    <p class="ev-titulo">{% if ev.link %}<a href="{{ ev.link }}">{{ ev.titulo }}</a>{% else %}{{ ev.titulo }}{% endif %}</p>
-                    <p class="ev-meta">{% if ev.site %}{{ ev.site }} · {% endif %}<span data-ts="{{ ev.quando }}"></span></p>
-                    {% if ev.vezes > 1 %}<p class="ev-detalhe"><span class="ev-vezes">{{ ev.vezes }} vezes</span> desde <span data-ts="{{ ev.primeiro }}"></span>{% if ev.detalhe == 'Em aberto' %} · em aberto agora{% endif %}</p>
-                    {% elif ev.detalhe and ev.detalhe != ev.titulo %}<p class="ev-detalhe">{{ ev.detalhe }}</p>{% endif %}
-                </div>
-            </li>
-            {% endfor %}
-        </ol>
-        {% else %}
-        <p class="vazio">Nada registrado nos últimos 7 dias.</p>
-        {% endif %}
-    </section>
-
     <section class="bloco clientes-bloco" aria-labelledby="t-clientes">
-        <header class="bloco-cab"><h2 id="t-clientes">Clientes</h2><span class="bloco-nota">{{ empresas|length }} empresa{{ 's' if empresas|length != 1 }}</span></header>
+        <div class="bloco-cab"><h2 id="t-clientes">Clientes</h2><span class="bloco-nota">{{ empresas|length }} empresa{{ 's' if empresas|length != 1 }}</span></div>
         <div class="filtros">
             <input type="search" id="filtro" placeholder="Filtrar por nome da empresa" aria-label="Filtrar clientes" oninput="filtrar()">
             <label class="switch-label"><input type="checkbox" id="so-problema" onchange="filtrar()"> Só com problema agora</label>
@@ -349,6 +305,58 @@
             </tbody>
         </table>
     </section>
+    </div>
+    <div class="col-lateral">
+    <section class="bloco atencao" id="atencao" aria-labelledby="t-atencao">
+        <div class="bloco-cab"><h2 id="t-atencao">Precisa de atenção</h2>
+            {% if atencao %}<span class="contagem">{{ atencao|length }}</span>{% endif %}</div>
+        {% if atencao %}
+        <ul class="lista-atencao">
+            {% for i in atencao[:8] %}
+            <li class="{{ i.nivel }}">
+                <a href="{{ i.link }}">
+                    <span class="marca" aria-hidden="true"><i class="fa-solid {{ {'critico': 'fa-circle-exclamation', 'atencao': 'fa-triangle-exclamation', 'info': 'fa-circle-info'}[i.nivel] }}"></i></span>
+                    <span class="texto">
+                        <strong>{{ i.titulo }}</strong>
+                        <span>{{ i.site }}{% if i.empresa %} · {{ i.empresa }}{% endif %}</span>
+                    </span>
+                    {% if i.desde %}<span class="quando" data-ts="{{ i.desde }}"></span>{% endif %}
+                    <span class="sr-only">({{ {'critico': 'crítico', 'atencao': 'atenção', 'info': 'informativo'}[i.nivel] }})</span>
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
+        {% if atencao|length > 8 %}<p class="mais">E mais {{ atencao|length - 8 }}. Veja todos na <a href="/pulse">Operação</a>.</p>{% endif %}
+        {% else %}
+        <div class="nada-pendente">
+            <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+            <div><strong>Nada pendente agora</strong><span>Todos os sites estão comunicando e sem diagnóstico aberto.</span></div>
+        </div>
+        {% endif %}
+    </section>
+
+    <section class="bloco eventos" id="eventos" aria-labelledby="t-eventos">
+        <div class="bloco-cab"><h2 id="t-eventos">Últimos eventos</h2><span class="bloco-nota">7 dias</span></div>
+        {% if eventos %}
+        <ol class="linha-tempo">
+            {% for ev in eventos %}
+            <li class="ev-{{ ev.tipo }}">
+                <span class="ponto" aria-hidden="true"></span>
+                <div>
+                    <p class="ev-titulo">{% if ev.link %}<a href="{{ ev.link }}">{{ ev.titulo }}</a>{% else %}{{ ev.titulo }}{% endif %}</p>
+                    <p class="ev-meta">{% if ev.site %}{{ ev.site }} · {% endif %}<span data-ts="{{ ev.quando }}"></span></p>
+                    {% if ev.vezes > 1 %}<p class="ev-detalhe"><span class="ev-vezes">{{ ev.vezes }} vezes</span> desde <span data-ts="{{ ev.primeiro }}"></span>{% if ev.detalhe == 'Em aberto' %} · em aberto agora{% endif %}</p>
+                    {% elif ev.detalhe and ev.detalhe != ev.titulo %}<p class="ev-detalhe">{{ ev.detalhe }}</p>{% endif %}
+                </div>
+            </li>
+            {% endfor %}
+        </ol>
+        {% else %}
+        <p class="vazio">Nada registrado nos últimos 7 dias.</p>
+        {% endif %}
+    </section>
+
+    </div>
     </div>
 
 {% else %}
