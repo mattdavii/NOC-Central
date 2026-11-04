@@ -120,6 +120,11 @@ Describe 'Tarefa de inicialização (de verdade, no Windows do CI)' {
 }
 
 Describe 'Painel e IP' {
+    It 'Wait-Painel desiste no prazo e devolve 0 quando nada responde' {
+        $inicio = Get-Date
+        Wait-Painel 'http://127.0.0.1:9/' -Segundos 4 | Should -Be 0
+        ((Get-Date) - $inicio).TotalSeconds | Should -BeLessThan 30
+    }
     It 'Test-Painel devolve 0 quando nada responde' {
         Test-Painel 'http://127.0.0.1:1/login' | Should -Be 0
     }
