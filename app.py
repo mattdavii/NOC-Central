@@ -416,17 +416,51 @@ def validate_json_body():
         return jsonify(error='Objeto JSON válido obrigatório.'), 400
 
 
+# Arquivos do visual (CSS, logos, fontes, service worker, manifesto) não consultam o banco: com o banco
+# do outro lado da tailnet, cada consulta custa centenas de ms e as páginas pedem dezenas desses arquivos.
+ROTAS_SEM_BANCO = {'static', 'manifest', 'service_worker'}
+# Situação da conta (ativa, versão da sessão, empresa) guardada por alguns segundos por usuário.
+# Qualquer requisição que muda dados (POST/PUT/PATCH/DELETE) limpa tudo, então desativar um usuário,
+# trocar a senha ou encerrar sessões vale na hora; o atraso máximo é só para mudança feita direto no banco.
+SESSAO_CACHE_S = 20
+_cache_sessao = {}
+
+
+def _situacao_conta(conn_fn, user_id):
+    agora = time.monotonic()
+    guardada = _cache_sessao.get(user_id)
+    if guardada and agora - guardada[0] < SESSAO_CACHE_S:
+        return guardada[1]
+    row = conn_fn().execute('SELECT ativo, sessao_versao, cliente_pai_id FROM clientes WHERE id=?', (user_id,)).fetchone()
+    situacao = dict(row) if row else None
+    _cache_sessao[user_id] = (agora, situacao)
+    return situacao
+
+
+@app.after_request
+def esquecer_situacao_das_contas(response):
+    if request.method in MUTATING_METHODS:
+        _cache_sessao.clear()
+    return response
+
+
 @app.before_request
 def enforce_tenant_scope():
-    if not session.get('user_id'):
+    if not session.get('user_id') or request.endpoint in ROTAS_SEM_BANCO:
         return None
     if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
         origin = request.headers.get('Origin')
         if origin and urlsplit(origin).netloc != request.host:
             return jsonify(error='Origem não autorizada.'), 403
-    conn = database.get_db()
+    conexoes = []
+
+    def banco():
+        # Só abre conexão quando alguma checagem precisa (a maioria das páginas da MD não precisa).
+        if not conexoes:
+            conexoes.append(database.get_db())
+        return conexoes[0]
     try:
-        current = conn.execute('SELECT ativo, sessao_versao FROM clientes WHERE id=?', (session['user_id'],)).fetchone()
+        current = _situacao_conta(banco, session['user_id'])
         if not current or current['ativo'] == 0 or session.get('sv', 0) != (current['sessao_versao'] or 0):
             session.clear()
             if request.method == 'GET' and not request.path.startswith('/api/'):
@@ -434,7 +468,8 @@ def enforce_tenant_scope():
                 return redirect(url_for('login'))
             return jsonify(error='Sessão inválida.'), 401
         master = session.get('role') in ('Administrador Master', 'Operador Master')
-        tenant = None if master else tenant_id(conn)
+        tenant = None if master else (session['user_id'] if session.get('role') == 'Cliente' else current['cliente_pai_id'])
+        conn = _ConexaoPreguicosa(banco)
         args = request.view_args or {}
         data = request.get_json(silent=True) or {}
         if not isinstance(data, dict):
@@ -467,7 +502,17 @@ def enforce_tenant_scope():
             if data.get('role') not in ('Administrador Cliente', 'Operador Cliente'):
                 return jsonify(error='Perfil não autorizado.'), 403
     finally:
-        conn.close()
+        for c in conexoes:
+            c.close()
+
+
+class _ConexaoPreguicosa:
+    """Entrega execute() da conexão só quando alguém consulta de fato."""
+    def __init__(self, abrir):
+        self._abrir = abrir
+
+    def execute(self, *args):
+        return self._abrir().execute(*args)
 
 
 # Rotas que, mesmo em GET, entregam poder de agir (token de acesso local ao sensor).
