@@ -210,3 +210,15 @@ def test_painel_eventos_e_relatorio(edge):
     html = rel.data.decode()
     assert 'Equipamentos de CFTV' in html and 'DS-2CD2143G2-I' in html and 'Últimos 1 dias' in html
     assert cli.get('/api/v2/sensor_data/x', headers=h).json == {'host_info': None}
+
+
+def test_painel_configura_redes_extras(edge):
+    cli, h, *_ = edge
+    assert cli.get('/api/config/redes_extras', headers=h).json['redes'] == []
+    r = cli.post('/api/config/redes_extras', headers=h, json={'redes': '192.168.10.0/24\n192.168.20.9/24\n192.168.10.0/24'})
+    assert r.status_code == 200 and r.json['redes'] == ['192.168.10.0/24', '192.168.20.0/24']
+    assert cli.get('/api/config/redes_extras', headers=h).json['redes'] == ['192.168.10.0/24', '192.168.20.0/24']
+    assert [str(x) for x in agent.redes_extras()] == ['192.168.10.0/24', '192.168.20.0/24']
+    ruim = cli.post('/api/config/redes_extras', headers=h, json={'redes': ['8.8.8.0/24']})
+    assert ruim.status_code == 400 and '8.8.8.0/24' in ruim.json['erro']
+    assert cli.post('/api/config/redes_extras', json={'redes': []}).status_code == 401

@@ -182,13 +182,23 @@ def _marca(mac):
 def classificar(ev, papel=None):
     """(cftv, comunicacao) a partir das evidências; no máximo um dos dois.
 
-    Quando os dois classificadores reconhecem algo, vence o que tem mais pontos; empate fica com
+    O modelo anunciado decide primeiro (câmera UniFi responde à descoberta da Ubiquiti, switch
+    Hikvision tem marca de CFTV). Sem modelo decisivo, vence quem tem mais pontos; empate fica com
     comunicação se o equipamento é o gateway, senão com CFTV (um NVR com UPnP não é roteador)."""
-    c = cftv.classificar(ev.get('marca'), ev.get('portas', []), ev.get('onvif'), ev.get('upnp'))
-    r = comunicacao.classificar(ev.get('marca'), ev.get('portas', []), ev.get('upnp'), ev.get('mndp'),
-                                ev.get('ubnt'), papel)
+    ubnt, upnp = ev.get('ubnt'), ev.get('upnp')
+    anuncio = ubnt or ev.get('mndp') or upnp or {}
+    if ubnt and cftv.tipo_pelo_modelo(ubnt.get('modelo')) in (cftv.CAMERA, cftv.GRAVADOR):
+        upnp = {'fabricante': 'Ubiquiti', 'modelo': ubnt.get('modelo'), 'nome': ubnt.get('nome')}   # UniFi Protect
+    c = cftv.classificar(ev.get('marca'), ev.get('portas', []), ev.get('onvif'), upnp)
+    r = comunicacao.classificar(ev.get('marca'), ev.get('portas', []), ev.get('upnp'), ev.get('mndp'), ubnt, papel)
+    modelo = (ev.get('onvif') or {}).get('modelo') or anuncio.get('modelo')
     if c and r:
-        if r['pontos'] > c['pontos'] or (r['pontos'] == c['pontos'] and papel == 'gateway'):
+        tipo_cftv = cftv.tipo_pelo_modelo(modelo)
+        if tipo_cftv in (cftv.CAMERA, cftv.GRAVADOR, cftv.ACESSO):
+            r = None
+        elif comunicacao.tipo_pelo_modelo(modelo):
+            c = None
+        elif r['pontos'] > c['pontos'] or (r['pontos'] == c['pontos'] and papel == 'gateway'):
             c = None
         else:
             r = None
@@ -238,7 +248,7 @@ def _acompanhar(dispositivos, gateway_ip):
     """Quedas e retornos dos equipamentos identificados. O gateway fica de fora: a queda dele já é
     o alerta de rede local do agente e o diagnóstico por camadas da Central."""
     agora = time.time()
-    presentes = {d.get('mac'): d for d in dispositivos}
+    presentes = {d.get('mac') or f"ip:{d.get('ip')}": d for d in dispositivos}
     for mac, d in presentes.items():
         categoria = 'cftv' if d.get('cftv') else 'comunicacao' if d.get('comunicacao') else None
         if categoria and d.get('ip') != gateway_ip:
@@ -276,7 +286,9 @@ def anotar(dispositivos, ip_local=None, gateway_ip=None):
     _garantir_worker()
     with _trava:
         for d in dispositivos:
-            mac, ip = d.get('mac'), d.get('ip')
+            # Equipamento de outra VLAN (roteado) não tem MAC visível: a chave é o IP.
+            ip = d.get('ip')
+            mac = d.get('mac') or (f'ip:{ip}' if ip else None)
             if not mac or not ip:
                 continue
             evidencias, consultado = _cache.get(mac, (None, 0))

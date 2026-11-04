@@ -37,7 +37,7 @@ _MODELOS = (
     (re.compile(r'^(RUTX?\d|TRB\d|TCR\d|ICR-?\d|RUTM)', re.I), LTE),
     (re.compile(r'^(NPORT|MGATE|EKI-1|ADAM-|FL COMSERVER|TCF-|IOLOGIK)', re.I), INDUSTRIAL),
     (re.compile(r'^(HG8|EG8|HG6|HS8|F6\d\d|AN55\d\d|G-\d{3}|ONU|ONT|PON|1\d0 ?GF|ONT-|WITHUS)', re.I), ONU),
-    (re.compile(r'^(CRS|CSS|USW|US-\d|ES-\d|EDGESWITCH|TL-S[GF]|SG\d|SF\d|DGS|DES-|GS\d|JL\d|WS-C|C9[23]\d|EX\d{4}|S5\d{3}|'
+    (re.compile(r'^(DS-3E|DS-3T|CRS|CSS|USW|US-\d|ES-\d|EDGESWITCH|TL-S[GF]|SG\d|SF\d|DGS|DES-|GS\d|JL\d|WS-C|C9[23]\d|EX\d{4}|S5\d{3}|'
                 r'S[67]\d{3}|RSP|SCALANCE X|EDS-|SW\d|MS\d{3})', re.I), SWITCH),
     (re.compile(r'^(SXT|LHG|LDF|GROOVE|DISC|MANTBOX|NETMETAL|WAP|CAP|UAP|U6|U7|UAL|NANOSTATION|NSM|NS-|LOCO|LBE|PBE|'
                 r'ROCKET|LITEBEAM|POWERBEAM|NANOBEAM|AIRMAX|LAP|NBE|EAP|CPE\d|WBS|DECO|WOM|APC|AP ?\d{3}|EPMP|FORCE|'

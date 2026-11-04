@@ -207,7 +207,9 @@ def anotar(dispositivos, agora=None):
     agendar = []
     with _trava:
         for d in dispositivos:
-            mac, ip = d.get('mac'), d.get('ip')
+            # Equipamento de outra VLAN (roteado) não tem MAC visível: a chave é o IP.
+            ip = d.get('ip')
+            mac = d.get('mac') or (f'ip:{ip}' if ip else None)
             if not mac or not ip:
                 continue
             nome, fonte, ip_cache, quando = _cache.get(mac, (None, None, None, 0))

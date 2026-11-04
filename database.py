@@ -226,7 +226,7 @@ def init_db():
                                               'fabricante_registro TEXT', 'fabricante_fonte TEXT', 'hostname TEXT',
                                               'hostname_fonte TEXT', 'visto_em TEXT',
                                               'modelo TEXT', 'tipo_equipamento TEXT', 'cftv TEXT',
-                                              'comunicacao TEXT', 'firmware TEXT'])
+                                              'comunicacao TEXT', 'firmware TEXT', 'rede_origem TEXT'])
         conn.execute('CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)')
         conn.execute('''CREATE TABLE IF NOT EXISTS sensor_credentials (
             sensor_mac TEXT PRIMARY KEY,

@@ -98,7 +98,13 @@ TELEMETRIA_INTERVALO = max(3, int(os.environ.get("NOC_TELEMETRIA_INTERVALO", "5"
 REPORT_TIMEOUT = max(5, int(os.environ.get("NOC_REPORT_TIMEOUT", "25")))
 WATCHDOG_INTERVALO = max(10, int(os.environ.get("NOC_WATCHDOG_INTERVALO", "15")))
 SCAN_REDE_INTERVALO = max(30, int(os.environ.get("NOC_SCAN_REDE_INTERVALO", "60")))
-MAX_NETWORK_SCAN_HOSTS = max(64, min(2048, int(os.environ.get("NOC_MAX_SCAN_HOSTS", "512"))))
+MAX_NETWORK_SCAN_HOSTS = max(64, min(2048, int(os.environ.get("NOC_MAX_SCAN_HOSTS", "512"))))   # pings por ciclo
+# Rede inteira do sensor até este tamanho (um /20), varrida em fatias de MAX_NETWORK_SCAN_HOSTS por
+# ciclo: um /22 fecha em 2 minutos, um /20 em 8. Antes, redes maiores que 512 só tinham o /24 do sensor.
+VARREDURA_MAX_HOSTS = max(256, min(16384, int(os.environ.get("NOC_VARREDURA_MAX_HOSTS", "4096"))))
+# Equipamento que saiu da tabela ARP continua na lista por este tempo (a tabela do kernel descarta
+# entradas antigas em redes grandes, e o equipamento "piscava" entre uma varredura e outra).
+VISTO_VALIDADE_S = int(os.environ.get("NOC_VISTO_VALIDADE_S", "900"))
 SENSOR_KEY_FILE = os.environ.get("NOC_SENSOR_KEY_FILE", "sensor_key.txt")
 
 
@@ -245,18 +251,19 @@ def get_mac():
             pass
         return _sensor_id
 
-def _rede_scan_segura(cidr, ip_local):
+def _rede_scan_segura(cidr, ip_local, maximo=None):
     """Mantém o CIDR real, mas limita descoberta ativa em redes muito grandes."""
+    maximo = maximo or MAX_NETWORK_SCAN_HOSTS
     try:
         rede = ipaddress.ip_network(cidr, strict=False)
         if rede.version != 4:
             return None, False
         hosts = rede.num_addresses if rede.prefixlen >= 31 else rede.num_addresses - 2
-        if hosts <= MAX_NETWORK_SCAN_HOSTS:
+        if hosts <= maximo:
             return rede, False
-        # Em redes maiores, varre apenas o /24 onde o sensor está, evitando
-        # milhares de pings a cada ciclo. O CIDR real continua sendo reportado.
-        prefix = max(24, 32 - (MAX_NETWORK_SCAN_HOSTS + 2).bit_length() + 1)
+        # Rede maior que o limite: varre o bloco do tamanho do limite em volta do sensor.
+        # O CIDR real continua sendo reportado.
+        prefix = max(24 if maximo <= 512 else 16, 32 - (maximo + 2).bit_length() + 1)
         limitada = ipaddress.ip_network(f"{ip_local}/{prefix}", strict=False)
         return limitada, True
     except Exception:
@@ -341,7 +348,7 @@ def get_network_context():
     except Exception:
         contexto["cidr"] = ""
 
-    rede_scan, limitado = _rede_scan_segura(contexto["cidr"], contexto["ip"])
+    rede_scan, limitado = _rede_scan_segura(contexto["cidr"], contexto["ip"], VARREDURA_MAX_HOSTS)
     if rede_scan:
         contexto["scan_rede"] = str(rede_scan)
         contexto["scan_limitado"] = limitado
@@ -365,12 +372,67 @@ def ping_silencioso(ip):
     except Exception:
         pass
 
+_varredura = {"fatia": {}, "lista": None, "extras": []}   # posição da varredura por rede; última lista
+_vistos_l2 = {}    # ip -> (dispositivo, último instante em que estava na tabela ARP ou respondeu)
+
+
+def aviso_rede(contexto):
+    """WSL em modo NAT (padrão do Windows) só enxerga a rede virtual 172.x do próprio Windows:
+    a varredura acha quase nada. O instalador liga networkingMode=mirrored, mas vale avisar."""
+    try:
+        with open('/proc/version', encoding='utf-8') as arquivo:
+            wsl = 'microsoft' in arquivo.read().lower()
+        ip, gw = ipaddress.ip_address(contexto.get('ip')), ipaddress.ip_address(contexto.get('gateway'))
+    except (OSError, ValueError):
+        return None
+    nat = ipaddress.ip_network('172.16.0.0/12')
+    if wsl and ip in nat and gw in nat:
+        return ('Sensor no WSL em modo NAT: ele só enxerga a rede virtual do Windows, não a rede do site. '
+                'Configure networkingMode=mirrored no .wslconfig (o instalador do Windows faz isso) e reinicie o WSL.')
+    return None
+
+
+def redes_extras():
+    """Outras redes (VLANs roteadas) a varrer: NOC_REDES_EXTRAS mais as cadastradas no painel local."""
+    texto = os.environ.get("NOC_REDES_EXTRAS", "")
+    try:
+        texto += "," + ",".join(edge_local.ler_config('sensor_local.db', 'redes_extras', []))
+    except Exception:
+        pass
+    redes = []
+    for item in texto.replace(";", ",").split(","):
+        rede = edge_local.validar_rede(item.strip()) if item.strip() else None
+        if rede and rede not in redes:
+            redes.append(rede)
+    return redes
+
+
+def _proxima_fatia(rede, excluir):
+    """Próximos MAX_NETWORK_SCAN_HOSTS endereços da rede, continuando de onde o ciclo anterior parou."""
+    total = rede.num_addresses - (0 if rede.prefixlen >= 31 else 2)
+    inicio = _varredura["fatia"].get(str(rede), 0) % max(1, total)
+    base = int(rede.network_address) + (0 if rede.prefixlen >= 31 else 1)
+    alvos = []
+    for n in range(min(MAX_NETWORK_SCAN_HOSTS, total)):
+        ip = str(ipaddress.ip_address(base + (inicio + n) % total))
+        if ip != excluir:
+            alvos.append(ip)
+    _varredura["fatia"][str(rede)] = (inicio + MAX_NETWORK_SCAN_HOSTS) % max(1, total)
+    return alvos, total
+
+
 def get_topologia_arp(contexto_rede, forcar_varredura=False):
-    """Descobre vizinhos L2 no escopo seguro e separa 'sem ICMP' de 'offline'."""
+    """Descobre vizinhos L2 no escopo seguro e separa 'sem ICMP' de 'offline'.
+
+    Varre a rede do sensor em fatias (até VARREDURA_MAX_HOSTS) e as redes extras configuradas.
+    Nos ciclos entre varreduras devolve a última lista, sem pingar tudo de novo a cada 5 s."""
     meu_ip = contexto_rede.get("ip", "127.0.0.1")
     interface = contexto_rede.get("interface", "Desconhecida")
     cidr_real = contexto_rede.get("cidr", "")
     scan_rede = contexto_rede.get("scan_rede") or cidr_real
+
+    if not forcar_varredura and _varredura["lista"] is not None:
+        return [dict(d) for d in _varredura["lista"]]
 
     try:
         rede_real = ipaddress.ip_network(cidr_real, strict=False) if cidr_real else None
@@ -379,13 +441,37 @@ def get_topologia_arp(contexto_rede, forcar_varredura=False):
         rede_real = None
         rede_scan = None
 
+    escopo = {"rede": str(rede_scan) if rede_scan else "", "limitada": bool(contexto_rede.get("scan_limitado")),
+              "hosts": 0, "ciclos": 0, "extras": []}
+    roteados = {}
     if forcar_varredura and rede_scan:
         try:
-            alvos = [str(ip) for ip in itertools.islice((ip for ip in rede_scan.hosts() if str(ip) != meu_ip), MAX_NETWORK_SCAN_HOSTS)]
+            alvos, total = _proxima_fatia(rede_scan, meu_ip)
+            escopo.update(hosts=total, ciclos=-(-total // MAX_NETWORK_SCAN_HOSTS))
             with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
                 list(executor.map(ping_silencioso, alvos))
         except Exception:
             pass
+    if forcar_varredura:
+        # Outras VLANs: só o que responde a ping aparece (não há tabela ARP de rede roteada).
+        for rede in redes_extras():
+            if rede_real and rede.overlaps(rede_real):
+                continue
+            try:
+                alvos, total = _proxima_fatia(rede, meu_ip)
+                escopo["extras"].append({"rede": str(rede), "hosts": total, "ciclos": -(-total // MAX_NETWORK_SCAN_HOSTS)})
+                with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
+                    for ip, latencia in zip(alvos, executor.map(ping, alvos)):
+                        if latencia > 0:
+                            roteados[ip] = {"ip": ip, "mac": None, "nome": "Desconhecido", "fabricante": "Desconhecido",
+                                            "neighbor_state": "ROTEADO", "rede": str(rede), "latencia": latencia,
+                                            "status": "online"}
+            except Exception:
+                continue
+        _varredura["extras"] = escopo["extras"]
+    else:
+        escopo["extras"] = _varredura["extras"]
+    dados_sensores["varredura"] = escopo
 
     encontrados = {}
 
@@ -423,11 +509,24 @@ def get_topologia_arp(contexto_rede, forcar_varredura=False):
     except Exception:
         pass
 
+    agora = time.time()
+    # Quem saiu da tabela ARP há pouco continua na lista (com o status do ping de agora).
+    for ip, (anterior, visto) in list(_vistos_l2.items()):
+        if ip in encontrados or ip in roteados:
+            continue
+        if agora - visto > VISTO_VALIDADE_S:
+            del _vistos_l2[ip]
+        elif anterior.get("mac") and (not rede_real or ipaddress.ip_address(ip) in rede_real):
+            encontrados[ip] = {k: anterior[k] for k in ("ip", "mac", "nome", "fabricante")}
+            encontrados[ip]["neighbor_state"] = "AUSENTE"
+
     def checar_status(d):
         latencia = ping(d["ip"])
         d["latencia"] = latencia
         if latencia > 0:
             d["status"] = "online"
+        elif d.get("neighbor_state") == "AUSENTE":
+            d["status"] = "desconhecido"
         else:
             # O equipamento está/esteve presente na tabela ARP/neighbor, mas não
             # respondeu ICMP. Não é tecnicamente correto chamá-lo de offline.
@@ -440,8 +539,14 @@ def get_topologia_arp(contexto_rede, forcar_varredura=False):
             futures = [executor.submit(checar_status, d) for d in encontrados.values()]
             for future in concurrent.futures.as_completed(futures):
                 dispositivos.append(future.result())
+    for d in dispositivos:
+        if d["status"] != "desconhecido" or d.get("neighbor_state") != "AUSENTE":
+            _vistos_l2[d["ip"]] = (dict(d), agora)
+    dispositivos += list(roteados.values())
 
-    return sorted(dispositivos, key=lambda d: tuple(int(p) for p in d["ip"].split(".")))
+    dispositivos = sorted(dispositivos, key=lambda d: tuple(int(p) for p in d["ip"].split(".")))
+    _varredura["lista"] = [dict(d) for d in dispositivos]
+    return dispositivos
 
 def ping(host):
     if not isinstance(host, str) or not re.fullmatch(r'[A-Za-z0-9_.:-]+', host) or host.startswith('-'):
@@ -1178,6 +1283,10 @@ def loop_telemetria():
 
             dados_sensores["cpu"] = cpu; dados_sensores["ram"] = ram; dados_sensores["disco"] = disco; dados_sensores["temp"] = cpu_temp; dados_sensores["gpu_temp"] = gpu_temp; dados_sensores["net_down"] = net_down; dados_sensores["net_up"] = net_up; dados_sensores["portas"] = str_portas; dados_sensores["meu_ip"] = meu_ip; dados_sensores["gateway_ip"] = gateway_ip; dados_sensores["ping_gateway"] = ping_gw; dados_sensores["pings"] = pings; dados_sensores["topologia"] = dispositivos
             dados_sensores["interface"] = interface_rede; dados_sensores["rede_cidr"] = rede.get("cidr", ""); dados_sensores["mac_interface"] = rede.get("mac_interface", "")
+            aviso = aviso_rede(rede)
+            if aviso and aviso != dados_sensores.get("aviso_rede"):
+                log_local_event("Rede do sensor", aviso, "Alerta")
+            dados_sensores["aviso_rede"] = aviso
 
             host_info = pegar_host_info()
             payload = {

@@ -38,6 +38,8 @@
         .tag.cam { color:var(--purple); border-color:var(--purple); }
         .tag.grav { color:var(--yellow); border-color:var(--yellow); }
         .tag.com { color:var(--brand-green); border-color:var(--brand-green); }
+        .redes-extras { border:1px solid var(--border); border-radius:8px; padding:8px 12px; background:var(--bg-input); }
+        .redes-extras summary { cursor:pointer; font-size:.85rem; font-weight:600; }
         table.disp tr.com td:first-child { box-shadow:inset 3px 0 0 var(--brand-green); }
         /* Listas de CFTV e comunicação: uma linha por equipamento, detalhes ao clicar, grupos recolhíveis. */
         table.ident tr.item { cursor:pointer; }
@@ -113,6 +115,7 @@
     <div class="container" data-host-mac="{{ sensor.mac_id }}">
         <nav class="section-nav" aria-label="Seções do painel local"><a href="#host">Host</a><a href="#rede-local">Rede local</a><a href="#wan">WAN</a><a href="#dispositivos">Dispositivos</a><a href="#cftv">CFTV</a><a href="#comunicacao">Comunicação</a><a href="#watchdog">Watchdog</a><a href="#eventos">Eventos</a><a href="#relatorio">Relatório</a></nav>
         <p class="aviso-central" id="aviso-sessao" hidden role="alert"></p>
+        <p class="aviso-central" id="aviso-rede" hidden role="alert"></p>
         <p class="help-text">Painel servido pelo próprio sensor: continua funcionando sem internet. O registro de eventos guarda {{ retencao_dias }} dias.</p>
 
         <div class="painel-grid">
@@ -198,6 +201,17 @@
                     </span>
                 </h3>
                 <div class="kpis" id="disp-kpis"></div>
+                <p class="help-text" id="disp-escopo" style="margin:0;"></p>
+                <details class="redes-extras">
+                    <summary>Redes adicionais (outras VLANs)</summary>
+                    <p class="help-text">O sensor enxerga sozinho só a rede dele. Câmeras, switches ou inversores em outra VLAN entram aqui, uma faixa por linha (ex.: 192.168.10.0/24). Só aparecem os que respondem a ping, e sem MAC nem marca, porque a rede é roteada. Faixas privadas de /20 a /32, até 8.</p>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start;">
+                        <label class="sr-only" for="redes-extras">Redes adicionais</label>
+                        <textarea id="redes-extras" rows="3" placeholder="192.168.10.0/24" style="flex:1; min-width:220px; padding:8px 10px; background:var(--bg-input); border:1px solid var(--border); color:var(--text-main); border-radius:6px; font-family:'JetBrains Mono',monospace;"></textarea>
+                        <button class="action-btn btn-primary" onclick="salvarRedesExtras()">Salvar</button>
+                    </div>
+                    <p class="help-text" id="redes-extras-status" role="status" style="margin:6px 0 0;"></p>
+                </details>
                 <div class="barra-ferramentas">
                     <label class="sr-only" for="disp-busca">Buscar dispositivo</label>
                     <input type="search" id="disp-busca" class="cresce" placeholder="Buscar por IP, MAC, nome, marca ou modelo">
@@ -213,7 +227,7 @@
                         <tbody id="disp-corpo"><tr><td colspan="8" class="hist-empty">Aguardando a primeira varredura…</td></tr></tbody>
                     </table>
                 </div>
-                <p class="help-text" style="margin:0;">Marca pelo prefixo do MAC (registro IEEE). Modelo e firmware quando o equipamento anuncia (ONVIF, UPnP, MikroTik MNDP, Ubiquiti). Só aparece o que está na mesma rede (VLAN) do sensor.</p>
+                <p class="help-text" style="margin:0;">Marca pelo prefixo do MAC (registro IEEE). Modelo e firmware quando o equipamento anuncia (ONVIF, UPnP, MikroTik MNDP, Ubiquiti). Fora da rede do sensor, só aparecem as redes adicionais cadastradas acima.</p>
             </div>
         </div>
 
@@ -406,6 +420,14 @@
             $('net-down-live').textContent = Number(d.net_down || 0).toFixed(1);
             $('net-up-live').textContent = Number(d.net_up || 0).toFixed(1);
             $('portas-abertas').textContent = d.portas || '--';
+            $('aviso-rede').hidden = !d.aviso_rede; $('aviso-rede').textContent = d.aviso_rede || '';
+            const v = d.varredura;
+            if (v && v.rede) {
+                const voltas = n => n > 1 ? `, ${n} ciclos de 1 min para cobrir tudo` : '';
+                $('disp-escopo').textContent = `Varrendo ${v.rede} (${v.hosts || '…'} endereços${voltas(v.ciclos)})` +
+                    (v.limitada ? ` · a rede ${d.rede_cidr} é maior que o limite, só esse bloco é varrido` : '') +
+                    (v.extras && v.extras.length ? ` · outras VLANs: ${v.extras.map(e => e.rede).join(', ')}` : '');
+            }
             $('ping-local').textContent = d.ping_gateway > 0 ? `${d.ping_gateway} ms` : 'FALHA';
             $('ping-local').style.color = d.ping_gateway > 0 ? (d.ping_gateway > 50 ? 'var(--status-warn)' : 'var(--status-ok)') : 'var(--status-crit)';
             for (const [nome, id, card] of [['Google', 'pg-google', 'card-google'], ['Cloudflare', 'pg-cf', 'card-cf'], ['AWS', 'pg-aws', 'card-aws'], ['Quad9', 'pg-quad9', 'card-quad9']]) {
@@ -437,13 +459,13 @@
         $('disp-corpo').innerHTML = lista.length ? lista.map(d => {
             const [cls, txt] = rotuloStatus[d.status] || rotuloStatus.desconhecido;
             const tipo = d.tipo ? `<span class="tag ${classeTag(d)}">${esc(d.tipo)}</span>` : '';
-            const papel = d.papel ? `<span class="tag">${d.papel === 'gateway' ? 'Gateway' : 'Sensor'}</span>` : '';
+            const papel = d.papel ? `<span class="tag">${d.papel === 'gateway' ? 'Gateway' : 'Sensor'}</span>` : d.rede_origem ? `<span class="tag" title="Rede roteada ${esc(d.rede_origem)}">Outra VLAN</span>` : '';
             return `<tr class="${d.cftv ? 'cftv' : d.comunicacao ? 'com' : ''}"><td class="mono">${esc(d.ip)} ${papel}</td><td class="mono" style="font-size:.75rem">${esc(d.mac || '')}</td>
                 <td>${esc(nomeDe(d)) || '<span class="txt-muted">—</span>'}${d.nome.fonte && !d.apelido ? `<span class="sub">${esc(d.nome.fonte)}</span>` : ''}</td>
                 <td>${esc(d.marca.valor || (d.mac_privado ? 'MAC privado' : '—'))}</td>
                 <td>${tipo} ${esc(d.modelo || '')}${d.firmware ? `<span class="sub">${esc(d.firmware)}</span>` : ''}</td><td><span class="status-pill ${cls}">${txt}</span></td>
                 <td class="mono">${d.latencia_ms ? d.latencia_ms + ' ms' : '—'}</td>
-                <td><span class="acoes-linha">${d.papel === 'sensor' ? '' : `<button title="Renomear" data-acao="renomear" data-mac="${esc(d.mac)}" data-nome="${esc(nomeDe(d))}">Renomear</button>
+                <td><span class="acoes-linha">${d.papel === 'sensor' ? '' : `${d.mac ? `<button title="Renomear" data-acao="renomear" data-mac="${esc(d.mac)}" data-nome="${esc(nomeDe(d))}">Renomear</button>` : ''}
                     <button title="Vigiar no Radar de Pings" data-acao="vigiar" data-ip="${esc(d.ip)}" data-nome="${esc(nomeDe(d) || d.modelo || d.ip)}">Vigiar</button>`}</span></td></tr>`;
         }).join('') : '<tr><td colspan="8" class="hist-empty">Nenhum dispositivo com esses filtros.</td></tr>';
     }
@@ -459,15 +481,16 @@
     const ipNum = ip => String(ip).split('.').reduce((n, p) => n * 256 + (+p || 0), 0);
 
     function linhas(d, pre) {
-        const id = ident(d), [cls, txt] = rotuloStatus[d.status] || rotuloStatus.desconhecido, aberto = abertos.has(d.mac);
+        const chave = d.mac || 'ip:' + d.ip;   // equipamento de outra VLAN não tem MAC
+        const id = ident(d), [cls, txt] = rotuloStatus[d.status] || rotuloStatus.desconhecido, aberto = abertos.has(chave);
         const riscos = id.riscos || [];
         const coluna5 = pre === 'com' ? esc(d.firmware || '—') : esc(nomeDe(d) || '—');
-        let html = `<tr class="item ${presente(d) || d.papel === 'gateway' ? '' : 'fora'} ${aberto ? 'aberto' : ''}" data-mac="${esc(d.mac)}">
+        let html = `<tr class="item ${presente(d) || d.papel === 'gateway' ? '' : 'fora'} ${aberto ? 'aberto' : ''}" data-mac="${esc(chave)}">
             <td><span class="seta">›</span> <b>${esc(d.modelo || id.nome || d.tipo)}</b>${d.papel === 'gateway' ? ' <span class="tag">Gateway</span>' : ''}${riscos.length ? ` <span class="tag risco-tag" title="${esc(riscos.join(' · '))}">⚠ risco</span>` : ''}</td>
             <td class="mono">${esc(d.ip)}</td>
             <td>${esc(id.fabricante || d.marca.valor || '—')}</td><td>${coluna5}</td>
             <td><span class="status-pill ${cls}">${txt}</span></td><td>${esc(id.confianca)}</td></tr>`;
-        if (aberto) html += `<tr class="detalhe"><td colspan="6"><b>MAC</b> <span class="mono">${esc(d.mac || '')}</span>${nomeDe(d) ? ` · <b>Nome</b> ${esc(nomeDe(d))}` : ''}${d.firmware ? ` · <b>Firmware</b> ${esc(d.firmware)}` : ''}${d.latencia_ms ? ` · <b>Latência</b> ${d.latencia_ms} ms` : ''}<br>
+        if (aberto) html += `<tr class="detalhe"><td colspan="6"><b>MAC</b> <span class="mono">${esc(d.mac || (d.rede_origem ? 'não visível (outra VLAN ' + d.rede_origem + ')' : ''))}</span>${nomeDe(d) ? ` · <b>Nome</b> ${esc(nomeDe(d))}` : ''}${d.firmware ? ` · <b>Firmware</b> ${esc(d.firmware)}` : ''}${d.latencia_ms ? ` · <b>Latência</b> ${d.latencia_ms} ms` : ''}<br>
             <b>Evidências:</b> ${esc((id.evidencias || []).join(' · '))}${id.portas && id.portas.length ? `<br><b>Portas:</b> ${esc(id.portas.join(', '))}` : ''}
             ${riscos.map(r => `<br><b style="color:var(--status-warn)">⚠ ${esc(r)}</b>`).join('')}</td></tr>`;
         return html;
@@ -541,6 +564,20 @@
         else vigiar(b.dataset.ip, b.dataset.nome);
     });
 
+    async function carregarRedesExtras() {
+        try {
+            const r = await fetch('/api/config/redes_extras');
+            if (r.ok) $('redes-extras').value = ((await r.json()).redes || []).join('\n');
+        } catch (e) { /* segue sem */ }
+    }
+    async function salvarRedesExtras() {
+        const r = await json('/api/config/redes_extras', 'POST', {redes: $('redes-extras').value});
+        const d = await r.json().catch(() => ({}));
+        $('redes-extras-status').textContent = r.ok ? `Salvo. ${d.redes.length ? 'Entram na próxima varredura (até 1 min).' : 'Nenhuma rede adicional.'}` : (d.erro || 'Não foi possível salvar.');
+        $('redes-extras-status').style.color = r.ok ? 'var(--status-ok)' : 'var(--status-crit)';
+        if (r.ok) $('redes-extras').value = d.redes.join('\n');
+    }
+
     async function renomear(mac, atual) {
         const nome = prompt('Nome para este dispositivo:', atual || '');
         if (nome) { await json('/api/topologia/nome', 'POST', {mac, nome}); carregarDispositivos(); }
@@ -606,7 +643,7 @@
         window.open('/relatorio?' + q, '_blank', 'noopener');
     }
 
-    atualizarLocal(); carregarDispositivos(); carregarEventos();
+    atualizarLocal(); carregarDispositivos(); carregarEventos(); carregarRedesExtras();
     setInterval(atualizarLocal, 3000);
     setInterval(carregarDispositivos, 20000);
     setInterval(() => { if (evDeslocamento === 0 && !document.hidden) carregarEventos(); }, 15000);
