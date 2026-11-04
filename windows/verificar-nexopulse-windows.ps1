@@ -11,6 +11,7 @@
 param(
     [string]$Distro = 'Ubuntu',
     [int]$PortaPainel = 10000,
+    [int]$PortaPonte = 10010,
     [string]$Relatorio = ''
 )
 
@@ -106,13 +107,17 @@ function Invoke-Verificacao {
     # 6. Painel local
     $cfg = Get-NetIPConfiguration -ErrorAction SilentlyContinue | Where-Object { $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq 'Up' } | Select-Object -First 1
     $ip = if ($cfg) { ($cfg.IPv4Address | Select-Object -First 1).IPAddress } else { $null }
-    $local = Test-Painel "http://127.0.0.1:$PortaPainel/login"
-    if ($local -eq 200) { Add-Item 'Painel neste PC' 'OK' "http://127.0.0.1:$PortaPainel" }
-    else { Add-Item 'Painel neste PC' 'FALHA' "resposta $local" 'O serviço não está respondendo na porta do painel.' }
+    # Neste PC o painel abre pela ponte (a rede espelhada pode não deixar o Windows alcançar o Ubuntu).
+    $local = Test-Painel "http://127.0.0.1:$PortaPonte/login"
+    if ($local -eq 200) { Add-Item 'Painel neste PC' 'OK' "http://127.0.0.1:$PortaPonte (ponte)" }
+    elseif (Get-ScheduledTask -TaskName 'NexoPulse Painel local (neste PC)' -ErrorAction SilentlyContinue) {
+        Add-Item 'Painel neste PC' 'FALHA' "a ponte não respondeu ($local)" "Rode: Start-ScheduledTask -TaskName 'NexoPulse Painel local (neste PC)'  e confira se o Ubuntu está Running (wsl -l -v)."
+    } else { Add-Item 'Painel neste PC' 'AVISO' 'ponte não instalada' 'Rode o instalador de novo (ele cria o atalho Painel NexoPulse).' }
     if ($ip) {
-        $rede = Test-Painel "http://${ip}:$PortaPainel/login"
-        if ($rede -eq 200) { Add-Item 'Painel pelo IP da rede' 'OK' "http://${ip}:$PortaPainel" }
-        else { Add-Item 'Painel pelo IP da rede' 'FALHA' "http://${ip}:$PortaPainel respondeu $rede" 'Rode o instalador de novo (ele libera a porta nos firewalls do Windows e do Hyper-V).' }
+        # Pela rede o teste sai de dentro do Ubuntu: é o caminho dos outros aparelhos.
+        $rede = [int]((Invoke-Nativo { wsl.exe -d $Distro -- curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://${ip}:$PortaPainel/login" } | Out-String).Trim() -replace '\D', '')
+        if ($rede -eq 200) { Add-Item 'Painel pelo IP da rede' 'OK' "http://${ip}:$PortaPainel (abra de outro aparelho da rede)" }
+        else { Add-Item 'Painel pelo IP da rede' 'FALHA' "http://${ip}:$PortaPainel respondeu $rede" 'O painel não está de pé dentro do Ubuntu: veja "wsl -d Ubuntu -- journalctl -u nexopulse-edge -n 30".' }
         $perfil = (Get-NetConnectionProfile -InterfaceIndex $cfg.InterfaceIndex -ErrorAction SilentlyContinue).NetworkCategory
         if ($perfil) { Add-Item 'Perfil da rede do Windows' $(if ($perfil -eq 'Public') { 'AVISO' } else { 'OK' }) "$perfil" $(if ($perfil -eq 'Public') { 'Rede marcada como Pública: as regras do NexoPulse valem, mas outros programas podem bloquear descoberta.' } else { '' }) }
     }
@@ -123,7 +128,9 @@ function Invoke-Verificacao {
     else { Add-Item 'Firewall do Windows' 'AVISO' 'regra do NexoPulse não encontrada' 'Rode o instalador de novo, como Administrador.' }
     if (Get-Command Get-NetFirewallHyperVRule -ErrorAction SilentlyContinue) {
         $hv = Get-NetFirewallHyperVRule -Name 'NexoPulse-Edge-Painel' -ErrorAction SilentlyContinue
-        if ($hv) { Add-Item 'Firewall do Hyper-V (WSL)' 'OK' 'porta do painel liberada' }
+        $padrao = (Get-NetFirewallHyperVVMSetting -PolicyStore ActiveStore -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -ErrorAction SilentlyContinue).DefaultInboundAction
+        if ("$padrao" -eq 'Block') { Add-Item 'Firewall do Hyper-V (WSL)' 'AVISO' 'entrada padrão bloqueada' 'Outros aparelhos da rede podem não abrir o painel. Rode o instalador de novo.' }
+        elseif ($hv) { Add-Item 'Firewall do Hyper-V (WSL)' 'OK' 'porta do painel liberada' }
         else { Add-Item 'Firewall do Hyper-V (WSL)' 'AVISO' 'regra do NexoPulse não encontrada' 'Sem ela, outros computadores da rede podem não abrir o painel. Rode o instalador de novo.' }
     }
 

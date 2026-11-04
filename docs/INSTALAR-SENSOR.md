@@ -67,7 +67,14 @@ Windows 11 versão 22H2 ou mais nova.
    automática, com o que fazer em cada falha. `-Relatorio C:\verificacao.txt` grava o
    resultado num arquivo.
 
-**Painel local:** `http://<ip do Windows>:10000`, com o usuário e a senha do painel local.
+**Painel local:**
+- de outros aparelhos da rede (celular, notebook do técnico): `http://<ip do Windows>:10000`;
+- no próprio Windows do sensor: `http://127.0.0.1:10010` (atalho **Painel NexoPulse** na área de
+  trabalho). Na rede espelhada do WSL, em algumas versões do Windows 11 o próprio PC não alcança o
+  Ubuntu; o instalador cria uma ponte (`ponte-painel-local.ps1`) que leva o navegador até o painel
+  pelo `wsl.exe`. Não use a porta 10080: os navegadores a bloqueiam.
+
+Em todos os casos, entre com o usuário e a senha do painel local.
 
 **Limites do Windows:** a máquina não pode suspender nem hibernar (o sensor para junto);
 deixe a energia em "Nunca suspender". Com o Windows desligado ou suspenso, o sensor fica fora.
@@ -97,5 +104,7 @@ deixe a energia em "Nunca suspender". Com o Windows desligado ou suspenso, o sen
 | `401 Sensor não autenticado` no log | A chave mudou. Na Central, **Sensores → excluir** o sensor e reinicie o serviço: ele se vincula de novo |
 | Não volta depois de reiniciar o PC (Windows) | Rode a verificação do Windows; se a tarefa só roda no logon, o sensor volta quando alguém entra no Windows |
 | Painel não abre de outro computador (Windows) | Rode o instalador de novo (libera a porta nos firewalls) e confira a verificação |
+| Painel não abre no próprio PC (Windows) | Use `http://127.0.0.1:10010` (não 127.0.0.1:10000). Sem a ponte: `irm https://nexopulse.up.railway.app/ponte-painel-windows.ps1 -OutFile $env:TEMP\ponte.ps1; powershell -ExecutionPolicy Bypass -File $env:TEMP\ponte.ps1 -Instalar` |
+| Sensor some da Central uns segundos depois de subir (Windows) | A tarefa "NexoPulse Edge (WSL)" precisa ficar **Running** (é ela que mantém o Ubuntu ligado). Rode o instalador de novo |
 | Sensor vê poucos equipamentos (Windows) | Verificação → "IP visto pelo sensor": se for 172.x, o WSL está em NAT |
 | Reinstalar | Rode o mesmo comando de instalação: identidade e chave são preservadas |
