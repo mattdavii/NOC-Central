@@ -8,13 +8,13 @@ BeforeAll {
 
 Describe 'Arquivos' {
     It 'tem BOM UTF-8 (o Windows PowerShell 5.1 lê acentos certos)' {
-        foreach ($f in 'instalar-nexopulse-wsl.ps1', 'verificar-nexopulse-windows.ps1') {
+        foreach ($f in 'instalar-nexopulse-wsl.ps1', 'verificar-nexopulse-windows.ps1', 'ponte-painel-local.ps1') {
             $bytes = [System.IO.File]::ReadAllBytes((Join-Path $script:raiz "windows\$f"))
             $bytes[0..2] | Should -Be @(0xEF, 0xBB, 0xBF)
         }
     }
     It 'abre sem erro de sintaxe no Windows PowerShell' {
-        foreach ($f in 'instalar-nexopulse-wsl.ps1', 'verificar-nexopulse-windows.ps1') {
+        foreach ($f in 'instalar-nexopulse-wsl.ps1', 'verificar-nexopulse-windows.ps1', 'ponte-painel-local.ps1') {
             $tokens = $null; $erros = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $script:raiz "windows\$f"), [ref]$tokens, [ref]$erros) | Out-Null
             $erros | Should -BeNullOrEmpty
