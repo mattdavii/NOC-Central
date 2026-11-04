@@ -236,3 +236,17 @@ def test_eventos_recentes_juntam_log_e_diagnosticos(client):
     tipos = {(e['tipo'], e['titulo']) for e in eventos}
     assert ('queda', 'Queda de Conexão') in tipos and ('alerta', 'Perda de pacotes no provedor') in tipos
     assert [e['quando'] for e in eventos] == sorted((e['quando'] for e in eventos), reverse=True)
+
+
+def test_diagnostico_de_sensor_removido_nao_conta(client):
+    import hub
+    _cenario()
+    conn = database.get_db()
+    conn.execute("INSERT INTO diagnosticos (sensor_mac, chave, causa, gravidade, inicio, estado) "
+                 "VALUES ('30:F6:EF:3A:4E:04', 'sem_comunicacao', 'Site sem comunicação', 'Crítica', ?, 'ativo')", (time.time() - 86400 * 15,))
+    conn.commit()
+    titulos_sites = [i['site'] for i in hub.precisa_de_atencao(conn)]
+    total = hub.resumo_pulse(conn)['total_diagnosticos']
+    conn.close()
+    assert '30:F6:EF:3A:4E:04' not in titulos_sites
+    assert total == 2  # só os dois do cenário
