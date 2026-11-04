@@ -1,0 +1,39 @@
+# Site institucional da MD (mdsolucoes.eng.br). O Railway entrega HTTPS e o domínio; aqui é só HTTP na $PORT.
+{
+	admin off
+	auto_https off
+}
+
+:{$PORT:8080} {
+	root * /srv
+	encode zstd gzip
+
+	# Domínio raiz e www servem o mesmo site; o raiz manda para o www (um endereço só para buscadores).
+	@raiz host mdsolucoes.eng.br
+	redir @raiz https://www.mdsolucoes.eng.br{uri} permanent
+
+	# Atalhos para o portal do cliente.
+	@hub path /hub /hub/* /entrar /login
+	redir @hub {$SITE_HUB_URL:https://nexopulse.mdsolucoes.eng.br} temporary
+
+	# Contato e endereço do Hub vêm das variáveis do Railway (SITE_WHATSAPP, SITE_EMAIL, SITE_HUB_URL).
+	templates /index.html
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options DENY
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Strict-Transport-Security "max-age=31536000"
+	}
+	@estaticos path /img/*
+	header @estaticos Cache-Control "public, max-age=604800"
+	header /index.html Cache-Control "no-cache"
+
+	try_files {path} /index.html
+	file_server
+	handle_errors {
+		rewrite * /index.html
+		file_server
+	}
+}
