@@ -27,7 +27,9 @@ param(
     [string]$NomeSensor = '',
     # Libera "Atualizar sistema" e "Reiniciar máquina" (a Central passa a poder fazer isso no Linux do WSL).
     [switch]$Root,
-    [int]$PortaPainel = 10000
+    [int]$PortaPainel = 10000,
+    # Porta da ponte que abre o painel no próprio Windows (ponte-painel-local.ps1).
+    [int]$PortaPonte = 10010
 )
 
 # Identificador do WSL no firewall do Hyper-V (o mesmo em todas as máquinas).
@@ -237,13 +239,30 @@ function Invoke-Instalacao {
     # 6. Firewall
     Passo "Liberando o painel local (porta $PortaPainel) na rede do site"
     Set-RegrasFirewall -Porta $PortaPainel | Format-Table -AutoSize | Out-String | Write-Host
+    # Na UFV Alto Paraná a regra da porta no firewall do Hyper-V não bastou: com a entrada padrão
+    # "Block", os outros aparelhos da rede não chegavam ao painel. Dentro do Ubuntu, o que fica
+    # aberto para a rede é só o painel do sensor (com login); o firewall do Windows segue igual.
+    if (Get-Command Set-NetFirewallHyperVVMSetting -ErrorAction SilentlyContinue) {
+        Set-NetFirewallHyperVVMSetting -Name $script:WSL_VM_CREATOR_ID -DefaultInboundAction Allow -ErrorAction SilentlyContinue
+    }
 
     # 7. Inicialização automática
     Passo 'Criando a inicialização automática'
     Register-TarefaInicializacao -Distro $Distro
     $modo = Test-TarefaInicializacao -Distro $Distro
 
-    # 8. Conferência final
+    # 8. Ponte para abrir o painel no próprio Windows: na rede espelhada, em algumas versões do
+    #    Windows 11 o próprio PC não alcança o Ubuntu (nem por 127.0.0.1 nem pelo IP).
+    Passo "Criando o acesso ao painel neste PC (http://127.0.0.1:$PortaPonte)"
+    $ponte = Join-Path $env:TEMP 'ponte-painel-local.ps1'
+    try {
+        Invoke-WebRequest -Uri "$Central/ponte-painel-windows.ps1" -OutFile $ponte -UseBasicParsing
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ponte -Instalar -Distro $Distro -PortaPainel $PortaPainel -PortaLocal $PortaPonte
+    } catch {
+        Write-Host "  Não foi possível instalar a ponte: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+
+    # 9. Conferência final
     Passo 'Conferindo a instalação'
     $ativo = $false
     for ($i = 0; $i -lt 45 -and -not $ativo; $i++) {
@@ -253,17 +272,27 @@ function Invoke-Instalacao {
     }
     $ip = Get-IpRedeLocal
     # O serviço fica "active" assim que o processo nasce; o painel abre alguns segundos depois.
-    $local = Wait-Painel "http://127.0.0.1:$PortaPainel/login"
-    $rede = if ($ip) { Wait-Painel "http://${ip}:$PortaPainel/login" -Segundos 20 } else { 0 }
+    # Neste PC o painel abre pela ponte; pela rede, o teste sai de dentro do Ubuntu (é o caminho que
+    # os outros aparelhos usam, e o próprio Windows pode não alcançar o próprio IP).
+    $local = Wait-Painel "http://127.0.0.1:$PortaPonte/login"
+    $rede = 0
+    if ($ip) {
+        $fim = (Get-Date).AddSeconds(60)
+        do {
+            $rede = [int]((Invoke-Nativo { wsl.exe -d $Distro -- curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://${ip}:$PortaPainel/login" } | Out-String).Trim() -replace '\D', '')
+            if ($rede -ne 200) { Start-Sleep -Seconds 3 }
+        } while ($rede -ne 200 -and (Get-Date) -lt $fim)
+    }
     $ok = { param($c) if ($c) { 'OK' } else { 'FALHOU' } }
     Write-Host ("  Serviço nexopulse-edge ........ " + (& $ok $ativo))
-    Write-Host ("  Painel neste PC (127.0.0.1) .... " + (& $ok ($local -eq 200)))
+    Write-Host ("  Painel neste PC (ponte $PortaPonte) .. " + (& $ok ($local -eq 200)))
     Write-Host ("  Painel pelo IP da rede ($ip) .. " + (& $ok ($rede -eq 200)))
     Write-Host ("  Liga sozinho ................... " + $(if ($modo -eq 'boot') { 'ao ligar o Windows' } else { 'ao entrar no Windows (com usuário logado)' }))
 
     Passo 'Pronto'
     Write-Host 'O sensor deve aparecer na Central em alguns segundos, com o nome deste computador.'
-    if ($ip) { Write-Host "Painel local: http://${ip}:$PortaPainel  (usuário e senha do painel local)" -ForegroundColor Green }
+    Write-Host "Painel neste PC: http://127.0.0.1:$PortaPonte  (atalho 'Painel NexoPulse' na área de trabalho)" -ForegroundColor Green
+    if ($ip) { Write-Host "Painel nos outros aparelhos da rede: http://${ip}:$PortaPainel  (usuário e senha do painel local)" -ForegroundColor Green }
     if (-not $ativo -or $local -ne 200 -or $rede -ne 200) {
         Write-Host 'Algo não ficou de pé. Rode verificar-nexopulse-windows.ps1 para ver o motivo.' -ForegroundColor Yellow
     }
