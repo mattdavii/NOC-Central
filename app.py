@@ -1139,7 +1139,7 @@ def hub_inicio():
         master = session.get('role') in acessos.ROLES_MASTER
         ver_como = request.args.get('ver_como', type=int) if master else None
         if master and not ver_como:
-            return render_template('hub.html', modo='md', empresas=hub.visao_md(conn), total=hub.resumo_pulse(conn),
+            return render_template('hub.html', modo='md', pessoa=_nome_curto(conn), empresas=hub.visao_md(conn), total=hub.resumo_pulse(conn),
                                    atencao=hub.precisa_de_atencao(conn, AGENT_BUILD), grafico=hub.disponibilidade_por_dia(conn),
                                    eventos=hub.eventos_recentes(conn),
                                    sem_empresa=hub.sem_empresa(conn), aplicativos=acessos.APLICATIVOS,
@@ -1154,11 +1154,19 @@ def hub_inicio():
             empresa_id = acessos.empresa_de(_autor(conn))
             acesso = acessos.acesso_efetivo(conn, session['user_id'])
         dono = conn.execute('SELECT nome, usuario, logo_url FROM clientes WHERE id=?', (empresa_id,)).fetchone() if empresa_id else None
-        return render_template('hub.html', modo='cliente', cards=hub.cards(conn, empresa_id, acesso) if empresa_id else [],
+        return render_template('hub.html', modo='cliente', pessoa=_nome_curto(conn), cards=hub.cards(conn, empresa_id, acesso) if empresa_id else [],
                                empresa=(dict(dono) if dono else None), ver_como=ver_como, rotulos_nivel=acessos.ROTULOS_NIVEL)
     finally:
         conn.close()
 
+
+
+def _nome_curto(conn):
+    """Primeiro nome de quem está logado, para a saudação do Início (cai no usuário se não houver nome)."""
+    row = conn.execute('SELECT nome, usuario FROM clientes WHERE id=?', (session['user_id'],)).fetchone()
+    nome = ((row['nome'] if row else None) or session.get('usuario') or '').strip()
+    primeiro = nome.split()[0] if nome else 'você'
+    return primeiro[:1].upper() + primeiro[1:]
 
 
 @app.route('/pulse')
