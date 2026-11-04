@@ -284,13 +284,23 @@ def eventos_recentes(conn, limite=12, agora=None):
     for d in conn.execute(
             "SELECT d.sensor_mac, d.causa, d.inicio, d.fim, d.estado, s.nome_local FROM diagnosticos d "
             "LEFT JOIN sensores s ON s.mac_id = d.sensor_mac WHERE d.chave <> 'sem_comunicacao' "
-            "AND (d.inicio >= ? OR d.fim >= ?) ORDER BY COALESCE(d.fim, d.inicio) DESC LIMIT ?", (desde, desde, limite)).fetchall():
-        site = d['nome_local'] or d['sensor_mac']
-        if d['inicio'] >= desde:
-            eventos.append({'quando': d['inicio'], 'tipo': 'alerta', 'titulo': d['causa'], 'detalhe': 'Diagnóstico aberto',
-                            'site': site, 'link': f"/sensor/{d['sensor_mac']}"})
-        if d['fim'] and d['fim'] >= desde and d['estado'] != 'ativo':
-            eventos.append({'quando': d['fim'], 'tipo': 'volta', 'titulo': d['causa'], 'detalhe': 'Resolvido',
-                            'site': site, 'link': f"/sensor/{d['sensor_mac']}"})
+            "AND (d.inicio >= ? OR d.fim >= ?) ORDER BY COALESCE(d.fim, d.inicio) DESC LIMIT 200", (desde, desde)).fetchall():
+        # Um evento por diagnóstico: aberto agora, ou resolvido (com quanto durou).
+        resolvido = d['fim'] and d['estado'] != 'ativo'
+        eventos.append({'quando': d['fim'] if resolvido else d['inicio'], 'tipo': 'volta' if resolvido else 'alerta',
+                        'titulo': d['causa'], 'detalhe': f"Resolvido após {duracao(d['fim'] - d['inicio'])}" if resolvido else 'Em aberto',
+                        'site': d['sensor_mac'] and (d['nome_local'] or d['sensor_mac']), 'link': f"/sensor/{d['sensor_mac']}"})
     eventos.sort(key=lambda e: e['quando'], reverse=True)
-    return eventos[:limite]
+    # O mesmo problema repetido no mesmo site (link instável que cai e volta várias vezes) vira uma linha só,
+    # com quantas vezes aconteceu: a linha do tempo não fica tomada por um único site.
+    agrupados = []
+    for e in eventos:
+        anterior = agrupados[-1] if agrupados else None
+        if anterior and anterior['site'] == e['site'] and anterior['titulo'] == e['titulo']:
+            anterior['vezes'] += 1
+            anterior['primeiro'] = e['quando']
+            if e['tipo'] == 'alerta' and e['detalhe'] == 'Em aberto':
+                anterior['tipo'], anterior['detalhe'] = 'alerta', 'Em aberto'
+            continue
+        agrupados.append({**e, 'vezes': 1, 'primeiro': e['quando']})
+    return agrupados[:limite]

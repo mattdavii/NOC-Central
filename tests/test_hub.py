@@ -250,3 +250,20 @@ def test_diagnostico_de_sensor_removido_nao_conta(client):
     conn.close()
     assert '30:F6:EF:3A:4E:04' not in titulos_sites
     assert total == 2  # só os dois do cenário
+
+
+def test_eventos_repetidos_viram_uma_linha(client):
+    import hub
+    _cenario()
+    conn = database.get_db()
+    agora = time.time()
+    for k in range(6):  # link instável: abre e resolve seis vezes
+        conn.execute("INSERT INTO diagnosticos (sensor_mac, chave, causa, gravidade, inicio, fim, estado) "
+                     "VALUES ('AA:01', 'provedor', 'Instabilidade no provedor', 'Alerta', ?, ?, 'resolvido')",
+                     (agora - 3600 * (k + 1), agora - 3600 * (k + 1) + 120))
+    conn.commit()
+    eventos = hub.eventos_recentes(conn, agora=agora)
+    conn.close()
+    instab = [e for e in eventos if e['titulo'] == 'Instabilidade no provedor']
+    assert len(instab) == 1 and instab[0]['vezes'] == 6 and instab[0]['tipo'] == 'volta'
+    assert instab[0]['primeiro'] < instab[0]['quando']
