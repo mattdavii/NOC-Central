@@ -624,16 +624,35 @@ def log_local_event(tipo, detalhes, gravidade="Alerta"):
     EVENTOS_LOCAIS.registrar(tipo, detalhes, gravidade)
 
 def enviar_alertas(url, alertas, timeout=5, registrar_local=True):
-    """Manda alertas à Central e, se ela recebeu, guarda uma cópia no registro local (painel e relatório
-    do Edge). Se o envio falhar a exceção sobe: quem chamou já registra o alerta com o motivo da falha."""
-    urllib.request.urlopen(
-        urllib.request.Request(url, data=json.dumps({"mac_id": get_mac(), "alertas": alertas}).encode('utf-8'),
-                               headers=api_headers(), method='POST'),
-        timeout=timeout,
-    )
+    """Manda alertas à Central e guarda uma cópia no registro local (painel e relatório do Edge).
+
+    Central fora (Railway, banco ou internet do site): os alertas vão para a fila persistente do sensor
+    (a mesma das medições) com o horário em que aconteceram e seguem quando a Central voltar; lá entram
+    no histórico e viram um resumo no Telegram. Nunca levanta exceção; devolve True se a Central recebeu agora."""
+    agora = time.time()
+    try:
+        urllib.request.urlopen(
+            urllib.request.Request(url, data=json.dumps({"mac_id": get_mac(), "alertas": alertas}).encode('utf-8'),
+                                   headers=api_headers(), method='POST'),
+            timeout=timeout,
+        )
+        enviado = True
+    except Exception as erro:
+        enviado = False
+        for alerta in alertas:
+            try:
+                fila_envio.enfileirar({"tipo": "alerta", "id": uuid.uuid4().hex, "coletado_em": round(agora, 3),
+                                       "alerta": {k: str(alerta.get(k, ""))[:1000] for k in ("tipo", "gravidade", "detalhes")}})
+            except Exception as e:
+                log_local_event("Fila de envio", f"Não foi possível guardar o alerta para enviar depois: {e}", "Crítica")
+        motivo = str(erro)[:120]
     if registrar_local:
         for alerta in alertas:
-            log_local_event(alerta.get("tipo", "Alerta"), alerta.get("detalhes", ""), alerta.get("gravidade", "Alerta"))
+            detalhes = alerta.get("detalhes", "")
+            if not enviado:
+                detalhes = f"{detalhes} (Central indisponível: {motivo}; guardado para enviar quando ela voltar)"
+            log_local_event(alerta.get("tipo", "Alerta"), detalhes, alerta.get("gravidade", "Alerta"))
+    return enviado
 
 def verificar_atualizacao(mac):
     """Avisa quando a Central tem uma versão do agente diferente da instalada.

@@ -178,6 +178,17 @@ público) e pode ser definido à mão na tela do sensor, o que prevalece.
   original**. A Central coloca esses dados na linha do tempo no momento certo
   (por exemplo, mostra que a queda das 14h foi obstrução da Starlink), mas não
   manda Telegram de coisa antiga.
+- **Alertas também vão para a fila.** Câmera que caiu, queda de energia, serviço
+  parado: se a Central não recebe na hora (Railway fora, banco fora ou internet do
+  site caída), o alerta fica na mesma fila, com o horário em que aconteceu. Quando
+  a Central volta, ele entra no histórico do sensor no horário certo, marcado como
+  "registrado pelo sensor com a Central indisponível", sem duplicar se o lote for
+  reenviado. No Telegram vai **um resumo só** do período ("Eventos durante a
+  indisponibilidade": total, críticos e os 10 mais importantes), mandado quando a
+  fila do sensor esvazia. Alerta que chega com até 2 min de atraso é tratado como
+  normal (Telegram avulso, como sempre).
+- Não entram na fila: CPU/RAM/pings de 5 em 5 s e speedtest (a Central fica com um
+  intervalo sem dados nos gráficos). O painel local do sensor continua com tudo.
 - A Central abre **Site sem comunicação** quando o heartbeat some por mais de
   `SITE_SEM_COMUNICACAO_S` e o resolve, com a duração, quando o sensor volta.
 - **Link secundário (preparado, desligado):** o envio já percorre uma lista de
