@@ -108,3 +108,18 @@ def test_action_without_answer_expires(client, login):
     antiga = next(a for a in hist if a['criado_em'].startswith('2000-01-01'))
     assert antiga['status'] == 'erro' and 'não confirmou' in antiga['saida']
     assert any(a['status'] == 'enviada' for a in hist)
+
+
+def test_historico_limitado_com_total(client, login):
+    master = _preparar(client, login)
+    conn = database.get_db()
+    conn.execute('DELETE FROM acoes_remotas WHERE sensor_mac=?', (MAC,))   # testes anteriores deixam ações
+    for n in range(12):
+        conn.execute("INSERT INTO acoes_remotas (sensor_mac, acao, solicitante, status) VALUES (?, 'diagnostico', 'admin', 'concluida')", (MAC,))
+    conn.commit(); conn.close()
+    padrao = master.get(f'/api/v2/sensor/{MAC}/acoes').json
+    assert len(padrao['historico']) == 12 and padrao['total_historico'] == 12
+    poucas = master.get(f'/api/v2/sensor/{MAC}/acoes?limite=5').json
+    assert len(poucas['historico']) == 5 and poucas['total_historico'] == 12
+    assert len(master.get(f'/api/v2/sensor/{MAC}/acoes?limite=9999').json['historico']) == 12   # teto de 100
+    assert len(master.get(f'/api/v2/sensor/{MAC}/acoes?limite=abc').json['historico']) == 12    # inválido: padrão

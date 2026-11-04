@@ -16,7 +16,21 @@
     const erro = document.getElementById('modal-senha-erro');
     const STATUS = {pendente: 'Na fila', enviada: 'Executando', concluida: 'Concluída', erro: 'Falhou'};
     const PERIGOSAS = new Set(['atualizar_sistema', 'reiniciar_maquina']);
-    let nomes = {}, atualizando = null;
+    let nomes = {}, atualizando = null, limite = 5;
+    const abertos = new Set();   // ações com a saída aberta: continuam abertas na atualização automática
+    // Cabeçalho do histórico com o contador e o "ver mais", criado aqui para não mexer no template.
+    const cabecalho = document.createElement('div');
+    cabecalho.className = 'acoes-historico-head';
+    historico.before(cabecalho);
+    cabecalho.addEventListener('click', ev => {
+        if (!ev.target.closest('button')) return;
+        limite = limite === 5 ? 50 : 5;
+        carregar();
+    });
+    historico.addEventListener('toggle', ev => {
+        const id = ev.target.dataset && ev.target.dataset.id;
+        if (id) ev.target.open ? abertos.add(id) : abertos.delete(id);
+    }, true);
 
     const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
     const quando = iso => {
@@ -70,9 +84,11 @@
         versaoInfo.textContent = situacaoVersao(dados);
         botoes.innerHTML = Object.entries(nomes).map(([id, nome]) =>
             `<button class="action-btn ${PERIGOSAS.has(id) ? 'btn-danger' : 'btn-secondary'}" data-acao="${id}" ${dados.permitido ? '' : 'disabled'}>${esc(nome)}</button>`).join('');
-        const itens = dados.historico || [];
+        const itens = dados.historico || [], total = dados.total_historico ?? itens.length;
+        cabecalho.innerHTML = total ? `<span>Histórico · ${total} ${total === 1 ? 'ação' : 'ações'}</span>` +
+            (total > 5 ? `<button type="button">${limite === 5 ? `Ver ${total > 50 ? 'últimas 50' : 'todas'}` : 'Mostrar só as últimas 5'}</button>` : '') : '';
         historico.innerHTML = itens.length ? itens.map(a => `
-            <details class="acao-item status-${esc(a.status)}">
+            <details class="acao-item status-${esc(a.status)}" data-id="${Number(a.id)}" ${abertos.has(String(a.id)) ? 'open' : ''}>
                 <summary><span class="acao-nome">${esc(nomes[a.acao] || a.acao)}</span>
                     <span class="acao-meta">${esc(STATUS[a.status] || a.status)} · ${esc(a.solicitante || '')} · ${esc(quando(a.criado_em))}</span></summary>
                 <pre>${esc(a.saida || (a.status === 'pendente' ? 'Aguardando o sensor buscar o comando…' : a.status === 'enviada' ? 'Executando no sensor…' : 'Sem saída.'))}</pre>
@@ -83,7 +99,7 @@
     }
 
     async function carregar() {
-        const r = await fetch(`${base}/acoes`);
+        const r = await fetch(`${base}/acoes?limite=${limite}`);
         if (r.ok) desenhar(await r.json());
     }
 
