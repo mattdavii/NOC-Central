@@ -51,6 +51,29 @@ jobs:
             sleep 1
           done
           python -c "import json; assert json.load(open('/tmp/health.json'))['central_version'] == '2.2.0-rc1'"
+  windows:
+    # Instalador e verificação do sensor no Windows, num Windows de verdade. O WSL2 não roda
+    # nos runners do GitHub (sem virtualização aninhada): o resto se testa numa máquina real.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PSScriptAnalyzer (erros)
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          $r = Invoke-ScriptAnalyzer -Path windows -Severity Error
+          $r | Format-Table -AutoSize
+          if ($r) { exit 1 }
+      - name: Pester no Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          Install-Module Pester -MinimumVersion 5.5.0 -Force -SkipPublisherCheck -Scope CurrentUser
+          Import-Module Pester -MinimumVersion 5.5.0
+          $c = New-PesterConfiguration
+          $c.Run.Path = 'tests/windows'
+          $c.Run.Exit = $true
+          $c.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $c
   tag-rc1:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: test

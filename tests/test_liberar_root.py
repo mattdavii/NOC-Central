@@ -65,3 +65,12 @@ def test_installers_offer_the_root_option(client):
     assert '[switch]$Root' in client.get('/instalar-windows.ps1').get_data(as_text=True)
     install = (RAIZ / 'linux/install.sh').read_text()
     assert 'if [[ "${NEXOPULSE_ROOT:-0}" == "1" ]]' in install and 'liberar-root.sh' in install
+
+
+def test_central_serve_a_verificacao_do_windows(client):
+    r = client.get('/verificar-windows.ps1')
+    assert r.status_code == 200 and 'attachment' in r.headers['Content-Disposition']
+    texto = r.get_data(as_text=True)
+    assert texto.startswith('\ufeff') and 'function Invoke-Verificacao' in texto     # BOM preservado
+    instalador = client.get('/instalar-windows.ps1').get_data(as_text=True)
+    assert instalador.startswith('\ufeff') and 'Set-RegrasFirewall' in instalador
