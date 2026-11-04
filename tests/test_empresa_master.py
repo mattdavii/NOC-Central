@@ -36,14 +36,16 @@ def _cliente(id_):
 
 def test_cria_uma_vez_vincula_masters_e_transfere_sensores_da_md(client):
     conn = _db()
-    conn.execute("INSERT INTO clientes (id, usuario, senha, role, ativo) VALUES (5, 'op-md', 'x', 'Operador Master', 1)")
+    # Sem id fixo: no PostgreSQL o id vem da sequência, como em produção.
+    conn.execute("INSERT INTO clientes (usuario, senha, role, ativo) VALUES ('op-md', 'x', 'Operador Master', 1)")
+    op = conn.execute("SELECT id FROM clientes WHERE usuario='op-md'").fetchone()['id']
     conn.commit(); conn.close()
     _sensores(('S-MASTER', 1), ('S-CLIENTE', 2), ('S-SEM', None))
     r = _garantir()
     assert r['criada'] and r['masters'] == 2 and r['sensores'] == 1
     md = _cliente(r['id'])
     assert md['nome'] == 'MD Soluções' and md['role'] == 'Cliente' and md['empresa_master'] == 1 and md['ativo'] == 1
-    assert _cliente(1)['cliente_pai_id'] == md['id'] and _cliente(5)['cliente_pai_id'] == md['id']
+    assert _cliente(1)['cliente_pai_id'] == md['id'] and _cliente(op)['cliente_pai_id'] == md['id']
     assert _cliente(2)['cliente_pai_id'] is None                     # empresa cliente não muda
     conn = _db()
     dono = {s['mac_id']: s['cliente_id'] for s in conn.execute('SELECT mac_id, cliente_id FROM sensores').fetchall()}
@@ -60,10 +62,11 @@ def test_cria_uma_vez_vincula_masters_e_transfere_sensores_da_md(client):
 
 def test_reaproveita_empresa_md_que_ja_existe(client):
     conn = _db()
-    conn.execute("INSERT INTO clientes (id, nome, usuario, senha, role, ativo) VALUES (9, 'MD Soluções', 'mdsol', 'x', 'Cliente', 1)")
+    conn.execute("INSERT INTO clientes (nome, usuario, senha, role, ativo) VALUES ('MD Soluções', 'mdsol', 'x', 'Cliente', 1)")
+    existente = conn.execute("SELECT id FROM clientes WHERE usuario='mdsol'").fetchone()['id']
     conn.commit(); conn.close()
     r = _garantir()
-    assert not r['criada'] and r['id'] == 9 and _cliente(9)['empresa_master'] == 1
+    assert not r['criada'] and r['id'] == existente and _cliente(existente)['empresa_master'] == 1
 
 
 def test_master_continua_vendo_tudo_depois_de_vinculado(client, login):
