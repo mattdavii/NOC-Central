@@ -18,6 +18,22 @@ O banco (PostgreSQL 16 + TimescaleDB em Docker) é definido em
 [`ops/minipc/banco`](ops/minipc/banco). O roteiro para levá-lo, com o backup e o
 vigia, para outra máquina está em [`docs/MIGRAR-MINIPC.md`](docs/MIGRAR-MINIPC.md).
 
+## Painel local do sensor
+
+Cada sensor serve um painel em `http://<ip do sensor>:10000`, com a mesma cara da tela do sensor na
+Central, para quem está na rede do site, inclusive sem internet: host, rede, levantamento da rede
+(CSV/XLSX/JSON), CFTV, comunicação, watchdog, registro de eventos e relatório para PDF.
+
+**Acesso:** usuário e senha, iguais em todos os sensores. A Central define a credencial nas
+variáveis `EDGE_USUARIO` (padrão `nexopulse`) e `EDGE_SENHA` (mínimo 8 caracteres) e manda só o
+hash aos sensores a cada contato; trocar a variável troca em todos em segundos e derruba as
+sessões abertas. O sensor guarda o hash e aceita o login sem internet. Para instalar um sensor
+que ainda não falou com a Central, defina `NOC_EDGE_USUARIO` / `NOC_EDGE_SENHA` nele; a da Central
+passa a valer assim que chegar. Cinco senhas erradas do mesmo IP bloqueiam por 5 minutos; as
+entradas e as tentativas erradas vão para o registro de eventos.
+
+O painel é HTTP simples na rede local: a senha trafega sem criptografia dentro da rede do site.
+
 ## Saúde do servidor
 
 A página **Servidor** (só Administrador Master) mostra a saúde da Central (latência
@@ -78,6 +94,12 @@ As variáveis ficam em `/etc/default/nexopulse-edge` (depois de editar:
 | `NOC_STARLINK_MOCK` | `normal` | Cenário do mock: `normal`, `obstruida`, `desalinhada`, `degradada` |
 | `NOC_FILA_MAX_ITENS` / `NOC_FILA_MAX_DIAS` | `20000` / `7` | Tamanho máximo do buffer local |
 | `NOC_LINK_SECUNDARIO`, `NOC_CENTRAL_URL_SECUNDARIA`, `NOC_INTERFACE_SECUNDARIA` | desligado | Preparado para link reserva (ex.: 4G), veja abaixo |
+| `NOC_EDGE_USUARIO` / `NOC_EDGE_SENHA` | — | Login do painel local até a Central mandar o dela (instalação sem internet) |
+| `NOC_LOCAL_PORT` | `10000` | Porta do painel local |
+| `NOC_LOG_DIAS` / `NOC_LOG_MAX` | `90` / `100000` | Retenção do registro de eventos local |
+| `NOC_VARREDURA_MAX_HOSTS` | `4096` | Maior rede varrida inteira (em fatias de `NOC_MAX_SCAN_HOSTS` por ciclo) |
+| `NOC_REDES_EXTRAS` | — | Outras VLANs a varrer, separadas por vírgula (também configurável no painel local) |
+| `NOC_CFTV` / `NOC_CFTV_PORTAS` | `1` / `1` | `0` desliga a identificação de CFTV/comunicação / só o teste de portas |
 
 ### Starlink
 

@@ -108,7 +108,7 @@
                         </td>
                         <td>
                             <button class="action-btn btn-primary" onclick='vincularSensor({{ s.mac_id|tojson }})'><i class="fa-solid fa-link"></i> Salvar Vínculo</button>
-                            <button class="action-btn btn-secondary" onclick='acessoLocal({{ s.mac_id|tojson }}, {{ s.ip_sensor|tojson }})' title="Gerar acesso ao painel local deste site (válido por 1h)"><i class="fa-solid fa-key"></i> Acesso Local</button>
+                            {% if s.ip_sensor %}<a class="action-btn btn-secondary" href="http://{{ s.ip_sensor }}:10000/" target="_blank" rel="noopener noreferrer" title="Painel local (só abre de dentro da rede do site); entre com o usuário e a senha do painel local"><i class="fa-solid fa-house-signal"></i> Acesso Local</a>{% endif %}
                             <button class="action-btn btn-secondary" onclick='gerarCredencial({{ s.mac_id|tojson }})' title="Gerar ou substituir a chave individual do agente"><i class="fa-solid fa-shield-halved"></i> Gerar chave</button>
                             {% if s.credential_active %}
                             <button class="action-btn" onclick='revogarCredencial({{ s.mac_id|tojson }})' style="background: var(--red);" title="Revogar a chave individual"><i class="fa-solid fa-ban"></i> Revogar</button>
@@ -122,19 +122,6 @@
     </div>
 
     <script>
-        async function acessoLocal(mac, ip) {
-            try {
-                const res = await fetch(`/api/v2/gerar_token_local/${mac}`);
-                const data = await res.json();
-                if (!res.ok) { alert('Erro ao gerar acesso: ' + (data.erro || res.status)); return; }
-                const url = `http://${ip}:10000/?token=${data.token}`;
-                prompt('Acesso ao painel local (válido por 1h). Copie o link abaixo ou clique OK para abrir:', url);
-                window.open(url, '_blank');
-            } catch (e) {
-                alert('Erro ao gerar acesso local: ' + e);
-            }
-        }
-
         async function gerarCredencial(mac) {
             if (!confirm('Gerar uma nova chave para este sensor? A chave anterior, se existir, deixará de funcionar.')) return;
             const res = await fetch(`/api/v2/sensor_credential/${encodeURIComponent(mac)}`, { method: 'POST' });

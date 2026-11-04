@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="referrer" content="no-referrer">
+    <meta name="referrer" content="same-origin">
     <link rel="icon" href="/static/brand/nexopulse/favicon.svg" type="image/svg+xml">
     <title>NexoPulse Edge - Relatório - {{ sensor.nome_local }}</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -42,13 +42,6 @@
 </head>
 <body>
     <div class="barra-acoes"><span>Relatório gerado pelo sensor · {{ periodo_str }}</span><button onclick="window.print()">Imprimir / salvar em PDF</button></div>
-    <script>
-        // O token veio na URL só para abrir esta aba: tira da barra de endereço (e do PDF impresso).
-        if (location.search.includes('token=')) {
-            const q = new URLSearchParams(location.search); q.delete('token');
-            history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : ''));
-        }
-    </script>
     <div class="a4-page">
         <div class="header">
             <div>

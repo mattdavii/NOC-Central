@@ -15,10 +15,9 @@ if sys.stdin is None:  sys.stdin = open(os.devnull, "r")
 
 # 📦 IMPORTS LIMPOS E ORGANIZADOS
 import time, json, platform, uuid, sqlite3, socket, urllib.request, concurrent.futures, ipaddress
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, request, Response, render_template_string, jsonify
 import speedtest 
-import jwt
 
 # O NexoPulse Edge roda só em Linux (no Windows, dentro do WSL).
 if platform.system().lower() != 'linux':
@@ -144,16 +143,7 @@ def api_headers():
         headers["X-NOC-Sensor-Key"] = SENSOR_API_KEY
     return headers
 
-# Chave pública RSA usada para verificar o token JWT emitido pela central (a privada nunca sai do servidor)
-CHAVE_PUBLICA_JWT = """-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuIUu6w07fxVBc059OuLU
-+kwG0GB1GewJLElBABmhNVV1gRjvxEg1tpXI3hMaFYH8KcDaT2iZ/RB7DZPR7mje
-DKVrp0QysRjATufi8h9Bqj9Lq0IbJGP0mJ/cv0YyN7fSy4p65De6HxAWDITz2kds
-lkLWGs/oEYjfqLNCsATVZ7EivAObQZmqixXSTSMiqK6ITxRVCU7btxFz1TXck83r
-hxuJPc1+3kAZQeULDXLsPgEAAS0CAE8wrw1xyIenIiuHfg9c3zgV2T5/4rQV+u56
-ZCz37+OAze6+j0iMi18ECCRG3dTpaXw9X5FxrJ9X0O/hm/RTYqOUTKisDLoohhux
-uwIDAQAB
------END PUBLIC KEY-----"""
+
 
 
 def get_os_info():
@@ -1318,6 +1308,11 @@ def loop_telemetria():
                 with urllib.request.urlopen(req, timeout=REPORT_TIMEOUT) as response:
                     res_data = json.loads(response.read().decode('utf-8'))
                     _confirmar_atualizacao()
+                    try:
+                        if ACESSO_LOCAL.receber_da_central(res_data.get("painel_local")):
+                            log_local_event("Acesso local", "Usuário/senha do painel local atualizados pela Central.", "OK")
+                    except Exception as e:
+                        log_local_event("Acesso local", f"Falha ao gravar a credencial do painel local: {e}", "Alerta")
                     comando = res_data.get("command")
                     espera_remota = max(TELEMETRIA_INTERVALO, int(res_data.get("intervalo", TELEMETRIA_INTERVALO))) 
 
@@ -1515,33 +1510,24 @@ def loop_watchdog_local():
 # ==========================================
 # 🖥️ MOTOR 2: PAINEL WEB LOCAL (FOREGROUND)
 # ==========================================
-def verificar_token_local(req):
-    """Verifica o token JWT assinado pela central (RS256, só a chave pública fica aqui). Só retorna True se a assinatura bater, não estiver expirado, e o 'mac' do token for o deste agente."""
-    token = req.args.get('token') or req.headers.get('X-Auth-Token', '')
-    if not token: return False
-    try:
-        payload = jwt.decode(token, CHAVE_PUBLICA_JWT, algorithms=["RS256"])
-        return payload.get('mac') == get_mac()
-    except Exception:
-        return False
+# Acesso ao painel local: usuário e senha iguais em todos os sensores (ver edge_local.AcessoLocal).
+ACESSO_LOCAL = edge_local.AcessoLocal('sensor_local.db')
+app.config.update(SESSION_COOKIE_NAME='nexopulse_edge', SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Strict',
+                  PERMANENT_SESSION_LIFETIME=timedelta(hours=edge_local.SESSAO_HORAS))
+try:
+    app.secret_key = ACESSO_LOCAL.chave_sessao()
+except Exception:
+    app.secret_key = os.urandom(32)   # sem gravar no disco: só derruba as sessões no restart
+
 
 @app.before_request
-def exigir_token_local():
-    # CSS, logos e scripts da tela são públicos (não têm dado do site); todo o resto exige o token.
-    if request.endpoint in ('static', 'painel_local.service_worker'):
-        return None
-    if not verificar_token_local(request):
-        mensagem = "Acesso negado. Token ausente, inválido ou expirado. Gere um novo token no painel da central."
-        if request.path == '/' or 'text/html' in request.headers.get('Accept', ''):
-            return (f"<!doctype html><meta charset=utf-8><title>NexoPulse Edge</title><body style='font-family:sans-serif;"
-                    f"background:#0B1728;color:#E8F1FA;display:grid;place-items:center;min-height:90vh'><div style='max-width:460px'>"
-                    f"<h2>NexoPulse Edge · acesso local</h2><p>{mensagem}</p><p style='color:#94A3B8'>Na Central, abra o sensor "
-                    f"e use <b>Acesso local</b> para gerar o link com o token.</p></div>"), 401
-        return jsonify({"erro": mensagem}), 401
+def exigir_login_local():
+    return edge_local.exigir_login(_EstadoPainel.acesso)
 
 
 class _EstadoPainel:
     """O que o painel local lê do agente (edge_local.criar_blueprint)."""
+    acesso = ACESSO_LOCAL
     dados = staticmethod(lambda: dados_sensores)
     mac = staticmethod(lambda: get_mac())
     nome = staticmethod(lambda: NOME_SENSOR)

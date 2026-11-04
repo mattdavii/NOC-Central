@@ -15,7 +15,6 @@ from version import CENTRAL_VERSION
 from urllib.parse import urlsplit
 import urllib.request, json
 import os
-import jwt
 import html
 import hmac
 import math
@@ -28,7 +27,17 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 
 # Chave privada RSA usada para assinar os tokens de acesso local do agente (nexopulse_edge.py guarda só a pública)
-JWT_PRIVATE_KEY = os.environ.get('JWT_PRIVATE_KEY', '')
+# Painel local dos sensores (http://<ip>:10000): o mesmo usuário e senha em todos. Só o hash vai
+# para os sensores, a cada contato; trocar a variável troca em todos em segundos.
+EDGE_USUARIO = (os.environ.get('EDGE_USUARIO') or 'nexopulse').strip()[:64]
+_EDGE_SENHA = os.environ.get('EDGE_SENHA', '')
+PAINEL_LOCAL = ({'usuario': EDGE_USUARIO, 'senha_hash': generate_password_hash(_EDGE_SENHA, method='pbkdf2:sha256')}
+                if len(_EDGE_SENHA) >= 8 else None)
+if _EDGE_SENHA and not PAINEL_LOCAL:
+    print('⚠️ EDGE_SENHA com menos de 8 caracteres: ignorada; o painel local dos sensores fica sem credencial nova.')
+elif not _EDGE_SENHA:
+    print('⚠️ EDGE_SENHA ausente: os sensores não recebem usuário/senha do painel local.')
+del _EDGE_SENHA
 
 app = Flask(__name__)
 
@@ -577,7 +586,7 @@ def _pode_gerenciar_usuarios(conn):
 # Só o que o sensor precisa para rodar; docs e o instalador do Windows ficam no servidor.
 ARQUIVOS_AGENTE = ['nexopulse_edge.py', 'host_metrics.py', 'starlink.py', 'netdiag.py', 'nomes_rede.py', 'fila_envio.py', 'requirements-agente.txt',
                    'descoberta.py', 'cftv.py', 'comunicacao.py', 'oui.py', 'dados/oui.tsv.gz', 'levantamento.py', 'edge_local.py',
-                   'templates/edge/painel.html', 'templates/edge/relatorio.html',
+                   'templates/edge/painel.html', 'templates/edge/relatorio.html', 'templates/edge/login.html',
                    'static/product.css', 'static/sensor.css', 'static/brand.js', 'static/host.js',
                    'static/brand/nexopulse/favicon.svg', 'static/brand/nexopulse/favicon.ico',
                    'static/brand/nexopulse/logo-claro.svg', 'static/brand/nexopulse/logo-escuro.svg',
@@ -1231,7 +1240,10 @@ def report_data():
         conn.close()
 
         socketio.emit('atualizacao_global', {})
-        return jsonify({"status": "OK", "command": comando})
+        resposta = {"status": "OK", "command": comando}
+        if PAINEL_LOCAL:
+            resposta["painel_local"] = PAINEL_LOCAL
+        return jsonify(resposta)
 
     except Exception:
         app.logger.exception('Falha ao receber telemetria')
@@ -1257,20 +1269,6 @@ def public_cron_trigger():
 # ==========================================
 # 🔑 TOKEN DE ACESSO AO PAINEL LOCAL DO AGENTE
 # ==========================================
-@app.route('/api/v2/gerar_token_local/<mac>')
-def gerar_token_local(mac):
-    # Só quem já está autenticado na central pode gerar acesso ao painel local de um site
-    if 'usuario' not in session:
-        return jsonify({"erro": "Não autenticado"}), 401
-    if not JWT_PRIVATE_KEY:
-        return jsonify({"erro": "JWT_PRIVATE_KEY não configurada no servidor (variável de ambiente ausente)"}), 500
-    payload = {
-        "mac": mac,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=1)
-    }
-    token = jwt.encode(payload, JWT_PRIVATE_KEY, algorithm="RS256")
-    return jsonify({"token": token, "mac": mac, "expira_em_horas": 1})
-
 # ==========================================
 # 🔄 VERSÃO DO AGENTE
 # ==========================================
