@@ -276,3 +276,13 @@ def test_toda_tela_do_app_permite_instalar_o_pwa():
     faltando = [p.name for p in raiz.glob('*.html')
                 if "_brand_bar.html" in p.read_text(encoding='utf-8') and 'rel="manifest"' not in p.read_text(encoding='utf-8')]
     assert faltando == []
+
+
+def test_inicio_abre_com_saudacao_relogio_e_atalhos(login):
+    _cenario()
+    md = login(1, 'Administrador Master').get('/').get_data(as_text=True)
+    assert 'class="lancador"' in md and 'data-hora' in md
+    for destino in ('href="/pulse"', 'href="/sensores"', 'href="/usuarios"', 'href="/saude"'):
+        assert destino in md
+    cliente = login(2, 'Cliente').get('/').get_data(as_text=True)
+    assert 'class="lancador"' in cliente and 'href="/conta"' in cliente and 'href="/pulse"' in cliente
