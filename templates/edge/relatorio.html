@@ -18,6 +18,8 @@
         .section-title { font-size: 18px; color: #082E56; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; margin-top: 30px; margin-bottom: 15px; page-break-after: avoid; }
         .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
         .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        .grid5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+        .risco { color: #92400E; }
         .box { background: #f9fafb; border: 1px solid #e5e7eb; padding: 15px; border-radius: 8px; }
         .box strong { display: block; font-size: 12px; color: #526077; text-transform: uppercase; margin-bottom: 5px; }
         .box span { font-size: 20px; font-weight: bold; color: #082E56; }
@@ -95,11 +97,12 @@
         {% if resumo.primeiro_registro %}<p class="nota">O registro local deste sensor começa em {{ resumo.primeiro_registro }}; períodos anteriores não têm eventos guardados aqui.</p>{% endif %}
 
         <h3 class="section-title">Estado no momento da emissão</h3>
-        <div class="grid4">
+        <div class="grid5">
             <div class="box"><strong>Internet (WAN)</strong><span style="font-size:16px; color: {{ '#166534' if wan_ok else '#B91C1C' }}">{{ 'Online' if wan_ok else 'Sem internet' }}</span></div>
             <div class="box"><strong>Latência ao gateway</strong><span style="font-size:16px">{{ (ping_gateway|string + ' ms') if ping_gateway else 'Sem resposta' }}</span></div>
             <div class="box"><strong>Dispositivos na rede</strong><span>{{ r.get('total', 0) }}</span></div>
             <div class="box"><strong>Equipamentos de CFTV</strong><span>{{ r.get('cftv', 0) }}</span></div>
+            <div class="box"><strong>Equipamentos de comunicação</strong><span>{{ r.get('comunicacao', 0) }}</span></div>
         </div>
 
         {% set cftv = inventario.dispositivos|selectattr('cftv')|list %}
@@ -115,6 +118,26 @@
                     <td>{{ d.cftv.fabricante or d.marca.valor or '—' }}{% if d.modelo %}<br><b>{{ d.modelo }}</b>{% endif %}</td>
                     <td>{% if d.status == 'online' %}<span class="badge ok">Online</span>{% elif d.status == 'sem_icmp' %}<span class="badge aviso">Sem ICMP</span>{% else %}<span class="badge critica">Sem resposta</span>{% endif %}</td>
                     <td style="color:#526077">{{ d.cftv.evidencias|join(' · ') }}{% if d.cftv.portas %}<br>Portas: {{ d.cftv.portas|join(', ') }}{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        {% set com = inventario.dispositivos|selectattr('comunicacao')|list %}
+        {% if com %}
+        <h3 class="section-title">Equipamentos de comunicação</h3>
+        <table>
+            <thead><tr><th>IP</th><th>Tipo</th><th>Fabricante / modelo / firmware</th><th>Status</th><th>Evidências e riscos</th></tr></thead>
+            <tbody>
+                {% for d in com %}
+                <tr>
+                    <td class="mono" style="font-weight:bold">{{ d.ip }}<br><span style="font-weight:normal; color:#526077">{{ d.mac }}</span></td>
+                    <td>{{ d.tipo }}{% if d.papel == 'gateway' %} (gateway){% endif %}<br><span style="color:#526077">confiança {{ d.comunicacao.confianca }}</span></td>
+                    <td>{{ d.comunicacao.fabricante or d.marca.valor or '—' }}{% if d.modelo %}<br><b>{{ d.modelo }}</b>{% endif %}{% if d.firmware %}<br><span style="color:#526077">{{ d.firmware }}</span>{% endif %}</td>
+                    <td>{% if d.status == 'online' %}<span class="badge ok">Online</span>{% elif d.status == 'sem_icmp' %}<span class="badge aviso">Sem ICMP</span>{% else %}<span class="badge critica">Sem resposta</span>{% endif %}</td>
+                    <td style="color:#526077">{{ d.comunicacao.evidencias|join(' · ') }}{% if d.comunicacao.portas %}<br>Portas: {{ d.comunicacao.portas|join(', ') }}{% endif %}
+                        {% for risco in d.comunicacao.riscos or [] %}<br><b class="risco">⚠ {{ risco }}</b>{% endfor %}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -146,7 +169,7 @@
                 <tr>
                     <td class="mono" style="font-weight: bold;">{{ d.ip }}</td>
                     <td class="mono" style="color: #526077;">{{ d.mac or '' }}</td>
-                    <td>{{ d.apelido or d.nome.valor or (d.cftv.nome if d.cftv) or '—' }}</td>
+                    <td>{{ d.apelido or d.nome.valor or (d.cftv.nome if d.cftv) or (d.comunicacao.nome if d.comunicacao) or '—' }}</td>
                     <td>{{ d.marca.valor or ('MAC privado' if d.mac_privado else '—') }}</td>
                     <td>{{ d.tipo or '' }}{% if d.modelo %} {{ d.modelo }}{% endif %}</td>
                     <td>
@@ -160,7 +183,7 @@
                 {% if not inventario.dispositivos %}<tr><td colspan="6" style="text-align: center; color: #526077;">Nenhum dispositivo mapeado.</td></tr>{% endif %}
             </tbody>
         </table>
-        <p class="nota">Inventário da última varredura do sensor (mesma rede/VLAN). Marca pelo prefixo do MAC; modelo quando o equipamento anuncia por ONVIF ou UPnP.</p>
+        <p class="nota">Inventário da última varredura do sensor (mesma rede/VLAN). Marca pelo prefixo do MAC; modelo e firmware quando o equipamento anuncia (ONVIF, UPnP, MikroTik MNDP, Ubiquiti).</p>
 
         <div class="footer">
             <img src="/static/brand/nexopulse/logo-claro.svg" alt="NexoPulse" width="140" height="40" style="display:block; margin: 0 auto 8px;">

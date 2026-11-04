@@ -576,7 +576,7 @@ def _pode_gerenciar_usuarios(conn):
 # ==========================================
 # Só o que o sensor precisa para rodar; docs e o instalador do Windows ficam no servidor.
 ARQUIVOS_AGENTE = ['nexopulse_edge.py', 'host_metrics.py', 'starlink.py', 'netdiag.py', 'nomes_rede.py', 'fila_envio.py', 'requirements-agente.txt',
-                   'cftv.py', 'oui.py', 'dados/oui.tsv.gz', 'levantamento.py', 'edge_local.py',
+                   'descoberta.py', 'cftv.py', 'comunicacao.py', 'oui.py', 'dados/oui.tsv.gz', 'levantamento.py', 'edge_local.py',
                    'templates/edge/painel.html', 'templates/edge/relatorio.html',
                    'static/product.css', 'static/sensor.css', 'static/brand.js', 'static/host.js',
                    'static/brand/nexopulse/favicon.svg', 'static/brand/nexopulse/favicon.ico',
@@ -1470,25 +1470,38 @@ def _texto_da_rede(valor, maximo):
     return limpo[:maximo] or None
 
 
-TIPOS_EQUIPAMENTO = ('Câmera IP', 'NVR/DVR', 'Equipamento de CFTV')
+TIPOS_CFTV = ('Câmera IP', 'NVR/DVR', 'Equipamento de CFTV')
+TIPOS_COMUNICACAO = ('Roteador/Firewall', 'Switch', 'Access Point/Rádio', 'ONU/ONT', 'Starlink', 'Roteador 4G/LTE',
+                     'Gateway industrial', 'Equipamento de comunicação')
+TIPOS_EQUIPAMENTO = TIPOS_CFTV + TIPOS_COMUNICACAO
 
 
-def _cftv_da_rede(valor):
-    """Identificação de CFTV enviada pelo Edge: só os campos conhecidos, com tamanho limitado."""
-    if not isinstance(valor, dict) or valor.get('tipo') not in TIPOS_EQUIPAMENTO:
+def _identificacao_da_rede(valor, tipos):
+    """Identificação (CFTV ou comunicação) enviada pelo Edge: só os campos conhecidos, com tamanho limitado."""
+    if not isinstance(valor, dict) or valor.get('tipo') not in tipos:
         return None
     listas = {chave: [t for t in (_texto_da_rede(x, 160) for x in (valor.get(chave) or [])[:10]) if t]
-              for chave in ('evidencias', 'portas') if isinstance(valor.get(chave) or [], list)}
+              for chave in ('evidencias', 'portas', 'riscos') if isinstance(valor.get(chave) or [], list)}
     return json.dumps({
         'tipo': valor['tipo'],
         'confianca': valor.get('confianca') if valor.get('confianca') in ('alta', 'media', 'baixa') else 'baixa',
         'fabricante': _texto_da_rede(valor.get('fabricante'), 80),
         'modelo': _texto_da_rede(valor.get('modelo'), 120),
+        'firmware': _texto_da_rede(valor.get('firmware'), 120),
         'nome': _texto_da_rede(valor.get('nome'), 120),
         'onvif': bool(valor.get('onvif')),
         'evidencias': listas.get('evidencias', []),
         'portas': listas.get('portas', []),
+        'riscos': listas.get('riscos', []),
     }, ensure_ascii=False)
+
+
+def _cftv_da_rede(valor):
+    return _identificacao_da_rede(valor, TIPOS_CFTV)
+
+
+def _comunicacao_da_rede(valor):
+    return _identificacao_da_rede(valor, TIPOS_COMUNICACAO)
 
 
 @app.route('/api/v2/atualizar_dispositivos', methods=['POST'])
@@ -1528,6 +1541,8 @@ def atualizar_dispositivos():
                 'modelo': _texto_da_rede(item.get('modelo'), 120),
                 'tipo_equipamento': item.get('tipo_equipamento') if item.get('tipo_equipamento') in TIPOS_EQUIPAMENTO else None,
                 'cftv': _cftv_da_rede(item.get('cftv')),
+                'comunicacao': _comunicacao_da_rede(item.get('comunicacao')),
+                'firmware': _texto_da_rede(item.get('firmware'), 120),
             })
     except ValueError as error:
         return jsonify(error=str(error)), 400
@@ -1545,11 +1560,12 @@ def atualizar_dispositivos():
         db_execute(
             conn,
             "INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, nome_custom, status, latencia, neighbor_state, "
-            "fabricante_registro, fabricante_fonte, hostname, hostname_fonte, visto_em, modelo, tipo_equipamento, cftv) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "fabricante_registro, fabricante_fonte, hostname, hostname_fonte, visto_em, modelo, tipo_equipamento, cftv, "
+            "comunicacao, firmware) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (sensor_mac, disp['ip'], disp['mac'], disp['fabricante'], nome, disp['status'], disp.get('latencia'),
              disp.get('neighbor_state'), disp['fabricante_registro'], disp['fabricante_fonte'], disp['hostname'],
-             disp['hostname_fonte'], visto_em, disp['modelo'], disp['tipo_equipamento'], disp['cftv'])
+             disp['hostname_fonte'], visto_em, disp['modelo'], disp['tipo_equipamento'], disp['cftv'],
+             disp['comunicacao'], disp['firmware'])
         )
     conn.commit()
     conn.close()
