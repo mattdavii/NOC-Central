@@ -1084,6 +1084,8 @@ def hub_inicio():
         ver_como = request.args.get('ver_como', type=int) if master else None
         if master and not ver_como:
             return render_template('hub.html', modo='md', empresas=hub.visao_md(conn), total=hub.resumo_pulse(conn),
+                                   atencao=hub.precisa_de_atencao(conn, AGENT_BUILD), grafico=hub.disponibilidade_por_dia(conn),
+                                   eventos=hub.eventos_recentes(conn),
                                    sem_empresa=hub.sem_empresa(conn), aplicativos=acessos.APLICATIVOS,
                                    disponibilidade=hub.disponibilidade_mes(conn))
         if ver_como:
