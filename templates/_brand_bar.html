@@ -67,7 +67,7 @@
     </script>
     {% endif %}
     <div class="app-bar-actions">
-        <span class="product-version" title="Versão da Central">v{{ central_version }}</span>
+        {% if session.get('role') in ('Administrador Master', 'Operador Master') %}<span class="product-version" title="Versão da Central">v{{ central_version }}</span>{% endif %}
         <button class="theme-toggle icon-only" type="button" onclick="NexoPulseTheme.toggle()" aria-label="Alternar tema" title="Alternar tema claro/escuro">
             <i class="fa-solid fa-sun" aria-hidden="true"></i>
         </button>

@@ -8,7 +8,7 @@
     <link rel="icon" href="/static/brand/nexohub/favicon.ico" sizes="16x16 32x32 48x48">
     <link rel="apple-touch-icon" href="/static/brand/nexohub/apple-touch-icon.png">
     <title>NexoHub - Início</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/fontes/fontes.css?v=1">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/static/product.css?v=nexopulse-3">
     <style>
@@ -23,7 +23,7 @@
         .ver-como a { color: var(--text-main); font-weight: 600; }
         .saudacao { display: flex; align-items: center; gap: 16px; }
         .saudacao img { max-height: 48px; max-width: 160px; object-fit: contain; }
-        .apps { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
+        .apps { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; align-items: start; }
         .app-card { display: flex; flex-direction: column; gap: 14px; padding: 22px; border-radius: 14px; background: var(--bg-card); border: 1px solid var(--border); box-shadow: var(--shadow); }
         .app-card.vitrine { background: transparent; border-style: dashed; box-shadow: none; }
         .app-card header { display: flex; align-items: center; gap: 14px; }
@@ -57,6 +57,22 @@
         .acoes-linha { display: flex; gap: 12px; flex-wrap: wrap; }
         .acoes-linha a { white-space: nowrap; font-weight: 600; text-decoration: none; }
         .vazio { color: var(--text-muted); }
+        .disp { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 10px; background: var(--bg-input); border-left: 4px solid var(--status-ok); }
+        .disp strong { font-size: 2rem; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+        .disp .disp-txt { display: flex; flex-direction: column; gap: 2px; }
+        .disp .disp-txt span { font-size: .88rem; color: var(--text-main); font-weight: 600; }
+        .disp .disp-txt small { font-size: .8rem; color: var(--text-muted); }
+        .disp.atencao { border-left-color: var(--yellow); }
+        .disp.critico { border-left-color: var(--status-crit); }
+        .disp.atencao strong { color: var(--yellow); }
+        .disp.critico strong { color: var(--status-crit); }
+        .pct { font-variant-numeric: tabular-nums; font-weight: 600; }
+        .pct.atencao { color: var(--yellow); }
+        .pct.critico { color: var(--status-crit); }
+        table.clientes th button { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+        table.clientes th button:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
+        table.clientes th button i { font-size: .75em; opacity: .45; }
+        table.clientes th[aria-sort] button i { opacity: 1; }
         @media (max-width: 640px) { .apps { grid-template-columns: 1fr; } .kpi strong { font-size: 1.25rem; } }
     </style>
 <script src="/static/brand.js?v=nexopulse-2"></script>
@@ -67,6 +83,8 @@
 {% with mensagens = get_flashed_messages() %}{% for m in mensagens %}
     <div class="ver-como" role="status"><span><i class="fa-solid fa-circle-info"></i> {{ m }}</span><a href="/conta">Minha conta</a></div>
 {% endfor %}{% endwith %}
+
+{% macro pct(d) -%}{{ ('%.1f' % d.pct)|replace('.', ',') }}%{%- endmacro %}
 
 {% macro simbolo(app) -%}
     <img class="sym sym-dark" src="/static/brand/nexo{{ app }}/simbolo-escuro.svg" alt="" aria-hidden="true">
@@ -86,6 +104,9 @@
         <div class="kpi"><strong class="status-ok">{{ total.online }}</strong><span>sites online</span></div>
         <div class="kpi"><strong class="{{ 'num-off' if total.offline }}">{{ total.offline }}</strong><span>sites offline</span></div>
         <div class="kpi"><strong class="{{ 'num-off' if total.total_diagnosticos }}">{{ total.total_diagnosticos }}</strong><span>alertas ativos</span></div>
+        {% if disponibilidade %}
+        <div class="kpi"><strong class="pct {{ disponibilidade.faixa }}">{{ pct(disponibilidade) }}</strong><span>disponibilidade em {{ disponibilidade.mes }}</span></div>
+        {% endif %}
         {% if sem_empresa %}
         <div class="kpi"><strong class="txt-warn">{{ sem_empresa }}</strong><span>sensores sem empresa (<a href="/sensores">alocar</a>)</span></div>
         {% endif %}
@@ -97,10 +118,19 @@
             <label class="switch-label"><input type="checkbox" id="so-problema" onchange="filtrar()"> Só com problema agora</label>
         </div>
         <table class="clientes cards-mobile">
-            <thead><tr><th>Empresa</th><th>Aplicativos</th><th>Sites</th><th>Alertas</th><th>Última queda</th><th>Ações</th></tr></thead>
+            <thead><tr>
+                <th><button type="button" data-ordem="nome">Empresa <i class="fa-solid fa-sort" aria-hidden="true"></i></button></th>
+                <th>Aplicativos</th>
+                <th><button type="button" data-ordem="offline">Sites <i class="fa-solid fa-sort" aria-hidden="true"></i></button></th>
+                <th><button type="button" data-ordem="disp">Disponibilidade no mês <i class="fa-solid fa-sort" aria-hidden="true"></i></button></th>
+                <th><button type="button" data-ordem="alertas">Alertas <i class="fa-solid fa-sort" aria-hidden="true"></i></button></th>
+                <th><button type="button" data-ordem="queda">Última queda <i class="fa-solid fa-sort" aria-hidden="true"></i></button></th>
+                <th>Ações</th></tr></thead>
             <tbody>
             {% for e in empresas %}
-            <tr data-nome="{{ e.nome|lower }}" data-problema="{{ 1 if e.offline or e.alertas else 0 }}">
+            <tr data-nome="{{ e.nome|lower }}" data-problema="{{ 1 if e.offline or e.alertas else 0 }}" data-master="{{ 1 if e.master else 0 }}"
+                data-offline="{{ e.offline }}" data-alertas="{{ e.alertas }}" data-disp="{{ e.disponibilidade.pct if e.disponibilidade else 101 }}"
+                data-queda="{{ e.ultima_queda.inicio if e.ultima_queda else 0 }}">
                 <td data-label="Empresa"><strong>{{ e.nome }}</strong>{% if e.master %} <span class="chip">Empresa Master</span>{% endif %}{% if not e.ativo %} <span class="chip vazio">inativa</span>{% endif %}</td>
                 <td data-label="Aplicativos"><div class="chips">
                     {% for app, nome in aplicativos.items() if e.contrato[app] %}<span class="chip">{{ nome }}</span>{% else %}<span class="chip vazio">Nenhum</span>{% endfor %}
@@ -110,16 +140,18 @@
                     <span class="status-ok">{{ e.online }} online</span>{% if e.offline %} · <span class="num-off">{{ e.offline }} offline</span>{% endif %}{% if e.manutencao %} · {{ e.manutencao }} em manutenção{% endif %}
                     {% else %}<span class="vazio">sem sensores</span>{% endif %}
                 </td>
+                <td data-label="Disponibilidade no mês">{% if e.disponibilidade %}<span class="pct {{ e.disponibilidade.faixa }}" title="{{ e.disponibilidade.quedas }} queda(s), {{ e.disponibilidade.fora_txt }} sem comunicação">{{ pct(e.disponibilidade) }}</span>{% else %}<span class="vazio">—</span>{% endif %}</td>
                 <td data-label="Alertas">{% if e.alertas %}<span class="num-off">{{ e.alertas }}</span>{% else %}<span class="vazio">—</span>{% endif %}</td>
                 <td data-label="Última queda">{% if e.ultima_queda %}{{ e.ultima_queda.site }} · <span data-ts="{{ e.ultima_queda.inicio }}"></span>{% if e.ultima_queda.ativa %} <span class="num-off">(em andamento)</span>{% endif %}{% else %}<span class="vazio">—</span>{% endif %}</td>
                 <td data-label="Ações"><div class="acoes-linha">
                     <a href="/?ver_como={{ e.id }}"><i class="fa-solid fa-eye"></i> Ver como cliente</a>
+                    <a href="/usuarios#empresas"><i class="fa-solid fa-file-signature"></i> Contrato</a>
                 </div></td>
             </tr>
             {% else %}
-            <tr><td colspan="6" class="vazio">Nenhuma empresa cadastrada ainda. Cadastre em <a href="/usuarios">Acessos</a>.</td></tr>
+            <tr><td colspan="7" class="vazio">Nenhuma empresa cadastrada ainda. Cadastre em <a href="/usuarios">Acessos</a>.</td></tr>
             {% endfor %}
-            <tr id="nenhum-filtro" hidden><td colspan="6" class="vazio">Nenhuma empresa com esse filtro.</td></tr>
+            <tr id="nenhum-filtro" hidden><td colspan="7" class="vazio">Nenhuma empresa com esse filtro.</td></tr>
             </tbody>
         </table>
     </div>
@@ -158,6 +190,16 @@
 
             {% if c.estado == 'liberado' and c.app == 'pulse' %}
                 {% set r = c.resumo %}
+                {% set d = c.disponibilidade %}
+                {% if d %}
+                <div class="disp {{ d.faixa }}">
+                    <strong>{{ pct(d) }}</strong>
+                    <div class="disp-txt">
+                        <span>de disponibilidade em {{ d.mes }}</span>
+                        <small>{% if d.quedas %}{{ d.quedas }} queda{{ 's' if d.quedas != 1 }}, {{ d.fora_txt }} sem comunicação{% else %}Nenhuma queda este mês{% endif %}</small>
+                    </div>
+                </div>
+                {% endif %}
                 <div class="kpis">
                     <div class="kpi"><strong class="status-ok">{{ r.online }}</strong><span>online</span></div>
                     <div class="kpi"><strong class="{{ 'num-off' if r.offline }}">{{ r.offline }}</strong><span>offline</span></div>
@@ -199,19 +241,23 @@
 </main>
 <script>
     // Datas vêm em segundos (epoch); mostra "há X" para o recente e a data local para o resto.
-    document.querySelectorAll('[data-ts]').forEach(el => {
-        const ts = Number(el.dataset.ts);
-        if (!ts) return;
-        const segundos = Math.max(0, Date.now() / 1000 - ts);
-        const data = new Date(ts * 1000);
-        el.title = data.toLocaleString('pt-BR');
-        if (segundos < 3600) el.textContent = 'há ' + Math.max(1, Math.round(segundos / 60)) + ' min';
-        else if (segundos < 86400) el.textContent = 'há ' + Math.round(segundos / 3600) + ' h';
-        else el.textContent = data.toLocaleString('pt-BR', {dateStyle: 'short', timeStyle: 'short'});
-    });
+    function formatarDatas(raiz) {
+        raiz.querySelectorAll('[data-ts]').forEach(el => {
+            const ts = Number(el.dataset.ts);
+            if (!ts) return;
+            const segundos = Math.max(0, Date.now() / 1000 - ts);
+            const data = new Date(ts * 1000);
+            el.title = data.toLocaleString('pt-BR');
+            if (segundos < 3600) el.textContent = 'há ' + Math.max(1, Math.round(segundos / 60)) + ' min';
+            else if (segundos < 86400) el.textContent = 'há ' + Math.round(segundos / 3600) + ' h';
+            else el.textContent = data.toLocaleString('pt-BR', {dateStyle: 'short', timeStyle: 'short'});
+        });
+    }
 
     function filtrar() {
-        const termo = document.getElementById('filtro').value.trim().toLowerCase();
+        const campo = document.getElementById('filtro');
+        if (!campo) return;
+        const termo = campo.value.trim().toLowerCase();
         const soProblema = document.getElementById('so-problema').checked;
         let visiveis = 0;
         document.querySelectorAll('table.clientes tbody tr[data-nome]').forEach(tr => {
@@ -222,12 +268,57 @@
         document.getElementById('nenhum-filtro').hidden = visiveis > 0;
     }
 
-    // Atualiza o resumo a cada minuto enquanto a aba estiver visível (não mexe no filtro digitado).
-    setInterval(() => {
-        const filtro = document.getElementById('filtro');
-        const filtrando = filtro && (filtro.value || document.getElementById('so-problema').checked);
-        if (document.visibilityState === 'visible' && !filtrando) window.location.reload();
-    }, 60000);
+    // Ordenação da tabela da MD. Sem escolha, vale a ordem do servidor (Empresa Master e quem tem problema primeiro).
+    // "Pior primeiro" é o primeiro clique em cada coluna numérica; o segundo inverte.
+    let ordem = null;
+    const PIOR_PRIMEIRO = {offline: 'desc', alertas: 'desc', queda: 'desc', disp: 'asc', nome: 'asc'};
+    function ordenar() {
+        const corpo = document.querySelector('table.clientes tbody');
+        if (!corpo || !ordem) return;
+        const linhas = [...corpo.querySelectorAll('tr[data-nome]')];
+        const sinal = ordem.sentido === 'asc' ? 1 : -1;
+        linhas.sort((a, b) => {
+            if (ordem.campo === 'nome') return sinal * a.dataset.nome.localeCompare(b.dataset.nome, 'pt-BR');
+            return sinal * (Number(a.dataset[ordem.campo]) - Number(b.dataset[ordem.campo])) || a.dataset.nome.localeCompare(b.dataset.nome, 'pt-BR');
+        });
+        const fim = document.getElementById('nenhum-filtro');
+        linhas.forEach(tr => corpo.insertBefore(tr, fim));
+        document.querySelectorAll('table.clientes th').forEach(th => {
+            const botao = th.querySelector('button[data-ordem]');
+            const ativo = botao && botao.dataset.ordem === ordem.campo;
+            if (ativo) th.setAttribute('aria-sort', ordem.sentido === 'asc' ? 'ascending' : 'descending'); else th.removeAttribute('aria-sort');
+            const icone = botao && botao.querySelector('i');
+            if (icone) icone.className = 'fa-solid ' + (ativo ? (ordem.sentido === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort');
+        });
+    }
+    document.querySelectorAll('table.clientes th button[data-ordem]').forEach(botao => botao.addEventListener('click', () => {
+        const campo = botao.dataset.ordem;
+        const inverso = s => (s === 'asc' ? 'desc' : 'asc');
+        ordem = {campo, sentido: ordem && ordem.campo === campo ? inverso(ordem.sentido) : PIOR_PRIMEIRO[campo]};
+        ordenar();
+    }));
+
+    // Atualiza os números a cada minuto sem recarregar a página: mantém rolagem, filtro e ordenação.
+    const PARTES = ['.kpis-md', 'table.clientes tbody', '.apps'];
+    async function atualizar() {
+        if (document.visibilityState !== 'visible') return;
+        try {
+            const resposta = await fetch(location.href, {credentials: 'same-origin', cache: 'no-store'});
+            if (resposta.redirected || !resposta.ok) { if (resposta.redirected) location.reload(); return; }
+            const novo = new DOMParser().parseFromString(await resposta.text(), 'text/html');
+            PARTES.forEach(seletor => {
+                const atual = document.querySelector(seletor), chegou = novo.querySelector(seletor);
+                if (atual && chegou) atual.innerHTML = chegou.innerHTML;
+            });
+            formatarDatas(document);
+            ordenar();
+            filtrar();
+        } catch (_) { /* sem rede: tenta de novo no próximo minuto */ }
+    }
+
+    formatarDatas(document);
+    setInterval(atualizar, 60000);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') atualizar(); });
 </script>
 </body>
 </html>

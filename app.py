@@ -164,8 +164,8 @@ def add_security_headers(response):
         "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; "
         "form-action 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net "
         "https://unpkg.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' "
-        "https://fonts.googleapis.com https://unpkg.com https://cdnjs.cloudflare.com; "
-        "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
+        "https://unpkg.com https://cdnjs.cloudflare.com; "
+        "font-src 'self' data: https://cdnjs.cloudflare.com; "
         "img-src 'self' data: https:; "
         "media-src 'self' https://assets.mixkit.co; connect-src 'self' https://api.ipify.org wss:"
     )
@@ -386,9 +386,13 @@ def menu_nexo():
     return g.menu_nexo
 
 
+# Site institucional da MD (link da tela de login).
+SITE_URL = os.environ.get('SITE_URL', 'https://www.mdsolucoes.eng.br')
+
+
 @app.context_processor
 def product_context():
-    return {'central_version': CENTRAL_VERSION, 'csrf_token': get_csrf_token, 'menu_nexo': menu_nexo}
+    return {'central_version': CENTRAL_VERSION, 'csrf_token': get_csrf_token, 'menu_nexo': menu_nexo, 'site_url': SITE_URL}
 
 
 @socketio.on('connect')
@@ -1080,7 +1084,8 @@ def hub_inicio():
         ver_como = request.args.get('ver_como', type=int) if master else None
         if master and not ver_como:
             return render_template('hub.html', modo='md', empresas=hub.visao_md(conn), total=hub.resumo_pulse(conn),
-                                   sem_empresa=hub.sem_empresa(conn), aplicativos=acessos.APLICATIVOS)
+                                   sem_empresa=hub.sem_empresa(conn), aplicativos=acessos.APLICATIVOS,
+                                   disponibilidade=hub.disponibilidade_mes(conn))
         if ver_como:
             # "Ver como cliente": a MD enxerga o Hub da conta principal da empresa, só para consulta.
             empresa = _empresa_ou_404(conn, ver_como)
