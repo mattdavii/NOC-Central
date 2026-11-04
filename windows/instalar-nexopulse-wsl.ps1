@@ -44,6 +44,34 @@ function Invoke-Nativo([scriptblock]$Comando) {
     try { & $Comando 2>$null } finally { $ErrorActionPreference = $anterior }
 }
 
+function Test-ReinicioPendente {
+    <# O Windows está esperando reiniciar para terminar de instalar um recurso (ex.: a plataforma de
+       máquina virtual do WSL). Enquanto isso, o Ubuntu não abre e o instalador não tem como seguir. #>
+    foreach ($chave in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending',
+                       'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired') {
+        if (Test-Path $chave) { return $true }
+    }
+    return $false
+}
+
+function Get-MensagemDistroPendente([string]$Distro, [bool]$Reiniciar) {
+    <# O que fazer quando a distribuição ainda não está pronta: com reinício pendente, reiniciar vem primeiro. #>
+    if ($Reiniciar) {
+        return @(
+            'FALTA REINICIAR O WINDOWS.',
+            "1. Reinicie o Windows agora (o WSL só funciona depois disso).",
+            "2. Depois de reiniciar, abra o '$Distro' pelo menu Iniciar e crie o usuário e a senha do Linux.",
+            "   Se o '$Distro' não aparecer no menu, rode no Terminal (Admin): wsl --install -d $Distro",
+            '3. Rode este mesmo comando de instalação de novo.'
+        )
+    }
+    return @(
+        "$Distro instalado.",
+        "1. Abra o '$Distro' pelo menu Iniciar e crie o usuário e a senha do Linux (anote a senha).",
+        '2. Feche o Ubuntu e rode este mesmo comando de instalação de novo.'
+    )
+}
+
 function Test-RedeEspelhadaSuportada([int]$Build) {
     # Rede espelhada exige Windows 11 22H2 (build 22621) ou mais novo.
     return $Build -ge 22621
@@ -145,8 +173,10 @@ function Invoke-Instalacao {
     $instaladas = (Invoke-Nativo { wsl.exe --list --quiet }) -replace "`0", '' | Where-Object { $_.Trim() }
     if (-not ($instaladas -contains $Distro)) {
         wsl.exe --install -d $Distro
-        Write-Host "`n$Distro foi instalado. Abra o '$Distro' pelo menu Iniciar, crie o usuário Linux" -ForegroundColor Yellow
-        Write-Host "e depois rode este script de novo (pode ser preciso reiniciar o Windows)." -ForegroundColor Yellow
+        Write-Host ''
+        foreach ($linha in (Get-MensagemDistroPendente -Distro $Distro -Reiniciar (Test-ReinicioPendente))) {
+            Write-Host $linha -ForegroundColor Yellow
+        }
         exit 0
     }
     Invoke-Nativo { wsl.exe --update } | Out-Null   # rede espelhada estável pede o WSL da Store (2.x)

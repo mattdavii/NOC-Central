@@ -30,6 +30,22 @@ Describe 'Versão do Windows' {
     }
 }
 
+Describe 'Ubuntu ainda não pronto' {
+    It 'com reinício pendente, manda reiniciar antes de abrir o Ubuntu' {
+        $m = Get-MensagemDistroPendente -Distro 'Ubuntu' -Reiniciar $true
+        $m[0] | Should -Be 'FALTA REINICIAR O WINDOWS.'
+        ($m -join ' ') | Should -Match 'wsl --install -d Ubuntu'
+    }
+    It 'sem reinício pendente, manda criar o usuário Linux' {
+        $m = Get-MensagemDistroPendente -Distro 'Ubuntu' -Reiniciar $false
+        ($m -join ' ') | Should -Match 'crie o usuário e a senha do Linux'
+        ($m -join ' ') | Should -Not -Match 'REINICIAR'
+    }
+    It 'Test-ReinicioPendente devolve um booleano' {
+        Test-ReinicioPendente | Should -BeOfType [bool]
+    }
+}
+
 Describe '.wslconfig' {
     It 'cria a seção [wsl2] num arquivo vazio' {
         $saida = @(Get-WslConfigAtualizado @())
