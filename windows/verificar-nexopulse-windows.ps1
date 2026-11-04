@@ -133,8 +133,12 @@ function Invoke-Verificacao {
     else {
         $info = Get-ScheduledTaskInfo -TaskName 'NexoPulse Edge (WSL)'
         $quando = if ($tarefa.Principal.LogonType -eq 'Interactive') { 'só depois que alguém entra no Windows' } else { 'ao ligar o Windows' }
-        if ($info.LastTaskResult -eq 0) { Add-Item 'Liga sozinho com o Windows' 'OK' "$quando; última execução $($info.LastRunTime)" }
-        else { Add-Item 'Liga sozinho com o Windows' 'AVISO' "última execução terminou com código $($info.LastTaskResult)" 'Reinicie o Windows e rode esta verificação de novo.' }
+        $mantem = ($tarefa.Actions | ForEach-Object { "$($_.Execute) $($_.Arguments)" }) -match 'sleep infinity'
+        if (-not $mantem) {
+            # Tarefa de instalações antigas: só acordava o Ubuntu, que desligava ~20 s depois.
+            Add-Item 'Liga sozinho com o Windows' 'FALHA' 'tarefa antiga: liga o Ubuntu e ele desliga sozinho segundos depois' 'Rode o instalador de novo (ele refaz a tarefa para manter o Ubuntu ligado).'
+        } elseif ($tarefa.State -eq 'Running') { Add-Item 'Liga sozinho com o Windows' 'OK' "$quando; mantendo o Ubuntu ligado desde $($info.LastRunTime)" }
+        else { Add-Item 'Liga sozinho com o Windows' 'FALHA' "a tarefa não está rodando (último código $($info.LastTaskResult)); o Ubuntu desliga sozinho" "Rode: Start-ScheduledTask -TaskName 'NexoPulse Edge (WSL)'  (se não ficar rodando, rode o instalador de novo)" }
         $boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
         if ($info.LastRunTime -lt $boot) { Add-Item 'Subiu depois do último boot' 'AVISO' "boot em $boot; tarefa rodou antes" 'A tarefa não rodou desde que o Windows ligou: o sensor pode só voltar quando alguém entrar.' }
     }
