@@ -63,10 +63,10 @@ def test_sem_acesso_esconde_card_e_menu(login):
 def test_visao_da_md(login):
     _cenario()
     page = login(1).get('/').get_data(as_text=True)
-    assert 'Todos os clientes da MD' in page
+    assert 'Precisa de atenção' in page and 'Últimos eventos' in page and 'até agora' in page
     assert 'Alfa Engenharia' in page and 'Beta Logistica' in page
     assert '/?ver_como=2' in page and '/?ver_como=3' in page
-    assert 'sensores sem empresa' in page  # o Sensor Solto
+    assert '1 sensor sem empresa' in page  # o Sensor Solto, como item de atenção
     conn = database.get_db()
     import hub
     linhas = {l['nome']: l for l in hub.visao_md(conn)}
@@ -189,3 +189,50 @@ def test_disponibilidade_de_site_instalado_no_meio_do_mes(client):
     conn.close()
     # 20 min fora em 2 h monitoradas (não no mês inteiro): 83,3%.
     assert 83.0 <= d['pct'] <= 83.4
+
+
+def test_inicio_da_md_lista_o_que_precisa_de_atencao(client):
+    import hub
+    _cenario()
+    conn = database.get_db()
+    conn.execute("UPDATE sensores SET agent_build='antigo' WHERE mac_id='BB:01'")
+    conn.commit()
+    itens = hub.precisa_de_atencao(conn, build_atual='novo')
+    conn.close()
+    titulos = [i['titulo'] for i in itens]
+    # Diagnósticos ativos (a queda do AA:02 não se repete como "Sensor offline"), sensor solto e versão antiga.
+    assert 'Site sem comunicação' in titulos and 'Perda de pacotes no provedor' in titulos
+    assert titulos.count('Sensor offline') == 0
+    assert '1 sensor sem empresa' in titulos and '1 sensor com versão antiga' in titulos
+    assert itens[0]['nivel'] == 'critico' and itens[-1]['nivel'] == 'info'
+    assert all(i['link'].startswith('/') for i in itens)
+
+
+def test_grafico_do_mes_tem_um_item_por_dia(client):
+    import hub
+    agora = time.time()
+    inicio, _ = hub.inicio_do_mes(agora)
+    conn = database.get_db()
+    conn.execute("INSERT INTO sensores (mac_id, nome_local, status, cliente_id) VALUES ('G1', 'Site', 'online', 2)")
+    conn.execute("INSERT INTO diagnosticos (sensor_mac, chave, causa, gravidade, inicio, fim, estado) "
+                 "VALUES ('G1', 'sem_comunicacao', 'Site sem comunicação', 'Crítica', ?, ?, 'resolvido')", (inicio + 60, inicio + 660))
+    conn.commit()
+    g = hub.disponibilidade_por_dia(conn, agora=agora)
+    conn.close()
+    assert 28 <= len(g['dias']) <= 31 and g['dias'][0]['dia'] == 1
+    assert g['dias'][0]['fora_s'] == min(600, int(agora - inicio - 60)) and g['dias'][0]['quedas'] == 1
+    assert sum(1 for d in g['dias'] if d.get('hoje')) == 1
+    assert all(d['pct'] is None for d in g['dias'] if d.get('futuro'))
+
+
+def test_eventos_recentes_juntam_log_e_diagnosticos(client):
+    import hub
+    _cenario()
+    conn = database.get_db()
+    conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES ('AA:02', 'Queda de Conexão', 'Crítica', 'Sensor parou de responder.')")
+    conn.commit()
+    eventos = hub.eventos_recentes(conn)
+    conn.close()
+    tipos = {(e['tipo'], e['titulo']) for e in eventos}
+    assert ('queda', 'Queda de Conexão') in tipos and ('alerta', 'Perda de pacotes no provedor') in tipos
+    assert [e['quando'] for e in eventos] == sorted((e['quando'] for e in eventos), reverse=True)

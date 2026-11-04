@@ -44,14 +44,16 @@
         .queda { font-size: .85rem; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap; }
         .abrir { margin-top: auto; align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 8px;
                  background: var(--blue); color: var(--bg-base); font-weight: 700; text-decoration: none; }
-        .kpis-md { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 22px; }
-        .kpis-md .kpi { background: var(--bg-card); border: 1px solid var(--border); padding: 14px 16px; }
         .filtros { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-bottom: 14px; }
         .filtros input[type="search"] { flex: 1 1 240px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-main); padding: 10px 12px; border-radius: 8px; font: inherit; }
         table.clientes { width: 100%; border-collapse: collapse; }
         table.clientes th { text-align: left; padding: 12px; border-bottom: 2px solid var(--border); color: var(--blue); font-size: .85em; }
         table.clientes td { padding: 12px; border-bottom: 1px solid var(--border); font-size: .9em; vertical-align: middle; }
         .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .apps-empresa { margin-top: 6px; }
+        .sites-linha { display: flex; flex-direction: column; gap: 2px; white-space: nowrap; }
+        table.clientes td[data-label="Última queda"] { min-width: 150px; }
+        table.clientes .acoes-linha { flex-direction: column; gap: 6px; }
         .chip { font-size: .75em; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
         .num-off { color: var(--status-crit); font-weight: 700; }
         .acoes-linha { display: flex; gap: 12px; flex-wrap: wrap; }
@@ -73,7 +75,91 @@
         table.clientes th button:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
         table.clientes th button i { font-size: .75em; opacity: .45; }
         table.clientes th[aria-sort] button i { opacity: 1; }
-        @media (max-width: 640px) { .apps { grid-template-columns: 1fr; } .kpi strong { font-size: 1.25rem; } }
+        /* Início da MD: atenção, mês e eventos ao redor da tabela de clientes. */
+        .painel-md { display: grid; gap: 18px; grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr);
+                     grid-template-areas: "mes atencao" "clientes eventos"; align-items: start; }
+        .resumo-mes { grid-area: mes; } .atencao { grid-area: atencao; } .eventos { grid-area: eventos; } .clientes-bloco { grid-area: clientes; }
+        .bloco { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; min-width: 0; }
+        .bloco-cab { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+        .bloco-cab h2 { margin: 0; font-size: 1rem; }
+        .bloco-nota { margin-left: auto; font-size: .78rem; color: var(--text-muted); }
+        .contagem { margin-left: auto; min-width: 24px; text-align: center; font-size: .8rem; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+                    background: color-mix(in srgb, var(--status-crit) 18%, transparent); color: var(--status-crit); }
+
+        .mes-topo { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 18px 28px; margin-bottom: 18px; }
+        .mes-numero strong { display: block; font-size: 3rem; line-height: 1; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+        .mes-numero span { display: block; margin-top: 6px; font-size: .88rem; color: var(--text-muted); }
+        .mes-numero.atencao strong { color: var(--status-warn); } .mes-numero.critico strong { color: var(--status-crit); }
+        .contadores { display: grid; grid-template-columns: repeat(4, auto); gap: 4px 26px; margin: 0; }
+        .contadores dt { font-size: .74rem; color: var(--text-muted); }
+        .contadores dd { margin: 2px 0 0; font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+        .grafico-mes { margin: 0; }
+        .grafico-mes figcaption { display: flex; flex-wrap: wrap; gap: 6px 12px; justify-content: space-between; font-size: .82rem; font-weight: 600; margin-bottom: 8px; }
+        .legenda-mini { font-weight: 400; color: var(--text-muted); }
+        .grafico-area { position: relative; }
+        .grafico-mes svg { display: block; width: 100%; height: auto; overflow: visible; }
+        .eixo-grade { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 4; }
+        .eixo-base { stroke: var(--border); stroke-width: 1; }
+        .eixo-txt { fill: var(--text-muted); font-size: 10px; font-family: inherit; }
+        .hoje-txt { fill: var(--text-main); font-weight: 700; }
+        .dia .alvo { fill: transparent; }
+        .dia .barra { fill: var(--blue); }
+        .dia .zero { fill: color-mix(in srgb, var(--status-ok) 55%, var(--border)); }
+        .dia:hover .alvo, .dia:focus-visible .alvo { fill: color-mix(in srgb, var(--blue) 10%, transparent); }
+        .dia:focus-visible { outline: none; }
+        .dia.futuro .eixo-txt { opacity: .55; }
+        .dica { position: absolute; top: -6px; transform: translate(-50%, -100%); pointer-events: none; white-space: nowrap; z-index: 2;
+                background: var(--surface-raised, var(--bg-input)); color: var(--text-main); border: 1px solid var(--border);
+                border-radius: 8px; padding: 6px 10px; font-size: .8rem; box-shadow: var(--shadow); }
+        .como-tabela { margin-top: 10px; font-size: .82rem; }
+        .como-tabela summary { cursor: pointer; color: var(--text-muted); }
+        .como-tabela table { margin-top: 8px; border-collapse: collapse; width: 100%; }
+        .como-tabela th, .como-tabela td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+
+        .lista-atencao { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+        .lista-atencao a { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; text-decoration: none; color: var(--text-main);
+                           background: var(--bg-input); border-left: 3px solid var(--border); }
+        .lista-atencao a:hover { background: color-mix(in srgb, var(--blue) 10%, var(--bg-input)); }
+        .lista-atencao .critico a { border-left-color: var(--status-crit); } .lista-atencao .critico .marca { color: var(--status-crit); }
+        .lista-atencao .atencao a { border-left-color: var(--status-warn); } .lista-atencao .atencao .marca { color: var(--status-warn); }
+        .lista-atencao .info .marca { color: var(--blue); }
+        .lista-atencao .texto { display: flex; flex-direction: column; min-width: 0; }
+        .lista-atencao .texto strong { font-size: .9rem; }
+        .lista-atencao .texto span { font-size: .8rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .lista-atencao .quando { margin-left: auto; font-size: .78rem; color: var(--text-muted); white-space: nowrap; }
+        .mais { margin: 10px 0 0; font-size: .82rem; color: var(--text-muted); }
+        .nada-pendente { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 10px;
+                         background: color-mix(in srgb, var(--status-ok) 10%, transparent); }
+        .nada-pendente i { color: var(--status-ok); font-size: 1.3rem; margin-top: 2px; }
+        .nada-pendente div { display: flex; flex-direction: column; gap: 2px; font-size: .88rem; }
+        .nada-pendente span { color: var(--text-muted); font-size: .82rem; }
+
+        .linha-tempo { list-style: none; margin: 0; padding: 0; position: relative; }
+        .linha-tempo::before { content: ''; position: absolute; left: 5px; top: 8px; bottom: 8px; width: 2px; background: var(--border); }
+        .linha-tempo li { position: relative; display: flex; gap: 14px; padding: 0 0 14px; }
+        .linha-tempo li:last-child { padding-bottom: 0; }
+        .linha-tempo .ponto { flex: none; width: 12px; height: 12px; margin-top: 4px; border-radius: 50%; background: var(--text-muted);
+                              box-shadow: 0 0 0 3px var(--bg-card); position: relative; }
+        .ev-queda .ponto { background: var(--status-crit); } .ev-volta .ponto { background: var(--status-ok); }
+        .ev-alerta .ponto { background: var(--status-warn); } .ev-acao .ponto { background: var(--blue); }
+        .linha-tempo p { margin: 0; }
+        .ev-titulo { font-size: .88rem; font-weight: 600; } .ev-titulo a { color: var(--text-main); text-decoration: none; }
+        .ev-titulo a:hover { text-decoration: underline; }
+        .ev-meta, .ev-detalhe { font-size: .78rem; color: var(--text-muted); }
+        .ev-detalhe { margin-top: 2px !important; overflow-wrap: anywhere; }
+
+        @media (max-width: 1080px) {
+            .painel-md { grid-template-columns: 1fr; grid-template-areas: "atencao" "mes" "clientes" "eventos"; }
+        }
+        table.clientes tr[hidden] { display: none !important; }
+        @media (max-width: 640px) {
+            .grafico-area { overflow-x: auto; overscroll-behavior-x: contain; }
+            .grafico-mes svg { min-width: 600px; }
+            .apps { grid-template-columns: 1fr; } .kpi strong { font-size: 1.25rem; }
+            .bloco { padding: 16px; } .mes-numero strong { font-size: 2.4rem; }
+            .contadores { grid-template-columns: repeat(2, auto); }
+        }
     </style>
 <script src="/static/brand.js?v=nexopulse-2"></script>
 </head>
@@ -95,24 +181,130 @@
     <div class="page-head">
         <div>
             <h1><i class="fa-solid fa-house"></i> Início</h1>
-            <p>Todos os clientes da MD: aplicativos contratados, sites e alertas ativos.</p>
+            <p>A operação da MD num só lugar: o que precisa de você agora, como vai o mês e o que aconteceu nos últimos dias.</p>
         </div>
     </div>
 
-    <div class="kpis-md">
-        <div class="kpi"><strong>{{ empresas|rejectattr('master')|list|length }}</strong><span>empresas clientes</span></div>
-        <div class="kpi"><strong class="status-ok">{{ total.online }}</strong><span>sites online</span></div>
-        <div class="kpi"><strong class="{{ 'num-off' if total.offline }}">{{ total.offline }}</strong><span>sites offline</span></div>
-        <div class="kpi"><strong class="{{ 'num-off' if total.total_diagnosticos }}">{{ total.total_diagnosticos }}</strong><span>alertas ativos</span></div>
-        {% if disponibilidade %}
-        <div class="kpi"><strong class="pct {{ disponibilidade.faixa }}">{{ pct(disponibilidade) }}</strong><span>disponibilidade em {{ disponibilidade.mes }}</span></div>
-        {% endif %}
-        {% if sem_empresa %}
-        <div class="kpi"><strong class="txt-warn">{{ sem_empresa }}</strong><span>sensores sem empresa (<a href="/sensores">alocar</a>)</span></div>
-        {% endif %}
-    </div>
+    <div class="painel-md">
+    <section class="bloco resumo-mes" id="resumo-mes" aria-labelledby="t-mes">
+        <header class="bloco-cab"><h2 id="t-mes">{{ grafico.mes|capitalize }} até agora</h2>
+            <span class="bloco-nota">todos os sites fora de manutenção</span></header>
+        <div class="mes-topo">
+            <div class="mes-numero {{ disponibilidade.faixa if disponibilidade else '' }}">
+                <strong>{% if disponibilidade %}{{ pct(disponibilidade) }}{% else %}—{% endif %}</strong>
+                <span>de disponibilidade{% if disponibilidade %}{% if disponibilidade.quedas %} · {{ disponibilidade.quedas }} queda{{ 's' if disponibilidade.quedas != 1 }}, {{ disponibilidade.fora_txt }} fora{% else %} · nenhuma queda{% endif %}{% endif %}</span>
+            </div>
+            <dl class="contadores">
+                <div><dt>Sites online</dt><dd class="{{ 'status-ok' if total.online }}">{{ total.online }}</dd></div>
+                <div><dt>Offline</dt><dd class="{{ 'num-off' if total.offline }}">{{ total.offline }}</dd></div>
+                <div><dt>Em manutenção</dt><dd>{{ total.manutencao }}</dd></div>
+                <div><dt>Empresas</dt><dd>{{ empresas|length }}</dd></div>
+            </dl>
+        </div>
 
-    <div class="card">
+        {% set dias = grafico.dias %}
+        {% set larg = 24 %}
+        {% set alto = 110 %}
+        {% set teto = [grafico.pior_s, 600]|max %}
+        <figure class="grafico-mes">
+            <figcaption>
+                <span>Tempo sem comunicação por dia</span>
+                <span class="legenda-mini">{% if grafico.dias_medidos %}{{ grafico.dias_sem_queda }} de {{ grafico.dias_medidos }} dia{{ 's' if grafico.dias_medidos != 1 }} sem queda{% endif %}</span>
+            </figcaption>
+            <div class="grafico-area">
+            <svg viewBox="0 0 {{ dias|length * larg + 44 }} {{ alto + 26 }}" role="img"
+                 aria-label="Tempo sem comunicação por dia em {{ grafico.mes }}; pior dia: {{ (grafico.pior_s // 60) }} minutos">
+                <line class="eixo-grade" x1="40" x2="{{ dias|length * larg + 44 }}" y1="8" y2="8"></line>
+                <text class="eixo-txt" x="34" y="12" text-anchor="end">{{ (teto // 60) }} min</text>
+                <line class="eixo-base" x1="40" x2="{{ dias|length * larg + 44 }}" y1="{{ alto + 8 }}" y2="{{ alto + 8 }}"></line>
+                <text class="eixo-txt" x="34" y="{{ alto + 11 }}" text-anchor="end">0</text>
+                {% for d in dias %}
+                {% set x = 44 + loop.index0 * larg %}
+                {% set h = ((d.fora_s / teto) * (alto - 2))|round(1) if d.fora_s else 0 %}
+                <g class="dia{% if d.futuro %} futuro{% elif d.pct is none %} sem-dado{% endif %}{% if d.hoje %} hoje{% endif %}"
+                   {% if not d.futuro %}tabindex="0" data-tip="{{ d.data }}{% if d.pct is none %}: sem sites monitorados{% elif d.fora_s %}: {{ d.fora_txt }} sem comunicação{% if d.quedas %}, {{ d.quedas }} queda{{ 's' if d.quedas != 1 }}{% endif %} ({{ ('%.1f' % d.pct)|replace('.', ',') }}%){% else %}: sem queda{% endif %}"{% endif %}>
+                    <rect class="alvo" x="{{ x }}" y="0" width="{{ larg }}" height="{{ alto + 26 }}"></rect>
+                    {% if h >= 6 %}
+                    <path class="barra" d="M{{ x + 5 }},{{ alto + 8 }} V{{ alto + 12 - h }} q0,-4 4,-4 h{{ larg - 18 }} q4,0 4,4 V{{ alto + 8 }} Z"></path>
+                    {% elif h %}
+                    <rect class="barra" x="{{ x + 5 }}" y="{{ alto + 8 - [h, 2]|max }}" width="{{ larg - 10 }}" height="{{ [h, 2]|max }}" rx="1"></rect>
+                    {% elif not d.futuro and d.pct is not none %}
+                    <rect class="zero" x="{{ x + 5 }}" y="{{ alto + 5 }}" width="{{ larg - 10 }}" height="3" rx="1.5"></rect>
+                    {% endif %}
+                    {% if d.dia == 1 or d.dia % 5 == 0 or d.hoje %}
+                    <text class="eixo-txt{% if d.hoje %} hoje-txt{% endif %}" x="{{ x + larg / 2 }}" y="{{ alto + 23 }}" text-anchor="middle">{{ 'hoje' if d.hoje else d.dia }}</text>
+                    {% endif %}
+                </g>
+                {% endfor %}
+            </svg>
+            <div class="dica" role="status" hidden></div>
+            </div>
+            <details class="como-tabela">
+                <summary>Ver em tabela</summary>
+                <table>
+                    <thead><tr><th>Dia</th><th>Sem comunicação</th><th>Quedas</th><th>Disponibilidade</th></tr></thead>
+                    <tbody>
+                    {% for d in dias if not d.futuro and d.pct is not none %}
+                    <tr><td>{{ d.data }}</td><td>{{ d.fora_txt or '—' }}</td><td>{{ d.quedas or '—' }}</td><td>{{ ('%.1f' % d.pct)|replace('.', ',') }}%</td></tr>
+                    {% else %}
+                    <tr><td colspan="4" class="vazio">Nenhum site monitorado neste mês ainda.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </details>
+        </figure>
+    </section>
+
+    <section class="bloco atencao" id="atencao" aria-labelledby="t-atencao">
+        <header class="bloco-cab"><h2 id="t-atencao">Precisa de atenção</h2>
+            {% if atencao %}<span class="contagem">{{ atencao|length }}</span>{% endif %}</header>
+        {% if atencao %}
+        <ul class="lista-atencao">
+            {% for i in atencao[:8] %}
+            <li class="{{ i.nivel }}">
+                <a href="{{ i.link }}">
+                    <span class="marca" aria-hidden="true"><i class="fa-solid {{ {'critico': 'fa-circle-exclamation', 'atencao': 'fa-triangle-exclamation', 'info': 'fa-circle-info'}[i.nivel] }}"></i></span>
+                    <span class="texto">
+                        <strong>{{ i.titulo }}</strong>
+                        <span>{{ i.site }}{% if i.empresa %} · {{ i.empresa }}{% endif %}</span>
+                    </span>
+                    {% if i.desde %}<span class="quando" data-ts="{{ i.desde }}"></span>{% endif %}
+                    <span class="sr-only">({{ {'critico': 'crítico', 'atencao': 'atenção', 'info': 'informativo'}[i.nivel] }})</span>
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
+        {% if atencao|length > 8 %}<p class="mais">E mais {{ atencao|length - 8 }}. Veja todos na <a href="/pulse">Operação</a>.</p>{% endif %}
+        {% else %}
+        <div class="nada-pendente">
+            <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+            <div><strong>Nada pendente agora</strong><span>Todos os sites estão comunicando e sem diagnóstico aberto.</span></div>
+        </div>
+        {% endif %}
+    </section>
+
+    <section class="bloco eventos" id="eventos" aria-labelledby="t-eventos">
+        <header class="bloco-cab"><h2 id="t-eventos">Últimos eventos</h2><span class="bloco-nota">7 dias</span></header>
+        {% if eventos %}
+        <ol class="linha-tempo">
+            {% for ev in eventos %}
+            <li class="ev-{{ ev.tipo }}">
+                <span class="ponto" aria-hidden="true"></span>
+                <div>
+                    <p class="ev-titulo">{% if ev.link %}<a href="{{ ev.link }}">{{ ev.titulo }}</a>{% else %}{{ ev.titulo }}{% endif %}</p>
+                    <p class="ev-meta">{% if ev.site %}{{ ev.site }} · {% endif %}<span data-ts="{{ ev.quando }}"></span></p>
+                    {% if ev.detalhe and ev.detalhe != ev.titulo %}<p class="ev-detalhe">{{ ev.detalhe }}</p>{% endif %}
+                </div>
+            </li>
+            {% endfor %}
+        </ol>
+        {% else %}
+        <p class="vazio">Nada registrado nos últimos 7 dias.</p>
+        {% endif %}
+    </section>
+
+    <section class="bloco clientes-bloco" aria-labelledby="t-clientes">
+        <header class="bloco-cab"><h2 id="t-clientes">Clientes</h2><span class="bloco-nota">{{ empresas|length }} empresa{{ 's' if empresas|length != 1 }}</span></header>
         <div class="filtros">
             <input type="search" id="filtro" placeholder="Filtrar por nome da empresa" aria-label="Filtrar clientes" oninput="filtrar()">
             <label class="switch-label"><input type="checkbox" id="so-problema" onchange="filtrar()"> Só com problema agora</label>
@@ -120,7 +312,6 @@
         <table class="clientes cards-mobile">
             <thead><tr>
                 <th><button type="button" data-ordem="nome">Empresa <i class="fa-solid fa-sort" aria-hidden="true"></i></button></th>
-                <th>Aplicativos</th>
                 <th><button type="button" data-ordem="offline">Sites <i class="fa-solid fa-sort" aria-hidden="true"></i></button></th>
                 <th><button type="button" data-ordem="disp">Disponibilidade no mês <i class="fa-solid fa-sort" aria-hidden="true"></i></button></th>
                 <th><button type="button" data-ordem="alertas">Alertas <i class="fa-solid fa-sort" aria-hidden="true"></i></button></th>
@@ -131,13 +322,13 @@
             <tr data-nome="{{ e.nome|lower }}" data-problema="{{ 1 if e.offline or e.alertas else 0 }}" data-master="{{ 1 if e.master else 0 }}"
                 data-offline="{{ e.offline }}" data-alertas="{{ e.alertas }}" data-disp="{{ e.disponibilidade.pct if e.disponibilidade else 101 }}"
                 data-queda="{{ e.ultima_queda.inicio if e.ultima_queda else 0 }}">
-                <td data-label="Empresa"><strong>{{ e.nome }}</strong>{% if e.master %} <span class="chip">Empresa Master</span>{% endif %}{% if not e.ativo %} <span class="chip vazio">inativa</span>{% endif %}</td>
-                <td data-label="Aplicativos"><div class="chips">
-                    {% for app, nome in aplicativos.items() if e.contrato[app] %}<span class="chip">{{ nome }}</span>{% else %}<span class="chip vazio">Nenhum</span>{% endfor %}
-                </div></td>
+                <td data-label="Empresa"><strong>{{ e.nome }}</strong>{% if e.master %} <span class="chip">Empresa Master</span>{% endif %}{% if not e.ativo %} <span class="chip vazio">inativa</span>{% endif %}
+                    <div class="chips apps-empresa" aria-label="Aplicativos contratados">
+                    {% for app, nome in aplicativos.items() if e.contrato[app] %}<span class="chip">{{ nome }}</span>{% else %}<span class="chip vazio">Nenhum aplicativo</span>{% endfor %}
+                    </div></td>
                 <td data-label="Sites">
                     {% if e.sites %}
-                    <span class="status-ok">{{ e.online }} online</span>{% if e.offline %} · <span class="num-off">{{ e.offline }} offline</span>{% endif %}{% if e.manutencao %} · {{ e.manutencao }} em manutenção{% endif %}
+                    <span class="sites-linha"><span class="status-ok">{{ e.online }} online</span>{% if e.offline %}<span class="num-off">{{ e.offline }} offline</span>{% endif %}{% if e.manutencao %}<span>{{ e.manutencao }} em manutenção</span>{% endif %}</span>
                     {% else %}<span class="vazio">sem sensores</span>{% endif %}
                 </td>
                 <td data-label="Disponibilidade no mês">{% if e.disponibilidade %}<span class="pct {{ e.disponibilidade.faixa }}" title="{{ e.disponibilidade.quedas }} queda(s), {{ e.disponibilidade.fora_txt }} sem comunicação">{{ pct(e.disponibilidade) }}</span>{% else %}<span class="vazio">—</span>{% endif %}</td>
@@ -149,11 +340,12 @@
                 </div></td>
             </tr>
             {% else %}
-            <tr><td colspan="7" class="vazio">Nenhuma empresa cadastrada ainda. Cadastre em <a href="/usuarios">Acessos</a>.</td></tr>
+            <tr><td colspan="6" class="vazio">Nenhuma empresa cadastrada ainda. Cadastre em <a href="/usuarios">Acessos</a>.</td></tr>
             {% endfor %}
-            <tr id="nenhum-filtro" hidden><td colspan="7" class="vazio">Nenhuma empresa com esse filtro.</td></tr>
+            <tr id="nenhum-filtro" hidden><td colspan="6" class="vazio">Nenhuma empresa com esse filtro.</td></tr>
             </tbody>
         </table>
+    </section>
     </div>
 
 {% else %}
@@ -299,7 +491,8 @@
     }));
 
     // Atualiza os números a cada minuto sem recarregar a página: mantém rolagem, filtro e ordenação.
-    const PARTES = ['.kpis-md', 'table.clientes tbody', '.apps'];
+    const PARTES = ['.mes-topo', '.grafico-mes figcaption', '.grafico-area svg', '.como-tabela table', '#atencao', '#eventos',
+                    'table.clientes tbody', '.apps'];
     async function atualizar() {
         if (document.visibilityState !== 'visible') return;
         try {
@@ -314,6 +507,25 @@
             ordenar();
             filtrar();
         } catch (_) { /* sem rede: tenta de novo no próximo minuto */ }
+    }
+
+    // Dica do gráfico do mês: passa o mouse (ou o foco do teclado) sobre um dia.
+    const areaGrafico = document.querySelector('.grafico-area');
+    if (areaGrafico) {
+        const dica = areaGrafico.querySelector('.dica');
+        const mostrar = alvo => {
+            const dia = alvo && alvo.closest('.dia[data-tip]');
+            if (!dia) { dica.hidden = true; return; }
+            const caixa = dia.getBoundingClientRect(), base = areaGrafico.getBoundingClientRect();
+            dica.textContent = dia.dataset.tip;
+            dica.hidden = false;
+            const meia = dica.offsetWidth / 2;
+            dica.style.left = Math.min(Math.max(caixa.left - base.left + caixa.width / 2, meia), base.width - meia) + 'px';
+        };
+        areaGrafico.addEventListener('mouseover', e => mostrar(e.target));
+        areaGrafico.addEventListener('mouseleave', () => { dica.hidden = true; });
+        areaGrafico.addEventListener('focusin', e => mostrar(e.target));
+        areaGrafico.addEventListener('focusout', () => { dica.hidden = true; });
     }
 
     formatarDatas(document);
