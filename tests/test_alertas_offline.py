@@ -128,8 +128,11 @@ def test_horario_do_alerta_e_o_de_quando_aconteceu(sensor):
     cli.post('/api/v2/medicoes', json={'mac_id': MAC, 'restantes': 0, 'itens': [_alerta(ts, 'e' * 32)]})
     conn = database.get_db()
     try:
-        agora_banco = conn.execute('SELECT CURRENT_TIMESTAMP AS t').fetchone()['t']
+        # Referência: um evento gravado agora pelo DEFAULT da coluna (o relógio de todo o histórico).
+        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes, origem_id) VALUES (?, 'ref', 'OK', 'ref', 'referencia-agora')", (MAC,))
+        agora_banco = conn.execute("SELECT data_hora FROM logs_ia WHERE origem_id='referencia-agora'").fetchone()['data_hora']
         registrado = conn.execute('SELECT data_hora FROM logs_ia WHERE origem_id=?', ('e' * 32,)).fetchone()['data_hora']
+        conn.rollback()
     finally:
         conn.close()
     para_dt = lambda v: v if hasattr(v, 'year') else __import__('datetime').datetime.fromisoformat(str(v))
