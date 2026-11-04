@@ -287,7 +287,9 @@ SENSOR_COLUMNS = ['last_seen TIMESTAMP', 'ip_gateway TEXT', 'ultima_rota TEXT', 
 CLIENT_COLUMNS = ['nome TEXT', 'cliente_pai_id INTEGER', 'ativo INTEGER DEFAULT 1', 'logo_url TEXT', 'telegram_token TEXT', 'telegram_chat_id TEXT', 'delegacao_acessos INTEGER DEFAULT 1',
                   # Verificação em duas etapas, sessões encerráveis e exigência de 2FA (esta na conta da empresa).
                   'totp_segredo TEXT', 'totp_ativo INTEGER DEFAULT 0', 'totp_ultimo_passo INTEGER', 'codigos_recuperacao TEXT',
-                  'sessao_versao INTEGER DEFAULT 0', 'exigir_2fa INTEGER DEFAULT 0']
+                  'sessao_versao INTEGER DEFAULT 0', 'exigir_2fa INTEGER DEFAULT 0',
+                  # Empresa Master: a dona da plataforma (MD Soluções). Uma só; a equipe Master pertence a ela.
+                  'empresa_master INTEGER DEFAULT 0']
 get_db = get_db_connection
 
 if __name__ == '__main__':

@@ -163,7 +163,7 @@
                 <select id="cliente_pai">
                     <option value="null">Selecione a empresa</option>
                     {% for c in clientes_pais %}
-                    <option value="{{ c.id }}">{{ c.nome }}</option>
+                    <option value="{{ c.id }}">{{ c.nome or c.usuario }}{% if c.empresa_master %} (Empresa Master){% endif %}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -231,14 +231,18 @@
                         <button class="btn-action" onclick='abrirAcessos({{ u.id|tojson }})' title="Acessos aos aplicativos"><i class="fa-solid fa-sliders"></i></button>
                         {% endif %}
                         <button class="btn-action" onclick="mudarSenha('{{ u.id }}')" title="Mudar Senha"><i class="fa-solid fa-key"></i></button>
+                        {% if not u.empresa_master %}
                         <button class="btn-action power" onclick="toggleStatus('{{ u.id }}')" title="Ativar / Desativar"><i class="fa-solid fa-power-off"></i></button>
+                        {% endif %}
                         {% if u.gerenciavel %}
                         <button class="btn-action" onclick='encerrarSessoes({{ u.id|tojson }}, {{ u.usuario|tojson }})' title="Encerrar as sessões abertas"><i class="fa-solid fa-right-from-bracket"></i></button>
                         {% if u.totp_ativo %}
                         <button class="btn-action" onclick='redefinir2fa({{ u.id|tojson }}, {{ u.usuario|tojson }})' title="Redefinir a verificação em duas etapas (celular perdido)"><i class="fa-solid fa-mobile-screen-button"></i></button>
                         {% endif %}
                         {% endif %}
+                        {% if not u.empresa_master %}
                         <button class="btn-action delete" onclick="deletarUsuario('{{ u.id }}')" title="Excluir Definitivamente"><i class="fa-solid fa-trash-can"></i></button>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -262,7 +266,7 @@
                 <tbody>
                 {% for e in empresas %}
                 <tr>
-                    <td><strong>{{ e.nome or e.usuario }}</strong>{% if not e.ativo %} <span class="app-chip vazio">inativa</span>{% endif %}</td>
+                    <td><strong>{{ e.nome or e.usuario }}</strong>{% if e.empresa_master %} <span class="app-chip">Empresa Master</span>{% endif %}{% if not e.ativo %} <span class="app-chip vazio">inativa</span>{% endif %}</td>
                     {% for app, nome in aplicativos.items() %}
                     <td class="centro" data-label="{{ nome }}"><input type="checkbox" aria-label="{{ nome }} para {{ e.nome or e.usuario }}" {{ 'checked' if e.contrato[app] }}
                         onchange='mudarContrato({{ e.id|tojson }}, {{ app|tojson }}, this)'></td>

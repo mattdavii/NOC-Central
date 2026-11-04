@@ -65,16 +65,16 @@ def cards(conn, empresa_id, acesso):
 
 def visao_md(conn):
     """Uma linha por empresa cliente: aplicativos contratados, sites e alertas ativos."""
-    empresas = conn.execute("SELECT id, nome, usuario, ativo FROM clientes WHERE role = 'Cliente' ORDER BY nome").fetchall()
+    empresas = conn.execute("SELECT id, nome, usuario, ativo, empresa_master FROM clientes WHERE role = 'Cliente' ORDER BY nome").fetchall()
     linhas = []
     for e in empresas:
         r = resumo_pulse(conn, e['id'])
-        linhas.append({'id': e['id'], 'nome': e['nome'] or e['usuario'], 'ativo': bool(e['ativo']),
+        linhas.append({'id': e['id'], 'nome': e['nome'] or e['usuario'], 'ativo': bool(e['ativo']), 'master': bool(e['empresa_master']),
                        'contrato': acessos.contrato(conn, e['id']), 'sites': r['sites'], 'online': r['online'],
                        'offline': r['offline'], 'manutencao': r['manutencao'], 'alertas': r['total_diagnosticos'],
                        'ultima_queda': r['ultima_queda']})
-    # Quem tem problema agora aparece primeiro.
-    return sorted(linhas, key=lambda l: (-(l['offline'] + l['alertas']), l['nome'].lower()))
+    # A Empresa Master no topo; depois, quem tem problema agora.
+    return sorted(linhas, key=lambda l: (not l['master'], -(l['offline'] + l['alertas']), l['nome'].lower()))
 
 
 def sem_empresa(conn):
