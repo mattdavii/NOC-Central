@@ -16,8 +16,13 @@
 	@hub path /hub /hub/* /entrar /login
 	redir @hub {$SITE_HUB_URL:https://nexopulse.mdsolucoes.eng.br} temporary
 
-	# Contato e endereço do Hub vêm das variáveis do Railway (SITE_WHATSAPP, SITE_EMAIL, SITE_HUB_URL).
-	templates /index.html
+	# Partes internas das páginas (o rodapé) não são servidas sozinhas.
+	@interno path /_*
+	respond @interno 404
+
+	# Contato, CNPJ e endereço do Hub vêm das variáveis do Railway (SITE_WHATSAPP, SITE_EMAIL, SITE_CNPJ, SITE_CIDADE, SITE_HUB_URL).
+	@paginas path / *.html
+	templates @paginas
 
 	header {
 		X-Content-Type-Options nosniff
@@ -26,11 +31,11 @@
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 		Strict-Transport-Security "max-age=31536000"
 	}
-	@estaticos path /img/*
+	@estaticos path /img/* /fontes/*
 	header @estaticos Cache-Control "public, max-age=604800"
-	header /index.html Cache-Control "no-cache"
+	header @paginas Cache-Control "no-cache"
 
-	try_files {path} /index.html
+	try_files {path} {path}.html /index.html
 	file_server
 	handle_errors {
 		rewrite * /index.html

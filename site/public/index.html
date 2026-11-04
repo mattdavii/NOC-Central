@@ -3,195 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MD Soluções Tecnológicas · Monitoramento de rede gerenciado</title>
-<meta name="description" content="A MD monitora a rede da sua empresa 24 horas por dia e diz onde está o problema quando a internet cai: rede interna, antena, provedor ou DNS.">
+<title>MD Soluções Tecnológicas | Manutenção, energia solar, redes, automação e software</title>
+<meta name="description" content="A MD Soluções Tecnológicas integra manutenção especializada, energia solar, redes, automação, segurança e software para operações mais eficientes, confiáveis e seguras. Conheça também o Ecossistema Nexo.">
 <meta name="theme-color" content="#082E56">
+<link rel="canonical" href="https://www.mdsolucoes.eng.br/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.mdsolucoes.eng.br/">
+<meta property="og:site_name" content="MD Soluções Tecnológicas">
 <meta property="og:title" content="MD Soluções Tecnológicas">
-<meta property="og:description" content="Monitoramento de rede gerenciado, 24/7, com diagnóstico da causa de cada queda.">
-<meta property="og:image" content="/img/diagnostico-recorte.jpg">
+<meta property="og:description" content="Tecnologia, inovação e inteligência para transformar operações.">
+<meta property="og:image" content="https://www.mdsolucoes.eng.br/img/diagnostico-recorte.jpg">
 <meta property="og:locale" content="pt_BR">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="/img/md-simbolo.png" type="image/png">
 <link rel="preload" href="/fontes/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fontes/ibm-plex-sans.woff2" as="font" type="font/woff2" crossorigin>
-<style>
-/* Fontes hospedadas no próprio site (licença OFL em /fontes): sem chamada a terceiros. */
-@font-face { font-family: 'Bricolage Grotesque'; src: url('/fontes/bricolage-grotesque.woff2') format('woff2'); font-weight: 500 800; font-display: swap; }
-@font-face { font-family: 'IBM Plex Sans'; src: url('/fontes/ibm-plex-sans.woff2') format('woff2'); font-weight: 400 600; font-display: swap; }
-:root {
-  --abismo: #082E56;      /* azul-profundo Nexo: títulos e a faixa escura */
-  --abismo-2: #0D3A68;
-  --papel: #F3F7FA;       /* fundo frio */
-  --papel-2: #E6EEF5;
-  --tinta: #1B3550;       /* texto corrido */
-  --tinta-suave: #4E6680;
-  --sinal: #05A9DC;       /* ciano: o sinal que percorre a rede */
-  --sinal-escuro: #0B7FA8;
-  --ok: #05A88C;          /* verde: camada normal */
-  --falha: #E39B2D;       /* âmbar: só para a causa encontrada */
-  --linha: #CFDCE8;
-  --raio: 10px;
-  --largura: 1180px;
-  --display: 'Bricolage Grotesque', system-ui, sans-serif;
-  --texto: 'IBM Plex Sans', system-ui, sans-serif;
-}
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
-body { margin: 0; background: var(--papel); color: var(--tinta); font: 400 1.0625rem/1.65 var(--texto); }
-img { max-width: 100%; display: block; }
-a { color: var(--sinal-escuro); }
-:focus-visible { outline: 3px solid var(--sinal); outline-offset: 3px; border-radius: 4px; }
-.miolo { width: min(var(--largura), 100% - 40px); margin-inline: auto; }
-h1, h2, h3 { font-family: var(--display); color: var(--abismo); margin: 0; letter-spacing: -0.012em; }
-h2 { font-size: clamp(1.9rem, 1.2rem + 2.4vw, 2.9rem); line-height: 1.08; font-weight: 800; max-width: 20ch; }
-h3 { font-size: 1.25rem; line-height: 1.25; font-weight: 700; }
-p { margin: 0; }
-.pular { position: absolute; left: -999px; }
-.pular:focus { left: 16px; top: 16px; z-index: 10; background: #fff; padding: 8px 12px; }
-
-/* ---------- topo */
-.topo { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--papel) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--linha); }
-.topo .miolo { display: flex; align-items: center; gap: 28px; min-height: 72px; }
-.topo .marca img { height: 44px; width: auto; }
-.topo nav { display: flex; gap: 22px; margin-left: auto; }
-.topo nav a { color: var(--tinta); text-decoration: none; font-weight: 500; font-size: .95rem; }
-.topo nav a:hover { color: var(--sinal-escuro); }
-.botao { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 20px; border-radius: 999px; font: 600 1rem/1 var(--texto); text-decoration: none; border: 2px solid transparent; transition: background .15s, color .15s, border-color .15s; white-space: nowrap; }
-.botao-cheio { background: var(--abismo); color: #fff; }
-.botao-cheio:hover { background: var(--abismo-2); }
-.botao-linha { border-color: var(--abismo); color: var(--abismo); }
-.botao-linha:hover { background: var(--abismo); color: #fff; }
-.topo .botao { padding: 10px 16px; font-size: .92rem; }
-
-/* ---------- abertura: o caminho da conexão */
-.abertura { padding: clamp(48px, 8vw, 104px) 0 clamp(40px, 6vw, 80px); }
-.abertura h1 { font-size: clamp(2.5rem, 1.3rem + 4.6vw, 4.9rem); line-height: 1; font-weight: 800; max-width: 15ch; letter-spacing: -0.022em; }
-.abertura .sub { margin-top: 26px; max-width: 58ch; font-size: clamp(1.06rem, 1rem + .3vw, 1.22rem); color: var(--tinta-suave); }
-.abertura .acoes { margin-top: 32px; display: flex; flex-wrap: wrap; gap: 12px; }
-
-.caminho { margin-top: clamp(48px, 7vw, 80px); position: relative; }
-.caminho ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); position: relative; }
-/* a linha do sinal, por trás dos nós */
-.caminho ol::before { content: ''; position: absolute; left: 10%; right: 10%; top: 27px; height: 3px; background: linear-gradient(90deg, var(--ok) 0 25%, var(--falha) 25% 26%, var(--linha) 26%); border-radius: 3px; }
-.camada { position: relative; text-align: center; padding: 0 6px; }
-.no { width: 57px; height: 57px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center; background: #fff; border: 3px solid var(--linha); position: relative; z-index: 1; }
-.no svg { width: 26px; height: 26px; stroke: var(--tinta-suave); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.camada.ok .no { border-color: var(--ok); }
-.camada.ok .no svg { stroke: var(--ok); }
-.camada.causa .no { border-color: var(--falha); background: #FFF6E8; }
-.camada.causa .no svg { stroke: #B5730F; }
-.camada.causa .no::after { content: ''; position: absolute; inset: -11px; border-radius: 50%; border: 2px solid var(--falha); opacity: 0; animation: alerta 1.8s ease-out 2.4s 3; }
-.camada h3 { margin-top: 14px; font-size: 1.05rem; }
-.camada .estado { display: block; margin-top: 2px; font-size: .88rem; color: var(--tinta-suave); }
-.camada.ok .estado { color: #04806B; font-weight: 600; }
-.camada.causa .estado { color: #A4650A; font-weight: 600; }
-.pulso { position: absolute; top: 21px; left: 10%; width: 15px; height: 15px; border-radius: 50%; background: var(--sinal); box-shadow: 0 0 0 6px color-mix(in srgb, var(--sinal) 25%, transparent); z-index: 2; animation: percorre 2.2s cubic-bezier(.45,.05,.3,1) .5s both; }
-@keyframes percorre { from { left: 10%; opacity: 0; } 12% { opacity: 1; } to { left: calc(30% - 7px); opacity: 0; } }
-@keyframes alerta { 0% { opacity: .9; transform: scale(.85); } 100% { opacity: 0; transform: scale(1.35); } }
-.laudo { margin: 34px auto 0; max-width: 640px; background: #fff; border: 1px solid var(--linha); border-left: 4px solid var(--falha); border-radius: var(--raio); padding: 18px 22px; }
-.laudo strong { color: var(--abismo); }
-.laudo p + p { margin-top: 6px; color: var(--tinta-suave); font-size: .95rem; }
-
-/* ---------- seções */
-.secao { padding: clamp(64px, 9vw, 120px) 0; }
-.secao > .miolo > p.intro { margin-top: 18px; max-width: 60ch; color: var(--tinta-suave); font-size: 1.1rem; }
-.dupla { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 6vw, 88px); align-items: start; }
-
-.dores { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--linha); }
-.dores li { display: grid; grid-template-columns: 15ch 1fr; gap: 24px; padding: 20px 0; border-bottom: 1px solid var(--linha); }
-.dores b { font-family: var(--display); font-weight: 700; color: var(--abismo); font-size: 1.1rem; line-height: 1.3; }
-
-.passos3 { margin-top: 48px; display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(24px, 4vw, 56px); }
-.passos3 h3 { font-size: 1.6rem; }
-.passos3 h3::before { content: ''; display: block; width: 36px; height: 3px; background: var(--sinal); margin-bottom: 16px; border-radius: 2px; }
-.passos3 p { margin-top: 10px; color: var(--tinta-suave); }
-
-/* faixa escura: o que a equipe vê */
-.escura { background: var(--abismo); color: #D6E4F1; }
-.escura h2, .escura h3 { color: #fff; }
-.escura .intro { color: #A9C1D8 !important; }
-.tela { margin-top: 44px; border-radius: 14px; overflow: hidden; border: 1px solid #1E4E7E; box-shadow: 0 30px 60px -30px rgba(0,0,0,.6); }
-.legenda { margin-top: 12px; font-size: .88rem; color: #8FAAC4; }
-.monitora { margin-top: 64px; display: grid; grid-template-columns: 1fr 1fr minmax(0, 1.1fr); gap: clamp(28px, 4vw, 56px); align-items: start; }
-.monitora ul { margin: 14px 0 0; padding-left: 1.1em; }
-.monitora li { margin-top: 8px; }
-.monitora li::marker { color: var(--sinal); }
-.mensagem { background: #0F4170; border: 1px solid #23598D; border-radius: 16px 16px 16px 4px; padding: 18px 20px; font-size: .95rem; color: #E3EEF8; }
-.mensagem .de { font-weight: 600; color: #7FD3F0; font-size: .85rem; }
-.mensagem p { margin-top: 8px; }
-.mensagem .titulo { font-weight: 700; color: #FFD18A; }
-.mensagem .hora { display: block; text-align: right; font-size: .78rem; color: #8FAAC4; margin-top: 8px; }
-
-.segmentos { margin-top: 44px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 clamp(32px, 6vw, 80px); }
-.segmentos div { padding: 22px 0; border-top: 1px solid var(--linha); }
-.segmentos p { margin-top: 6px; color: var(--tinta-suave); }
-
-.cuidamos { margin-top: 44px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px clamp(28px, 4vw, 56px); }
-.cuidamos p { margin-top: 6px; color: var(--tinta-suave); font-size: 1rem; }
-.cuidamos h3 { font-size: 1.12rem; }
-
-/* família Nexo */
-.familia { background: #fff; border-block: 1px solid var(--linha); }
-.apps { margin-top: 44px; display: grid; gap: 0; }
-.app { display: grid; grid-template-columns: 220px 1fr auto; gap: 28px; align-items: center; padding: 24px 0; border-top: 1px solid var(--linha); }
-.app:last-child { border-bottom: 1px solid var(--linha); }
-.app img { height: 46px; width: auto; }
-.app img.pulse { height: 50px; }
-.app p { color: var(--tinta-suave); }
-.app p b { color: var(--abismo); font-weight: 600; }
-.situacao { font-size: .85rem; font-weight: 600; padding: 5px 12px; border-radius: 999px; white-space: nowrap; }
-.situacao.pronto { color: #04806B; background: #E1F5F0; }
-.situacao.breve { color: var(--tinta-suave); background: var(--papel-2); }
-
-.passos { margin: 44px 0 0; padding: 0; list-style: none; counter-reset: passo; display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(24px, 4vw, 56px); }
-.passos li { counter-increment: passo; }
-.passos li::before { content: counter(passo); display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--abismo); font: 700 1.15rem/1 var(--display); color: var(--abismo); margin-bottom: 16px; }
-.passos p { margin-top: 8px; color: var(--tinta-suave); }
-
-/* contato */
-.contato { background: linear-gradient(120deg, var(--abismo) 0%, #0A4A6E 60%, #06706A 100%); color: #DCEAF5; }
-.contato h2 { color: #fff; max-width: 18ch; }
-.contato .miolo { display: grid; grid-template-columns: 1.2fr 1fr; gap: 40px; align-items: end; }
-.contato .intro { color: #BBD3E6 !important; }
-.contato .acoes { display: flex; flex-wrap: wrap; gap: 12px; justify-content: flex-end; }
-.contato .botao-cheio { background: #fff; color: var(--abismo); }
-.contato .botao-cheio:hover { background: #E3F2FA; }
-.contato .botao-linha { border-color: #fff; color: #fff; }
-.contato .botao-linha:hover { background: #fff; color: var(--abismo); }
-
-.rodape { padding: 36px 0 44px; font-size: .9rem; color: var(--tinta-suave); }
-.rodape .miolo { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: center; justify-content: space-between; }
-.rodape img { height: 34px; width: auto; }
-
-/* ---------- celular */
-@media (max-width: 960px) {
-  .topo nav { display: none; }
-  .topo .miolo { justify-content: space-between; }
-  .dupla, .monitora, .contato .miolo { grid-template-columns: 1fr; }
-  .contato .acoes { justify-content: flex-start; }
-  .app { grid-template-columns: 1fr auto; }
-  .app p { grid-column: 1 / -1; }
-}
-@media (max-width: 720px) {
-  .passos3, .segmentos, .cuidamos, .passos { grid-template-columns: 1fr; }
-  .dores li { grid-template-columns: 1fr; gap: 4px; }
-  .topo .marca img { height: 32px; }
-  .topo .botao { padding: 9px 13px; font-size: .85rem; }
-  /* o caminho vira vertical */
-  .caminho ol { grid-template-columns: 1fr; gap: 18px; }
-  .caminho ol::before { left: 27px; right: auto; top: 28px; bottom: 28px; width: 3px; height: auto; background: linear-gradient(180deg, var(--ok) 0 24%, var(--falha) 24% 25%, var(--linha) 25%); }
-  .camada { display: grid; grid-template-columns: 57px 1fr; gap: 0 16px; text-align: left; align-items: center; padding: 0; }
-  .camada h3 { margin: 0; }
-  .camada .estado { grid-column: 2; }
-  .camada .no { grid-row: span 2; margin: 0; }
-  .pulso { left: 21px; top: 21px; animation-name: desce; }
-  @keyframes desce { from { top: 21px; opacity: 0; } 12% { opacity: 1; } to { top: 96px; opacity: 0; } }
-}
-@media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  .pulso { display: none; }
-  .camada.causa .no::after { animation: none; opacity: .6; transform: scale(1.15); }
-}
-</style>
+<link rel="stylesheet" href="/estilo.css?v=2">
+<script type="application/ld+json">
+{{ "{" }}"@context":"https://schema.org","@type":"Organization","name":"MD Soluções Tecnológicas","url":"https://www.mdsolucoes.eng.br/","logo":"https://www.mdsolucoes.eng.br/img/md-logo.png","slogan":"Conectando inovação, tecnologia e inteligência ao futuro."{{ with env "SITE_EMAIL" }},"email":"{{ . }}"{{ end }}{{ with env "SITE_WHATSAPP" }},"telephone":"+{{ . }}"{{ end }}{{ with env "SITE_CNPJ" }},"taxID":"{{ . }}"{{ end }}{{ "}" }}
+</script>
 </head>
 <body>
 <a class="pular" href="#conteudo">Pular para o conteúdo</a>
@@ -200,215 +30,159 @@ p { margin: 0; }
   <div class="miolo">
     <a class="marca" href="/" aria-label="MD Soluções Tecnológicas, início"><img src="/img/md-logo.png" alt="MD Soluções Tecnológicas" width="640" height="227"></a>
     <nav aria-label="Seções">
-      <a href="#como-funciona">Como funciona</a>
-      <a href="#para-quem">Para quem é</a>
-      <a href="#familia-nexo">Família Nexo</a>
+      <a href="#quem-somos">A MD</a>
+      <a href="#o-que-fazemos">O que fazemos</a>
+      <a href="#nexo">Ecossistema Nexo</a>
+      <a href="/nexopulse">NexoPulse</a>
       <a href="#contato">Contato</a>
     </nav>
-    <a class="botao botao-linha" href="{{ env "SITE_HUB_URL" | default "https://nexopulse.mdsolucoes.eng.br" }}">Entrar no NexoHub</a>
+    <a class="botao botao-linha" href="{{ env "SITE_HUB_URL" | default "https://hub.mdsolucoes.eng.br" }}">Entrar no NexoHub</a>
   </div>
 </header>
 
 <main id="conteudo">
-  <section class="abertura">
+  <section class="abertura-md">
     <div class="miolo">
-      <h1>Quando a internet cai, a gente diz onde está o problema.</h1>
-      <p class="sub">A MD Soluções Tecnológicas monitora a rede da sua empresa 24 horas por dia. Um sensor no seu local mede a conexão o tempo todo, e a nossa equipe identifica a causa de cada queda, com as medições como prova.</p>
-      <div class="acoes">
-        <a class="botao botao-cheio" href="#contato">Agendar uma avaliação</a>
-        <a class="botao botao-linha" href="#como-funciona">Ver como funciona</a>
+      <div>
+        <h1>Tecnologia, inovação e inteligência para transformar operações.</h1>
+        <p class="sub">A MD Soluções Tecnológicas desenvolve e implementa soluções que unem manutenção especializada, infraestrutura, automação e software, para processos mais eficientes, sistemas mais confiáveis e operações mais seguras.</p>
+        <div class="acoes">
+          <a class="botao botao-cheio" href="#contato">Fale com a MD</a>
+          <a class="botao botao-linha" href="#o-que-fazemos">Ver o que fazemos</a>
+        </div>
       </div>
-
-      <figure class="caminho" aria-labelledby="laudo-titulo">
-        <span class="pulso" aria-hidden="true"></span>
-        <ol>
-          <li class="camada ok">
-            <span class="no" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 17h.01M11 17h.01M8 14V9a4 4 0 0 1 8 0v5"/></svg></span>
-            <h3>Rede interna</h3><span class="estado">Normal</span>
-          </li>
-          <li class="camada causa">
-            <span class="no" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10a8 8 0 0 1 16 0H4z"/><path d="M12 10v8M8 21h8"/></svg></span>
-            <h3>Antena Starlink</h3><span class="estado">Causa encontrada</span>
-          </li>
-          <li class="camada">
-            <span class="no" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12a7 7 0 0 1 14 0M8.5 12a3.5 3.5 0 0 1 7 0"/><circle cx="12" cy="12" r="1"/><path d="M12 13v8"/></svg></span>
-            <h3>Provedor</h3><span class="estado">Afetado pela antena</span>
-          </li>
-          <li class="camada">
-            <span class="no" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></span>
-            <h3>Internet</h3><span class="estado">Afetada pela antena</span>
-          </li>
-          <li class="camada">
-            <span class="no" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="16" r="3"/><path d="m20.5 18.5 1.5 1.5"/></svg></span>
-            <h3>DNS</h3><span class="estado">Afetado pela antena</span>
-          </li>
-        </ol>
-        <figcaption class="laudo">
-          <p id="laudo-titulo"><strong>Antena da Fazenda Boa Vista obstruída desde 20h31.</strong></p>
-          <p>6% de obstrução no campo de visão. Próximo passo: verificar árvores ou estruturas na frente da antena. A rede interna está normal; o provedor, a internet e o DNS só caíram por causa dela.</p>
-        </figcaption>
-      </figure>
+    <svg class="rede-md" viewBox="-40 20 520 350" role="img" aria-label="A MD no centro, ligada às suas frentes: sistemas elétricos, energia solar, redes, automação e IoT, segurança, software e IA, e consultoria.">
+      <line class="fio" x1="220" y1="200" x2="220.0" y2="57.5"/>
+      <line class="fio" x1="220" y1="200" x2="337.3" y2="111.2"/>
+      <line class="fio" x1="220" y1="200" x2="366.2" y2="231.7"/>
+      <line class="fio" x1="220" y1="200" x2="285.1" y2="328.4"/>
+      <line class="fio" x1="220" y1="200" x2="154.9" y2="328.4"/>
+      <line class="fio" x1="220" y1="200" x2="73.8" y2="231.7"/>
+      <line class="fio" x1="220" y1="200" x2="102.7" y2="111.2"/>
+      <line class="fio-sinal" x1="220" y1="200" x2="220.0" y2="57.5" style="animation-delay:0.50s"/>
+      <line class="fio-sinal" x1="220" y1="200" x2="337.3" y2="111.2" style="animation-delay:0.68s"/>
+      <line class="fio-sinal" x1="220" y1="200" x2="366.2" y2="231.7" style="animation-delay:0.86s"/>
+      <line class="fio-sinal" x1="220" y1="200" x2="285.1" y2="328.4" style="animation-delay:1.04s"/>
+      <line class="fio-sinal" x1="220" y1="200" x2="154.9" y2="328.4" style="animation-delay:1.22s"/>
+      <line class="fio-sinal" x1="220" y1="200" x2="73.8" y2="231.7" style="animation-delay:1.40s"/>
+      <line class="fio-sinal" x1="220" y1="200" x2="102.7" y2="111.2" style="animation-delay:1.58s"/>
+      <circle class="no-frente" cx="220.0" cy="57.5" r="9"/>
+      <circle class="no-frente" cx="337.3" cy="111.2" r="9"/>
+      <circle class="no-frente" cx="366.2" cy="231.7" r="9"/>
+      <circle class="no-frente" cx="285.1" cy="328.4" r="9"/>
+      <circle class="no-frente" cx="154.9" cy="328.4" r="9"/>
+      <circle class="no-frente" cx="73.8" cy="231.7" r="9"/>
+      <circle class="no-frente" cx="102.7" cy="111.2" r="9"/>
+      <circle class="no-centro" cx="220" cy="200" r="46"/>
+      <text class="rotulo-centro" x="220" y="209" text-anchor="middle">MD</text>
+      <text x="220.0" y="39.5" text-anchor="middle">Sistemas elétricos</text>
+      <text x="353.3" y="116.2" text-anchor="start">Energia solar</text>
+      <text x="382.2" y="236.7" text-anchor="start">Redes</text>
+      <text x="285.1" y="356.4" text-anchor="middle">Automação e IoT</text>
+      <text x="154.9" y="356.4" text-anchor="middle">Segurança</text>
+      <text x="57.8" y="236.7" text-anchor="end">Software e IA</text>
+      <text x="86.7" y="116.2" text-anchor="end">Consultoria</text>
+    </svg>
     </div>
   </section>
 
-  <section class="secao" aria-labelledby="desafio">
+  <section class="secao quem" id="quem-somos" aria-labelledby="t-quem" style="padding-top:0">
     <div class="miolo dupla">
-      <div>
-        <h2 id="desafio">Cada minuto sem conexão custa, e ninguém sabe dizer por quê.</h2>
-        <p class="intro" style="margin-top:18px;color:var(--tinta-suave);max-width:46ch">Vendas paradas, sistemas fora do ar, equipe sem trabalhar. A primeira pergunta é sempre a mesma: é aqui dentro, é o provedor ou é a antena?</p>
+      <h2 id="t-quem">Soluções que conectam pessoas, equipamentos e informações.</h2>
+      <div class="texto">
+        <p>A MD Soluções Tecnológicas é especializada no desenvolvimento e na implementação de soluções tecnológicas, integrando inovação, automação, infraestrutura, manutenção especializada e inteligência digital.</p>
+        <p>Criamos soluções que tornam processos mais eficientes, sistemas mais confiáveis e operações mais seguras, combinando conhecimento técnico, tecnologias modernas e ferramentas inteligentes.</p>
+        <p>Nosso propósito é transformar desafios operacionais em oportunidades de inovação, com soluções personalizadas para cada operação.</p>
       </div>
-      <ul class="dores">
-        <li><b>Você descobre por último</b><span>A queda aparece quando alguém reclama, não quando começou.</span></li>
-        <li><b>Técnico às cegas</b><span>A visita acontece sem saber se o problema é no local ou fora dele.</span></li>
-        <li><b>Provedor sem prova</b><span>"Do nosso lado está tudo ok", e sem medições fica difícil cobrar.</span></li>
-        <li><b>Problemas que voltam</b><span>Instabilidades curtas se repetem e ninguém consegue registrar.</span></li>
+    </div>
+  </section>
+
+  <section class="secao familia" id="o-que-fazemos" aria-labelledby="t-fazemos">
+    <div class="miolo">
+      <h2 id="t-fazemos">O que fazemos</h2>
+      <p class="intro">Serviços especializados e soluções integradas em diferentes frentes tecnológicas, com uma mesma equipe olhando para a sua operação inteira.</p>
+      <ul class="frentes">
+        <li><h3>Manutenção e sistemas elétricos</h3><p>Manutenção preventiva, preditiva e corretiva, inspeções, ensaios técnicos, diagnóstico de falhas e suporte a instalações elétricas.</p></li>
+        <li><h3>Energia solar e infraestrutura energética</h3><p>Operação e manutenção (O&amp;M), inspeções, monitoramento e diagnósticos em usinas fotovoltaicas.</p></li>
+        <li><h3>Redes e conectividade</h3><p>Implantação, configuração, manutenção e monitoramento de redes corporativas, infraestrutura de comunicação e sistemas de conectividade.</p><a class="liga" href="/nexopulse">Monitoramento com o NexoPulse</a></li>
+        <li><h3>Automação e Internet das Coisas</h3><p>Integração de sensores, dispositivos inteligentes e sistemas de supervisão para otimizar processos.</p></li>
+        <li><h3>Segurança tecnológica</h3><p>Soluções de proteção, supervisão e monitoramento de infraestruturas e ambientes tecnológicos.</p></li>
+        <li><h3>Software e inteligência artificial</h3><p>Plataformas digitais, aplicações web, dashboards, sistemas de gestão e ferramentas inteligentes para automação e análise de dados.</p><a class="liga" href="#nexo">Conheça o Ecossistema Nexo</a></li>
+        <li><h3>Consultoria e soluções sob medida</h3><p>Levantamento de necessidades, diagnósticos técnicos e implantação das tecnologias adequadas a cada operação.</p></li>
       </ul>
     </div>
   </section>
 
-  <section class="secao" id="como-funciona" aria-labelledby="como" style="padding-top:0">
+  <section class="secao" id="nexo" aria-labelledby="t-nexo">
     <div class="miolo">
-      <h2 id="como">A MD monitora, diagnostica e age pela sua rede.</h2>
-      <div class="passos3">
-        <div>
-          <h3>Monitoramos</h3>
-          <p>Instalamos um sensor na sua rede, que mede a conexão a cada poucos segundos. Nossa equipe acompanha todos os seus locais, 24 horas por dia.</p>
-        </div>
-        <div>
-          <h3>Diagnosticamos</h3>
-          <p>Não paramos no "caiu". Identificamos em que ponto está o problema: rede interna, antena, provedor ou DNS, com as medições como prova.</p>
-        </div>
-        <div>
-          <h3>Agimos</h3>
-          <p>Você é avisado na hora, com a causa e o que está sendo feito. Acionamos o provedor com os dados em mãos e, se contratado, levamos o suporte até você.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="secao escura" aria-labelledby="vemos">
-    <div class="miolo">
-      <h2 id="vemos">O que a nossa equipe vê quando a antena da fazenda fica obstruída.</h2>
-      <p class="intro" style="margin-top:18px;max-width:60ch">Cada camada da conexão com o seu estado, a leitura da antena e a linha do tempo com a causa e a ação recomendada.</p>
-      <div class="tela"><img src="/img/diagnostico-recorte.jpg" alt="Tela da plataforma NexoPulse: diagnóstico de rede com a rede local normal e a Starlink em estado crítico, leitura da antena com 6% de obstrução e linha do tempo explicando a causa." width="1600" height="529" loading="lazy"></div>
-      <p class="legenda">Plataforma NexoPulse, com dados de demonstração.</p>
-
-      <div class="monitora">
-        <div>
-          <h3>Sua conexão</h3>
-          <ul>
-            <li>Tempo de resposta, oscilação e perda de dados, do equipamento local até a internet.</li>
-            <li>DNS verificado à parte, separando falha de configuração de bloqueio.</li>
-            <li>Caminho da conexão, apontando o trecho que piorou.</li>
-            <li>Equipamentos da rede, câmeras e serviços importantes do seu negócio.</li>
-          </ul>
-        </div>
-        <div>
-          <h3>Internet via satélite</h3>
-          <ul>
-            <li>Obstrução e quedas da última hora, com a causa de cada uma.</li>
-            <li>Alinhamento da antena, com o desvio em graus.</li>
-            <li>Qualidade até a estação da Starlink.</li>
-            <li>Alertas da própria antena.</li>
-          </ul>
-        </div>
-        <div>
-          <h3>Você fica sabendo assim</h3>
-          <div class="mensagem" role="img" aria-label="Exemplo de alerta no Telegram">
-            <span class="de">MD Soluções · Alertas da sua empresa</span>
-            <p class="titulo">Starlink obstruída</p>
-            <p>Starlink do site Fazenda Boa Vista com 6% de obstrução desde 20h31. Verificar árvores ou estruturas no campo de visão da antena.</p>
-            <span class="hora">20:33</span>
-          </div>
-          <p style="margin-top:14px;font-size:.95rem;color:#A9C1D8">Só avisamos o que foi confirmado, e avisamos de novo quando normaliza.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="secao" id="para-quem" aria-labelledby="quem">
-    <div class="miolo">
-      <h2 id="quem">Para empresas que não podem ficar sem internet.</h2>
-      <div class="segmentos">
-        <div><h3>Comércio e varejo</h3><p>Caixas, maquininhas e sistemas de venda sempre conectados, em uma loja ou em toda a rede.</p></div>
-        <div><h3>Agronegócio</h3><p>Fazendas e unidades remotas com Starlink acompanhadas de perto, mesmo longe de tudo.</p></div>
-        <div><h3>Saúde</h3><p>Clínicas e consultórios com agenda, prontuário e sistemas online sem surpresas.</p></div>
-        <div><h3>Empresas com filiais</h3><p>Todas as unidades num só acompanhamento, vendo onde está cada problema.</p></div>
-      </div>
-
-      <h2 style="margin-top:clamp(64px,9vw,112px)">Nós cuidamos de tudo. Você cuida do seu negócio.</h2>
-      <div class="cuidamos">
-        <div><h3>Implantação pela MD</h3><p>Nossa equipe instala e configura o sensor. Você não precisa de conhecimento técnico.</p></div>
-        <div><h3>Manutenção contínua</h3><p>Atualizamos e mantemos o monitoramento funcionando, sem interromper a sua operação.</p></div>
-        <div><h3>Nada se perde</h3><p>Se a internet cair, as medições e os alertas ficam guardados no sensor e chegam depois, com o horário certo.</p></div>
-        <div><h3>Suporte presencial</h3><p>Opcional: quando for preciso ir ao local, nossa equipe vai, com prazo definido em contrato.</p></div>
-        <div><h3>Seus dados protegidos</h3><p>Cada sensor tem uma chave própria, e você acessa apenas as informações da sua empresa.</p></div>
-        <div><h3>Sob medida</h3><p>Alertas, relatórios e atendimento ajustados à realidade do seu negócio.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="secao familia" id="familia-nexo" aria-labelledby="nexo">
-    <div class="miolo">
-      <h2 id="nexo">Tecnologia própria: a Família Nexo.</h2>
-      <p class="intro">Para prestar um serviço de mais qualidade, a MD desenvolve as próprias ferramentas. Elas evoluem conforme as necessidades dos nossos clientes, sem depender de terceiros.</p>
+      <h2 id="t-nexo">Ecossistema Nexo: as plataformas próprias da MD.</h2>
+      <p class="intro">Desenvolvemos uma família de plataformas para conectar informações, automatizar processos e dar mais inteligência à operação. O NexoHub é a porta de entrada: um acesso só para todas as soluções digitais da MD.</p>
       <div class="apps">
         <div class="app">
           <img src="/img/nexohub-claro.svg" alt="NexoHub" width="220" height="46">
-          <p><b>O portal do cliente.</b> Um login só para acompanhar todos os serviços contratados com a MD.</p>
+          <p><b>O portal do cliente.</b> Um login só para acompanhar os serviços e as plataformas contratados com a MD.</p>
           <span class="situacao pronto">Disponível</span>
         </div>
         <div class="app">
           <img class="pulse" src="/img/nexopulse-claro.svg" alt="NexoPulse" width="220" height="46">
-          <p><b>Monitoramento de rede.</b> Sensores nos seus locais, diagnóstico da causa de cada queda e alertas no Telegram.</p>
+          <p><b>Monitoramento de rede.</b> Sensores nos seus locais, diagnóstico de onde está cada queda e alertas no Telegram. <a href="/nexopulse">Ver como funciona</a></p>
           <span class="situacao pronto">Disponível</span>
         </div>
         <div class="app">
           <img src="/img/nexoguard-claro.svg" alt="NexoGuard" width="220" height="46">
-          <p><b>Segurança da rede.</b> Portas expostas, firewall e atualizações, com uma nota de 0 a 100.</p>
+          <p><b>Segurança da rede.</b> Vai acompanhar portas expostas, firewall e atualizações da sua rede.</p>
           <span class="situacao breve">Em desenvolvimento</span>
         </div>
         <div class="app">
           <img src="/img/nexoreport-claro.svg" alt="NexoReport" width="220" height="46">
-          <p><b>Relatórios.</b> O resumo mensal da sua rede em PDF, pronto para a diretoria.</p>
+          <p><b>Relatórios.</b> Vai gerar o resumo mensal da sua operação em PDF, pronto para a diretoria.</p>
           <span class="situacao breve">Em desenvolvimento</span>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="secao" aria-labelledby="comecar">
+  <section class="secao escura destaque" aria-labelledby="t-destaque">
     <div class="miolo">
-      <h2 id="comecar">Três passos para a sua rede passar a ser monitorada.</h2>
-      <ol class="passos">
-        <li><h3>Avaliamos a sua rede</h3><p>Entendemos os seus locais, os links e o que é crítico para o seu negócio.</p></li>
-        <li><h3>Instalamos o sensor</h3><p>Nossa equipe implanta e configura, sem parar a sua operação.</p></li>
-        <li><h3>Monitoramento 24/7</h3><p>Seu grupo de alertas e o seu acesso ao NexoHub começam a funcionar.</p></li>
-      </ol>
+      <div>
+        <h2 id="t-destaque">Em destaque: quando a internet cai, o NexoPulse diz onde está o problema.</h2>
+        <ul>
+          <li>Um sensor no local mede a conexão a cada poucos segundos, 24 horas por dia.</li>
+          <li>Aponta a camada com problema: rede interna, antena, provedor ou DNS.</li>
+          <li>Avisa na hora e guarda as medições como prova para cobrar o provedor.</li>
+        </ul>
+        <div class="acoes"><a class="botao botao-linha" href="/nexopulse">Ver como o NexoPulse funciona</a></div>
+      </div>
+      <div class="tela"><img src="/img/diagnostico-recorte.jpg" alt="Tela da plataforma NexoPulse com o diagnóstico de uma queda: rede local normal, Starlink com obstrução e a linha do tempo explicando a causa." width="1600" height="529" loading="lazy"></div>
+    </div>
+  </section>
+
+  <section class="secao diferencial" aria-labelledby="t-diferencial">
+    <div class="miolo dupla">
+      <blockquote><h2 id="t-diferencial" style="font-size:inherit;max-width:none">Mais do que serviços ou ferramentas digitais: soluções completas.</h2></blockquote>
+      <div class="texto">
+        <p>Unimos experiência técnica, desenvolvimento de software, automação e tecnologias inteligentes para identificar problemas, melhorar processos e aumentar a confiabilidade das operações.</p>
+        <p>Na MD, a tecnologia não é só uma ferramenta: é o caminho para operações mais inteligentes, seguras e eficientes.</p>
+      </div>
     </div>
   </section>
 
   <section class="secao contato" id="contato" aria-labelledby="falar">
     <div class="miolo">
       <div>
-        <h2 id="falar">Vamos cuidar da sua conexão?</h2>
-        <p class="intro" style="margin-top:18px;max-width:46ch">Fale com a MD Soluções Tecnológicas e agende uma avaliação da sua rede.</p>
+        <h2 id="falar">Vamos conversar sobre a sua operação?</h2>
+        <p class="intro" style="margin-top:18px;max-width:46ch">Conte o que você precisa e a MD indica a solução adequada, de uma manutenção a uma plataforma sob medida.{{ with env "SITE_CIDADE" }} Sede em {{ . }}, atendendo a Paraíba e região.{{ end }}</p>
+        <p class="canais">{{ with env "SITE_TELEFONE" }}<span>WhatsApp {{ . }}</span>{{ end }}{{ with env "SITE_EMAIL" }}<span>{{ . }}</span>{{ end }}</p>
       </div>
       <div class="acoes">
-        {{ $zap := env "SITE_WHATSAPP" }}{{ if $zap }}<a class="botao botao-cheio" href="https://wa.me/{{ $zap }}?text={{ "Olá! Quero agendar uma avaliação da minha rede." | urlquery }}" rel="noopener">Conversar no WhatsApp</a>{{ end }}
-        {{ $email := env "SITE_EMAIL" }}{{ if $email }}<a class="botao botao-linha" href="mailto:{{ $email }}?subject={{ "Avaliação da rede" | urlquery }}">Enviar um e-mail</a>{{ end }}
-        {{ if and (not $zap) (not $email) }}<a class="botao botao-cheio" href="{{ env "SITE_HUB_URL" | default "https://nexopulse.mdsolucoes.eng.br" }}">Entrar no NexoHub</a>{{ end }}
+        {{ $zap := env "SITE_WHATSAPP" }}{{ if $zap }}<a class="botao botao-cheio" href="https://wa.me/{{ $zap }}?text=Ol%C3%A1!%20Gostaria%20de%20conversar%20com%20a%20MD%20Solu%C3%A7%C3%B5es%20Tecnol%C3%B3gicas." rel="noopener">Conversar no WhatsApp</a>{{ end }}
+        {{ $email := env "SITE_EMAIL" }}{{ if $email }}<a class="botao botao-linha" href="mailto:{{ $email }}?subject=Contato%20pelo%20site">Enviar um e-mail</a>{{ end }}
+        {{ if and (not $zap) (not $email) }}<a class="botao botao-cheio" href="{{ env "SITE_HUB_URL" | default "https://hub.mdsolucoes.eng.br" }}">Entrar no NexoHub</a>{{ end }}
       </div>
     </div>
   </section>
 </main>
 
-<footer class="rodape">
-  <div class="miolo">
-    <img src="/img/md-logo.png" alt="MD Soluções Tecnológicas" width="640" height="227">
-    <span>© 2026 MD Soluções Tecnológicas</span>
-    <a href="{{ env "SITE_HUB_URL" | default "https://nexopulse.mdsolucoes.eng.br" }}">Área do cliente: NexoHub</a>
-  </div>
-</footer>
+{{ include "/_rodape.html" }}
 </body>
 </html>
