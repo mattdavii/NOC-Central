@@ -412,6 +412,20 @@ def linhas_dispositivos(topologia, nomes_salvos, visto_em):
     return linhas
 
 
+# Eventos que contam a história da rede para o técnico em campo: quedas e retornos.
+TIPOS_OCORRENCIA = {'Queda de Alvo', 'Queda de Alvo Local', 'Queda de Energia', 'Alvo Restaurado', 'Energia Restaurada',
+                    'Conectividade Central'}
+
+
+def eh_ocorrencia(evento):
+    return evento.get('tipo') in TIPOS_OCORRENCIA or evento.get('gravidade') == 'Crítica'
+
+
+def eh_queda(evento):
+    tipo = evento.get('tipo') or ''
+    return tipo.startswith('Queda') or (tipo == 'Conectividade Central' and evento.get('gravidade') == 'Crítica')
+
+
 def eventos_para_csv(eventos):
     saida = io.StringIO()
     escritor = csv.writer(saida, delimiter=';', lineterminator='\r\n')
@@ -666,6 +680,23 @@ def criar_blueprint(eventos, estado):
         gravar_config(caminho, 'redes_extras', redes)
         eventos.registrar('Configuração', 'Redes adicionais da varredura: ' + (', '.join(redes) or 'nenhuma'), 'OK')
         return jsonify(redes=redes)
+
+    @bp.route('/api/campo')
+    def api_campo():
+        """Tudo o que o app de campo (NexoCampo) usa numa chamada: o sensor, os aparelhos (com MAC e marca,
+        inclusive os que saíram da rede) e as ocorrências dos últimos dias (quedas e retornos)."""
+        try:
+            dias = max(1, min(30, int(request.args.get('dias', 7))))
+        except ValueError:
+            dias = 7
+        de = (datetime.now() - timedelta(days=dias)).strftime('%Y-%m-%d')
+        _, linhas = eventos.listar(de=de, limite=2000)
+        ocorrencias = [e for e in linhas if eh_ocorrencia(e)]
+        dados = montar_levantamento() if levantamento is not None else {'dispositivos': [], 'resumo': {}}
+        return jsonify(formato='nexopulse.edge-campo', versao_formato=1, dias=dias, sensor=contexto_sensor(),
+                       dispositivos=dados['dispositivos'], resumo=dados.get('resumo') or {},
+                       ocorrencias=ocorrencias[:100], quedas=sum(1 for e in ocorrencias if eh_queda(e)),
+                       diagrama=dados.get('diagrama'))
 
     @bp.route('/api/dispositivos')
     def api_dispositivos():

@@ -10,6 +10,9 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import br.eng.mdsolucoes.nexocampo.rede.Ambiente
+import br.eng.mdsolucoes.nexocampo.rede.AparelhoSensor
+import br.eng.mdsolucoes.nexocampo.rede.DadosSensor
+import br.eng.mdsolucoes.nexocampo.rede.SensorLocal
 import br.eng.mdsolucoes.nexocampo.rede.Dispositivo
 import br.eng.mdsolucoes.nexocampo.rede.Exportar
 import br.eng.mdsolucoes.nexocampo.rede.Foto
@@ -76,7 +79,19 @@ class CampoViewModel(app: Application) : AndroidViewModel(app) {
     private var jobPing: Job? = null
 
     // Varredura
+    /** O que a varredura do celular achou, já completado com o que o sensor do local conhece. */
     var dispositivos by mutableStateOf<List<Dispositivo>>(emptyList()); private set
+    private var dispositivosApp: List<Dispositivo> = emptyList()
+
+    // Sensor NexoPulse do local (painel local, sem internet)
+    private val prefsPainel = app.getSharedPreferences("painel_sensor", android.content.Context.MODE_PRIVATE)
+    var sensorDados by mutableStateOf<DadosSensor?>(null); private set
+    var conectandoSensor by mutableStateOf(false); private set
+    val painelUsuarioSalvo: String get() = prefsPainel.getString("usuario", "") ?: ""
+    val painelSenhaSalva: String get() = prefsPainel.getString("senha", "") ?: ""
+    /** IP do sensor achado na varredura (painel na porta 10000). */
+    val sensorAchado: String? get() = dispositivos.firstOrNull { it.tipo == "Sensor NexoPulse" && !it.foraDaRede && 10000 in it.portas }?.ip
+        ?: dispositivos.firstOrNull { 10000 in it.portas }?.ip
     var varrendo by mutableStateOf(false); private set
     var progresso by mutableStateOf(0f); private set
     var etapaVarredura by mutableStateOf(""); private set
@@ -313,15 +328,76 @@ class CampoViewModel(app: Application) : AndroidViewModel(app) {
             mensagem = "Conecte o celular ao Wi-Fi do local para varrer a rede."
             return
         }
-        varrendo = true; progresso = 0f; dispositivos = emptyList()
+        varrendo = true; progresso = 0f; dispositivosApp = emptyList(); dispositivos = mesclar(emptyList(), sensorDados)
         viewModelScope.launch {
             val lista = Varredura(contexto).rodar(r) { p, etapa, parcial ->
-                viewModelScope.launch(Dispatchers.Main) { progresso = p; etapaVarredura = etapa; dispositivos = parcial }
+                viewModelScope.launch(Dispatchers.Main) { progresso = p; etapaVarredura = etapa; dispositivosApp = parcial; dispositivos = mesclar(parcial, sensorDados) }
             }
-            dispositivos = lista; progresso = 1f; etapaVarredura = ""
+            dispositivosApp = lista; dispositivos = mesclar(lista, sensorDados); progresso = 1f; etapaVarredura = ""
             varrendo = false; varreduraFeita = true
             salvar()
         }
+    }
+
+    // ------------------------------------------------------------------ Sensor do local
+    fun conectarSensor(ip: String, usuario: String, senha: String, lembrar: Boolean) {
+        if (conectandoSensor || ip.isBlank()) return
+        conectandoSensor = true
+        viewModelScope.launch {
+            try {
+                val painel = SensorLocal(ip.trim())
+                painel.entrar(usuario.trim(), senha)
+                val d = painel.ler()
+                if (lembrar) prefsPainel.edit().putString("usuario", usuario.trim()).putString("senha", senha).apply()
+                else prefsPainel.edit().clear().apply()
+                sensorDados = d
+                dispositivos = mesclar(dispositivosApp, d)
+                mensagem = "Dados do sensor${d.nome?.let { " $it" } ?: ""}: ${d.aparelhos.size} aparelhos, ${d.quedas} queda(s) em ${d.dias} dias."
+                salvar()
+            } catch (e: SensorLocal.Falha) {
+                mensagem = e.message
+            } finally {
+                conectandoSensor = false
+            }
+        }
+    }
+
+    fun desconectarSensor() {
+        sensorDados = null
+        dispositivos = mesclar(dispositivosApp, null)
+        salvar()
+    }
+
+    /**
+     * Junta a varredura do celular com o inventário do sensor: pelo IP (ou MAC), o aparelho ganha MAC, marca do
+     * registro IEEE, modelo e o apelido dado na Central; os que só o sensor conhece entram também (os que saíram
+     * da rede, marcados como fora da rede). O tipo do celular só é trocado quando ele não sabia dizer.
+     */
+    private fun mesclar(app: List<Dispositivo>, s: DadosSensor?): List<Dispositivo> {
+        if (s == null) return app.filter { "sensor" !in it.origens || it.origens.size > 1 }.map { it.copy(origens = it.origens - "sensor") }
+        val fracos = setOf("Não identificado", "Aparelho com página web", "Servidor / Linux")
+        val usados = mutableSetOf<AparelhoSensor>()
+        val juntos = app.map { d ->
+            val a = s.aparelhos.firstOrNull { it.ip == d.ip } ?: s.aparelhos.firstOrNull { it.mac != null && it.mac.equals(d.mac, true) }
+            if (a == null) d else {
+                usados += a
+                d.copy(
+                    mac = d.mac ?: a.mac, fabricante = a.marca ?: d.fabricante, modelo = d.modelo ?: a.modelo,
+                    nome = a.apelido ?: d.nome ?: a.nome,
+                    tipo = if (d.tipo in fracos) SensorLocal.tipoDoApp(a) ?: d.tipo else d.tipo,
+                    origens = (d.origens + "sensor").distinct(),
+                )
+            }
+        }
+        val ips = juntos.map { it.ip }.toSet()
+        val extras = s.aparelhos.filter { it !in usados && it.ip != null && it.ip !in ips }.map { a ->
+            Dispositivo(
+                ip = a.ip!!, tipo = SensorLocal.tipoDoApp(a) ?: a.tipo ?: "Não identificado", nome = a.apelido ?: a.nome,
+                fabricante = a.marca, modelo = a.modelo, portas = emptyList(), servicos = emptyList(), mac = a.mac,
+                origens = listOf("sensor"), foraDaRede = a.status == "offline",
+            )
+        }
+        return (juntos + extras).sortedBy { d -> d.ip.split(".").fold(0L) { acc, p -> acc * 256 + (p.toLongOrNull() ?: 0) } }
     }
 
     // ------------------------------------------------------------------ Fotos
@@ -342,7 +418,7 @@ class CampoViewModel(app: Application) : AndroidViewModel(app) {
     fun levantamento() = Levantamento(
         id = idVisita, local = local.trim(), tecnico = tecnico.trim(), observacoes = observacoes.trim(), criadaEm = criadaEm,
         quando = System.currentTimeMillis(), versaoApp = versao, rede = rede, wifi = wifi, melhorCanal24 = melhorCanal24(),
-        pings = pings, dns = dns, velocidade = velocidade, dispositivos = dispositivos, ambientes = ambientes,
+        pings = pings, dns = dns, velocidade = velocidade, dispositivos = dispositivos, ambientes = ambientes, sensor = sensorDados,
         pingContinuo = pingContinuo, fotos = fotos,
     )
 
@@ -367,7 +443,7 @@ class CampoViewModel(app: Application) : AndroidViewModel(app) {
         idVisita = UUID.randomUUID().toString(); criadaEm = System.currentTimeMillis()
         wifi = emptyList(); wifiBuscado = false; ambientes = emptyList(); historicoSinal = emptyList()
         pings = emptyList(); dns = emptyList(); velocidade = null; pingContinuo = null
-        dispositivos = emptyList(); varreduraFeita = false
+        dispositivos = emptyList(); dispositivosApp = emptyList(); sensorDados = null; varreduraFeita = false
         local = ""; observacoes = ""; fotos = emptyList(); numeroNaCentral = null
         atualizarRede()
         mensagem = "Visita nova começada. A anterior ficou salva."
@@ -383,7 +459,8 @@ class CampoViewModel(app: Application) : AndroidViewModel(app) {
             local = l.local; tecnico = l.tecnico; observacoes = l.observacoes
             rede = l.rede; wifi = l.wifi; wifiBuscado = l.wifi.isNotEmpty(); ambientes = l.ambientes
             pings = l.pings; dns = l.dns; velocidade = l.velocidade; pingContinuo = l.pingContinuo
-            dispositivos = l.dispositivos; varreduraFeita = l.dispositivos.isNotEmpty(); fotos = l.fotos
+            dispositivos = l.dispositivos; dispositivosApp = l.dispositivos; sensorDados = l.sensor
+            varreduraFeita = l.dispositivos.isNotEmpty(); fotos = l.fotos
             numeroNaCentral = central.numeroEnviado(l.id)
             mensagem = "Visita aberta: ${l.local.ifBlank { "sem nome" }}. Para medir de novo, use as abas."
         }

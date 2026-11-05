@@ -83,8 +83,9 @@ data class Dispositivo(
     val portas: List<Int>,
     val servicos: List<String>,
     val mac: String?,
-    val origens: List<String>,       // como foi encontrado: portas, ONVIF, UPnP, mDNS, resposta TCP
+    val origens: List<String>,       // como foi encontrado: portas, ONVIF, UPnP, mDNS, resposta TCP, sensor
     val esteCelular: Boolean = false,
+    val foraDaRede: Boolean = false, // o sensor conhece, mas não respondeu na última varredura dele
 )
 
 fun faixaDe(frequenciaMhz: Int): String = when {
