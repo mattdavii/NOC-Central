@@ -99,6 +99,15 @@ emitido.
 - Fontes da marca (Bricolage Grotesque e IBM Plex Sans) embarcadas no PDF.
 - Código novo em `nexoreport.py` (consolidação e regras) e `templates/report/` (template do PDF e a página do Hub).
 
+### 3.6 Andamento
+- **Entregas 1 e 2 no ar (04/11/2026):** meta por empresa no cadastro (Master), contas por período fechado em
+  `hub.janelas_periodo`/`disponibilidade_periodo`, fechamento em `nexoreport.py` (tabela `relatorios_mensais`,
+  verificação a cada 15 min, aviso no Telegram da MD se falhar) e retenção das medições ampliada para **40 dias**.
+- O fechamento automático começa em **novembro de 2026** (`PRIMEIRO_MES`): outubro já tinha perdido os dias 1 a 4
+  pela retenção antiga de 30 dias, e um relatório incompleto não deve sair sozinho.
+- O mês anterior só entra na comparação se tiver relatório emitido ou se as medições dele ainda existirem; a
+  tendência de 6 meses vem só de relatórios emitidos.
+
 ## 4. Fora da v1
 - Serviços da MD no relatório (visitas, manutenções, chamados) e dados de usina/O&M.
 - Envio automático por e-mail ou Telegram e etapa de revisão/aprovação pela MD com parecer escrito.

@@ -213,6 +213,9 @@ def init_db():
             'ips_custom': 'sensor_mac TEXT, ip TEXT, descricao TEXT, latencia REAL DEFAULT 0',
             'ips_energia': 'sensor_mac TEXT, ip TEXT, descricao TEXT, latencia REAL DEFAULT 0',
             'dispositivos': 'sensor_mac TEXT, ip TEXT, mac TEXT, fabricante TEXT, nome_custom TEXT',
+            # NexoReport: o mês fechado, como foi emitido (JSON com todos os números do relatório).
+            'relatorios_mensais': 'empresa_id INTEGER NOT NULL, ano_mes TEXT NOT NULL, versao INTEGER NOT NULL DEFAULT 1, '
+                                  'parcial INTEGER NOT NULL DEFAULT 0, criado_em DOUBLE PRECISION NOT NULL, criado_por TEXT, dados TEXT NOT NULL',
             'acoes_remotas': "sensor_mac TEXT NOT NULL, acao TEXT NOT NULL, solicitante TEXT, status TEXT DEFAULT 'pendente', codigo INTEGER, saida TEXT, criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP, concluido_em TIMESTAMP",
             # Diagnóstico de rede: horários em epoch (segundos, UTC) para não depender do fuso da sessão.
             'medicoes_rede': 'sensor_mac TEXT NOT NULL, coletado_em DOUBLE PRECISION NOT NULL, tipo TEXT, papel TEXT, alvo TEXT, latencia_ms DOUBLE PRECISION, jitter_ms DOUBLE PRECISION, perda_pct DOUBLE PRECISION, amostras INTEGER',
@@ -227,6 +230,7 @@ def init_db():
                                               'hostname_fonte TEXT', 'visto_em TEXT',
                                               'modelo TEXT', 'tipo_equipamento TEXT', 'cftv TEXT',
                                               'comunicacao TEXT', 'firmware TEXT', 'rede_origem TEXT'])
+        conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_relatorios_mensais ON relatorios_mensais (empresa_id, ano_mes, versao)')
         conn.execute('CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)')
         # Alertas que o sensor guardou com a Central fora: id de origem (sem duplicar no reenvio)
         # e marca de "registrado com a Central indisponível"; resumo pendente por sensor.
@@ -289,7 +293,7 @@ def init_db():
 
 
 SENSOR_COLUMNS = ['last_seen TIMESTAMP', 'ip_gateway TEXT', 'ultima_rota TEXT', 'download REAL', 'upload REAL', 'alerta_reconhecido INTEGER DEFAULT 1', 'disco REAL', 'net_up REAL', 'net_down REAL', 'portas TEXT', 'em_manutencao INTEGER DEFAULT 0', 'cliente_id INTEGER', 'gpu_temp REAL', "memoria_alerta TEXT DEFAULT 'ONLINE'", 'so_nome TEXT', 'so_versao TEXT', 'so_arquitetura TEXT', 'interface_nome TEXT', 'interface_mac TEXT', 'rede_mascara TEXT', 'rede_cidr TEXT', 'link_speed_mbps REAL', 'interface_up BOOLEAN', 'scan_rede TEXT', 'scan_limitado BOOLEAN', 'cliente_nome TEXT', 'latitude REAL', 'longitude REAL', 'accuracy_m REAL', 'location_source TEXT', 'location_updated_at TEXT', 'agent_version TEXT', 'traceroute TEXT', 'acoes_remotas INTEGER DEFAULT 0', 'host_info TEXT', 'alertas_host TEXT', 'provedor TEXT', 'provedor_origem TEXT', 'starlink_info TEXT', 'camadas_rede TEXT', 'diag_atualizado_em DOUBLE PRECISION', 'agent_build TEXT', 'build_recusado TEXT', 'auto_update_guard INTEGER', 'auto_atualizar INTEGER DEFAULT 1', 'mapa_rede TEXT', 'mapa_rede_em TEXT', 'mapa_rede_por TEXT']
-CLIENT_COLUMNS = ['nome TEXT', 'cliente_pai_id INTEGER', 'ativo INTEGER DEFAULT 1', 'logo_url TEXT', 'telegram_token TEXT', 'telegram_chat_id TEXT', 'delegacao_acessos INTEGER DEFAULT 1',
+CLIENT_COLUMNS = ['meta_disponibilidade REAL', 'nome TEXT', 'cliente_pai_id INTEGER', 'ativo INTEGER DEFAULT 1', 'logo_url TEXT', 'telegram_token TEXT', 'telegram_chat_id TEXT', 'delegacao_acessos INTEGER DEFAULT 1',
                   # Verificação em duas etapas, sessões encerráveis e exigência de 2FA (esta na conta da empresa).
                   'totp_segredo TEXT', 'totp_ativo INTEGER DEFAULT 0', 'totp_ultimo_passo INTEGER', 'codigos_recuperacao TEXT',
                   'sessao_versao INTEGER DEFAULT 0', 'exigir_2fa INTEGER DEFAULT 0',
