@@ -25,29 +25,44 @@ p { margin: 0 0 2.5mm; }
 .lead { color: var(--suave); font-size: 10pt; margin-bottom: 6mm; max-width: 150mm; }
 .mono { font-variant-numeric: tabular-nums; }
 
-/* ---------- capa e resumo executivo (página 1) */
-.capa { page: capa; background: var(--noite); color: #fff; padding: 20mm 18mm 0; height: 297mm; position: relative; }
+/* ---------- capa e resumo executivo (página 1)
+   Fundo de prancheta técnica com um traço de sinal nas cores da marca; o medidor mostra
+   a disponibilidade contra a meta do contrato, que é o que a diretoria quer saber primeiro. */
+.capa { page: capa; background: #061529; color: #fff; padding: 17mm 17mm 0; height: 297mm; position: relative; overflow: hidden; }
+.capa .fundo { position: absolute; left: 0; top: 0; width: 210mm; height: 297mm; z-index: 0; }
+.capa > *:not(.fundo) { position: relative; z-index: 1; }
 .capa .topo { display: flex; justify-content: space-between; align-items: center; }
-.capa .topo img.produto { height: 11mm; }
-.capa .topo .cliente { font: 600 10pt 'Plex'; color: #A9BED3; text-align: right; }
-.capa .titulo { margin-top: 24mm; }
-.capa .titulo span { display: block; color: #7FD8F2; font: 600 10.5pt 'Plex'; margin-bottom: 3mm; }
-.capa h1 { color: #fff; font-size: 34pt; line-height: 1.02; letter-spacing: -0.03em; }
-.capa .periodo { margin-top: 4mm; color: #A9BED3; font-size: 11pt; }
-.kpis { margin-top: 16mm; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4mm; }
-.kpi { border: 1px solid rgba(169,190,211,.3); border-radius: 4mm; padding: 4.5mm 4.5mm 4mm; background: rgba(255,255,255,.03); }
-.kpi small { display: block; color: #A9BED3; font-size: 8.4pt; }
-.kpi strong { display: block; font: 800 22pt/1.1 'Bricolage'; color: #fff; margin-top: 1.5mm; }
-.kpi .var { font-size: 8.2pt; margin-top: 1.5mm; display: block; }
-.kpi .var.melhor { color: #4FE0C1; } .kpi .var.pior { color: #FFB39B; } .kpi .var.igual { color: #A9BED3; }
-.kpi.destaque { border-color: rgba(18,181,229,.7); background: rgba(18,181,229,.08); }
-.resumo { margin-top: 10mm; display: grid; grid-template-columns: 1.15fr .85fr; gap: 8mm; }
-.resumo h3 { color: #fff; }
-.resumo p { color: #D4E1EE; font-size: 10.2pt; line-height: 1.6; }
-.resumo .tendencia { background: rgba(255,255,255,.04); border-radius: 4mm; padding: 4mm; border: 1px solid rgba(169,190,211,.2); }
+.capa .topo img.produto { height: 10mm; }
+.capa .selo { border: 1px solid rgba(127,216,242,.45); border-radius: 10mm; padding: 1.6mm 4mm; font: 600 8.6pt 'Plex'; color: #BDEBF8; background: rgba(18,181,229,.08); }
+.capa .titulo { margin-top: 20mm; }
+.capa .titulo .empresa { display: block; color: #A9BED3; font: 600 11pt 'Plex'; margin-bottom: 2mm; }
+.capa h1 { color: #fff; font-size: 40pt; line-height: 1; letter-spacing: -0.035em; }
+.capa .traco { width: 46mm; height: 1.4mm; border-radius: 1mm; margin: 5mm 0 4mm;
+  background: linear-gradient(90deg, #7A3FE0, #12B5E5 55%, #0BB39A); }
+.capa .periodo { color: #A9BED3; font-size: 9.6pt; }
+.painel { margin-top: 12mm; display: grid; grid-template-columns: 1.08fr .92fr; gap: 5mm; }
+.medidor { border: 1px solid rgba(127,216,242,.38); border-radius: 5mm; padding: 5mm 5mm 4mm;
+  background: linear-gradient(160deg, rgba(18,181,229,.12), rgba(122,63,224,.08) 70%, rgba(6,21,41,.2)); }
+.medidor small, .kpi small { display: block; color: #A9BED3; font-size: 8.4pt; }
+.medidor svg { width: 100%; height: auto; display: block; margin-top: 2mm; }
+.medidor .situacao { display: flex; justify-content: space-between; align-items: center; margin-top: 1mm; font-size: 8.6pt; color: #A9BED3; }
+.medidor .situacao b { padding: .8mm 3mm; border-radius: 10mm; font-weight: 600; }
+.situacao b.ok { background: rgba(11,179,154,.18); color: #4FE0C1; } .situacao b.atencao { background: rgba(242,169,59,.18); color: #F7C773; }
+.situacao b.critico { background: rgba(214,69,69,.2); color: #FF9C9C; }
+.kpis { display: grid; grid-template-rows: repeat(3, 1fr); gap: 3.2mm; }
+.kpi { border: 1px solid rgba(169,190,211,.24); border-radius: 4mm; padding: 3.4mm 4.5mm; background: rgba(255,255,255,.035);
+  display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 3mm; }
+.kpi strong { display: block; font: 800 19pt/1.1 'Bricolage'; color: #fff; margin-top: .8mm; }
+.kpi strong.texto { font-size: 12.5pt; line-height: 1.2; margin-top: 1.2mm; }
+.kpi .var { font-size: 7.8pt; text-align: right; max-width: 30mm; line-height: 1.35; }
+.var.melhor { color: #4FE0C1; } .var.pior { color: #FFB39B; } .var.igual { color: #A9BED3; }
+.resumo { margin-top: 9mm; display: grid; grid-template-columns: 1.12fr .88fr; gap: 7mm; }
+.resumo h3 { color: #fff; font-size: 11pt; }
+.resumo p { color: #D4E1EE; font-size: 9.8pt; line-height: 1.6; }
+.resumo .tendencia { background: rgba(255,255,255,.035); border-radius: 4mm; padding: 4mm; border: 1px solid rgba(169,190,211,.2); }
 .resumo .tendencia small { color: #A9BED3; font-size: 8.2pt; }
-.capa .rodape-capa { position: absolute; left: 18mm; right: 18mm; bottom: 14mm; display: flex; justify-content: space-between; align-items: center;
-  border-top: 1px solid rgba(169,190,211,.25); padding-top: 5mm; color: #A9BED3; font-size: 8.4pt; }
+.capa .rodape-capa { position: absolute; left: 17mm; right: 17mm; bottom: 13mm; display: flex; justify-content: space-between; align-items: center;
+  border-top: 1px solid rgba(169,190,211,.22); padding-top: 4.5mm; color: #A9BED3; font-size: 8.2pt; }
 .capa .rodape-capa img { height: 9mm; background: #fff; border-radius: 2mm; padding: 1.2mm 2mm; }
 
 /* ---------- tabelas */
@@ -89,21 +104,29 @@ tr { break-inside: avoid; }
 
 <!-- ============ 1. Capa com o resumo executivo: o que a diretoria lê primeiro ============ -->
 <section class="capa">
+  <div class="fundo">{{ graficos.fundo_capa|safe }}</div>
   <div class="topo">
     <img class="produto" src="{{ base }}/docs/familia-nexo/logos/nexoreport-escuro.svg" alt="NexoReport">
-    <div class="cliente">{{ empresa.nome }}<br><span style="font-weight:400">{{ empresa.locais|length }} {{ 'local monitorado' if empresa.locais|length == 1 else 'locais monitorados' }}</span></div>
+    <span class="selo">Relatório mensal da rede</span>
   </div>
   <div class="titulo">
-    <span>Relatório mensal da rede</span>
+    <span class="empresa">{{ empresa.nome }} · {{ empresa.locais|length }} {{ 'local monitorado' if empresa.locais|length == 1 else 'locais monitorados' }}</span>
     <h1>{{ periodo.rotulo }}</h1>
+    <div class="traco"></div>
     <p class="periodo">{{ periodo.inicio }} a {{ periodo.fim }} · gerado em {{ periodo.gerado_em }}</p>
   </div>
 
-  <div class="kpis">
-    <div class="kpi destaque"><small>Disponibilidade da rede</small><strong>{{ kpi.disponibilidade }}</strong><span class="var {{ kpi.disp_var_classe }}">{{ kpi.disp_var }}</span></div>
-    <div class="kpi"><small>Tempo sem conexão</small><strong>{{ kpi.tempo_fora }}</strong><span class="var {{ kpi.fora_var_classe }}">{{ kpi.fora_var }}</span></div>
-    <div class="kpi"><small>Quedas no mês</small><strong>{{ kpi.quedas }}</strong><span class="var {{ kpi.quedas_var_classe }}">{{ kpi.quedas_var }}</span></div>
-    <div class="kpi"><small>Causa mais frequente</small><strong style="font-size:13.5pt;line-height:1.2;margin-top:2.5mm">{{ kpi.causa_principal }}</strong><span class="var igual">{{ kpi.causa_principal_qtd }}</span></div>
+  <div class="painel">
+    <div class="medidor">
+      <small>Disponibilidade da rede no mês</small>
+      {{ graficos.medidor|safe }}
+      <div class="situacao"><span>{{ kpi.disp_var_txt }}</span><b class="{{ kpi.situacao }}">{{ kpi.situacao_rotulo }}</b></div>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div><small>Tempo sem conexão</small><strong>{{ kpi.tempo_fora }}</strong></div><span class="var {{ kpi.fora_var_classe }}">{{ kpi.fora_var }}</span></div>
+      <div class="kpi"><div><small>Quedas no mês</small><strong>{{ kpi.quedas }}</strong></div><span class="var {{ kpi.quedas_var_classe }}">{{ kpi.quedas_var }}</span></div>
+      <div class="kpi"><div><small>Causa mais frequente</small><strong class="texto">{{ kpi.causa_principal }}</strong></div><span class="var igual">{{ kpi.causa_principal_qtd }}</span></div>
+    </div>
   </div>
 
   <div class="resumo">
@@ -112,7 +135,7 @@ tr { break-inside: avoid; }
       {% for p in resumo %}<p>{{ p }}</p>{% endfor %}
     </div>
     <div class="tendencia">
-      <small>Disponibilidade nos últimos 6 meses</small>
+      <small>Disponibilidade nos últimos 6 meses · meta {{ kpi.meta }}</small>
       <div class="grafico">{{ graficos.tendencia|safe }}</div>
     </div>
   </div>
@@ -135,13 +158,13 @@ tr { break-inside: avoid; }
     {% endfor %}
     </tbody>
   </table>
-  <p class="nota" style="margin-top:2mm">Situação: <strong>Dentro do esperado</strong> a partir de 99,5% · <strong>Atenção</strong> entre 98% e 99,5% · <strong>Crítico</strong> abaixo de 98%.</p>
+  <p class="nota" style="margin-top:2mm">Meta de disponibilidade do contrato: <strong>{{ kpi.meta }}</strong>. Situação: <strong>Dentro da meta</strong> a partir dela · <strong>Abaixo da meta</strong> até 1 ponto percentual abaixo · <strong>Crítico</strong> mais que isso.</p>
 
   <div class="cartao" style="margin-top:7mm">
     <h3>Dia a dia</h3>
     <p class="nota">Disponibilidade de cada dia do mês, somando todos os locais.</p>
     <div class="grafico">{{ graficos.diario|safe }}</div>
-    <div class="legenda"><span><i style="background:#0BA98F"></i>Dentro do esperado</span><span><i style="background:#E39B2D"></i>Atenção</span><span><i style="background:#D64545"></i>Crítico</span></div>
+    <div class="legenda"><span><i style="background:#0BA98F"></i>Dentro da meta</span><span><i style="background:#E39B2D"></i>Abaixo da meta</span><span><i style="background:#D64545"></i>Crítico</span></div>
   </div>
 </section>
 

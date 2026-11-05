@@ -64,19 +64,102 @@ def pct_txt(v):
     return f'{v:.1f}%'.replace('.', ',')
 
 
-def faixa(v):
-    return ('ok', 'Dentro do esperado') if v >= 99.5 else (('atencao', 'Atenção') if v >= 98 else ('critico', 'Crítico'))
+META = 99.7  # meta de disponibilidade do contrato desta empresa (configurada pela MD por empresa)
+
+
+def faixa(v, meta=META):
+    """Situação contra a meta do contrato: dentro, até 1 p.p. abaixo, ou crítico."""
+    if v >= meta:
+        return 'ok', 'Dentro da meta'
+    return ('atencao', 'Abaixo da meta') if v >= meta - 1 else ('critico', 'Crítico')
+
+
+def svg_fundo_capa():
+    """Prancheta técnica: grade que some para baixo, dois brilhos e um traço de sinal (violeta → ciano → verde)."""
+    w, h, passo = 210, 297, 7
+    p = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 210 297" width="210mm" height="297mm">',
+         '<defs><radialGradient id="g1" cx="0.15" cy="0.12" r="0.55"><stop offset="0" stop-color="#12B5E5" stop-opacity=".28"/><stop offset="1" stop-color="#12B5E5" stop-opacity="0"/></radialGradient>',
+         '<radialGradient id="g2" cx="0.95" cy="0.55" r="0.5"><stop offset="0" stop-color="#7A3FE0" stop-opacity=".26"/><stop offset="1" stop-color="#7A3FE0" stop-opacity="0"/></radialGradient>',
+         '<linearGradient id="sinal" x1="0" x2="1"><stop offset="0" stop-color="#7A3FE0"/><stop offset=".55" stop-color="#12B5E5"/><stop offset="1" stop-color="#0BB39A"/></linearGradient></defs>',
+         f'<rect width="{w}" height="{h}" fill="url(#g1)"/><rect width="{w}" height="{h}" fill="url(#g2)"/>']
+    for x in range(0, w + 1, passo):
+        p.append(f'<line x1="{x}" y1="0" x2="{x}" y2="{h}" stroke="#A9BED3" stroke-opacity=".06" stroke-width=".15"/>')
+    for y in range(0, h + 1, passo):
+        op = max(0.0, 0.09 * (1 - y / 190))
+        if op > 0:
+            p.append(f'<line x1="0" y1="{y}" x2="{w}" y2="{y}" stroke="#A9BED3" stroke-opacity="{op:.3f}" stroke-width=".15"/>')
+    # Traço de sinal no alto à direita: linha de base com um pulso, como num monitor.
+    pontos = [(118, 47), (150, 47), (154, 42), (159, 55), (164, 34), (169, 51), (173, 47), (210, 47)]
+    cores = ['#7A3FE0', '#5A62E2', '#3A85E4', '#12B5E5', '#0FB5CF', '#0DB4B4', '#0BB39A']
+    for k in range(len(pontos) - 1):  # um segmento por cor: o PDF não pinta degradê em linha
+        (x1, y1), (x2, y2) = pontos[k], pontos[k + 1]
+        p.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{cores[k]}" stroke-width=".8" stroke-linecap="round" stroke-opacity=".9"/>')
+    p.append('<circle cx="164" cy="34" r="1.2" fill="#12B5E5"/><circle cx="164" cy="34" r="2.8" fill="#12B5E5" fill-opacity=".18"/>')
+    for x in (124, 138, 186, 198):
+        p.append(f'<circle cx="{x}" cy="47" r=".7" fill="#A9BED3" fill-opacity=".5"/>')
+    p.append('</svg>')
+    return ''.join(p)
+
+
+def svg_medidor(valor, meta=META):
+    """Semicírculo de escala técnica: zonas pela meta do contrato, marca da meta e o ponteiro no valor do mês."""
+    import math as m
+    mini = math.floor(min(meta - 1.5, valor - 0.3) * 2) / 2  # escala justa: a zona da meta fica visível
+    cx, cy, r = 120, 112, 92
+
+    def ponto(v, raio):
+        ang = m.pi * (1 - (min(max(v, mini), 100) - mini) / (100 - mini))
+        return cx + raio * m.cos(ang), cy - raio * m.sin(ang)
+
+    def arco(v1, v2, cor, larg=12):
+        x1, y1 = ponto(v1, r)
+        x2, y2 = ponto(v2, r)
+        return f'<path d="M{x1:.1f} {y1:.1f} A{r} {r} 0 0 1 {x2:.1f} {y2:.1f}" fill="none" stroke="{cor}" stroke-width="{larg}"/>'
+
+    p = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140" font-family="Plex">']
+    p.append(arco(mini, 100, 'rgba(169,190,211,.14)', 14))
+    p.append(arco(mini, meta - 1, '#D64545'))
+    p.append(arco(meta - 1, meta, '#E39B2D'))
+    p.append(arco(meta, 100, '#0BB39A'))
+    # Escala: um traço a cada 0,5 p.p., com número nos inteiros.
+    v = mini
+    while v <= 100.001:
+        x1, y1 = ponto(v, r - 11)
+        x2, y2 = ponto(v, r - (17 if abs(v - round(v)) < 1e-6 else 14))
+        p.append(f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="#A9BED3" stroke-opacity=".7" stroke-width=".8"/>')
+        if abs(v - round(v)) < 1e-6 or v <= mini + 1e-6:
+            tx, ty = ponto(v, r - 25)
+            if v <= mini + 1e-6 or v >= 100 - 1e-6:  # nas pontas, o número vai embaixo do arco
+                tx, ty = ponto(v, r)
+                ty += 14
+            p.append(f'<text x="{tx:.1f}" y="{ty + 3:.1f}" font-size="7.5" text-anchor="middle" fill="#A9BED3">{int(round(v)) if abs(v - round(v)) < 1e-6 else pct_txt(v)}</text>')
+        v += 0.5
+    # Marca da meta
+    mx1, my1 = ponto(meta, r - 9)
+    mx2, my2 = ponto(meta, r + 11)
+    lx, ly = ponto(meta, r + 19)
+    p.append(f'<line x1="{mx1:.1f}" y1="{my1:.1f}" x2="{mx2:.1f}" y2="{my2:.1f}" stroke="#fff" stroke-width="1.6"/>')
+    p.append(f'<text x="{lx:.1f}" y="{ly + 2:.1f}" font-size="7.5" font-weight="600" text-anchor="middle" fill="#fff">meta {pct_txt(meta)}</text>')
+    # Marcador do valor do mês sobre o arco, e o número grande no centro.
+    vx, vy = ponto(valor, r)
+    p.append(f'<circle cx="{vx:.1f}" cy="{vy:.1f}" r="9" fill="#fff" fill-opacity=".18"/>')
+    p.append(f'<circle cx="{vx:.1f}" cy="{vy:.1f}" r="5.5" fill="#061529" stroke="#fff" stroke-width="2.2"/>')
+    p.append(f'<text x="{cx}" y="{cy - 6}" font-size="34" font-weight="800" font-family="Bricolage" text-anchor="middle" fill="#fff">{pct_txt(valor)}</text>')
+    p.append('</svg>')
+    return ''.join(p)
 
 
 def svg_tendencia(valores):
     w, h, base = 300, 120, 98.0
     passo = w / len(valores)
     partes = [f'<svg viewBox="0 0 {w} {h + 22}" xmlns="http://www.w3.org/2000/svg" font-family="Plex">']
+    ym = h - (META - base) / (100 - base) * h
+    partes.append(f'<line x1="0" x2="{w}" y1="{ym:.1f}" y2="{ym:.1f}" stroke="#fff" stroke-opacity=".55" stroke-width=".8" stroke-dasharray="3 3"/>')
     for i, (rotulo, v) in enumerate(valores):
         altura = max(4, (v - base) / (100 - base) * h)
         x = i * passo + 8
         ultimo = i == len(valores) - 1
-        partes.append(f'<rect x="{x:.1f}" y="{h - altura:.1f}" width="{passo - 16:.1f}" height="{altura:.1f}" rx="3" fill="{"#12B5E5" if ultimo else "rgba(169,190,211,.45)"}"/>')
+        partes.append(f'<rect x="{x:.1f}" y="{h - altura:.1f}" width="{passo - 16:.1f}" height="{altura:.1f}" rx="3" fill="{"#12B5E5" if ultimo else ("rgba(169,190,211,.45)" if v >= META else "rgba(227,155,45,.6)")}"/>')
         partes.append(f'<text x="{x + (passo - 16) / 2:.1f}" y="{h - altura - 4:.1f}" font-size="9" text-anchor="middle" fill="{"#fff" if ultimo else "#A9BED3"}">{pct_txt(v)}</text>')
         partes.append(f'<text x="{x + (passo - 16) / 2:.1f}" y="{h + 14}" font-size="9" text-anchor="middle" fill="#A9BED3">{rotulo}</text>')
     partes.append('</svg>')
@@ -179,6 +262,8 @@ def montar():
         'periodo': {'rotulo': f'{MESES[MES_INICIO.month - 1].capitalize()} de {MES_INICIO.year}', 'inicio': '01/10/2026', 'fim': '31/10/2026',
                     'gerado_em': '01/11/2026 às 00:30 · modelo com dados de demonstração'},
         'kpi': {'disponibilidade': pct_txt(disp), 'disp_var_classe': dv[0], 'disp_var': dv[1],
+                'disp_var_txt': f'{"Melhor" if disp > disp_anterior else "Pior"} que setembro ({pct_txt(disp_anterior)})',
+                'situacao': faixa(disp)[0], 'situacao_rotulo': faixa(disp)[1], 'meta': pct_txt(META),
                 'tempo_fora': fmt_min(total_fora), 'fora_var_classe': fv[0], 'fora_var': fv[1],
                 'quedas': len(QUEDAS), 'quedas_var_classe': qv[0], 'quedas_var': qv[1],
                 'causa_principal': CAUSAS[causa_top], 'causa_principal_qtd': f'{n_top} de {len(QUEDAS)} quedas'},
@@ -189,6 +274,8 @@ def montar():
             'o que indica sombra no fim da tarde. As 2 quedas do Escritório central foram do provedor e estão documentadas para cobrança.',
         ],
         'graficos': {
+            'fundo_capa': svg_fundo_capa(),
+            'medidor': svg_medidor(disp),
             'tendencia': svg_tendencia([('mai', 98.7), ('jun', 99.1), ('jul', 98.4), ('ago', 99.0), ('set', disp_anterior), ('out', disp)]),
             'diario': svg_diario(por_dia),
             'causas': svg_barras_h([(CAUSAS[c], m, f'{fmt_min(m)} · {quedas_causa[c]} {"queda" if quedas_causa[c] == 1 else "quedas"}') for c, m in causas], destaque='#E39B2D'),
