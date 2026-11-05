@@ -19,7 +19,7 @@ import secrets
 import sqlite3
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, Response, jsonify, redirect, render_template, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -168,6 +168,23 @@ def gravar_config(caminho, chave, valor):
     with sqlite3.connect(caminho, timeout=5) as conn:
         conn.execute('CREATE TABLE IF NOT EXISTS config_local (chave TEXT PRIMARY KEY, valor TEXT)')
         conn.execute('INSERT OR REPLACE INTO config_local (chave, valor) VALUES (?, ?)', (chave, json.dumps(valor)))
+
+
+def mapa_local_pendente(caminho):
+    """Edição do diagrama feita no painel local que a Central ainda não confirmou (ou None)."""
+    pendente = ler_config(caminho, 'mapa_rede_pendente')
+    return pendente if pendente and pendente.get('mapa') else None
+
+
+def confirmar_mapa_local(caminho, resultado):
+    """A Central respondeu sobre a edição local: tira da fila se for a mesma que está pendente.
+    Devolve 'aplicado', 'substituido' (havia uma edição mais recente na Central) ou None."""
+    pendente = mapa_local_pendente(caminho)
+    if not pendente or not isinstance(resultado, dict) or resultado.get('em') != pendente.get('em'):
+        return None
+    with sqlite3.connect(caminho, timeout=5) as conn:
+        conn.execute("DELETE FROM config_local WHERE chave='mapa_rede_pendente'")
+    return 'aplicado' if resultado.get('aplicado') else 'substituido'
 
 
 # ------------------------------------------------------------------ acesso por usuário e senha
@@ -467,7 +484,12 @@ def criar_blueprint(eventos, estado):
         return linhas_dispositivos(lista, estado.nomes_salvos(), estado.visto_em())
 
     def mapa_salvo():
-        return ler_config(eventos.caminho, 'mapa_rede') or {}
+        """O diagrama em vigor no sensor: a edição local ainda não sincronizada, senão a cópia da Central."""
+        salvo = dict(ler_config(eventos.caminho, 'mapa_rede') or {})
+        pendente = ler_config(eventos.caminho, 'mapa_rede_pendente')
+        if pendente and pendente.get('mapa'):
+            salvo.update(mapa=pendente['mapa'], em=pendente['em'], por='painel local (aguardando a Central)', pendente=True)
+        return salvo
 
     def sensor_do_diagrama():
         d = estado.dados()
@@ -578,6 +600,32 @@ def criar_blueprint(eventos, estado):
         return render_template('edge/diagrama.html', sensor=contexto_sensor(), svg=mapa_rede.svg(arvore()),
                                informado=bool(info.get('mapa')), mapa_em=em,
                                data_emissao=datetime.now().strftime('%d/%m/%Y às %H:%M'))
+
+    def resposta_mapa():
+        info = mapa_salvo()
+        try:
+            mapa = mapa_rede.validar(info.get('mapa')) if info.get('mapa') else mapa_rede.carregar(None)
+        except (ValueError, TypeError):
+            mapa = mapa_rede.carregar(None)
+        return jsonify(mapa=mapa, arvore=arvore(), tipos=mapa_rede.TIPOS, meios=mapa_rede.MEIOS,
+                       atualizado_em=info.get('em'), atualizado_por=info.get('por'), pendente=bool(info.get('pendente')))
+
+    @bp.route('/api/mapa_rede', methods=['GET', 'PUT'])
+    def api_mapa_rede():
+        """O mesmo editor da Central, no sensor: funciona sem internet. A edição fica guardada aqui e vai
+        para a Central no próximo contato (vale a edição mais recente; a outra fica no histórico da Central)."""
+        if mapa_rede is None:
+            return jsonify(error='Módulo do diagrama ausente neste sensor; atualize o agente.'), 501
+        if request.method == 'PUT':
+            try:
+                mapa = mapa_rede.validar((request.get_json(silent=True) or {}).get('mapa'))
+            except ValueError as erro:
+                return jsonify(error=str(erro)), 400
+            agora = datetime.now(timezone.utc).isoformat(timespec='seconds')
+            base = (ler_config(eventos.caminho, 'mapa_rede') or {}).get('versao')
+            gravar_config(eventos.caminho, 'mapa_rede_pendente', {'mapa': mapa, 'em': agora, 'base': base})
+            eventos.registrar('Diagrama', 'Diagrama da rede editado no painel local; será enviado à Central no próximo contato.', 'OK')
+        return resposta_mapa()
 
     @bp.route('/api/inventario/esquecer', methods=['POST'])
     def api_esquecer():

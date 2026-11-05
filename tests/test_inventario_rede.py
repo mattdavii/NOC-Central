@@ -156,3 +156,83 @@ def test_local_panel_exports_inventory_with_offline_and_diagram(monkeypatch, tmp
     # Sem diagrama salvo, todo mundo aparece ligado direto no gateway.
     edge_local.gravar_config('sensor_local.db', 'mapa_rede', {})
     assert cli.get('/api/diagrama.svg').status_code == 200
+
+
+# ------------------------------------------------------------------ edição do diagrama no painel local
+def _painel(monkeypatch, tmp_path):
+    import nexopulse_edge as agent
+    from werkzeug.security import generate_password_hash
+    monkeypatch.setattr(agent, 'get_mac', lambda: MAC_S)
+    monkeypatch.chdir(tmp_path)
+    acesso = edge_local.AcessoLocal('sensor_local.db')
+    monkeypatch.setattr(agent, 'ACESSO_LOCAL', acesso)
+    monkeypatch.setattr(agent._EstadoPainel, 'acesso', acesso)
+    inv = edge_local.InventarioLocal('sensor_local.db')
+    monkeypatch.setattr(agent, 'INVENTARIO_LOCAL', inv)
+    monkeypatch.setattr(agent._EstadoPainel, 'inventario', inv)
+    monkeypatch.setattr(agent, 'EVENTOS_LOCAIS', edge_local.Eventos('sensor_local.db'))
+    monkeypatch.delenv('NOC_EDGE_SENHA', raising=False)
+    acesso.receber_da_central({'usuario': 'nexopulse', 'senha_hash': generate_password_hash('senha-do-painel', method='pbkdf2:sha256')})
+    agent.init_local_db()
+    monkeypatch.setitem(agent.dados_sensores, 'gateway_ip', '192.168.0.1')
+    monkeypatch.setitem(agent.dados_sensores, 'meu_ip', '192.168.0.10')
+    inv.atualizar([_d('192.168.0.1', 'F4:F2:6D:AA:BB:CC'), _d('192.168.0.20', CAM)])
+    agent.app.config['TESTING'] = True
+    cli = agent.app.test_client()
+    assert cli.post('/login', data={'usuario': 'nexopulse', 'senha': 'senha-do-painel'}).status_code == 302
+    return cli
+
+
+MAPA_LOCAL = {'extras': [{'id': 'm:1', 'nome': 'Switch da guarita'}], 'nos': {'m:1': {'tipo': 'switch', 'pai': 'gateway'}, f'd:{CAM}': {'pai': 'm:1', 'meio': 'cabo'}}}
+
+
+def test_local_panel_edits_the_diagram_offline(monkeypatch, tmp_path):
+    cli = _painel(monkeypatch, tmp_path)
+    assert cli.get('/api/mapa_rede').json['pendente'] is False
+    assert cli.put('/api/mapa_rede', json={'mapa': {'extras': 'x'}}).status_code == 400
+    r = cli.put('/api/mapa_rede', json={'mapa': MAPA_LOCAL})
+    assert r.status_code == 200 and r.json['pendente'] is True
+    camera = next(n for n in r.json['arvore'] if n.get('mac') == CAM)
+    assert camera['pai'] == 'm:1' and camera['informado']
+    assert b'Switch da guarita' in cli.get('/api/diagrama.svg').data
+    pagina = cli.get('/').data
+    assert b'id="modalMapaRede"' in pagina and b'/static/mapa_rede.js' in pagina
+    pendente = edge_local.mapa_local_pendente('sensor_local.db')
+    assert pendente['mapa']['extras'][0]['nome'] == 'Switch da guarita'
+    # A Central confirma: sai da fila; resposta de outra edição não tira.
+    assert edge_local.confirmar_mapa_local('sensor_local.db', {'em': 'outra', 'aplicado': True}) is None
+    assert edge_local.confirmar_mapa_local('sensor_local.db', {'em': pendente['em'], 'aplicado': True}) == 'aplicado'
+    assert edge_local.mapa_local_pendente('sensor_local.db') is None
+
+
+def test_central_takes_the_newest_edit_and_keeps_the_other_in_history(client, login):
+    conn = database.get_db()
+    _sensor(conn)
+    conn.execute('DELETE FROM mapa_rede_historico')
+    conn.commit(); conn.close()
+    envio = lambda local: client.post('/api/v2/report_data', json={'mac_id': MAC_S, 'nome_local': 'Usina', 'mapa_rede_local': local}).json
+    md = login()
+    md.put(f'/api/v2/sensor/{MAC_S}/mapa_rede', json={'mapa': {'extras': [{'id': 'm:9', 'nome': 'Rádio da Central'}], 'nos': {}}})
+    # Edição local mais nova que a da Central: vale a local; a da Central vai para o histórico.
+    r = envio({'mapa': MAPA_LOCAL, 'em': '2099-01-01T10:00:00+00:00'})
+    assert r['mapa_rede_local'] == {'em': '2099-01-01T10:00:00+00:00', 'aplicado': True}
+    assert r['mapa_rede']['mapa']['extras'][0]['nome'] == 'Switch da guarita'
+    assert envio({'mapa': MAPA_LOCAL, 'em': '2099-01-01T10:00:00+00:00'})['mapa_rede_local']['aplicado'] is True   # reenvio
+    estado = md.get(f'/api/v2/sensor/{MAC_S}/mapa_rede').json
+    assert estado['atualizado_por'] == 'painel local do sensor'
+    # Edição local mais antiga que a da Central: não vale e fica guardada no histórico.
+    r = envio({'mapa': {'extras': [], 'nos': {}}, 'em': '2020-01-01T10:00:00+00:00'})
+    assert r['mapa_rede_local']['aplicado'] is False
+    envio({'mapa': {'extras': [], 'nos': {}}, 'em': '2020-01-01T10:00:00+00:00'})        # sem duplicar no histórico
+    versoes = md.get(f'/api/v2/sensor/{MAC_S}/mapa_rede/historico').json['versoes']
+    origens = [v['origem'] for v in versoes]
+    assert origens.count('Painel local do sensor') == 1 and 'Central' in origens
+    radio = next(v for v in versoes if v['adicionados'] == 1 and v['origem'] == 'Central')
+    # Restaurar volta a versão e guarda a atual.
+    r = md.post(f'/api/v2/sensor/{MAC_S}/mapa_rede/historico/{radio["id"]}/restaurar', json={})
+    assert r.status_code == 200 and r.json['mapa']['extras'][0]['nome'] == 'Rádio da Central'
+    assert len(md.get(f'/api/v2/sensor/{MAC_S}/mapa_rede/historico').json['versoes']) == len(versoes) + 1
+    # Edição local inválida não quebra o contato do sensor.
+    assert client.post('/api/v2/report_data', json={'mac_id': MAC_S, 'nome_local': 'Usina',
+                                                     'mapa_rede_local': {'mapa': {'extras': 'x'}, 'em': 'ontem'}}).status_code == 200
+    assert login(3, 'Cliente').get(f'/api/v2/sensor/{MAC_S}/mapa_rede/historico').status_code == 403

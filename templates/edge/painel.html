@@ -11,7 +11,7 @@
     {# Fontes e ícones vêm da internet; sem ela a tela continua legível (fontes do sistema, ícones somem). #}
     <link rel="stylesheet" href="/static/fontes/fontes.css?v=1">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/static/sensor.css?v=sensor-1">
+    <link rel="stylesheet" href="/static/sensor.css?v=sensor-5">
     <link rel="stylesheet" href="/static/product.css?v=nexopulse-3">
     <script src="/static/brand.js?v=nexopulse-2"></script>
     <style>
@@ -114,7 +114,7 @@
     </nav>
 
     <div class="container" data-host-mac="{{ sensor.mac_id }}">
-        <nav class="section-nav" aria-label="Seções do painel local"><a href="#host">Host</a><a href="#rede-local">Rede local</a><a href="#wan">WAN</a><a href="#dispositivos">Dispositivos</a><a href="#cftv">CFTV</a><a href="#comunicacao">Comunicação</a><a href="#watchdog">Watchdog</a><a href="#eventos">Eventos</a><a href="#relatorio">Relatório</a></nav>
+        <nav class="section-nav" aria-label="Seções do painel local"><a href="#host">Host</a><a href="#rede-local">Rede local</a><a href="#wan">WAN</a><a href="#dispositivos">Dispositivos</a><a href="#diagrama">Diagrama</a><a href="#cftv">CFTV</a><a href="#comunicacao">Comunicação</a><a href="#watchdog">Watchdog</a><a href="#eventos">Eventos</a><a href="#relatorio">Relatório</a></nav>
         <p class="aviso-central" id="aviso-rede" hidden role="alert"></p>
         <p class="help-text">Painel servido pelo próprio sensor: continua funcionando sem internet. O registro de eventos guarda {{ retencao_dias }} dias.</p>
 
@@ -199,7 +199,7 @@
                         {% if xlsx %}<button class="action-btn btn-secondary" onclick="baixar('/api/levantamento.xlsx')"><i class="fa-solid fa-file-excel"></i> XLSX</button>{% endif %}
                         <button class="action-btn btn-secondary" onclick="baixar('/api/levantamento.json')" title="Formato para IA e integrações"><i class="fa-solid fa-file-code"></i> JSON</button>
                         <button class="action-btn btn-secondary" onclick="baixar('/api/diagrama.svg?baixar=1')" title="Diagrama da rede em imagem vetorial"><i class="fa-solid fa-diagram-project"></i> Diagrama (SVG)</button>
-                        <a class="action-btn btn-secondary" href="/diagrama" target="_blank" rel="noopener" title="Abre o diagrama para imprimir ou salvar em PDF"><i class="fa-solid fa-print"></i> Diagrama (PDF)</a>
+                        <button class="action-btn btn-secondary" onclick="window.open('/diagrama', '_blank', 'noopener')" title="Abre o diagrama para imprimir ou salvar em PDF"><i class="fa-solid fa-print"></i> Diagrama (PDF)</button>
                     </span>
                 </h3>
                 <div class="kpis" id="disp-kpis"></div>
@@ -230,6 +230,19 @@
                     </table>
                 </div>
                 <p class="help-text" style="margin:0;">Marca pelo prefixo do MAC (registro IEEE). Modelo e firmware quando o equipamento anuncia (ONVIF, UPnP, MikroTik MNDP, Ubiquiti). Fora da rede do sensor, só aparecem as redes adicionais cadastradas acima.</p>
+            </div>
+
+            <div class="card card-full card-stack" id="diagrama">
+                <h3><span><i class="fa-solid fa-diagram-project"></i> Diagrama da rede</span>
+                    <span style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="action-btn btn-primary" onclick="MapaRede.abrirEditor()"><i class="fa-solid fa-pen-to-square"></i> Editar diagrama</button>
+                        <button class="action-btn btn-secondary" onclick="baixar('/api/diagrama.svg?baixar=1')"><i class="fa-solid fa-diagram-project"></i> SVG</button>
+                        <button class="action-btn btn-secondary" onclick="window.open('/diagrama', '_blank', 'noopener')" title="Abre o diagrama para imprimir ou salvar em PDF"><i class="fa-solid fa-print"></i> PDF</button>
+                    </span>
+                </h3>
+                <p class="help-text" id="mapa-rede-info" style="margin:0;" role="status"></p>
+                <div class="mapa-rede-svg" id="mapa-rede-svg" aria-label="Diagrama da rede"><p class="hist-empty">Carregando o diagrama…</p></div>
+                <p class="help-text" style="margin:0;">Funciona sem internet: a edição fica salva no sensor e vai para a Central no próximo contato. Se o diagrama também for editado na Central nesse meio-tempo, vale a edição mais recente e a outra fica guardada no histórico da Central.</p>
             </div>
         </div>
 
@@ -649,5 +662,35 @@
     setInterval(() => { if (evDeslocamento === 0 && !document.hidden) carregarEventos(); }, 15000);
     </script>
     <script src="/static/host.js?v=edge-1"></script>
+    <div id="modalMapaRede" class="modal" role="dialog" aria-modal="true" aria-labelledby="mapa-editor-titulo">
+        <div class="modal-content mapa-editor">
+            <div class="modal-header">
+                <h2 id="mapa-editor-titulo" style="margin: 0;"><i class="fa-solid fa-diagram-project"></i> Editar diagrama da rede</h2>
+                <span class="close-modal" id="mapa-editor-fechar" role="button" aria-label="Fechar">&times;</span>
+            </div>
+            <p class="mapa-editor-ajuda">O sensor vê todos os equipamentos como se estivessem direto no gateway. Diga em que cada um liga e acrescente o que ele não enxerga (switch não gerenciável, conversor de mídia, rádio). A edição fica salva neste sensor e vai para a Central quando houver conexão.</p>
+            <div class="mapa-editor-novo">
+                <label for="mapa-editor-novo-tipo">Adicionar equipamento</label>
+                <select id="mapa-editor-novo-tipo"></select>
+                <button type="button" class="action-btn btn-secondary" id="mapa-editor-adicionar"><i class="fa-solid fa-plus"></i> Adicionar</button>
+            </div>
+            <div id="mapa-editor-lista" class="mapa-editor-lista"></div>
+            <p class="mapa-editor-erro" id="mapa-editor-erro" role="alert"></p>
+            <div class="mapa-editor-acoes">
+                <button type="button" class="action-btn btn-secondary" id="mapa-editor-cancelar">Cancelar</button>
+                <button type="button" class="action-btn btn-primary" id="mapa-editor-salvar">Salvar diagrama</button>
+            </div>
+        </div>
+    </div>
+<script>window.MAPA_REDE_URL = '/api/mapa_rede'; window.MAPA_REDE_SVG = '/api/diagrama.svg';</script>
+<script src="/static/mapa_rede.js?v=5"></script>
+<script>
+    // Diagrama: carrega ao abrir e a cada minuto (sem atrapalhar quem está editando).
+    document.addEventListener('DOMContentLoaded', () => {
+        const recarregar = () => { if (document.getElementById('modalMapaRede').style.display !== 'block') MapaRede.carregar().catch(() => {}); };
+        recarregar();
+        setInterval(recarregar, 60000);
+    });
+</script>
 </body>
 </html>
