@@ -61,7 +61,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
+import br.eng.mdsolucoes.nexocampo.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -89,6 +92,12 @@ fun App(vm: CampoViewModel, permissoesOk: Boolean, pedirPermissoes: () -> Unit) 
     Scaffold(
         containerColor = Cor.fundo,
         snackbarHost = { SnackbarHost(avisos) },
+        topBar = {
+            Column(Modifier.background(Cor.fundo).padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
+                Image(painterResource(R.drawable.logo_nexocampo), contentDescription = "NexoCampo", modifier = Modifier.height(30.dp))
+                AvisoAtualizacao(vm)
+            }
+        },
         bottomBar = {
             NavigationBar(containerColor = Cor.cartao) {
                 ABAS.forEachIndexed { i, a ->
@@ -392,6 +401,34 @@ private fun TelaRelatorio(vm: CampoViewModel) {
                 Text("O JSON tem os mesmos dados em formato para importar ou entregar a uma IA.", color = Cor.suave, fontSize = 12.sp)
                 Text("NexoCampo ${vm.versao} · MD Soluções Tecnológicas", color = Cor.suave, fontSize = 12.sp,
                     modifier = Modifier.padding(top = 12.dp))
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ Atualização
+@Composable
+private fun AvisoAtualizacao(vm: CampoViewModel) {
+    val v = vm.novaVersao ?: return
+    Column(
+        Modifier.padding(top = 10.dp).fillMaxWidth().background(Cor.ciano.copy(alpha = 0.12f), RoundedCornerShape(12.dp)).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("Versão ${v.nome} disponível", color = Cor.texto, fontWeight = FontWeight.SemiBold)
+        when {
+            vm.baixandoAtualizacao -> {
+                Text("Baixando…", color = Cor.suave, fontSize = 13.sp)
+                LinearProgressIndicator(progress = { vm.progressoAtualizacao }, modifier = Modifier.fillMaxWidth(), color = Cor.ciano, trackColor = Cor.borda)
+            }
+            vm.precisaLiberarInstalacao -> {
+                Text("Na primeira vez, o Android pede para liberar o NexoCampo a instalar atualizações. Ligue a opção e volte para cá.",
+                    color = Cor.suave, fontSize = 13.sp)
+                Button(onClick = { vm.liberarInstalacao() }, colors = ButtonDefaults.buttonColors(containerColor = Cor.ciano, contentColor = Cor.fundo)) {
+                    Text("Liberar instalação")
+                }
+            }
+            else -> Button(onClick = { vm.atualizar() }, colors = ButtonDefaults.buttonColors(containerColor = Cor.ciano, contentColor = Cor.fundo)) {
+                Text("Atualizar agora")
             }
         }
     }

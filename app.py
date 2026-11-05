@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template, session, redirect, url_for, flash, send_from_directory, g
+from flask import Flask, jsonify, request, render_template, session, redirect, url_for, flash, send_from_directory, send_file, g
 from werkzeug.security import check_password_hash, generate_password_hash
 from flask_socketio import SocketIO
 import database
@@ -8,6 +8,7 @@ import mapa_rede
 import nexoreport
 import nexoreport_pdf
 import guias
+import app_campo
 import nexodesk
 import sla
 import notifications
@@ -820,7 +821,11 @@ def pagina_guias():
     if session.get('role') != 'Administrador Master':
         return "Acesso Negado.", 403
     central = _url_central()
-    return render_template('guias.html', guias=[guias.guia(s, central) for s in guias.SISTEMAS])
+    try:
+        campo = app_campo.ultima_versao()
+    except Exception:
+        campo = None
+    return render_template('guias.html', guias=[guias.guia(s, central) for s in guias.SISTEMAS], campo=campo)
 
 
 @app.route('/guias/<sistema>.pdf')
@@ -831,6 +836,41 @@ def guia_pdf(sistema):
         return "Guia não encontrado.", 404
     return _pdf_resposta(guias.gerar_pdf(sistema, _url_central()), f'nexopulse-guia-instalacao-{sistema}.pdf',
                          request.args.get('baixar') == '1')
+
+
+# ------------------------------------------------------------------ NexoCampo (app Android de campo)
+@app.route('/app/nexocampo/versao')
+def nexocampo_versao():
+    """O app pergunta qual é a versão mais nova (sem login: só o número da versão e o tamanho)."""
+    try:
+        v = app_campo.ultima_versao()
+    except app_campo.SemConfiguracao:
+        return jsonify(error='Atualização do app não configurada na Central.'), 503
+    except Exception as erro:
+        app.logger.warning('NexoCampo: não consegui ler as versões no GitHub: %s', erro)
+        return jsonify(error='Não foi possível consultar a versão agora.'), 502
+    if not v:
+        return jsonify(error='Nenhuma versão publicada.'), 404
+    return jsonify(versao=v['versao'], versao_codigo=v['versao_codigo'], tamanho=v['tamanho'],
+                   publicado_em=v['publicado_em'], url=f"{_url_central()}/app/nexocampo.apk")
+
+
+@app.route('/app/nexocampo.apk')
+def nexocampo_apk():
+    try:
+        v = app_campo.ultima_versao()
+        if not v:
+            return "Nenhuma versão publicada.", 404
+        caminho = app_campo.arquivo_apk(v)
+    except app_campo.SemConfiguracao:
+        return "Atualização do app não configurada na Central.", 503
+    except Exception as erro:
+        app.logger.warning('NexoCampo: falha ao baixar o APK: %s', erro)
+        return "Não foi possível obter o app agora.", 502
+    resposta = send_file(caminho, mimetype='application/vnd.android.package-archive', as_attachment=True,
+                         download_name=f"nexocampo-{v['versao']}.apk", max_age=0)
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
 
 
 @app.route('/api/v2/saude', methods=['GET'])
