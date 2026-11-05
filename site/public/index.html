@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MD Soluções Tecnológicas | Manutenção, energia solar, redes, automação e software</title>
 <meta name="description" content="A MD Soluções Tecnológicas integra manutenção especializada, energia solar, redes, automação, segurança e software para operações mais eficientes, confiáveis e seguras. Conheça também o Ecossistema Nexo.">
-<meta name="theme-color" content="#082E56">
+<meta name="theme-color" content="#071A31">
 <link rel="canonical" href="https://www.mdsolucoes.eng.br/">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.mdsolucoes.eng.br/">
@@ -18,13 +18,32 @@
 <link rel="icon" href="/img/md-simbolo.png" type="image/png">
 <link rel="preload" href="/fontes/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fontes/ibm-plex-sans.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/estilo.css?v=2">
+<link rel="stylesheet" href="/md.css?v=1">
 <script type="application/ld+json">
-{{ "{" }}"@context":"https://schema.org","@type":"Organization","name":"MD Soluções Tecnológicas","url":"https://www.mdsolucoes.eng.br/","logo":"https://www.mdsolucoes.eng.br/img/md-logo.png","slogan":"Conectando inovação, tecnologia e inteligência ao futuro."{{ with env "SITE_EMAIL" }},"email":"{{ . }}"{{ end }}{{ with env "SITE_WHATSAPP" }},"telephone":"+{{ . }}"{{ end }}{{ with env "SITE_CNPJ" }},"taxID":"{{ . }}"{{ end }}{{ "}" }}
+{{ "{" }}"@context":"https://schema.org","@type":"Organization","name":"MD Soluções Tecnológicas","url":"https://www.mdsolucoes.eng.br/","logo":"https://www.mdsolucoes.eng.br/img/md-logo.png","slogan":"Conectando inovação, tecnologia e inteligência ao futuro."{{ with env "SITE_EMAIL" }},"email":"{{ . }}"{{ end }}{{ with env "SITE_WHATSAPP" }},"telephone":"+{{ . }}"{{ end }}{{ with env "SITE_CNPJ" }},"taxID":"{{ . }}"{{ end }}{{ with env "SITE_CIDADE" }},"address":{"@type":"PostalAddress","addressLocality":"{{ . }}","addressCountry":"BR"},"areaServed":"Paraíba e região"{{ end }}{{ "}" }}
 </script>
 </head>
 <body>
 <a class="pular" href="#conteudo">Pular para o conteúdo</a>
+
+<!-- Ícones de linha, os mesmos na linha de operação e em "O que fazemos". -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-solar" viewBox="0 0 24 24"><circle cx="17.5" cy="4.5" r="2"/><path d="M17.5 0.8v.7M21.2 4.5h-.7M14.5 4.5h-.7"/><path d="M2.5 20.5l2.6-9h11l2.6 9z"/><path d="M3.8 16h14.6M8.5 11.5l-1 9M13 11.5l1 9"/><path d="M10.5 20.5v2.5"/></symbol>
+  <symbol id="i-eletrica" viewBox="0 0 24 24"><path d="M13.5 2.5L5.5 13.5h6l-1.5 8 8.5-11.5h-6z"/></symbol>
+  <symbol id="i-iot" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/><circle cx="12" cy="12" r="1.5"/></symbol>
+  <symbol id="i-redes" viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><circle cx="4.5" cy="19.5" r="2"/><circle cx="19.5" cy="19.5" r="2"/><circle cx="12" cy="13" r="1.6"/><path d="M12 6.5v4.9M10.7 14.2l-4.7 3.9M13.3 14.2l4.7 3.9M6.5 19.5h11"/></symbol>
+  <symbol id="i-seguranca" viewBox="0 0 24 24"><path d="M12 2.5l7.5 3v5.5c0 5-3.6 8.8-7.5 10.5C8.1 19.8 4.5 16 4.5 11V5.5z"/><path d="M8.8 12l2.2 2.2 4.3-4.4"/></symbol>
+  <symbol id="i-software" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="14" rx="2"/><path d="M8 20.5h8M9 9l-2.5 2.5L9 14M15 9l2.5 2.5L15 14M13 8.5l-2 6"/></symbol>
+  <symbol id="i-consultoria" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="7"/><path d="M15.6 15.6L21 21M7 12.5l2.3-2.3 2 1.6 3-3.3"/></symbol>
+  <symbol id="i-local" viewBox="0 0 24 24"><path d="M12 21.5s7-6.2 7-12a7 7 0 10-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+  <symbol id="i-camadas" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></symbol>
+  <symbol id="i-plataforma" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="4.5" cy="5" r="1.8"/><circle cx="19.5" cy="5" r="1.8"/><circle cx="12" cy="20.5" r="1.8"/><path d="M6 6.2l3.8 3.8M18 6.2l-3.8 3.8M12 15v3.7"/></symbol>
+  <symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.3l2.7 2.7L16 9.6"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M4 20l1.2-3.8A8.5 8.5 0 1112 20.5a8.4 8.4 0 01-4.1-1z"/><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.6-2-1.2-1 .9c-1.2-.4-2.2-1.4-2.6-2.6l.9-1-1.2-2z"/></symbol>
+  <symbol id="i-email" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M3 6.5l9 6.5 9-6.5"/></symbol>
+  <symbol id="i-seta" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-entrar" viewBox="0 0 24 24"><path d="M14 4h4a2 2 0 012 2v12a2 2 0 01-2 2h-4M10 16l4-4-4-4M14 12H3"/></symbol>
+</svg>
 
 <header class="topo">
   <div class="miolo">
@@ -36,130 +55,150 @@
       <a href="/nexopulse">NexoPulse</a>
       <a href="#contato">Contato</a>
     </nav>
-    <a class="botao botao-linha" href="{{ env "SITE_HUB_URL" | default "https://hub.mdsolucoes.eng.br" }}">Entrar no NexoHub</a>
+    <a class="botao botao-azul" href="{{ env "SITE_HUB_URL" | default "https://hub.mdsolucoes.eng.br" }}"><svg class="icone" style="width:18px;height:18px"><use href="#i-entrar"/></svg> Área do cliente</a>
   </div>
 </header>
 
 <main id="conteudo">
-  <section class="abertura-md">
+  <section class="abertura" aria-labelledby="t-abertura">
     <div class="miolo">
-      <div>
-        <h1>Tecnologia, inovação e inteligência para transformar operações.</h1>
-        <p class="sub">A MD Soluções Tecnológicas desenvolve e implementa soluções que unem manutenção especializada, infraestrutura, automação e software, para processos mais eficientes, sistemas mais confiáveis e operações mais seguras.</p>
-        <div class="acoes">
-          <a class="botao botao-cheio" href="#contato">Fale com a MD</a>
-          <a class="botao botao-linha" href="#o-que-fazemos">Ver o que fazemos</a>
+      <h1 id="t-abertura">Tecnologia, inovação e inteligência para <span class="degrade">transformar operações.</span></h1>
+      <p class="sub">Da manutenção elétrica ao software com inteligência artificial: a MD Soluções Tecnológicas desenvolve e implementa soluções para processos mais eficientes, sistemas mais confiáveis e operações mais seguras.</p>
+      <div class="acoes">
+        <a class="botao botao-sinal" href="#contato">Fale com a MD <svg class="icone" style="width:18px;height:18px"><use href="#i-seta"/></svg></a>
+        <a class="botao botao-vidro" href="#o-que-fazemos">Conheça as soluções</a>
+      </div>
+
+      <div class="operacao" aria-labelledby="t-operacao">
+        <p class="operacao-titulo" id="t-operacao"><strong>Uma só equipe do começo ao fim da operação</strong><span>Da geração de energia à análise dos dados.</span></p>
+        <ol class="linha">
+          <li style="--i:0"><span class="estacao"><svg class="icone"><use href="#i-solar"/></svg></span><span class="nome">Energia solar</span><span class="faz">O&amp;M e inspeções em usinas fotovoltaicas</span></li>
+          <li style="--i:1"><span class="estacao"><svg class="icone"><use href="#i-eletrica"/></svg></span><span class="nome">Sistemas elétricos</span><span class="faz">Manutenção, ensaios e diagnóstico de falhas</span></li>
+          <li style="--i:2"><span class="estacao"><svg class="icone"><use href="#i-iot"/></svg></span><span class="nome">Automação e IoT</span><span class="faz">Sensores e sistemas de supervisão</span></li>
+          <li style="--i:3"><span class="estacao"><svg class="icone"><use href="#i-redes"/></svg></span><span class="nome">Redes</span><span class="faz">Implantação e monitoramento da conectividade</span></li>
+          <li style="--i:4"><span class="estacao"><svg class="icone"><use href="#i-seguranca"/></svg></span><span class="nome">Segurança</span><span class="faz">Proteção e supervisão dos ambientes</span></li>
+          <li style="--i:5"><span class="estacao"><svg class="icone"><use href="#i-software"/></svg></span><span class="nome">Software e IA</span><span class="faz">Plataformas, dashboards e análise de dados</span></li>
+        </ol>
+        <p class="operacao-rodape"><svg class="icone"><use href="#i-consultoria"/></svg><span><strong>Consultoria em todas as etapas:</strong> diagnóstico, escolha da tecnologia certa e implantação.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="secao quem" id="quem-somos" aria-labelledby="t-quem">
+    <div class="miolo">
+      <div class="grade">
+        <h2 id="t-quem">Soluções que conectam pessoas, equipamentos e informações.</h2>
+        <div class="texto">
+          <p>A MD Soluções Tecnológicas é especializada no desenvolvimento e na implementação de soluções tecnológicas, integrando inovação, automação, infraestrutura, manutenção especializada e inteligência digital.</p>
+          <p>Combinamos conhecimento técnico de campo, tecnologias modernas e ferramentas inteligentes para tornar processos mais eficientes, sistemas mais confiáveis e operações mais seguras.</p>
+          <p>Nosso propósito é transformar desafios operacionais em oportunidades de inovação, com soluções personalizadas para cada operação.</p>
         </div>
       </div>
-    <svg class="rede-md" viewBox="-40 20 520 350" role="img" aria-label="A MD no centro, ligada às suas frentes: sistemas elétricos, energia solar, redes, automação e IoT, segurança, software e IA, e consultoria.">
-      <line class="fio" x1="220" y1="200" x2="220.0" y2="57.5"/>
-      <line class="fio" x1="220" y1="200" x2="337.3" y2="111.2"/>
-      <line class="fio" x1="220" y1="200" x2="366.2" y2="231.7"/>
-      <line class="fio" x1="220" y1="200" x2="285.1" y2="328.4"/>
-      <line class="fio" x1="220" y1="200" x2="154.9" y2="328.4"/>
-      <line class="fio" x1="220" y1="200" x2="73.8" y2="231.7"/>
-      <line class="fio" x1="220" y1="200" x2="102.7" y2="111.2"/>
-      <line class="fio-sinal" x1="220" y1="200" x2="220.0" y2="57.5" style="animation-delay:0.50s"/>
-      <line class="fio-sinal" x1="220" y1="200" x2="337.3" y2="111.2" style="animation-delay:0.68s"/>
-      <line class="fio-sinal" x1="220" y1="200" x2="366.2" y2="231.7" style="animation-delay:0.86s"/>
-      <line class="fio-sinal" x1="220" y1="200" x2="285.1" y2="328.4" style="animation-delay:1.04s"/>
-      <line class="fio-sinal" x1="220" y1="200" x2="154.9" y2="328.4" style="animation-delay:1.22s"/>
-      <line class="fio-sinal" x1="220" y1="200" x2="73.8" y2="231.7" style="animation-delay:1.40s"/>
-      <line class="fio-sinal" x1="220" y1="200" x2="102.7" y2="111.2" style="animation-delay:1.58s"/>
-      <circle class="no-frente" cx="220.0" cy="57.5" r="9"/>
-      <circle class="no-frente" cx="337.3" cy="111.2" r="9"/>
-      <circle class="no-frente" cx="366.2" cy="231.7" r="9"/>
-      <circle class="no-frente" cx="285.1" cy="328.4" r="9"/>
-      <circle class="no-frente" cx="154.9" cy="328.4" r="9"/>
-      <circle class="no-frente" cx="73.8" cy="231.7" r="9"/>
-      <circle class="no-frente" cx="102.7" cy="111.2" r="9"/>
-      <circle class="no-centro" cx="220" cy="200" r="46"/>
-      <text class="rotulo-centro" x="220" y="209" text-anchor="middle">MD</text>
-      <text x="220.0" y="39.5" text-anchor="middle">Sistemas elétricos</text>
-      <text x="353.3" y="116.2" text-anchor="start">Energia solar</text>
-      <text x="382.2" y="236.7" text-anchor="start">Redes</text>
-      <text x="285.1" y="356.4" text-anchor="middle">Automação e IoT</text>
-      <text x="154.9" y="356.4" text-anchor="middle">Segurança</text>
-      <text x="57.8" y="236.7" text-anchor="end">Software e IA</text>
-      <text x="86.7" y="116.2" text-anchor="end">Consultoria</text>
-    </svg>
-    </div>
-  </section>
-
-  <section class="secao quem" id="quem-somos" aria-labelledby="t-quem" style="padding-top:0">
-    <div class="miolo dupla">
-      <h2 id="t-quem">Soluções que conectam pessoas, equipamentos e informações.</h2>
-      <div class="texto">
-        <p>A MD Soluções Tecnológicas é especializada no desenvolvimento e na implementação de soluções tecnológicas, integrando inovação, automação, infraestrutura, manutenção especializada e inteligência digital.</p>
-        <p>Criamos soluções que tornam processos mais eficientes, sistemas mais confiáveis e operações mais seguras, combinando conhecimento técnico, tecnologias modernas e ferramentas inteligentes.</p>
-        <p>Nosso propósito é transformar desafios operacionais em oportunidades de inovação, com soluções personalizadas para cada operação.</p>
+      <div class="fatos">
+        <div><svg class="icone"><use href="#i-camadas"/></svg><p><strong>Campo e software juntos</strong><span>A mesma equipe que mantém o equipamento desenvolve a plataforma que o acompanha.</span></p></div>
+        <div><svg class="icone"><use href="#i-plataforma"/></svg><p><strong>Plataformas próprias</strong><span>O Ecossistema Nexo é desenvolvido pela MD, sob medida para operações reais.</span></p></div>
+        <div><svg class="icone"><use href="#i-local"/></svg><p><strong>{{ with env "SITE_CIDADE" }}Sede em {{ . }}{{ else }}Na Paraíba{{ end }}</strong><span>Atendimento na Paraíba e região.</span></p></div>
       </div>
     </div>
   </section>
 
-  <section class="secao familia" id="o-que-fazemos" aria-labelledby="t-fazemos">
+  <section class="secao" id="o-que-fazemos" aria-labelledby="t-fazemos">
     <div class="miolo">
-      <h2 id="t-fazemos">O que fazemos</h2>
-      <p class="intro">Serviços especializados e soluções integradas em diferentes frentes tecnológicas, com uma mesma equipe olhando para a sua operação inteira.</p>
+      <div class="cabeca">
+        <h2 id="t-fazemos">O que fazemos</h2>
+        <p>Serviços especializados e soluções integradas em sete frentes tecnológicas, para cuidar da sua operação inteira, do equipamento à informação.</p>
+      </div>
       <ul class="frentes">
-        <li><h3>Manutenção e sistemas elétricos</h3><p>Manutenção preventiva, preditiva e corretiva, inspeções, ensaios técnicos, diagnóstico de falhas e suporte a instalações elétricas.</p></li>
-        <li><h3>Energia solar e infraestrutura energética</h3><p>Operação e manutenção (O&amp;M), inspeções, monitoramento e diagnósticos em usinas fotovoltaicas.</p></li>
-        <li><h3>Redes e conectividade</h3><p>Implantação, configuração, manutenção e monitoramento de redes corporativas, infraestrutura de comunicação e sistemas de conectividade.</p><a class="liga" href="/nexopulse">Monitoramento com o NexoPulse</a></li>
-        <li><h3>Automação e Internet das Coisas</h3><p>Integração de sensores, dispositivos inteligentes e sistemas de supervisão para otimizar processos.</p></li>
-        <li><h3>Segurança tecnológica</h3><p>Soluções de proteção, supervisão e monitoramento de infraestruturas e ambientes tecnológicos.</p></li>
-        <li><h3>Software e inteligência artificial</h3><p>Plataformas digitais, aplicações web, dashboards, sistemas de gestão e ferramentas inteligentes para automação e análise de dados.</p><a class="liga" href="#nexo">Conheça o Ecossistema Nexo</a></li>
-        <li><h3>Consultoria e soluções sob medida</h3><p>Levantamento de necessidades, diagnósticos técnicos e implantação das tecnologias adequadas a cada operação.</p></li>
+        <li><span class="marcador"><svg class="icone"><use href="#i-eletrica"/></svg></span><h3>Manutenção e sistemas elétricos</h3><p>Manutenção preventiva, preditiva e corretiva, inspeções, ensaios técnicos, diagnóstico de falhas e suporte a instalações elétricas.</p></li>
+        <li><span class="marcador"><svg class="icone"><use href="#i-solar"/></svg></span><h3>Energia solar e infraestrutura energética</h3><p>Operação e manutenção (O&amp;M), inspeções, monitoramento e diagnósticos em usinas fotovoltaicas.</p></li>
+        <li><span class="marcador"><svg class="icone"><use href="#i-redes"/></svg></span><h3>Redes e conectividade</h3><p>Implantação, configuração, manutenção e monitoramento de redes corporativas, infraestrutura de comunicação e sistemas de conectividade.</p><a href="/nexopulse">Monitoramento com o NexoPulse</a></li>
+        <li><span class="marcador"><svg class="icone"><use href="#i-iot"/></svg></span><h3>Automação e Internet das Coisas</h3><p>Integração de sensores, dispositivos inteligentes e sistemas de supervisão para otimizar processos.</p></li>
+        <li><span class="marcador"><svg class="icone"><use href="#i-seguranca"/></svg></span><h3>Segurança tecnológica</h3><p>Soluções de proteção, supervisão e monitoramento de infraestruturas e ambientes tecnológicos.</p></li>
+        <li><span class="marcador"><svg class="icone"><use href="#i-software"/></svg></span><h3>Software e inteligência artificial</h3><p>Plataformas digitais, aplicações web, dashboards, sistemas de gestão e ferramentas inteligentes para automação e análise de dados.</p><a href="#nexo">Conheça o Ecossistema Nexo</a></li>
+        <li class="larga"><span class="marcador"><svg class="icone"><use href="#i-consultoria"/></svg></span><h3>Consultoria e soluções sob medida</h3><p>Levantamento de necessidades, diagnósticos técnicos e implantação das tecnologias adequadas a cada operação.</p></li>
       </ul>
     </div>
   </section>
 
-  <section class="secao" id="nexo" aria-labelledby="t-nexo">
-    <div class="miolo">
-      <h2 id="t-nexo">Ecossistema Nexo: as plataformas próprias da MD.</h2>
-      <p class="intro">Desenvolvemos uma família de plataformas para conectar informações, automatizar processos e dar mais inteligência à operação. O NexoHub é a porta de entrada: um acesso só para todas as soluções digitais da MD.</p>
-      <div class="apps">
-        <div class="app">
-          <img src="/img/nexohub-claro.svg" alt="NexoHub" width="220" height="46">
-          <p><b>O portal do cliente.</b> Um login só para acompanhar os serviços e as plataformas contratados com a MD.</p>
-          <span class="situacao pronto">Disponível</span>
+  <section class="secao escura nexo" id="nexo" aria-labelledby="t-nexo">
+    <div class="miolo grade">
+      <div>
+        <div class="cabeca" style="grid-template-columns:1fr;margin-bottom:0">
+          <h2 id="t-nexo">Ecossistema Nexo: as plataformas próprias da MD.</h2>
+          <p>Uma família de plataformas para conectar informações, automatizar processos e dar mais inteligência à operação. O NexoHub é a porta de entrada: um único acesso para todas as soluções digitais da MD.</p>
         </div>
-        <div class="app">
-          <img class="pulse" src="/img/nexopulse-claro.svg" alt="NexoPulse" width="220" height="46">
-          <p><b>Monitoramento de rede.</b> Sensores nos seus locais, diagnóstico de onde está cada queda e alertas no Telegram. <a href="/nexopulse">Ver como funciona</a></p>
-          <span class="situacao pronto">Disponível</span>
+        <div class="acoes" style="display:flex;flex-wrap:wrap;gap:14px;margin-top:32px">
+          <a class="botao botao-sinal" href="{{ env "SITE_HUB_URL" | default "https://hub.mdsolucoes.eng.br" }}">Entrar no NexoHub</a>
+          <a class="botao botao-vidro" href="/nexopulse">Ver o NexoPulse</a>
         </div>
-        <div class="app">
-          <img src="/img/nexoguard-claro.svg" alt="NexoGuard" width="220" height="46">
-          <p><b>Segurança da rede.</b> Vai acompanhar portas expostas, firewall e atualizações da sua rede.</p>
-          <span class="situacao breve">Em desenvolvimento</span>
+      </div>
+      <div class="constelacao" style="aspect-ratio:1/.95">
+        <svg class="fios" viewBox="0 0 100 95" preserveAspectRatio="none" aria-hidden="true">
+          <defs><linearGradient id="grad-sinal" x1="0" x2="1"><stop offset="0" stop-color="#7A3FE0"/><stop offset=".55" stop-color="#12B5E5"/><stop offset="1" stop-color="#0BB39A"/></linearGradient></defs>
+          <path class="fio" d="M50 47.5 L25 15" vector-effect="non-scaling-stroke"/><path class="fio" d="M50 47.5 L75 15" vector-effect="non-scaling-stroke"/><path class="fio" d="M50 47.5 L50 80" vector-effect="non-scaling-stroke"/>
+          <path class="fio-vivo" d="M50 47.5 L25 15" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <div class="app centro" style="left:50%;top:50%">
+          <header><img src="/img/nexohub-simbolo-escuro.svg" alt="" width="44" height="44"><h3>NexoHub</h3></header>
+          <p>O portal do cliente: um login só para acompanhar serviços e plataformas da MD.</p>
+          <span class="estado">Disponível</span>
         </div>
-        <div class="app">
-          <img src="/img/nexoreport-claro.svg" alt="NexoReport" width="220" height="46">
-          <p><b>Relatórios.</b> Vai gerar o resumo mensal da sua operação em PDF, pronto para a diretoria.</p>
-          <span class="situacao breve">Em desenvolvimento</span>
+        <div class="app" style="left:25%;top:15.8%">
+          <header><img src="/img/nexopulse-simbolo-escuro.svg" alt="" width="34" height="34"><h3><a href="/nexopulse">NexoPulse</a></h3></header>
+          <p>Monitoramento de rede com diagnóstico de cada queda.</p>
+          <span class="estado">Disponível</span>
+        </div>
+        <div class="app" style="left:75%;top:15.8%">
+          <header><img src="/img/nexoguard-simbolo-escuro.svg" alt="" width="34" height="34"><h3>NexoGuard</h3></header>
+          <p>Segurança da rede: portas expostas, firewall e atualizações.</p>
+          <span class="estado breve">Em desenvolvimento</span>
+        </div>
+        <div class="app" style="left:50%;top:84.2%">
+          <header><img src="/img/nexoreport-simbolo-escuro.svg" alt="" width="34" height="34"><h3>NexoReport</h3></header>
+          <p>Resumo mensal da operação em PDF, pronto para a diretoria.</p>
+          <span class="estado breve">Em desenvolvimento</span>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="secao escura destaque" aria-labelledby="t-destaque">
-    <div class="miolo">
+  <section class="secao pulse" aria-labelledby="t-pulse">
+    <div class="miolo grade">
       <div>
-        <h2 id="t-destaque">Em destaque: quando a internet cai, o NexoPulse diz onde está o problema.</h2>
+        <img class="logo-app" src="/img/nexopulse-claro.svg" alt="NexoPulse" width="160" height="34">
+        <h2 id="t-pulse">Quando a internet cai, o NexoPulse mostra onde está o problema.</h2>
         <ul>
-          <li>Um sensor no local mede a conexão a cada poucos segundos, 24 horas por dia.</li>
-          <li>Aponta a camada com problema: rede interna, antena, provedor ou DNS.</li>
-          <li>Avisa na hora e guarda as medições como prova para cobrar o provedor.</li>
+          <li><svg class="icone"><use href="#i-ok"/></svg><span>Um sensor no local mede a conexão a cada poucos segundos, 24 horas por dia.</span></li>
+          <li><svg class="icone"><use href="#i-ok"/></svg><span>Aponta a camada com problema: rede interna, antena, provedor ou DNS.</span></li>
+          <li><svg class="icone"><use href="#i-ok"/></svg><span>Avisa na hora e guarda as medições como prova para cobrar o provedor.</span></li>
         </ul>
-        <div class="acoes"><a class="botao botao-linha" href="/nexopulse">Ver como o NexoPulse funciona</a></div>
+        <a class="botao botao-contorno" href="/nexopulse">Ver como funciona <svg class="icone" style="width:18px;height:18px"><use href="#i-seta"/></svg></a>
       </div>
-      <div class="tela"><img src="/img/diagnostico-recorte.jpg" alt="Tela da plataforma NexoPulse com o diagnóstico de uma queda: rede local normal, Starlink com obstrução e a linha do tempo explicando a causa." width="1600" height="529" loading="lazy"></div>
+      <figure class="monitor" style="margin:0">
+        <div class="barra" aria-hidden="true"><i></i><i></i><i></i></div>
+        <img src="/img/diagnostico-recorte.jpg" alt="Tela da plataforma NexoPulse com o diagnóstico de uma queda: rede local normal, Starlink com obstrução e a linha do tempo explicando a causa." width="1600" height="529" loading="lazy">
+      </figure>
+    </div>
+  </section>
+
+  <section class="secao" style="padding-top:0" aria-labelledby="t-etapas">
+    <div class="miolo">
+      <div class="cabeca">
+        <h2 id="t-etapas">Como trabalhamos</h2>
+        <p>Cada solução começa entendendo a operação de perto, e só termina quando ela está funcionando e sendo acompanhada.</p>
+      </div>
+      <ol class="etapas">
+        <li><h3>Diagnóstico</h3><p>Levantamento das necessidades e avaliação técnica da operação, em campo.</p></li>
+        <li><h3>Solução</h3><p>Escolha da tecnologia adequada: serviço, equipamento, automação ou software.</p></li>
+        <li><h3>Implantação</h3><p>Execução com a equipe técnica da MD, integrando o que já existe.</p></li>
+        <li><h3>Acompanhamento</h3><p>Monitoramento, manutenção e melhoria contínua dos resultados.</p></li>
+      </ol>
     </div>
   </section>
 
   <section class="secao diferencial" aria-labelledby="t-diferencial">
-    <div class="miolo dupla">
-      <blockquote><h2 id="t-diferencial" style="font-size:inherit;max-width:none">Mais do que serviços ou ferramentas digitais: soluções completas.</h2></blockquote>
+    <div class="miolo grade">
+      <blockquote id="t-diferencial">Mais do que serviços ou ferramentas digitais: soluções completas.</blockquote>
       <div class="texto">
         <p>Unimos experiência técnica, desenvolvimento de software, automação e tecnologias inteligentes para identificar problemas, melhorar processos e aumentar a confiabilidade das operações.</p>
         <p>Na MD, a tecnologia não é só uma ferramenta: é o caminho para operações mais inteligentes, seguras e eficientes.</p>
@@ -167,22 +206,48 @@
     </div>
   </section>
 
-  <section class="secao contato" id="contato" aria-labelledby="falar">
-    <div class="miolo">
+  <section class="secao contato" id="contato" aria-labelledby="t-contato">
+    <div class="miolo grade">
       <div>
-        <h2 id="falar">Vamos conversar sobre a sua operação?</h2>
-        <p class="intro" style="margin-top:18px;max-width:46ch">Conte o que você precisa e a MD indica a solução adequada, de uma manutenção a uma plataforma sob medida.{{ with env "SITE_CIDADE" }} Sede em {{ . }}, atendendo a Paraíba e região.{{ end }}</p>
-        <p class="canais">{{ with env "SITE_TELEFONE" }}<span>WhatsApp {{ . }}</span>{{ end }}{{ with env "SITE_EMAIL" }}<span>{{ . }}</span>{{ end }}</p>
+        <h2 id="t-contato">Vamos conversar sobre a sua operação?</h2>
+        <p class="sub">Conte o que você precisa e a MD indica a solução adequada, de uma manutenção a uma plataforma sob medida.{{ with env "SITE_CIDADE" }} Sede em {{ . }}, atendendo a Paraíba e região.{{ end }}</p>
       </div>
-      <div class="acoes">
-        {{ $zap := env "SITE_WHATSAPP" }}{{ if $zap }}<a class="botao botao-cheio" href="https://wa.me/{{ $zap }}?text=Ol%C3%A1!%20Gostaria%20de%20conversar%20com%20a%20MD%20Solu%C3%A7%C3%B5es%20Tecnol%C3%B3gicas." rel="noopener">Conversar no WhatsApp</a>{{ end }}
-        {{ $email := env "SITE_EMAIL" }}{{ if $email }}<a class="botao botao-linha" href="mailto:{{ $email }}?subject=Contato%20pelo%20site">Enviar um e-mail</a>{{ end }}
-        {{ if and (not $zap) (not $email) }}<a class="botao botao-cheio" href="{{ env "SITE_HUB_URL" | default "https://hub.mdsolucoes.eng.br" }}">Entrar no NexoHub</a>{{ end }}
+      <div class="canais">
+        {{ $zap := env "SITE_WHATSAPP" }}{{ if $zap }}<a class="canal principal" href="https://wa.me/{{ $zap }}?text=Ol%C3%A1!%20Gostaria%20de%20conversar%20com%20a%20MD%20Solu%C3%A7%C3%B5es%20Tecnol%C3%B3gicas." rel="noopener">
+          <span class="marcador"><svg class="icone"><use href="#i-zap"/></svg></span>
+          <span><small>WhatsApp</small><strong>{{ env "SITE_TELEFONE" | default "Conversar agora" }}</strong></span>
+          <svg class="icone seta"><use href="#i-seta"/></svg>
+        </a>{{ end }}
+        {{ $email := env "SITE_EMAIL" }}{{ if $email }}<a class="canal" href="mailto:{{ $email }}?subject=Contato%20pelo%20site">
+          <span class="marcador"><svg class="icone"><use href="#i-email"/></svg></span>
+          <span><small>E-mail</small><strong>{{ $email }}</strong></span>
+          <svg class="icone seta"><use href="#i-seta"/></svg>
+        </a>{{ end }}
+        <a class="canal" href="{{ env "SITE_HUB_URL" | default "https://hub.mdsolucoes.eng.br" }}">
+          <span class="marcador"><svg class="icone"><use href="#i-entrar"/></svg></span>
+          <span><small>Já é cliente?</small><strong>Entrar no NexoHub</strong></span>
+          <svg class="icone seta"><use href="#i-seta"/></svg>
+        </a>
       </div>
     </div>
   </section>
 </main>
 
 {{ include "/_rodape.html" }}
+<script>
+  // O sinal da linha de operação percorre exatamente o trilho (do primeiro ao último ícone).
+  (() => {
+    const linha = document.querySelector('.linha');
+    if (!linha) return;
+    const medir = () => {
+      const itens = linha.querySelectorAll('li');
+      if (itens.length < 2) return;
+      const a = itens[0].getBoundingClientRect(), b = itens[itens.length - 1].getBoundingClientRect();
+      linha.style.setProperty('--trilho', Math.round((b.left + b.width / 2) - (a.left + a.width / 2)) + 'px');
+    };
+    medir();
+    addEventListener('resize', medir);
+  })();
+</script>
 </body>
 </html>
