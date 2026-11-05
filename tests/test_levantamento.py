@@ -175,7 +175,7 @@ def test_exporta_planilha_sem_formulas(client, login):
     resposta = login(1).get(f'/api/v2/levantamento/{MAC_SENSOR}/xlsx')
     assert resposta.status_code == 200
     livro = openpyxl.load_workbook(io.BytesIO(resposta.data))
-    assert livro.sheetnames == ['Dispositivos', 'Resumo', 'Sobre']
+    assert livro.sheetnames == ['Dispositivos', 'Resumo', 'Diagrama', 'Sobre']
     aba = livro['Dispositivos']
     assert aba['A1'].value == 'IP' and aba['F2'].value == 'TP-Link' and aba.freeze_panes == 'A2'
     nomes = [c for c in aba['D'] if c.value and str(c.value).startswith('=')]

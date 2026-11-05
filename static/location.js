@@ -5,7 +5,7 @@
     const status = document.getElementById('location-status');
     let source = root.dataset.source || null, accuracy = root.dataset.accuracy ? Number(root.dataset.accuracy) : null;
     let changed = false, marker, map;
-    const SOURCES = {browser: 'navegador', manual: 'manual', ip: 'IP (aproximada)'};
+    const SOURCES = {browser: 'navegador', manual: 'manual', ip: 'internet (aproximada)', starlink: 'GPS da antena Starlink', windows: 'localização do Windows do sensor'};
     const fonte = s => SOURCES[s] || s || 'não informada';
     const precisao = p => p != null ? ` · precisão ~${Math.round(p)} m` : '';
     function quando(iso) {
@@ -44,6 +44,40 @@
         navigator.geolocation.getCurrentPosition(position => {
             setLocation(position.coords.latitude,position.coords.longitude,'browser',position.coords.accuracy); button.disabled=false;
         }, error => { status.textContent=({1:'Permissão negada. Autorize a localização no navegador ou use o mapa.',2:'Localização indisponível. Tente com o celular no local.',3:'Tempo de captura esgotado. Tente novamente ou use coordenadas.'})[error.code] || 'Falha na captura.';button.disabled=false; }, {enableHighAccuracy:true, timeout:20000, maximumAge:0});
+    };
+    const botaoSensor = document.getElementById('capture-sensor');
+    if (botaoSensor) botaoSensor.onclick = async () => {
+        const base = `/api/v2/sensor/${encodeURIComponent(root.dataset.mac)}/capturar_local`;
+        botaoSensor.disabled = true;
+        status.textContent = 'Pedindo a posição ao sensor…';
+        try {
+            const r = await fetch(base, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+            const pedido = await r.json();
+            if (!r.ok) throw new Error(pedido.error || 'Não foi possível pedir a localização ao sensor.');
+            const limite = Date.now() + (pedido.prazo_s || 120) * 1000;
+            while (Date.now() < limite) {
+                await new Promise(ok => setTimeout(ok, 2500));
+                const res = await (await fetch(`${base}/${pedido.id}`)).json();
+                if (res.status === 'aguardando') {
+                    status.textContent = res.entregue ? 'O sensor está buscando a posição (Starlink, Windows ou internet)…' : 'Aguardando o sensor buscar o pedido…';
+                    continue;
+                }
+                if (res.status === 'ok') {
+                    setLocation(res.latitude, res.longitude, res.location_source, res.accuracy_m);
+                    let nota = res.location_source === 'ip' ? ` Aproximada pela internet${res.referencia ? ` (${res.referencia})` : ''}: pode errar por dezenas de km. Confira no mapa.` : '';
+                    if (res.tentativas?.length && res.location_source !== 'starlink') nota += ` Antes: ${res.tentativas.join(' ')}`;
+                    status.textContent += '.' + nota;
+                } else {
+                    status.textContent = 'O sensor não conseguiu a posição. ' + (res.tentativas || []).join(' ');
+                }
+                return;
+            }
+            status.textContent = 'O sensor não respondeu em 2 minutos. Ele está online? Tente de novo ou use o mapa.';
+        } catch (error) {
+            status.textContent = error.message;
+        } finally {
+            botaoSensor.disabled = false;
+        }
     };
     document.getElementById('clear-location').onclick = () => {lat.value='';lon.value='';source=null;accuracy=null;changed=true;if(marker){map.removeLayer(marker);marker=null;}status.textContent='Localização removida. Salve para aplicar.';};
     window.salvarConfig = async () => {

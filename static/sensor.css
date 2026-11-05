@@ -97,3 +97,31 @@ button.action-btn:hover { filter: brightness(1.2); }
 .node-btn { display: block; width: 100%; text-align: left; background: var(--bg-input); border: none; color: var(--text-main); padding: 8px 12px; margin-bottom: 5px; border-radius: 4px; cursor: pointer; transition: 0.2s; font-size: 0.85em;}
 .node-btn:hover { background: var(--blue); color: var(--bg-base); font-weight: bold; }
 .node-btn.btn-red:hover { background: var(--red); }
+
+/* Diagrama da rede: rodapé do card e editor de ligações */
+.mapa-rodape { display: flex; justify-content: space-between; gap: 6px 16px; flex-wrap: wrap; padding: 6px 4px 0; font-size: .78em; color: var(--text-muted); }
+.mapa-editor { max-width: 980px; height: auto; max-height: 92vh; gap: 12px; }
+.mapa-editor h2 { color: var(--text-main, inherit); font-size: 1.15rem; }
+.mapa-editor-ajuda { margin: 0; color: var(--text-muted); font-size: .9rem; line-height: 1.5; max-width: 75ch; }
+.mapa-editor-novo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; background: var(--bg-input); border-radius: 10px; }
+.mapa-editor-novo label { font-weight: 600; font-size: .9rem; }
+.mapa-editor-novo select { min-width: 200px; }
+.mapa-editor-lista { overflow-y: auto; flex: 1 1 auto; min-height: 120px; border-top: 1px solid var(--border); }
+.me-linha { display: grid; grid-template-columns: minmax(170px, 1.3fr) 1fr 1.2fr .9fr 34px; gap: 10px; align-items: end; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+.me-linha.me-foco { background: color-mix(in srgb, var(--brand-cyan, #05A9DC) 12%, transparent); border-radius: 8px; }
+.me-linha.me-adicionado .me-nome-col { display: grid; gap: 6px; }
+.me-nome-col strong { display: block; font-size: .92rem; overflow-wrap: anywhere; }
+.me-nome-col small { display: block; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; font-size: .76rem; overflow-wrap: anywhere; }
+.me-linha label { display: grid; gap: 4px; font-size: .74rem; color: var(--text-muted); }
+.me-linha select, .me-linha input, .mapa-editor-novo select { width: 100%; padding: 7px 8px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-input); color: inherit; font: inherit; font-size: .86rem; box-sizing: border-box; }
+.me-remover { border: 1px solid var(--border); background: transparent; color: var(--status-crit, #F87171); border-radius: 7px; height: 34px; cursor: pointer; }
+.mapa-editor-erro { margin: 0; color: var(--status-crit, #F87171); min-height: 1.2em; font-size: .88rem; }
+.mapa-editor-acoes { display: flex; justify-content: flex-end; gap: 10px; }
+@media (max-width: 760px) {
+    .me-linha { grid-template-columns: 1fr 1fr; }
+    .me-linha .me-nome-col { grid-column: 1 / -1; }
+    .me-remover { grid-column: 2; justify-self: end; width: 44px; }
+    .mapa-editor { width: 100%; margin: 0; max-height: 100vh; border-radius: 0; }
+}
+
+.mapa-editor-novo select { width: auto; flex: 0 1 280px; }

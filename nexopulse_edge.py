@@ -1082,7 +1082,17 @@ def _reiniciar_agente(prefixo=""):
 _REINICIAR_APOS_RESULTADO = False
 
 
+def _acao_capturar_local():
+    """Posição da máquina do sensor (Starlink, Windows ou internet); a saída é JSON para a tela."""
+    import localizacao_sensor
+    sg = starlink.starlink_grpc if starlink is not None else None
+    alvo = starlink.ALVO if starlink is not None else "192.168.100.1:9200"
+    resultado = localizacao_sensor.capturar(sg, alvo)
+    return (0 if resultado["ok"] else 1), json.dumps(resultado, ensure_ascii=False)
+
+
 ACOES_REMOTAS = {
+    "capturar_local": _acao_capturar_local,
     "diagnostico": _acao_diagnostico,
     "atualizar_sistema": lambda: _admin("update-system", 1800),
     "atualizar_agente": _acao_atualizar_agente,

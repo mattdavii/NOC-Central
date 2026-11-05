@@ -3,6 +3,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from flask_socketio import SocketIO
 import database
 import levantamento
+import mapa_rede
 import notifications
 import oui
 import diagnostico
@@ -23,6 +24,7 @@ import threading
 import time
 import urllib.error
 import re
+import unicodedata
 import hashlib
 from datetime import datetime, timedelta, timezone
 
@@ -647,7 +649,7 @@ def _pode_gerenciar_usuarios(conn):
 # ==========================================
 # Só o que o sensor precisa para rodar; docs e o instalador do Windows ficam no servidor.
 ARQUIVOS_AGENTE = ['nexopulse_edge.py', 'host_metrics.py', 'starlink.py', 'netdiag.py', 'nomes_rede.py', 'fila_envio.py', 'requirements-agente.txt',
-                   'descoberta.py', 'cftv.py', 'comunicacao.py', 'oui.py', 'dados/oui.tsv.gz', 'levantamento.py', 'edge_local.py',
+                   'descoberta.py', 'localizacao_sensor.py', 'cftv.py', 'comunicacao.py', 'oui.py', 'dados/oui.tsv.gz', 'levantamento.py', 'edge_local.py',
                    'templates/edge/painel.html', 'templates/edge/relatorio.html', 'templates/edge/login.html',
                    'static/product.css', 'static/sensor.css', 'static/brand.js', 'static/host.js',
                    'static/brand/nexopulse/favicon.svg', 'static/brand/nexopulse/favicon.ico',
@@ -1965,6 +1967,8 @@ def exportar_levantamento(mac_id, formato):
     finally:
         conn.close()
     dados = levantamento.montar(sensor, dispositivos, CENTRAL_VERSION, ocultar_nomes=request.args.get('ocultar_nomes') == '1')
+    if not dados['nomes_ocultos']:
+        dados['diagrama'] = mapa_rede.resumo_ligacoes(mapa_rede.montar(sensor, dispositivos, mapa_rede.carregar(sensor['mapa_rede'])))
     if formato == 'json':
         resposta = app.response_class(json.dumps(dados, ensure_ascii=False, indent=2), mimetype='application/json')
     elif formato == 'csv':
@@ -1973,6 +1977,59 @@ def exportar_levantamento(mac_id, formato):
         resposta = app.response_class(levantamento.para_xlsx(dados),
                                       mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     resposta.headers['Content-Disposition'] = f'attachment; filename="{levantamento.nome_arquivo(dados, formato)}"'
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
+
+def _arvore_do_sensor(conn, mac_id):
+    sensor = db_execute(conn, "SELECT * FROM sensores WHERE mac_id = ?", (mac_id,)).fetchone()
+    if not sensor:
+        return None, None, None
+    dispositivos = db_execute(conn, "SELECT * FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
+    mapa = mapa_rede.carregar(sensor['mapa_rede'])
+    return sensor, mapa, mapa_rede.montar(sensor, dispositivos, mapa)
+
+
+@app.route('/api/v2/sensor/<mac_id>/mapa_rede', methods=['GET', 'PUT'])
+def mapa_rede_sensor(mac_id):
+    """Diagrama da rede: GET devolve o mapa salvo e a árvore pronta; PUT salva o que a equipe informou."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        if request.method == 'PUT':
+            try:
+                mapa = mapa_rede.validar((request.get_json(silent=True) or {}).get('mapa'))
+            except ValueError as erro:
+                return jsonify(error=str(erro)), 400
+            cur = conn.execute('UPDATE sensores SET mapa_rede=?, mapa_rede_em=?, mapa_rede_por=? WHERE mac_id=?',
+                               (json.dumps(mapa, ensure_ascii=False), datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                                session.get('usuario'), mac_id))
+            if not cur.rowcount:
+                return jsonify(error='Sensor não encontrado.'), 404
+            conn.commit()
+        sensor, mapa, arvore = _arvore_do_sensor(conn, mac_id)
+        if sensor is None:
+            return jsonify(error='Sensor não encontrado.'), 404
+        return jsonify(mapa=mapa, arvore=arvore, tipos=mapa_rede.TIPOS, meios=mapa_rede.MEIOS,
+                       atualizado_em=sensor['mapa_rede_em'], atualizado_por=sensor['mapa_rede_por'])
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/sensor/<mac_id>/diagrama.svg')
+def diagrama_rede_svg(mac_id):
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        sensor, _, arvore = _arvore_do_sensor(conn, mac_id)
+    finally:
+        conn.close()
+    if sensor is None:
+        return jsonify(error='Sensor não encontrado.'), 404
+    resposta = app.response_class(mapa_rede.svg(arvore), mimetype='image/svg+xml')
+    nome = re.sub(r'[^A-Za-z0-9]+', '-', unicodedata.normalize('NFKD', sensor['nome_local'] or 'sensor').encode('ascii', 'ignore').decode()).strip('-') or 'sensor'
+    resposta.headers['Content-Disposition'] = f'attachment; filename="diagrama-rede-{nome}.svg"'
     resposta.headers['Cache-Control'] = 'no-store'
     return resposta
 
@@ -3224,6 +3281,8 @@ ACOES_REMOTAS = {
     'reiniciar_agente': 'Reiniciar serviço do agente',
     'reiniciar_maquina': 'Reiniciar a máquina',
 }
+# Rótulos também das ações internas (não aparecem como botão nas ações do Master).
+ROTULOS_ACOES = {**ACOES_REMOTAS, 'capturar_local': 'Capturar localização no sensor'}
 _falhas_senha = {}
 
 
@@ -3382,7 +3441,7 @@ def acoes_remotas(mac_id):
                 limite = 15
             total = conn.execute('SELECT COUNT(*) AS n FROM acoes_remotas WHERE sensor_mac=?', (mac_id,)).fetchone()['n']
             linhas = conn.execute(f'SELECT id, acao, solicitante, status, codigo, saida, {campos} FROM acoes_remotas WHERE sensor_mac=? ORDER BY id DESC LIMIT ?', (mac_id, limite)).fetchall()
-            return jsonify(permitido=bool(sensor['acoes_remotas']), acoes=ACOES_REMOTAS,
+            return jsonify(permitido=bool(sensor['acoes_remotas']), acoes=ACOES_REMOTAS, rotulos=ROTULOS_ACOES,
                            auto_atualizar=bool(sensor['auto_atualizar']), guarda=bool(sensor['auto_update_guard']),
                            build_sensor=sensor['agent_build'], build_central=AGENT_BUILD, build_recusado=sensor['build_recusado'] or None,
                            total_historico=total,
@@ -3434,6 +3493,67 @@ def permitir_acoes_remotas(mac_id):
         conn.close()
 
 
+# Captura da localização na máquina do sensor: só lê a posição, então qualquer usuário com acesso
+# ao sensor pode pedir (sem senha do Master e sem depender do interruptor de ações remotas).
+CAPTURA_LOCAL_PRAZO_S = 120
+
+
+@app.route('/api/v2/sensor/<mac_id>/capturar_local', methods=['POST'])
+def pedir_captura_local(mac_id):
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        if not conn.execute('SELECT 1 FROM sensores WHERE mac_id=?', (mac_id,)).fetchone():
+            return jsonify(error='Sensor não encontrado.'), 404
+        cur = conn.execute("INSERT INTO acoes_remotas (sensor_mac, acao, solicitante, status) VALUES (?, 'capturar_local', ?, 'pendente') RETURNING id",
+                           (mac_id, session.get('usuario')))
+        id_acao = cur.fetchone()['id']
+        conn.execute('INSERT INTO comandos_pendentes (sensor_mac, comando) VALUES (?, ?)', (mac_id, f'acao:{id_acao}:capturar_local'))
+        conn.commit()
+        return jsonify(status='OK', id=id_acao, prazo_s=CAPTURA_LOCAL_PRAZO_S), 201
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/sensor/<mac_id>/capturar_local/<int:id_acao>')
+def ver_captura_local(mac_id, id_acao):
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        row = conn.execute("SELECT status, saida FROM acoes_remotas WHERE id=? AND sensor_mac=? AND acao='capturar_local'",
+                           (id_acao, mac_id)).fetchone()
+        if not row:
+            return jsonify(error='Pedido não encontrado.'), 404
+        if row['status'] in ('pendente', 'enviada'):
+            return jsonify(status='aguardando', entregue=row['status'] == 'enviada')
+        try:
+            resultado = json.loads(row['saida'] or '')
+        except ValueError:
+            resultado = None
+        if not isinstance(resultado, dict):
+            saida = row['saida'] or ''
+            if 'ação desconhecida' in saida:
+                saida = 'Este sensor está numa versão antiga do agente, que ainda não sabe capturar a localização. Atualize o agente e tente de novo.'
+            return jsonify(status='erro', tentativas=[(saida or 'O sensor não devolveu a localização.')[-400:]])
+        local = resultado.get('local') if resultado.get('ok') else None
+        if isinstance(local, dict):
+            try:
+                validado = parse_location({**local, 'location_source': local.get('location_source'),
+                                           'accuracy_m': local.get('accuracy_m')})
+            except ValueError:
+                validado = None
+            if validado and validado['latitude'] is not None:
+                return jsonify(status='ok', latitude=validado['latitude'], longitude=validado['longitude'],
+                               accuracy_m=local.get('accuracy_m'), location_source=validado['location_source'],
+                               referencia=str(local.get('referencia') or '')[:120] or None,
+                               tentativas=[str(t)[:400] for t in resultado.get('tentativas') or []][:5])
+        return jsonify(status='erro', tentativas=[str(t)[:400] for t in resultado.get('tentativas') or []][:5])
+    finally:
+        conn.close()
+
+
 @app.route('/api/v2/acao_resultado', methods=['POST'])
 def acao_resultado():
     auth_error = exigir_sensor_ou_sessao()
@@ -3453,7 +3573,7 @@ def acao_resultado():
         status = 'concluida' if codigo == 0 else 'erro'
         conn.execute('UPDATE acoes_remotas SET status=?, codigo=?, saida=?, concluido_em=CURRENT_TIMESTAMP WHERE id=?', (status, codigo, saida, id_acao))
         conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Ação remota', ?, ?)",
-                     (mac, 'Aviso' if codigo == 0 else 'Alerta', f"{ACOES_REMOTAS.get(row['acao'], row['acao'])} (#{id_acao}): {'concluída' if codigo == 0 else f'falhou (código {codigo})'}."))
+                     (mac, 'Aviso' if codigo == 0 else 'Alerta', f"{ROTULOS_ACOES.get(row['acao'], row['acao'])} (#{id_acao}): {'concluída' if codigo == 0 else f'falhou (código {codigo})'}."))
         if row['acao'] == 'atualizar_agente' and codigo != 0:
             nome = conn.execute('SELECT nome_local FROM sensores WHERE mac_id=?', (mac,)).fetchone()
             enviar_telegram(f"❌ <b>ATUALIZAÇÃO FALHOU</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(nome['nome_local'] if nome else mac))}\n"
@@ -3611,12 +3731,18 @@ def gerar_relatorio(mac_id):
         print("Erro relatorio:", e)
         logs = []
 
-    try: dispositivos = db_execute(conn, "SELECT ip, mac, fabricante, nome_custom, hostname, status FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
+    try: dispositivos = db_execute(conn, "SELECT * FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
     except: dispositivos = []
+    try:
+        diagrama_svg = mapa_rede.svg(mapa_rede.montar(sensor, dispositivos, mapa_rede.carregar(sensor['mapa_rede'])))
+    except Exception:
+        app.logger.exception('Falha ao desenhar o diagrama do relatório')
+        diagrama_svg = ''
 
     conn.close()
 
-    return render_template('relatorio.html', sensor=dict(sensor), logs=[dict(l) for l in logs], dispositivos=[dict(d) for d in dispositivos], data_emissao=datetime.now().strftime('%d/%m/%Y às %H:%M'), periodo_str=periodo_str)
+    return render_template('relatorio.html', sensor=dict(sensor), logs=[dict(l) for l in logs], dispositivos=[dict(d) for d in dispositivos], data_emissao=datetime.now().strftime('%d/%m/%Y às %H:%M'), periodo_str=periodo_str,
+                           diagrama_svg=diagrama_svg, diagrama_informado=bool(sensor['mapa_rede']))
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=10000, debug=False)

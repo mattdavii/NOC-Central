@@ -89,7 +89,7 @@
             (total > 5 ? `<button type="button">${limite === 5 ? `Ver ${total > 50 ? 'últimas 50' : 'todas'}` : 'Mostrar só as últimas 5'}</button>` : '') : '';
         historico.innerHTML = itens.length ? itens.map(a => `
             <details class="acao-item status-${esc(a.status)}" data-id="${Number(a.id)}" ${abertos.has(String(a.id)) ? 'open' : ''}>
-                <summary><span class="acao-nome">${esc(nomes[a.acao] || a.acao)}</span>
+                <summary><span class="acao-nome">${esc((dados.rotulos || nomes)[a.acao] || a.acao)}</span>
                     <span class="acao-meta">${esc(STATUS[a.status] || a.status)} · ${esc(a.solicitante || '')} · ${esc(quando(a.criado_em))}</span></summary>
                 <pre>${esc(a.saida || (a.status === 'pendente' ? 'Aguardando o sensor buscar o comando…' : a.status === 'enviada' ? 'Executando no sensor…' : 'Sem saída.'))}</pre>
             </details>`).join('') : '<div class="hist-empty">Nenhuma ação executada.</div>';

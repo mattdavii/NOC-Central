@@ -258,6 +258,21 @@ def para_xlsx(dados):
                 resumo.cell(row=lin, column=col).fill = fundo
     resumo.column_dimensions['A'].width, resumo.column_dimensions['B'].width = 32, 40
 
+    if dados.get('diagrama'):
+        diag = livro.create_sheet('Diagrama')
+        titulos = (('Equipamento', 34), ('Endereço', 18), ('Tipo', 22), ('Liga em', 34), ('Meio', 16), ('Origem', 12))
+        for col, (titulo, largura) in enumerate(titulos, start=1):
+            celula = diag.cell(row=1, column=col)
+            _texto(celula, titulo)
+            celula.font, celula.fill = cabecalho, fundo
+            diag.column_dimensions[get_column_letter(col)].width = largura
+        for lin, item in enumerate(dados['diagrama'], start=2):
+            valores = ('    ' * max(0, item['nivel'] - 1) + item['equipamento'], item['endereco'], item['tipo'],
+                       item['liga_em'], item['meio'], item['origem'])
+            for col, valor in enumerate(valores, start=1):
+                _texto(diag.cell(row=lin, column=col), valor)
+        diag.freeze_panes = 'A2'
+
     sobre = livro.create_sheet('Sobre')
     textos = [dados['sobre'], ''] + ['Limitações:'] + [f'• {t}' for t in e['limitacoes']]
     for lin, texto in enumerate(textos, start=1):

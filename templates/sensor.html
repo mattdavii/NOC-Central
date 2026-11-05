@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
-    <link rel="stylesheet" href="/static/sensor.css?v=sensor-1">
+    <link rel="stylesheet" href="/static/sensor.css?v=sensor-3">
 <link rel="stylesheet" href="/static/product.css?v=nexopulse-3">
 <script src="/static/brand.js?v=nexopulse-2"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -221,18 +221,20 @@
         <div class="painel-grid" style="grid-template-columns: 1fr;">
             <div class="card card-radar card-full" id="dispositivos" style="position: relative;">
                 <h3>
-                    <span><i class="fa-solid fa-project-diagram"></i> Dispositivos · topologia observada</span>
+                    <span><i class="fa-solid fa-project-diagram"></i> Dispositivos · diagrama da rede</span>
                     <div>
+                        <button class="btn-acao" onclick="MapaRede.abrirEditor()" style="background: var(--brand-cyan, var(--blue)); color: var(--bg-base); font-size:0.8em; padding: 6px 12px; border: none; display: inline-flex; margin-right: 10px;"><i class="fa-solid fa-pen-to-square"></i> Editar diagrama</button>
                         <button class="btn-acao" onclick="abrirModalTopologia()" style="background: var(--purple); color: white; font-size:0.8em; padding: 6px 12px; border: none; display: inline-flex; margin-right: 10px;"><i class="fa-solid fa-expand"></i> Expandir Tela Cheia</button>
                         <button class="btn-acao" onclick="abrirModalLevantamento()" style="background: var(--green); color: var(--bg-base); font-size:0.8em; padding: 6px 12px; border: none; display: inline-flex; margin-right: 10px;"><i class="fa-solid fa-file-export"></i> Exportar levantamento</button>
-                        <button class="btn-acao" onclick="carregarRadar(this)" style="background: var(--blue); color: var(--bg-base); font-size:0.8em; padding: 6px 12px; border: none; display: inline-flex;"><i class="fa-solid fa-rotate"></i> Scan Rápido</button>
+                        <button class="btn-acao" onclick="carregarRadar(this)" style="background: var(--blue); color: var(--bg-base); font-size:0.8em; padding: 6px 12px; border: none; display: inline-flex;"><i class="fa-solid fa-rotate"></i> Atualizar</button>
                     </div>
                 </h3>
                 <div id="network-topology" style="height: 450px;"></div>
-                <div style="text-align: right; padding: 5px; font-size: 0.75em; color: var(--text-muted);">* Arraste os ícones. Clique em um dispositivo para exibir opções de Edição e WoL.</div>
+                <div class="mapa-rodape"><span id="mapa-rede-info"></span><span>Clique num equipamento para editar a ligação, renomear ou enviar WoL.</span></div>
 
                 <div id="node-menu">
                     <h4 id="menu-node-title">Dispositivo</h4>
+                    <button class="node-btn" id="btn-menu-ligacao"><i class="fa-solid fa-diagram-project"></i> Editar ligação e tipo</button>
                     <button class="node-btn" id="btn-menu-rename"><i class="fa-solid fa-pen"></i> Renomear</button>
                     <button class="node-btn" id="btn-menu-watchdog"><i class="fa-solid fa-eye"></i> Adicionar ao Watchdog</button>
                     <button class="node-btn btn-red" id="btn-menu-wol"><i class="fa-solid fa-bolt"></i> Enviar Wake-on-LAN</button>
@@ -308,10 +310,10 @@
                 </section>
                 <section class="config-section">
                     <h4>Localização</h4>
-                    <p class="help-text">Capture no local de instalação, com o celular ou computador do instalador, ou clique no mapa. A posição do navegador pode ser aproximada.</p>
+                    <p class="help-text">Capture pela máquina do sensor, pelo celular ou computador no local, ou clique no mapa. A posição do navegador pode ser aproximada.</p>
                     <div class="location-map" id="location-map" aria-label="Clique no mapa para ajustar a localização"></div>
                     <div class="location-fields"><label for="edit-lat">Latitude<input type="number" id="edit-lat" step="any" min="-90" max="90" value="{{ sensor.lat if sensor.lat is not none else '' }}"></label><label for="edit-lon">Longitude<input type="number" id="edit-lon" step="any" min="-180" max="180" value="{{ sensor.lon if sensor.lon is not none else '' }}"></label></div>
-                    <div class="location-actions"><button class="action-btn btn-secondary" id="capture-location"><i class="fa-solid fa-location-crosshairs"></i> Capturar neste dispositivo</button><button class="action-btn btn-danger" id="clear-location"><i class="fa-solid fa-xmark"></i> Remover</button></div>
+                    <div class="location-actions"><button class="action-btn btn-secondary" id="capture-sensor" title="Pede a posição à própria máquina do sensor: GPS da Starlink, localização do Windows ou, por último, aproximada pela internet"><i class="fa-solid fa-satellite-dish"></i> Capturar no sensor</button><button class="action-btn btn-secondary" id="capture-location"><i class="fa-solid fa-location-crosshairs"></i> Capturar neste aparelho</button><button class="action-btn btn-danger" id="clear-location"><i class="fa-solid fa-xmark"></i> Remover</button></div>
                     <p class="location-meta" id="location-status" role="status">Fonte: {{ sensor.location_source or 'não informada' }}{% if sensor.accuracy_m is not none %} · precisão estimada: {{ sensor.accuracy_m }} m{% endif %}</p>
                 </section>
                 <button class="action-btn btn-primary" id="save-location" onclick="salvarConfig()">Salvar alterações</button>
@@ -372,6 +374,27 @@
         </div>
     </div>
 
+    <div id="modalMapaRede" class="modal" role="dialog" aria-modal="true" aria-labelledby="mapa-editor-titulo">
+        <div class="modal-content mapa-editor">
+            <div class="modal-header">
+                <h2 id="mapa-editor-titulo" style="margin: 0;"><i class="fa-solid fa-diagram-project"></i> Editar diagrama da rede</h2>
+                <span class="close-modal" id="mapa-editor-fechar" role="button" aria-label="Fechar">&times;</span>
+            </div>
+            <p class="mapa-editor-ajuda">O sensor vê todos os equipamentos como se estivessem direto no gateway. Diga em que cada um liga e acrescente o que ele não enxerga (switch não gerenciável, conversor de mídia, rádio). O diagrama sai assim no relatório.</p>
+            <div class="mapa-editor-novo">
+                <label for="mapa-editor-novo-tipo">Adicionar equipamento</label>
+                <select id="mapa-editor-novo-tipo"></select>
+                <button type="button" class="action-btn btn-secondary" id="mapa-editor-adicionar"><i class="fa-solid fa-plus"></i> Adicionar</button>
+            </div>
+            <div id="mapa-editor-lista" class="mapa-editor-lista"></div>
+            <p class="mapa-editor-erro" id="mapa-editor-erro" role="alert"></p>
+            <div class="mapa-editor-acoes">
+                <button type="button" class="action-btn btn-secondary" id="mapa-editor-cancelar">Cancelar</button>
+                <button type="button" class="action-btn btn-primary" id="mapa-editor-salvar">Salvar diagrama</button>
+            </div>
+        </div>
+    </div>
+
     <div id="modalLevantamento" class="modal">
         <div class="modal-content" style="width: 450px; height: auto; padding: 30px;">
             <div class="modal-header">
@@ -386,6 +409,9 @@
                 <button onclick="baixarLevantamento('xlsx')" style="width: 100%; padding: 12px; margin-bottom: 10px; background: var(--green); color: var(--bg-base); border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
                     <i class="fa-solid fa-file-excel"></i> Planilha (.xlsx)
                 </button>
+                <a href="/api/v2/sensor/{{ sensor.mac_id|urlencode }}/diagrama.svg" style="display:block; text-align:center; box-sizing:border-box; width: 100%; padding: 12px; margin-bottom: 10px; background: var(--purple); color: #fff; border-radius: 8px; font-weight: bold; text-decoration:none;">
+                    <i class="fa-solid fa-diagram-project"></i> Diagrama da rede (imagem SVG)
+                </a>
                 <button onclick="baixarLevantamento('json')" style="width: 100%; padding: 12px; background: var(--blue); color: var(--bg-base); border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
                     <i class="fa-solid fa-code"></i> JSON para IA
                 </button>
@@ -775,12 +801,13 @@
                     let clickedNodeId = params.nodes[0];
                     let node = nodes.get(clickedNodeId);
 
-                    if (clickedNodeId !== 'internet' && clickedNodeId !== globalGatewayIP && clickedNodeId !== globalSensorIP) {
-
-                        document.getElementById('menu-node-title').innerText = node.rawName || node.label.split('\n')[0].replace('💻 ', '');
-
+                    if (clickedNodeId !== 'internet') {
+                        const descoberto = !!node.mac && clickedNodeId !== 'gateway' && clickedNodeId !== 'sensor';
+                        document.getElementById('menu-node-title').innerText = node.rawName || 'Equipamento';
+                        document.getElementById('btn-menu-ligacao').onclick = () => { menu.style.display = 'none'; MapaRede.abrirEditor(clickedNodeId); };
+                        for (const id of ['btn-menu-rename', 'btn-menu-watchdog', 'btn-menu-wol']) document.getElementById(id).style.display = descoberto ? '' : 'none';
                         document.getElementById('btn-menu-rename').onclick = () => { renomearDisp(node.mac, node.rawName); menu.style.display = 'none'; };
-                        document.getElementById('btn-menu-watchdog').onclick = () => { monitorarIP(node.id, node.rawName); menu.style.display = 'none'; };
+                        document.getElementById('btn-menu-watchdog').onclick = () => { monitorarIP(node.ip, node.rawName); menu.style.display = 'none'; };
                         document.getElementById('btn-menu-wol').onclick = () => { dispararWoL(node.mac, node.rawName); menu.style.display = 'none'; };
 
                         menu.style.left = (params.event.srcEvent.clientX + 15) + 'px';
@@ -799,8 +826,9 @@
             var data = { nodes: nodes, edges: edges };
             var options = {
                 nodes: { shape: 'box', font: { color: '#0B1728', face: 'JetBrains Mono', bold: true }, borderWidth: 2, shadow: { enabled: true, color: 'rgba(0,0,0,0.5)', size: 10 } },
-                edges: { width: 2, color: { color: cssVar('--border'), highlight: cssVar('--brand-cyan') }, smooth: { type: 'continuous' } },
-                physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -100, centralGravity: 0.01, springLength: 100, springConstant: 0.08 }, stabilization: { iterations: 150 } },
+                edges: { width: 2, color: { color: cssVar('--border'), highlight: cssVar('--brand-cyan') }, smooth: { type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.5 } },
+                layout: { hierarchical: { direction: 'LR', sortMethod: 'directed', levelSeparation: 260, nodeSpacing: 70, treeSpacing: 90, shakeTowards: 'roots' } },
+                physics: false,
                 interaction: { hover: true }
             };
             network = new vis.Network(document.getElementById('network-topology'), data, options);
@@ -814,8 +842,9 @@
                 var data = { nodes: nodes, edges: edges };
                 var options = {
                     nodes: { shape: 'box', font: { color: '#0B1728', face: 'JetBrains Mono', bold: true }, borderWidth: 2, shadow: { enabled: true, color: 'rgba(0,0,0,0.5)', size: 10 } },
-                    edges: { width: 2, color: { color: cssVar('--border'), highlight: cssVar('--brand-cyan') }, smooth: { type: 'continuous' } },
-                    physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -100, centralGravity: 0.01, springLength: 100, springConstant: 0.08 }, stabilization: { iterations: 150 } },
+                    edges: { width: 2, color: { color: cssVar('--border'), highlight: cssVar('--brand-cyan') }, smooth: { type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.5 } },
+                    layout: { hierarchical: { direction: 'LR', sortMethod: 'directed', levelSeparation: 260, nodeSpacing: 70, treeSpacing: 90, shakeTowards: 'roots' } },
+                physics: false,
                     interaction: { hover: true }
                 };
                 networkModal = new vis.Network(document.getElementById('network-modal-canvas'), data, options);
@@ -830,58 +859,9 @@
 
         async function carregarRadar(btn) {
             if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-            try {
-                const sensorRes = await fetch('/api/v2/sensor_data/' + mac_id);
-                const sensorInfo = await sensorRes.json();
-                globalGatewayIP = sensorInfo.ip_gateway;
-                globalSensorIP = sensorInfo.ip_sensor;
-
-                let gatewayOnline = (sensorInfo.ping_gateway > 0 && sensorInfo.ping_gateway < 1000);
-                let gatewayCor = gatewayOnline ? STATUS_CANVAS.ok : STATUS_CANVAS.crit;
-                let gatewayStatus = gatewayOnline ? '[ON]' : '[OFF]';
-
-                const res = await fetch('/api/v2/dispositivos/' + mac_id);
-                const dispositivos = await res.json();
-
-                nodes.clear(); edges.clear();
-
-                nodes.add({ id: 'internet', label: '☁️ INTERNET', shape: 'box', color: { background: '#05A9DC', border: '#05A9DC' }, font: {color: '#0B1728', face: 'Inter', size: 16, bold: true} });
-
-                if(globalGatewayIP) {
-                    nodes.add({ id: globalGatewayIP, label: `🖧 Gateway ${gatewayStatus}\n${globalGatewayIP}`, shape: 'box', color: { background: gatewayCor, border: gatewayCor }, font: {color: '#0B1728', face: 'JetBrains Mono', bold: true} });
-                    edges.add({ from: 'internet', to: globalGatewayIP, color: { color: gatewayCor }, width: 3});
-                }
-
-                if(globalSensorIP && globalGatewayIP) {
-                    nodes.add({ id: globalSensorIP, label: '🛡️ NexoPulse Edge\n'+globalSensorIP, shape: 'box', color: { background: '#05A88C', border: '#05A88C' }, font: {color: '#0B1728', face: 'JetBrains Mono', bold: true} });
-                    edges.add({ from: globalGatewayIP, to: globalSensorIP, color: { color: '#05A88C' }, width: 2});
-                }
-
-                dispositivos.forEach(d => {
-                    if(d.ip === globalGatewayIP || d.ip === globalSensorIP) return;
-
-                    let nome = d.nome_custom || d.hostname || d.fabricante || 'Desconhecido';
-                    let cor_fundo = STATUS_CANVAS.crit;
-                    let status_txt = 'OFF';
-                    if (d.status === 'online') { cor_fundo = STATUS_CANVAS.ok; status_txt = 'ON'; }
-                    else if (d.status === 'sem_icmp') { cor_fundo = STATUS_CANVAS.warn; status_txt = 'SEM ICMP'; }
-                    else if (d.status === 'desconhecido') { cor_fundo = STATUS_CANVAS.unknown; status_txt = '?'; }
-
-                    nodes.add({
-                        id: d.ip,
-                        rawName: nome,
-                        label: `💻 ${nome} [${status_txt}]\n${d.ip}`,
-                        title: `MAC: ${d.mac}\nMarca: ${d.fabricante || 'Desconhecida'}\nNome na rede: ${d.hostname || 'N/D'}\nLatência ICMP: ${d.latencia || 0} ms\nVizinho: ${d.neighbor_state || 'N/D'}\nClique para ver Opções`,
-                        mac: d.mac,
-                        shape: 'box',
-                        color: { background: cor_fundo, border: cor_fundo },
-                        font: {color: '#0B1728', face: 'JetBrains Mono'}
-                    });
-                    edges.add({ from: globalGatewayIP, to: d.ip, color: {color: cssVar('--border')} });
-                });
-
-            } catch(e) { console.error("Erro no Radar:", e); }
-            if(btn) setTimeout(() => btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Scan Rápido', 1000);
+            try { await MapaRede.carregar(); }
+            catch(e) { console.error("Erro no diagrama:", e); }
+            if(btn) setTimeout(() => btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Atualizar', 1000);
         }
 
         // ----- FUNÇÕES DO RELATÓRIO PDF -----
@@ -1061,7 +1041,8 @@
             }
         });
     </script>
-<script src="/static/location.js?v=2.2.0-rc1"></script>
+<script src="/static/location.js?v=2.3"></script>
+<script src="/static/mapa_rede.js?v=1"></script>
 <script src="/static/acoes.js?v=2.2.0-rc1-auto"></script>
 <script src="/static/host.js?v=2.2.0-rc1"></script>
 <script src="/static/diagnostico.js?v=2.2.0-rc1"></script>

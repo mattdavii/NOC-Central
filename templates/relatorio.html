@@ -32,6 +32,16 @@
         .badge.aviso { background: #fef3c7; color: #92400E; }
         .badge.desconhecido { background: transparent; color: #526077; border: 1px dashed #526077; }
         .footer { text-align: center; margin-top: 50px; font-size: 12px; color: #526077; border-top: 1px solid #e5e7eb; padding-top: 20px; }
+        .diagrama { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #fbfdff; break-inside: avoid; }
+        .diagrama svg { display: block; max-height: 240mm; }
+        .diagrama-nota { font-size: 12px; color: #526077; margin: 0 0 10px; }
+        .diagrama-legenda { font-size: 11px; color: #526077; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 8px 0 0; }
+        .diagrama-legenda span { display: inline-block; }
+        .l-cabo, .l-fibra, .l-sem-fio { width: 22px; height: 0; border-top: 2px solid #8EA3B8; margin-right: -8px; }
+        .l-fibra { border-top-color: #E39B2D; }
+        .l-sem-fio { border-top-style: dashed; }
+        .pt { width: 8px; height: 8px; border-radius: 50%; margin-right: -8px; }
+        .pt.ok { background: #05A88C; } .pt.aviso { background: #E39B2D; } .pt.critica { background: #DC2626; }
         @media print { body { background: #fff; } .a4-page { box-shadow: none; margin: 0; width: auto; min-height: auto; } }
     </style>
 <link rel="stylesheet" href="/static/product.css?v=nexopulse-3">
@@ -99,6 +109,13 @@
                 {% endif %}
             </tbody>
         </table>
+
+        {% if diagrama_svg %}
+        <h3 class="section-title">Diagrama da rede</h3>
+        <p class="diagrama-nota">{% if diagrama_informado %}Ligações observadas pelo sensor e completadas pela equipe técnica no local (equipamentos como switches e conversores, e o meio de cada ligação).{% else %}Ligações observadas pelo sensor: todos os equipamentos aparecem no gateway porque ainda não foi informado como a rede está montada.{% endif %}</p>
+        <div class="diagrama">{{ diagrama_svg|safe }}</div>
+        <p class="diagrama-legenda"><span class="l-cabo"></span> Cabo <span class="l-fibra"></span> Fibra <span class="l-sem-fio"></span> Wi-Fi ou rádio <span class="pt ok"></span> Online <span class="pt aviso"></span> Sem resposta a ping <span class="pt critica"></span> Offline</p>
+        {% endif %}
 
         <h3 class="section-title">Dispositivos Descobertos na Rede Local</h3>
         <table>
