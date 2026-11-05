@@ -18,6 +18,10 @@
         .cabeca-report { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
         .cabeca-report .marca { display: flex; align-items: center; gap: 14px; }
         .cabeca-report .marca img { height: 34px; width: auto; }
+        /* Uma logo por tema (escuro/claro), como no Início. */
+        .cabeca-report .sym-light { display: none; }
+        html[data-theme="light"] .cabeca-report .sym-dark { display: none; }
+        html[data-theme="light"] .cabeca-report .sym-light { display: block; }
         .cabeca-report p { margin: 4px 0 0; color: var(--text-muted); font-size: .92rem; max-width: 60ch; line-height: 1.5; }
         .escolha { display: flex; align-items: center; gap: 10px; }
         .escolha select { background: var(--bg-input); border: 1px solid var(--border); color: var(--text-main); padding: 9px 12px; border-radius: 8px; font: inherit; min-width: 220px; }
