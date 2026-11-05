@@ -67,6 +67,23 @@ html[data-theme="light"] .status.aguardando { color: #6D28D9; }
     .linha-chamado .prio-cel { grid-column: 1; grid-row: 4; }
 }
 
+/* ---------- fila da MD ---------- */
+.contadores { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
+.contador { padding: 14px 16px; display: flex; align-items: baseline; gap: 10px; text-decoration: none; color: inherit;
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; }
+.contador:hover { border-color: color-mix(in srgb, var(--blue) 45%, var(--border)); }
+.contador.ativo { border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
+.contador b { font: 800 1.7rem/1 'Inter', sans-serif; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.contador span { color: var(--text-muted); font-size: .84rem; line-height: 1.35; }
+.contador.destaque b { color: var(--purple); }
+.contador.aguard b { color: #A78BFA; } .contador.resolv b { color: var(--status-ok); }
+html[data-theme="light"] .contador.aguard b { color: #6D28D9; }
+.filtros-fila { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+.filtros-fila .busca { flex: 1 1 260px; }
+.linha-chamado.sem-dono .num { color: var(--purple); font-weight: 700; }
+@media (max-width: 1100px) { .contadores { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 640px) { .contadores { grid-template-columns: 1fr 1fr; } .filtros-fila select { flex: 1 1 45%; } }
+
 /* ---------- abrir ---------- */
 .grade-abrir { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
 .form { padding: 22px 24px; display: grid; gap: 20px; }
@@ -130,8 +147,10 @@ html[data-theme="light"] .status.aguardando { color: #6D28D9; }
 .msg.nota { background: color-mix(in srgb, var(--status-warn) 7%, transparent); border-radius: 10px; padding: 14px; margin: 10px -14px;
             border: 1px dashed color-mix(in srgb, var(--status-warn) 45%, var(--border)); }
 .msg.nota .tag { color: var(--status-warn); font-size: .74rem; font-weight: 700; }
-.evento { display: flex; align-items: center; gap: 10px; font-size: .8rem; color: var(--text-muted); padding: 10px 0 10px 46px;
+.evento { display: block; font-size: .8rem; line-height: 1.5; color: var(--text-muted); padding: 10px 0 10px 46px;
           border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
+.evento i { margin-right: 8px; }
+.evento [data-ts] { white-space: nowrap; }
 .anexos { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
 .anexo { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 10px; padding: 6px 12px 6px 6px; font-size: .8rem;
          background: var(--bg-input); color: var(--text-main); text-decoration: none; max-width: 100%; }
@@ -151,6 +170,17 @@ html[data-theme="light"] .status.aguardando { color: #6D28D9; }
                    padding: 14px 16px; font: inherit; font-size: .92rem; outline: none; }
 .compor .anexar { padding: 0 16px 10px; }
 .compor .rodape { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.compor .rodape .dir { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: .82rem; }
+.compor .rodape .dir .campo { padding: 7px 10px; font-size: .84rem; }
+.faixa { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; padding: 14px 18px; border-radius: 12px; font-size: .9rem; line-height: 1.55;
+         border: 1px solid var(--border); background: var(--bg-card); color: var(--text-muted); }
+.faixa strong { color: var(--text-main); }
+.faixa.aguardando { border-color: color-mix(in srgb, #A78BFA 55%, var(--border)); } .faixa.aguardando i { color: #A78BFA; margin-top: 3px; }
+.faixa.resolvido { border-color: color-mix(in srgb, var(--status-ok) 55%, var(--border)); } .faixa.resolvido i { color: var(--status-ok); margin-top: 3px; }
+.dados .campo { width: 100%; padding: 6px 10px; font-size: .86rem; }
+.dados dd .assumir { margin-top: 6px; }
+.bloco .msg-form:empty { display: none; }
+.bloco .cancelar { margin-top: 14px; color: var(--status-crit); }
 .encerrado { margin-top: 16px; padding: 14px 16px; border-radius: 12px; border: 1px dashed var(--border); color: var(--text-muted); font-size: .88rem; }
 .bloco { padding: 16px 18px; }
 .bloco h3 { margin: 0 0 12px; font-size: .86rem; font-weight: 700; }
