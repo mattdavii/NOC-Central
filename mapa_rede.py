@@ -247,7 +247,7 @@ def svg(arvore, largura_caixa=200, altura_caixa=42, coluna=250, linha=54):
         cor = '#E39B2D' if no['meio'] == 'fibra' else '#8EA3B8'
         traco = ' stroke-dasharray="6 4"' if no['meio'] in ('wifi', 'radio') else (' stroke-dasharray="2 3"' if no['meio'] == 'serial' else '')
         partes.append(f'<path d="M{x1:.0f} {y1:.0f} H{meio:.0f} V{y2:.0f} H{x2:.0f}" fill="none" stroke="{cor}" stroke-width="1.6"{traco}/>')
-        if no['meio_rotulo']:
+        if no['meio_rotulo'] and coluna - largura_caixa >= 45:  # sem espaço, a cor/traço da linha já diz o meio
             partes.append(f'<text x="{meio + 4:.0f}" y="{y2 - 4:.0f}" font-size="9" fill="#526077">{e(no["meio_rotulo"])}</text>')
     for no, nivel in ordem:
         x, y = margem + nivel * coluna, margem + pos[no['id']]
