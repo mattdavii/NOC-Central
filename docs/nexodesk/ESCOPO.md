@@ -1,6 +1,6 @@
 # NexoDesk — escopo da versão 1
 
-Status: **proposta para aprovação** · 05/11/2026
+Status: **aprovado para desenvolvimento** · 05/11/2026
 
 Modelo das telas: [`modelo/`](modelo/) (dados de demonstração; `modelo/telas.html`, imagens geradas por
 `python3 docs/nexodesk/modelo/gerar_telas.py`).
@@ -156,5 +156,6 @@ Definido para a v1 (05/11/2026):
 - **D2. SLA:** por contrato, já na v1.
 - **D3. Quedas:** não abrem chamado sozinhas.
 
-Propostas desta revisão, para confirmar: NexoDesk ligado por padrão para todas as empresas (3.4), tabela padrão de
-prazos (3.3) e fechamento automático em 3 dias úteis (3.2).
+- **D4. Contrato:** NexoDesk ligado por padrão para todas as empresas (3.4).
+- **D5. Prazos:** a tabela padrão da seção 3.3.
+- **D6. Fechamento automático:** 3 dias úteis depois de resolvido, sem resposta do cliente (3.2).
