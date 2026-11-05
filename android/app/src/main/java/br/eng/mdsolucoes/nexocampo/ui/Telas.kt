@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -93,7 +94,8 @@ fun App(vm: CampoViewModel, permissoesOk: Boolean, pedirPermissoes: () -> Unit) 
         containerColor = Cor.fundo,
         snackbarHost = { SnackbarHost(avisos) },
         topBar = {
-            Column(Modifier.background(Cor.fundo).padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
+            // Android 15 desenha o app atrás da barra de status (hora, bateria): o topo desce até abaixo dela.
+            Column(Modifier.background(Cor.fundo).statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
                 Image(painterResource(R.drawable.logo_nexocampo), contentDescription = "NexoCampo", modifier = Modifier.height(30.dp))
                 AvisoAtualizacao(vm)
             }
