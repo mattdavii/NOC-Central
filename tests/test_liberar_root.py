@@ -107,3 +107,10 @@ def test_guias_trazem_os_comandos_desta_central():
     assert 'https://central.exemplo.com.br/instalar-windows.ps1' in g['comando']
     assert '/vigia-windows.ps1' in texto and '/verificar-windows.ps1' in texto and 'nexopulse.up.railway.app' not in texto
     assert 'curl -fsSL https://central.exemplo.com.br/instalar.sh' in guias.guia('linux', 'https://central.exemplo.com.br')['comando']
+
+
+def test_instalador_libera_o_painel_so_para_a_rede_local():
+    install = (RAIZ / 'linux/install.sh').read_text()
+    assert 'ufw allow from "${rede}" to any port "${PORTA_PAINEL}"' in install
+    assert 'firewall-cmd --permanent --add-rich-rule' in install
+    assert 'ufw allow 10000' not in install            # nunca aberto para qualquer origem
