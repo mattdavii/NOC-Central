@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NexoReport · Relatório mensal da rede | MD Soluções Tecnológicas</title>
+<meta name="description" content="Todo mês, um relatório da rede em PDF, pronto para a diretoria: disponibilidade contra a meta do contrato, quedas e o que as causou, evidências para cobrar o provedor e as recomendações da MD.">
+<meta name="theme-color" content="#071A31">
+<link rel="canonical" href="https://www.mdsolucoes.eng.br/nexoreport">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.mdsolucoes.eng.br/nexoreport">
+<meta property="og:title" content="NexoReport · Relatório mensal da rede">
+<meta property="og:description" content="O mês da sua rede em poucas páginas: disponibilidade contra a meta, quedas e causas, evidências contra o provedor e o que fazer a seguir.">
+<meta property="og:image" content="https://www.mdsolucoes.eng.br/img/report-capa.jpg">
+<meta property="og:locale" content="pt_BR">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/img/md-simbolo.png" type="image/png">
+<link rel="preload" href="/fontes/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fontes/ibm-plex-sans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/md.css?v=5">
+</head>
+<body>
+<a class="pular" href="#conteudo">Pular para o conteúdo</a>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-solar" viewBox="0 0 24 24"><circle cx="17.5" cy="4.5" r="2"/><path d="M17.5 0.8v.7M21.2 4.5h-.7M14.5 4.5h-.7"/><path d="M2.5 20.5l2.6-9h11l2.6 9z"/><path d="M3.8 16h14.6M8.5 11.5l-1 9M13 11.5l1 9"/><path d="M10.5 20.5v2.5"/></symbol>
+  <symbol id="i-eletrica" viewBox="0 0 24 24"><path d="M13.5 2.5L5.5 13.5h6l-1.5 8 8.5-11.5h-6z"/></symbol>
+  <symbol id="i-iot" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/><circle cx="12" cy="12" r="1.5"/></symbol>
+  <symbol id="i-redes" viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><circle cx="4.5" cy="19.5" r="2"/><circle cx="19.5" cy="19.5" r="2"/><circle cx="12" cy="13" r="1.6"/><path d="M12 6.5v4.9M10.7 14.2l-4.7 3.9M13.3 14.2l4.7 3.9M6.5 19.5h11"/></symbol>
+  <symbol id="i-seguranca" viewBox="0 0 24 24"><path d="M12 2.5l7.5 3v5.5c0 5-3.6 8.8-7.5 10.5C8.1 19.8 4.5 16 4.5 11V5.5z"/><path d="M8.8 12l2.2 2.2 4.3-4.4"/></symbol>
+  <symbol id="i-software" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="14" rx="2"/><path d="M8 20.5h8M9 9l-2.5 2.5L9 14M15 9l2.5 2.5L15 14M13 8.5l-2 6"/></symbol>
+  <symbol id="i-consultoria" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="7"/><path d="M15.6 15.6L21 21M7 12.5l2.3-2.3 2 1.6 3-3.3"/></symbol>
+  <symbol id="i-local" viewBox="0 0 24 24"><path d="M12 21.5s7-6.2 7-12a7 7 0 10-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+  <symbol id="i-camadas" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></symbol>
+  <symbol id="i-plataforma" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="4.5" cy="5" r="1.8"/><circle cx="19.5" cy="5" r="1.8"/><circle cx="12" cy="20.5" r="1.8"/><path d="M6 6.2l3.8 3.8M18 6.2l-3.8 3.8M12 15v3.7"/></symbol>
+  <symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.3l2.7 2.7L16 9.6"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M4 20l1.2-3.8A8.5 8.5 0 1112 20.5a8.4 8.4 0 01-4.1-1z"/><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.6-2-1.2-1 .9c-1.2-.4-2.2-1.4-2.6-2.6l.9-1-1.2-2z"/></symbol>
+  <symbol id="i-email" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M3 6.5l9 6.5 9-6.5"/></symbol>
+  <symbol id="i-seta" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-entrar" viewBox="0 0 24 24"><path d="M14 4h4a2 2 0 012 2v12a2 2 0 01-2 2h-4M10 16l4-4-4-4M14 12H3"/></symbol>
+  <symbol id="i-loja" viewBox="0 0 24 24"><path d="M3.5 9.5l1.5-5h14l1.5 5"/><path d="M3.5 9.5a2.8 2.8 0 005.5 0 2.8 2.8 0 005.5 0 2.8 2.8 0 005.5 0"/><path d="M5 12v8.5h14V12M10 20.5v-5h4v5"/></symbol>
+  <symbol id="i-agro" viewBox="0 0 24 24"><path d="M12 21V10"/><path d="M12 13c-4 0-6-2.5-6-6.5 4 0 6 2.5 6 6.5zM12 10c0-4 2-6.5 6-6.5 0 4-2 6.5-6 6.5z"/><path d="M4 21h16"/></symbol>
+  <symbol id="i-saude" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M12 8v8M8 12h8"/></symbol>
+  <symbol id="i-filiais" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="5" rx="1"/><rect x="2.5" y="16.5" width="6" height="5" rx="1"/><rect x="15.5" y="16.5" width="6" height="5" rx="1"/><path d="M12 7.5v4.5M5.5 16.5V12h13v4.5"/></symbol>
+  <symbol id="i-ferramenta" viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 00-5.3 5.3L3.5 17.5l3 3 5.7-5.7a4 4 0 005.3-5.3l-2.5 2.5-2.5-.5-.5-2.5z"/></symbol>
+  <symbol id="i-ciclo" viewBox="0 0 24 24"><path d="M20 11a8 8 0 00-14.3-4.7L4 8M4 13a8 8 0 0014.3 4.7L20 16"/><path d="M4 3.5V8h4.5M20 20.5V16h-4.5"/></symbol>
+  <symbol id="i-guardado" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7.5" ry="2.5"/><path d="M4.5 5.5v13c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5v-13M4.5 12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5"/></symbol>
+  <symbol id="i-cadeado" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2"/><path d="M8 10.5V7a4 4 0 018 0v3.5M12 14.5v2.5"/></symbol>
+  <symbol id="i-alvo" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/></symbol>
+  <symbol id="i-documento" viewBox="0 0 24 24"><path d="M6 2.5h8l4.5 4.5v14.5H6z"/><path d="M14 2.5V7h4.5M9 12h6M9 15.5h6M9 19h3.5"/></symbol>
+  <symbol id="i-chamado" viewBox="0 0 24 24"><path d="M4 5.5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></symbol>
+  <symbol id="i-regra" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h9"/><path d="M16 17l2 2 3.5-3.5"/></symbol>
+</svg>
+<header class="topo">
+  <div class="miolo">
+    <a class="marca" href="/" aria-label="MD Soluções Tecnológicas, início"><img src="/img/md-logo.png" alt="MD Soluções Tecnológicas" width="640" height="227"></a>
+    <nav aria-label="Seções">
+      <a href="/">A MD</a>
+      <a href="#o-que-vem">O que vem no relatório</a>
+      <a href="#como-chega">Como chega</a>
+      <a href="/#nexo">Ecossistema Nexo</a>
+      <a href="#contato">Contato</a>
+    </nav>
+    <a class="botao botao-azul" href="{{ env "SITE_HUB_URL" | default "https://hub.mdsolucoes.eng.br" }}"><svg class="icone" style="width:18px;height:18px"><use href="#i-entrar"/></svg> Área do cliente</a>
+  </div>
+</header>
+
+<main id="conteudo">
+  <section class="abertura report" aria-labelledby="t-abertura">
+    <div class="miolo">
+      <div class="texto">
+        <img class="logo-produto" src="/img/nexoreport-escuro.svg" alt="NexoReport" width="552" height="120">
+        <h1 id="t-abertura">O mês da sua rede, em poucas páginas para a diretoria.</h1>
+        <p class="sub">Todo dia 1, o NexoReport fecha o mês anterior e entrega um relatório em PDF: quanto tempo a internet ficou no ar contra a meta do contrato, cada queda com a causa, as provas para cobrar o provedor e o que a MD recomenda fazer.</p>
+        <div class="acoes">
+          <a class="botao botao-sinal" href="#contato">Quero o relatório da minha rede <svg class="icone" style="width:18px;height:18px"><use href="#i-seta"/></svg></a>
+          <a class="botao botao-vidro" href="#o-que-vem">Ver o que vem nele</a>
+        </div>
+      </div>
+      <figure class="pilha">
+        <img class="folha atras" src="/img/report-disponibilidade.jpg" alt="" width="760" height="1074" aria-hidden="true">
+        <img class="folha frente" src="/img/report-capa.jpg" alt="Capa do relatório mensal NexoReport de outubro de 2026: disponibilidade de 99,8% dentro da meta de 99,7%, 4h21 sem conexão em 9 quedas, causa mais frequente obstrução da Starlink, resumo em texto e tendência dos últimos 6 meses." width="1000" height="1413" fetchpriority="high">
+        <figcaption>Capa do relatório, com dados de demonstração.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="secao" aria-labelledby="t-perguntas">
+    <div class="miolo">
+      <div class="cabeca">
+        <h2 id="t-perguntas">As perguntas da reunião, respondidas antes dela.</h2>
+        <p>Medir a rede todo dia é trabalho do NexoPulse. O NexoReport transforma um mês dessas medições em respostas que qualquer pessoa da diretoria entende, sem precisar abrir a plataforma.</p>
+      </div>
+      <dl class="perguntas">
+        <div><dt>A internet ficou no ar?</dt><dd>A disponibilidade do mês, contra a meta do seu contrato, e o mês anterior ao lado para comparar.</dd></div>
+        <div><dt>Quanto tempo ficamos sem conexão?</dt><dd>O tempo total fora, o número de quedas e cada local com o seu dia a dia.</dd></div>
+        <div><dt>Por que caiu?</dt><dd>Cada queda com a causa que o sensor encontrou. Quando os dados não bastam, o relatório diz "não determinada" em vez de chutar.</dd></div>
+        <div><dt>A culpa foi do provedor?</dt><dd>As quedas do provedor separadas, com duração e o que as medições mostram, prontas para anexar ao pedido de desconto.</dd></div>
+        <div><dt>E agora, o que fazer?</dt><dd>As recomendações da MD em ordem de prioridade, a partir dos números do mês.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="secao escura dentro" id="o-que-vem" aria-labelledby="t-dentro">
+    <div class="miolo">
+      <div class="cabeca">
+        <h2 id="t-dentro">O que vem no relatório.</h2>
+        <p>As seções seguem sempre a mesma ordem, mês após mês, para a diretoria saber onde procurar cada resposta.</p>
+      </div>
+      <div class="grade">
+        <ol class="sumario">
+          <li><b>Resumo executivo</b><span>Disponibilidade contra a meta, tempo sem conexão, quedas, a causa mais frequente e a tendência dos últimos 6 meses.</span></li>
+          <li><b>Disponibilidade por local</b><span>Cada local com provedor, percentual, tempo fora e situação contra a meta, e o gráfico dia a dia.</span></li>
+          <li><b>Quedas e o que as causou</b><span>Tempo sem conexão por causa, os horários em que as quedas se concentram e as maiores do mês.</span></li>
+          <li><b>Qualidade da conexão</b><span>Resposta, oscilação, perda e velocidade de cada local, e a antena Starlink quando houver.</span></li>
+          <li><b>Provedor: evidências para cobrança</b><span>As quedas do provedor com o que as medições mostram.</span></li>
+          <li><b>Atendimento da MD</b><span>Os chamados do mês, os prazos do contrato cumpridos e a sua avaliação. Para quem tem o NexoDesk.</span></li>
+          <li><b>Rede local</b><span>Os equipamentos encontrados e o diagrama de cada local.</span></li>
+          <li><b>Recomendações da MD</b><span>O que fazer a seguir, em ordem de prioridade, e como cada número é calculado.</span></li>
+        </ol>
+        <div class="paginas">
+          <figure><img src="/img/report-quedas.jpg" alt="Página Quedas e o que as causou: tempo sem conexão por causa, quedas por faixa de horário e tabela das maiores quedas do mês." width="760" height="1074" loading="lazy"><figcaption>Quedas e o que as causou</figcaption></figure>
+          <figure><img src="/img/report-provedor.jpg" alt="Página Qualidade da conexão e Provedor: tabela de qualidade por local, bloco da antena Starlink e quedas atribuídas ao provedor com as medições." width="760" height="1074" loading="lazy"><figcaption>Qualidade e evidências do provedor</figcaption></figure>
+        </div>
+      </div>
+      <p class="legenda">Páginas do relatório, com dados de demonstração.</p>
+    </div>
+  </section>
+
+  <section class="secao" aria-labelledby="t-confianca">
+    <div class="miolo">
+      <div class="cabeca">
+        <h2 id="t-confianca">Números que você pode levar para qualquer reunião.</h2>
+        <p>Um relatório só serve se ninguém precisar discutir de onde saiu cada número.</p>
+      </div>
+      <ul class="frentes tres">
+        <li><span class="marcador"><svg class="icone"><use href="#i-cadeado"/></svg></span><h3>Fechado e guardado</h3><p>O mês é fechado no dia 1 e o relatório fica como foi emitido. Abrir de novo meses depois mostra os mesmos números.</p></li>
+        <li><span class="marcador"><svg class="icone"><use href="#i-alvo"/></svg></span><h3>A meta do seu contrato</h3><p>A situação de cada local é medida contra a disponibilidade combinada com a sua empresa, não contra uma régua genérica.</p></li>
+        <li><span class="marcador"><svg class="icone"><use href="#i-camadas"/></svg></span><h3>A mesma conta do NexoHub</h3><p>O relatório e o painel usam o mesmo cálculo. O que a diretoria lê no PDF bate com o que a equipe vê na plataforma.</p></li>
+        <li><span class="marcador"><svg class="icone"><use href="#i-regra"/></svg></span><h3>Escrito por regras</h3><p>O resumo e as recomendações saem de regras fixas sobre os números do mês. Nada é inventado para preencher a página.</p></li>
+        <li><span class="marcador"><svg class="icone"><use href="#i-documento"/></svg></span><h3>Prova para o provedor</h3><p>As quedas do provedor vêm com horário, duração e as medições de cada uma, prontas para o pedido de desconto.</p></li>
+        <li><span class="marcador"><svg class="icone"><use href="#i-chamado"/></svg></span><h3>O atendimento também</h3><p>Com o NexoDesk no contrato, o relatório mostra os chamados do mês e se a MD cumpriu os prazos combinados.</p></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="secao" id="como-chega" aria-labelledby="t-chega" style="padding-top:0">
+    <div class="miolo">
+      <div class="cabeca">
+        <h2 id="t-chega">Como o relatório chega até você.</h2>
+        <p>O NexoReport usa as medições do NexoPulse. Com o monitoramento funcionando, não há nada para a sua equipe preencher.</p>
+      </div>
+      <ol class="etapas tres">
+        <li><h3>O mês fecha</h3><p>No dia 1, de madrugada, o NexoReport consolida o mês anterior de todos os seus locais e gera o PDF.</p></li>
+        <li><h3>Fica no NexoHub</h3><p>O relatório aparece no NexoHub, junto com o histórico dos meses anteriores, para ver na tela ou baixar.</p></li>
+        <li><h3>A diretoria acessa</h3><p>Um perfil próprio para a diretoria dá acesso de leitura aos relatórios, com o mesmo login do NexoHub.</p></li>
+      </ol>
+      <div class="faixa-nexo" style="margin-top:clamp(56px,7vw,88px)">
+        <div class="simbolos" aria-hidden="true"><img src="/img/nexohub-simbolo-escuro.svg" alt="" width="40" height="40"><img src="/img/nexopulse-simbolo-escuro.svg" alt="" width="40" height="40"><img src="/img/nexoguard-simbolo-escuro.svg" alt="" width="40" height="40"><img src="/img/nexoreport-simbolo-escuro.svg" alt="" width="40" height="40"></div>
+        <p><strong>Parte do Ecossistema Nexo</strong>O NexoReport é uma das plataformas próprias da MD, acessadas pelo NexoHub com um único login.</p>
+        <a class="botao botao-vidro" href="/#nexo">Conhecer o ecossistema</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="secao contato" id="contato" aria-labelledby="t-contato">
+    <div class="miolo grade">
+      <div>
+        <h2 id="t-contato">Quer ver o relatório com os números da sua rede?</h2>
+        <p class="sub">Fale com a MD Soluções Tecnológicas. O NexoReport entra junto com o monitoramento do NexoPulse.</p>
+      </div>
+      <div class="canais">
+        {{ $zap := env "SITE_WHATSAPP" }}{{ if $zap }}<a class="canal principal" href="https://wa.me/{{ $zap }}?text=Ol%C3%A1!%20Quero%20saber%20mais%20sobre%20o%20NexoReport." rel="noopener">
+          <span class="marcador"><svg class="icone"><use href="#i-zap"/></svg></span>
+          <span><small>WhatsApp</small><strong>{{ env "SITE_TELEFONE" | default "Conversar agora" }}</strong></span>
+          <svg class="icone seta"><use href="#i-seta"/></svg>
+        </a>{{ end }}
+        {{ $email := env "SITE_EMAIL" }}{{ if $email }}<a class="canal" href="mailto:{{ $email }}?subject=NexoReport">
+          <span class="marcador"><svg class="icone"><use href="#i-email"/></svg></span>
+          <span><small>E-mail</small><strong>{{ $email }}</strong></span>
+          <svg class="icone seta"><use href="#i-seta"/></svg>
+        </a>{{ end }}
+        <a class="canal" href="{{ env "SITE_HUB_URL" | default "https://hub.mdsolucoes.eng.br" }}">
+          <span class="marcador"><svg class="icone"><use href="#i-entrar"/></svg></span>
+          <span><small>Já é cliente?</small><strong>Entrar no NexoHub</strong></span>
+          <svg class="icone seta"><use href="#i-seta"/></svg>
+        </a>
+      </div>
+    </div>
+  </section>
+</main>
+
+{{ include "/_rodape.html" }}
+</body>
+</html>
