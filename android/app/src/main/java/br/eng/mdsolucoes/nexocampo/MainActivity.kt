@@ -43,6 +43,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStop() {
+        super.onStop()
+        vm.salvar()   // o que foi medido fica guardado mesmo se o Android fechar o app
+    }
+
     override fun onResume() {
         super.onResume()
         permissoesOk.value = temPermissao()

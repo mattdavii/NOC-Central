@@ -42,6 +42,7 @@ data class ResultadoPing(
     val mediaMs: Double?,
     val maxMs: Double?,
     val erro: String? = null,
+    val tempos: List<Double> = emptyList(),
 ) {
     val perdaPct: Int get() = if (enviados == 0) 100 else ((enviados - recebidos) * 100 / enviados)
 }
@@ -53,7 +54,25 @@ data class ResultadoVelocidade(
     val uploadMbps: Double?,
     val latenciaMs: Double?,
     val erro: String? = null,
+    val amostrasDownload: List<Double> = emptyList(),   // Mbps a cada meio segundo
 )
+
+/** Sinal medido num ambiente do local (mapa de cobertura). */
+data class Ambiente(val nome: String, val ssid: String?, val bssid: String?, val sinalDbm: Int?, val canal: Int?, val quando: Long)
+
+/** Ping contínuo: um ponto por segundo (null = sem resposta). */
+data class PingContinuo(val nome: String, val alvo: String, val inicio: Long, val tempos: List<Double?>) {
+    val enviados get() = tempos.size
+    val perdidos get() = tempos.count { it == null }
+    val perdaPct get() = if (tempos.isEmpty()) 0 else perdidos * 100 / tempos.size
+    private val ok get() = tempos.filterNotNull()
+    val mediaMs get() = ok.takeIf { it.isNotEmpty() }?.average()
+    val maxMs get() = ok.maxOrNull()
+    /** Oscilação: média da diferença entre respostas seguidas. */
+    val jitterMs get() = ok.zipWithNext { a, b -> kotlin.math.abs(a - b) }.takeIf { it.isNotEmpty() }?.average()
+}
+
+data class Foto(val arquivo: String, val legenda: String = "")
 
 data class Dispositivo(
     val ip: String,
