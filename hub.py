@@ -16,7 +16,7 @@ DESCRICOES = {
     'report': 'Relatório mensal em PDF com o resumo da sua rede, pronto para a diretoria.',
 }
 # Aplicativos que já têm telas; os demais aparecem como "em breve" para quem contratou.
-DISPONIVEIS = {'pulse'}
+DISPONIVEIS = {'pulse', 'report'}
 
 
 def resumo_pulse(conn, empresa_id=None):
@@ -238,6 +238,13 @@ def cards(conn, empresa_id, acesso):
             if app == 'pulse':
                 card['resumo'] = resumo_pulse(conn, empresa_id)
                 card['disponibilidade'] = disponibilidade_mes(conn, empresa_id)
+            elif app == 'report':
+                import nexoreport  # importa hub: aqui dentro para não virar importação circular
+                ultimo = next(iter(nexoreport.listar(conn, empresa_id)), None)
+                if ultimo:
+                    r = nexoreport.relatorio(conn, empresa_id, ultimo['ano_mes'])
+                    card['ultimo'] = {'ano_mes': ultimo['ano_mes'], 'rotulo': r['dados']['periodo']['rotulo'],
+                                      'pct': r['dados']['totais']['pct'], 'situacao': r['dados']['totais']['situacao']}
         saida.append(card)
     # Liberados primeiro, depois "em breve", vitrine por último.
     ordem = {'liberado': 0, 'em_breve': 1, 'vitrine': 2}

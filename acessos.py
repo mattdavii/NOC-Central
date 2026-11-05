@@ -92,6 +92,8 @@ def garantir_empresa_master(conn, hash_senha_inutil):
 def aplicativo_da_rota(endpoint):
     if not endpoint or endpoint in ROTAS_DO_HUB:
         return None
+    if endpoint.startswith('report_'):
+        return 'report'
     return 'pulse'
 
 

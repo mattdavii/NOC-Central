@@ -103,6 +103,10 @@ emitido.
 - **Entregas 1 e 2 no ar (04/11/2026):** meta por empresa no cadastro (Master), contas por período fechado em
   `hub.janelas_periodo`/`disponibilidade_periodo`, fechamento em `nexoreport.py` (tabela `relatorios_mensais`,
   verificação a cada 15 min, aviso no Telegram da MD se falhar) e retenção das medições ampliada para **40 dias**.
+- **Entregas 3, 4 e 5 no ar (04/11/2026):** PDF em `nexoreport_pdf.py` + `templates/report/mensal.html`, gerado do
+  JSON emitido (não guardamos o arquivo: o mesmo JSON gera sempre o mesmo PDF, e há cache em memória); página
+  `/report` com Ver/Baixar, auditoria, prévia do mês corrente e "Emitir de novo" para a MD; card e atalho do NexoReport
+  ativos no NexoHub; "Em resumo" e recomendações por regras.
 - O fechamento automático começa em **novembro de 2026** (`PRIMEIRO_MES`): outubro já tinha perdido os dias 1 a 4
   pela retenção antiga de 30 dias, e um relatório incompleto não deve sair sozinho.
 - O mês anterior só entra na comparação se tiver relatório emitido ou se as medições dele ainda existirem; a

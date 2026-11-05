@@ -12,3 +12,4 @@ gevent-websocket==0.10.1
 PyJWT[crypto]==2.7.0
 packaging==26.3
 openpyxl==3.1.5
+weasyprint==70.0

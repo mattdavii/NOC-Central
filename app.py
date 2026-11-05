@@ -5,6 +5,7 @@ import database
 import levantamento
 import mapa_rede
 import nexoreport
+import nexoreport_pdf
 import notifications
 import oui
 import diagnostico
@@ -1199,6 +1200,138 @@ def hub_inicio():
     finally:
         conn.close()
 
+
+
+# ==========================================
+# 📄 NEXOREPORT: PÁGINA, PDF E REEMISSÃO
+# ==========================================
+_cache_pdf = {}  # (empresa, mês, versão) -> bytes; o PDF de uma versão emitida nunca muda
+CACHE_PDF_MAX = 12
+
+
+def _empresa_do_relatorio(conn, empresa_id):
+    """A empresa pedida, se quem está logado pode vê-la (MD: todas; cliente: só a própria). Senão None."""
+    if session.get('role') not in acessos.ROLES_MASTER and empresa_id != acessos.empresa_de(_autor(conn)):
+        return None
+    row = conn.execute("SELECT id, nome, usuario FROM clientes WHERE id = ? AND role = 'Cliente'", (empresa_id,)).fetchone()
+    if not row or not acessos.contrato(conn, empresa_id).get('report'):
+        return None
+    return row
+
+
+def _pdf_resposta(pdf, nome_arquivo, baixar):
+    resposta = app.response_class(pdf, mimetype='application/pdf')
+    resposta.headers['Content-Disposition'] = f'{"attachment" if baixar else "inline"}; filename="{nome_arquivo}"'
+    resposta.headers['Cache-Control'] = 'private, no-store'
+    return resposta
+
+
+def _nome_pdf(empresa, ano_mes, sufixo=''):
+    base = unicodedata.normalize('NFKD', empresa['nome'] or empresa['usuario']).encode('ascii', 'ignore').decode()
+    return f"nexoreport-{re.sub(r'[^A-Za-z0-9]+', '-', base).strip('-').lower() or 'empresa'}-{ano_mes}{sufixo}.pdf"
+
+
+@app.route('/report')
+def report_pagina():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    conn = database.get_db()
+    try:
+        master = session.get('role') in acessos.ROLES_MASTER
+        if master:
+            empresas = [dict(conn.execute('SELECT id, nome, usuario FROM clientes WHERE id = ?', (e,)).fetchone())
+                        for e in nexoreport.empresas_com_report(conn)]
+            empresas.sort(key=lambda e: (e['nome'] or e['usuario']).lower())
+            escolhida = request.args.get('empresa', type=int) or (empresas[0]['id'] if empresas else None)
+        else:
+            escolhida = acessos.empresa_de(_autor(conn))
+            empresas = []
+        empresa = _empresa_do_relatorio(conn, escolhida) if escolhida else None
+        meses = []
+        if empresa:
+            for m in nexoreport.listar(conn, empresa['id']):
+                r = nexoreport.relatorio(conn, empresa['id'], m['ano_mes'])
+                d = r['dados']
+                meses.append({'ano_mes': m['ano_mes'], 'versao': m['versao'], 'rotulo': d['periodo']['rotulo'],
+                              'pct': d['totais']['pct'], 'situacao': d['totais']['situacao'], 'quedas': d['totais']['quedas'],
+                              'fora_s': d['totais']['fora_s'], 'meta': d['meta'], 'criado_em': r['criado_em'], 'criado_por': r['criado_por']})
+        proximo = nexoreport.mes_a_fechar(time.time() + 40 * 86400)
+        return render_template('report/index.html', master=master, empresas=empresas, empresa=dict(empresa) if empresa else None,
+                               meses=meses, pct=nexoreport_pdf.pct_txt, dur=nexoreport_pdf.dur_txt,
+                               rotulo_situacao=nexoreport_pdf.ROTULO_SITUACAO, primeiro_mes=nexoreport.PRIMEIRO_MES,
+                               proximo_rotulo=f'{hub.MESES[proximo[1] - 1]} de {proximo[0]}', meta=hub.meta_da_empresa(conn, empresa['id']) if empresa else None)
+    finally:
+        conn.close()
+
+
+@app.route('/report/<int:empresa_id>/<ano_mes>.pdf')
+def report_pdf(empresa_id, ano_mes):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    conn = database.get_db()
+    try:
+        empresa = _empresa_do_relatorio(conn, empresa_id)
+        if not empresa:
+            return _resposta_sem_acesso('Relatório não encontrado para a sua empresa.')
+        versao = request.args.get('versao', type=int)
+        r = nexoreport.relatorio(conn, empresa_id, ano_mes, versao)
+        if not r:
+            return _resposta_sem_acesso('Este mês ainda não tem relatório emitido.')
+        baixar = request.args.get('baixar') == '1'
+        _auditar(conn, 'relatorio_baixado' if baixar else 'relatorio_visto', alvo=f'{ano_mes} v{r["versao"]}', empresa_id=empresa_id)
+        conn.commit()
+    finally:
+        conn.close()
+    chave = (empresa_id, ano_mes, r['versao'])
+    pdf = _cache_pdf.get(chave)
+    if pdf is None:
+        pdf = nexoreport_pdf.gerar_pdf(r['dados'], r['versao'])
+        if len(_cache_pdf) >= CACHE_PDF_MAX:
+            _cache_pdf.pop(next(iter(_cache_pdf)))
+        _cache_pdf[chave] = pdf
+    return _pdf_resposta(pdf, _nome_pdf(empresa, ano_mes, f'-v{r["versao"]}' if r['versao'] > 1 else ''), baixar)
+
+
+@app.route('/report/<int:empresa_id>/previa.pdf')
+def report_previa(empresa_id):
+    """Mês corrente até agora, sem gravar: para a MD acompanhar antes do fechamento."""
+    if session.get('role') not in acessos.ROLES_MASTER:
+        return _resposta_sem_acesso('A prévia do mês é só para a equipe da MD.')
+    conn = database.get_db()
+    try:
+        empresa = _empresa_do_relatorio(conn, empresa_id)
+        if not empresa:
+            return _resposta_sem_acesso('Empresa sem o NexoReport contratado.')
+        local = datetime.now(hub.FUSO_BR)
+        dados = nexoreport.consolidar(conn, empresa_id, local.year, local.month, retencao_s=RETENCAO_MEDICOES_S)
+    finally:
+        conn.close()
+    return _pdf_resposta(nexoreport_pdf.gerar_pdf(dados), _nome_pdf(empresa, f'{local.year:04d}-{local.month:02d}', '-previa'), False)
+
+
+@app.route('/api/v2/report/<int:empresa_id>/<ano_mes>/emitir', methods=['POST'])
+def report_emitir(empresa_id, ano_mes):
+    """A MD emite (ou reemite) um mês já terminado: vira uma nova versão; as anteriores ficam guardadas."""
+    if session.get('role') != 'Administrador Master':
+        return jsonify(error='Só o Administrador Master emite relatórios.'), 403
+    m = re.fullmatch(r'(\d{4})-(\d{2})', ano_mes)
+    if not m or not 1 <= int(m.group(2)) <= 12:
+        return jsonify(error='Mês inválido.'), 400
+    ano, mes = int(m.group(1)), int(m.group(2))
+    if hub.limites_do_mes(ano, mes)[1] > time.time():
+        return jsonify(error='O mês ainda não terminou. Use a prévia.'), 400
+    conn = database.get_db()
+    try:
+        empresa = _empresa_do_relatorio(conn, empresa_id)
+        if not empresa:
+            return jsonify(error='Empresa sem o NexoReport contratado.'), 404
+        dados = nexoreport.consolidar(conn, empresa_id, ano, mes, retencao_s=RETENCAO_MEDICOES_S)
+        versao = nexoreport.gravar(conn, empresa_id, ano, mes, dados, criado_por=session.get('usuario'), nova_versao=True)
+        _auditar(conn, 'relatorio_emitido', alvo=f'{ano_mes} v{versao}', empresa_id=empresa_id)
+        conn.commit()
+        return jsonify(status='OK', versao=versao, parcial_qualidade=bool(dados.get('qualidade_desde'))), 201
+    finally:
+        conn.close()
 
 
 def _nome_curto(conn):
