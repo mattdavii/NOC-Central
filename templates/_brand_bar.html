@@ -10,7 +10,7 @@
     {% if session.get('usuario') and not hide_nav %}
     {% set _menu = menu_nexo() %}
     {% set _pulse = _path == '/pulse' or _path.startswith('/sensor/') or _path == '/sensores' or _path == '/tv' or _path.startswith('/relatorio/') %}
-    {% set _admin = _path == '/usuarios' or _path == '/saude' %}
+    {% set _admin = _path == '/usuarios' or _path == '/saude' or _path == '/guias' %}
     <nav class="app-nav" aria-label="Navegação principal">
         <a href="/" class="{{ 'active' if _path == '/' }}"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Início</span></a>
         {% if 'pulse' in _menu.acesso %}
@@ -41,6 +41,7 @@
                 {% endif %}
                 {% if _role == 'Administrador Master' %}
                 <a href="/saude" class="{{ 'active' if _path == '/saude' }}"><i class="fa-solid fa-heart-pulse" aria-hidden="true"></i><span>Servidor</span></a>
+                <a href="/guias" class="{{ 'active' if _path == '/guias' }}"><i class="fa-solid fa-book-open" aria-hidden="true"></i><span>Guias de instalação</span></a>
                 {% endif %}
             </div>
         </div>

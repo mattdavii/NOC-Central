@@ -102,7 +102,7 @@
             .empresa-sel select { max-width: none; flex: 1; }
         }
     </style>
-<link rel="stylesheet" href="/static/product.css?v=nexopulse-3">
+<link rel="stylesheet" href="/static/product.css?v=nexopulse-4">
 <script src="/static/brand.js?v=nexopulse-2"></script>
 </head>
 <body>
@@ -115,12 +115,13 @@
             <h1><i class="fa-solid fa-satellite-dish"></i> Sensores</h1>
             <p>Agentes NexoPulse Edge que já se apresentaram à Central: empresa, versão, chave e acesso local.</p>
         </div>
-        {% if resumo.antigos %}
         <div class="page-actions">
+            <a class="action-btn btn-secondary" href="/guias"><i class="fa-solid fa-book-open"></i> Guias de instalação</a>
+        {% if resumo.antigos %}
             <button type="button" class="action-btn btn-primary" id="atualizar-todos"><i class="fa-solid fa-arrows-rotate"></i>
                 Atualizar {{ resumo.antigos }} sensor{{ 'es' if resumo.antigos != 1 }} desatualizado{{ 's' if resumo.antigos != 1 }}</button>
-        </div>
         {% endif %}
+        </div>
     </div>
 
     <div class="barra-filtros">
