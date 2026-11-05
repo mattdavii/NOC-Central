@@ -181,6 +181,7 @@
                     <dt>Prioridade</dt><dd><span class="prio {{ c.prioridade }}">{{ c.prioridade_rotulo }}</span></dd>
                     <dt>Categoria</dt><dd>{{ c.categoria_rotulo }}</dd>
                     {% endif %}
+                    {% if queda %}<dt>Ocorrência</dt><dd>{{ queda.causa or 'Detectada pelo NexoPulse' }}<br><span class="muted">{{ quando_txt(queda.inicio) }}{% if queda.fim %} · durou {{ duracao_txt(queda.fim - queda.inicio) }}{% else %} · em andamento{% endif %}</span>{% if md or 'pulse' in menu_nexo().acesso %}<br><a href="/sensor/{{ queda.sensor_mac }}#diag-rede">ver no NexoPulse <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:.7rem" aria-hidden="true"></i></a>{% endif %}</dd>{% endif %}
                     <dt>Aberto</dt><dd data-ts="{{ c.criado_em }}"></dd>
                     {% if c.fechado_em %}<dt>{{ 'Cancelado' if c.status == 'cancelado' else 'Fechado' }}</dt><dd data-ts="{{ c.fechado_em }}"></dd>{% endif %}
                     {% if c.avaliacao %}<dt>Avaliação</dt><dd><span class="nota-estrelas" aria-label="{{ c.avaliacao }} de 5">{% for n in range(1, 6) %}<i class="fa-solid fa-star {{ 'acesa' if n <= c.avaliacao }}" aria-hidden="true"></i>{% endfor %}</span> {{ c.avaliacao }}/5{% if c.avaliacao_comentario %}<br><span class="muted">"{{ c.avaliacao_comentario }}"</span>{% endif %}</dd>{% endif %}

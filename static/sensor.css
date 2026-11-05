@@ -134,3 +134,7 @@ button.action-btn:hover { filter: brightness(1.2); }
 .mapa-editor-novo select { width: auto; flex: 0 1 280px; }
 
 .mapa-dica { flex-basis: 100%; color: var(--brand-cyan, #05A9DC); font-weight: 600; }
+
+.tl-chamado { margin: 6px 0 0; font-size: .82rem; }
+.tl-chamado a { color: var(--link, var(--blue)); text-decoration: none; font-weight: 600; }
+.tl-chamado a:hover { text-decoration: underline; }

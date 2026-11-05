@@ -84,6 +84,14 @@
             ${sl.modo === 'mock' ? `<p class="sl-dica">Dados simulados (modo mock: ${esc(sl.cenario)}).</p>` : ''}`;
     }
 
+    // NexoDesk: abrir chamado já preenchido com a queda, ou o chamado que já foi aberto para ela.
+    const comDesk = root.dataset.desk === '1';
+    function chamadoDaQueda(d) {
+        if (!comDesk) return '';
+        if (d.chamado) return `<p class="tl-chamado"><a href="/desk/${d.chamado.numero}"><i class="fa-solid fa-headset"></i> Chamado #${d.chamado.numero}</a> · ${esc(d.chamado.status_rotulo)}</p>`;
+        return `<p class="tl-chamado"><a href="/desk/novo?diagnostico=${encodeURIComponent(d.id)}"><i class="fa-solid fa-headset"></i> Abrir chamado desta ${d.chave === 'sem_comunicacao' ? 'queda' : 'ocorrência'}</a></p>`;
+    }
+
     function timeline(itens) {
         $('diag-timeline').innerHTML = (itens || []).length ? itens.map(d => {
             const fim = d.fim ? `${hora(d.fim)} · durou ${duracao(d.fim - d.inicio)}` : 'em andamento';
@@ -94,6 +102,7 @@
                 <div class="tl-quando">${hora(d.inicio)} → ${fim} · confiança ${esc(d.confianca)}</div>
                 <p>${esc(d.mensagem)}</p>
                 ${ev ? `<details><summary>Evidências</summary><ul class="tl-ev">${ev}</ul>${d.acao ? `<p class="tl-acao"><i class="fa-solid fa-wrench"></i> ${esc(d.acao)}</p>` : ''}</details>` : ''}
+                ${chamadoDaQueda(d)}
             </li>`;
         }).join('') : '<li class="hist-empty">Nenhum diagnóstico registrado.</li>';
     }

@@ -499,3 +499,51 @@ def test_md_closes_a_resolved_ticket_without_rating(client, login):
     assert login().post(f'/api/v2/desk/{numero}/confirmar', json={'nota': 5}).status_code == 400
     assert login().post(f'/api/v2/desk/{numero}/confirmar', json={}).status_code == 200
     assert 'Fechado pela MD' in login(EMPRESA, 'Cliente').get(f'/desk/{numero}').get_data(as_text=True)
+
+
+# ------------------------------------------------------------------ chamado a partir de uma queda
+def _queda(conn, mac, empresa, ativo=False):
+    conn.execute("INSERT INTO sensores (mac_id, nome_local, cliente_id) VALUES (?, 'Loja Centro', ?)", (mac, empresa))
+    ini = int(time.time()) - 3600
+    conn.execute("INSERT INTO diagnosticos (sensor_mac, chave, camada, causa, gravidade, confianca, inicio, fim, estado, mensagem) "
+                       "VALUES (?, 'sem_comunicacao', 'comunicacao', 'Sem resposta do sensor', 'Crítica', 'alta', ?, ?, ?, 'link principal mudo')",
+                       (mac, ini, None if ativo else ini + 1500, 'ativo' if ativo else 'resolvido'))
+    conn.commit()
+    return conn.execute('SELECT MAX(id) AS id FROM diagnosticos WHERE sensor_mac = ?', (mac,)).fetchone()['id']
+
+
+def test_ticket_from_an_outage_is_prefilled_linked_and_shown(client, login):
+    conn = database.get_db()
+    diag = _queda(conn, 'AA:00:00:00:71:01', EMPRESA, ativo=True)
+    alheio = _queda(conn, 'AA:00:00:00:71:02', OUTRA)
+    conn.close()
+
+    cliente = login(EMPRESA, 'Cliente')
+    pagina = cliente.get(f'/desk/novo?diagnostico={diag}').get_data(as_text=True)
+    assert 'Preenchido com o que o NexoPulse detectou' in pagina
+    assert f'name="diagnostico_id" value="{diag}"' in pagina
+    assert 'value="AA:00:00:00:71:01" selected' in pagina and 'value="parou" checked' in pagina   # queda em andamento = parou
+    assert 'Sem resposta do sensor' in pagina and 'link principal mudo' in pagina
+    # a queda de outra empresa não preenche nada nem pode ser ligada
+    assert 'diagnostico_id' not in cliente.get(f'/desk/novo?diagnostico={alheio}').get_data(as_text=True)
+    assert _abrir(cliente, diagnostico_id=alheio).status_code == 400
+
+    r = _abrir(cliente, diagnostico_id=diag, sensor_mac='AA:00:00:00:71:01')
+    assert r.status_code == 201
+    numero = r.json['numero']
+    assert 'Sem resposta do sensor' in cliente.get(f'/desk/{numero}').get_data(as_text=True)
+    linha = [d for d in cliente.get('/api/v2/sensor/AA:00:00:00:71:01/diagnostico').json['linha_do_tempo'] if d['id'] == diag][0]
+    assert linha['chamado']['numero'] == numero and linha['chamado']['aberto']
+    assert f'/desk/{numero}' in cliente.get(f'/desk/novo?diagnostico={diag}').get_data(as_text=True)   # avisa que já existe
+
+    # a MD abre pela queda: empresa, canal e solicitante já vêm escolhidos
+    md = login()
+    pagina = md.get(f'/desk/novo?diagnostico={alheio}').get_data(as_text=True)
+    assert f'name="empresa_id" value="{OUTRA}"' in pagina
+    assert 'value="nexopulse" selected' in pagina and 'Monitoramento NexoPulse' in pagina
+    r = _abrir(md, empresa_id=OUTRA, canal='nexopulse', solicitante='Monitoramento NexoPulse', diagnostico_id=alheio)
+    assert r.status_code == 201
+    conn = database.get_db()
+    c = nexodesk.chamado(conn, r.json['numero'])
+    assert (c['canal'], c['diagnostico_id']) == ('nexopulse', alheio)
+    conn.close()
