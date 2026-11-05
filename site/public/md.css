@@ -28,6 +28,7 @@
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--papel); color: var(--tinta); font: 400 1.0625rem/1.65 var(--texto); }
 img, svg { max-width: 100%; display: block; }
+img { height: auto; }
 a { color: inherit; }
 p { margin: 0; }
 h1, h2, h3 { font-family: var(--display); margin: 0; letter-spacing: -0.02em; }
@@ -268,4 +269,9 @@ h1, h2, h3 { font-family: var(--display); margin: 0; letter-spacing: -0.02em; }
   .linha::after, .constelacao .fio-vivo { display: none; }
   .linha .estacao { animation: none; }
   .botao:hover { transform: none; }
+}
+
+@media (max-width: 700px) {
+  .monitor { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+  .monitor img { width: 760px; max-width: none; }
 }

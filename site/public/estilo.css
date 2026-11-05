@@ -21,7 +21,7 @@
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--papel); color: var(--tinta); font: 400 1.0625rem/1.65 var(--texto); }
-img { max-width: 100%; display: block; }
+img { max-width: 100%; height: auto; display: block; }
 a { color: var(--sinal-escuro); }
 :focus-visible { outline: 3px solid var(--sinal); outline-offset: 3px; border-radius: 4px; }
 .miolo { width: min(var(--largura), 100% - 40px); margin-inline: auto; }
@@ -235,3 +235,9 @@ p { margin: 0; }
 
 /* Canais de contato escritos, para quem prefere copiar. */
 .contato .canais{display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:14px;color:#fff;font-size:1rem;font-weight:500}
+
+/* No celular a tela da plataforma fica legível: largura mínima e rolagem para o lado. */
+@media (max-width: 700px) {
+  .tela { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+  .tela img { width: 760px; max-width: none; }
+}
