@@ -20,7 +20,7 @@ def parse_location(data, default_source='manual'):
     except (ValueError, TypeError):
         raise ValueError('Coordenadas ou precisão inválidas.') from None
     source = data.get('location_source') or default_source
-    if source not in ('browser', 'manual', 'ip', 'legacy'):
+    if source not in ('browser', 'manual', 'ip', 'legacy', 'starlink', 'windows'):
         raise ValueError('Fonte de localização inválida.')
     if source == 'browser' and accuracy is None:
         raise ValueError('Captura do navegador deve informar precisão em metros.')
