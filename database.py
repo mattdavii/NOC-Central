@@ -235,6 +235,12 @@ def init_db():
                                  'texto TEXT, criado_em DOUBLE PRECISION NOT NULL',
             'chamado_anexos': f"chamado_id INTEGER NOT NULL, mensagem_id INTEGER NOT NULL, nome TEXT NOT NULL, tipo_mime TEXT NOT NULL, "
                               f"tamanho INTEGER NOT NULL, conteudo {'BYTEA' if DATABASE_URL else 'BLOB'} NOT NULL, criado_em DOUBLE PRECISION NOT NULL",
+            # NexoCampo (app de campo): acesso do celular do técnico (só o hash do token fica no banco) e visitas enviadas.
+            'campo_tokens': 'usuario_id INTEGER NOT NULL, token_hash TEXT NOT NULL, aparelho TEXT, criado_em DOUBLE PRECISION NOT NULL, '
+                            'usado_em DOUBLE PRECISION, revogado_em DOUBLE PRECISION',
+            'visitas_campo': f"uuid TEXT NOT NULL, empresa_id INTEGER NOT NULL, sensor_mac TEXT, chamado_id INTEGER, usuario_id INTEGER, "
+                             f"local TEXT, tecnico TEXT, quando DOUBLE PRECISION, recebida_em DOUBLE PRECISION NOT NULL, resumo TEXT, "
+                             f"dados TEXT NOT NULL, pdf {'BYTEA' if DATABASE_URL else 'BLOB'}",
             'diagnosticos': "sensor_mac TEXT, provedor TEXT, chave TEXT NOT NULL, camada TEXT, causa TEXT, gravidade TEXT, confianca TEXT, inicio DOUBLE PRECISION NOT NULL, fim DOUBLE PRECISION, atualizado_em DOUBLE PRECISION, evidencias TEXT, acao TEXT, detalhe TEXT, mensagem TEXT, estado TEXT DEFAULT 'ativo', janelas INTEGER DEFAULT 1, janelas_ok INTEGER DEFAULT 0, notificado INTEGER DEFAULT 0, grupo_id INTEGER",
         }
         for table, definition in tables.items():
@@ -251,6 +257,8 @@ def init_db():
         conn.execute('CREATE INDEX IF NOT EXISTS idx_chamados_empresa ON chamados (empresa_id, status)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_chamado_mensagens ON chamado_mensagens (chamado_id, criado_em)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_chamado_anexos ON chamado_anexos (chamado_id)')
+        conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_campo_tokens ON campo_tokens (token_hash)')
+        conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_visitas_campo ON visitas_campo (uuid)')
         conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_relatorios_mensais ON relatorios_mensais (empresa_id, ano_mes, versao)')
         conn.execute('CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)')
         # Alertas que o sensor guardou com a Central fora: id de origem (sem duplicar no reenvio)

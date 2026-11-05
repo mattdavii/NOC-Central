@@ -4,6 +4,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.InputStream
 import java.net.HttpURLConnection
@@ -31,6 +33,7 @@ object Testes {
             ResultadoPing(
                 nome, alvo, enviados, recebidos, tempos.minOrNull(), tempos.takeIf { it.isNotEmpty() }?.average(), tempos.maxOrNull(),
                 erro = if (resumo == null && tempos.isEmpty()) saida.lineSequence().firstOrNull { it.isNotBlank() } ?: "sem resposta" else null,
+                tempos = tempos,
             )
         } catch (e: Exception) {
             ResultadoPing(nome, alvo, vezes, 0, null, null, null, e.message ?: "falhou")
@@ -49,16 +52,29 @@ object Testes {
 
     private const val SERVIDOR = "https://speed.cloudflare.com"
 
-    /** Velocidade pela Cloudflare: 4 conexões em paralelo, cerca de 8 s em cada sentido. */
-    suspend fun velocidade(progresso: (String) -> Unit = {}): ResultadoVelocidade = withContext(Dispatchers.IO) {
+    /** Uma resposta de ping (para o ping contínuo); null se não respondeu em 1 s. */
+    suspend fun pingUma(alvo: String): Double? = withContext(Dispatchers.IO) {
+        try {
+            val processo = ProcessBuilder("/system/bin/ping", "-c", "1", "-W", "1", alvo).redirectErrorStream(true).start()
+            if (!processo.waitFor(3, TimeUnit.SECONDS)) { processo.destroy(); return@withContext null }
+            RE_TEMPO.find(processo.inputStream.bufferedReader().readText())?.groupValues?.get(1)?.toDouble()
+        } catch (e: Exception) { null }
+    }
+
+    /**
+     * Velocidade pela Cloudflare: 4 conexões em paralelo, cerca de 8 s em cada sentido.
+     * [aoVivo] recebe a velocidade do último meio segundo (para o número subir na tela durante o teste).
+     */
+    suspend fun velocidade(progresso: (String) -> Unit = {}, aoVivo: (Double) -> Unit = {}): ResultadoVelocidade = withContext(Dispatchers.IO) {
         try {
             progresso("Medindo a resposta…")
             val latencia = (1..5).mapNotNull { medirLatencia() }.sorted().let { if (it.isEmpty()) null else it[it.size / 2] }
             progresso("Medindo o download…")
-            val down = medirDownload(8_000)
+            val amostras = mutableListOf<Double>()
+            val down = medirDownload(8_000) { mbps -> amostras.add(mbps); aoVivo(mbps) }
             progresso("Medindo o upload…")
-            val up = medirUpload(8_000)
-            ResultadoVelocidade(down, up, latencia)
+            val up = medirUpload(8_000, aoVivo)
+            ResultadoVelocidade(down, up, latencia, amostrasDownload = amostras)
         } catch (e: Exception) {
             ResultadoVelocidade(null, null, null, e.message ?: "falhou")
         }
@@ -73,10 +89,22 @@ object Testes {
         (System.nanoTime() - inicio) / 1e6
     } catch (e: Exception) { null }
 
-    private suspend fun medirDownload(duracaoMs: Long): Double? = coroutineScope {
+    /** A cada meio segundo, a velocidade desde a última amostra. */
+    private suspend fun amostrar(bytes: AtomicLong, fim: Long, aoAmostrar: (Double) -> Unit) {
+        var anterior = bytes.get()
+        while (System.currentTimeMillis() < fim) {
+            delay(500)
+            val agora = bytes.get()
+            aoAmostrar((agora - anterior) * 8 / 0.5 / 1e6)
+            anterior = agora
+        }
+    }
+
+    private suspend fun medirDownload(duracaoMs: Long, aoAmostrar: (Double) -> Unit): Double? = coroutineScope {
         val bytes = AtomicLong(0)
         val fim = System.currentTimeMillis() + duracaoMs
         val inicio = System.nanoTime()
+        val amostrador = launch { amostrar(bytes, fim, aoAmostrar) }
         (1..4).map {
             async(Dispatchers.IO) {
                 while (System.currentTimeMillis() < fim) {
@@ -90,6 +118,7 @@ object Testes {
                 }
             }
         }.awaitAll()
+        amostrador.cancel()
         val segundos = (System.nanoTime() - inicio) / 1e9
         if (bytes.get() == 0L) null else bytes.get() * 8 / segundos / 1e6
     }
@@ -103,10 +132,11 @@ object Testes {
         }
     }
 
-    private suspend fun medirUpload(duracaoMs: Long): Double? = coroutineScope {
+    private suspend fun medirUpload(duracaoMs: Long, aoAmostrar: (Double) -> Unit): Double? = coroutineScope {
         val bytes = AtomicLong(0)
         val fim = System.currentTimeMillis() + duracaoMs
         val inicio = System.nanoTime()
+        val amostrador = launch { amostrar(bytes, fim, aoAmostrar) }
         val bloco = ByteArray(64 * 1024) { (it % 251).toByte() }
         (1..4).map {
             async(Dispatchers.IO) {
@@ -129,6 +159,7 @@ object Testes {
                 }
             }
         }.awaitAll()
+        amostrador.cancel()
         val segundos = (System.nanoTime() - inicio) / 1e9
         if (bytes.get() == 0L) null else bytes.get() * 8 / segundos / 1e6
     }
