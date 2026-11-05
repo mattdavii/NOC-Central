@@ -125,3 +125,5 @@ button.action-btn:hover { filter: brightness(1.2); }
 }
 
 .mapa-editor-novo select { width: auto; flex: 0 1 280px; }
+
+.mapa-dica { flex-basis: 100%; color: var(--brand-cyan, #05A9DC); font-weight: 600; }

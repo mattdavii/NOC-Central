@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
-    <link rel="stylesheet" href="/static/sensor.css?v=sensor-3">
+    <link rel="stylesheet" href="/static/sensor.css?v=sensor-4">
 <link rel="stylesheet" href="/static/product.css?v=nexopulse-3">
 <script src="/static/brand.js?v=nexopulse-2"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -230,7 +230,7 @@
                     </div>
                 </h3>
                 <div id="network-topology" style="height: 450px;"></div>
-                <div class="mapa-rodape"><span id="mapa-rede-info"></span><span>Clique num equipamento para editar a ligação, renomear ou enviar WoL.</span></div>
+                <div class="mapa-rodape"><span id="mapa-rede-dica" class="mapa-dica" hidden><i class="fa-solid fa-hand-pointer"></i> Arraste o desenho para o lado para ver o resto da rede, ou use "Expandir Tela Cheia".</span><span id="mapa-rede-info"></span><span>Clique num equipamento para editar a ligação, renomear ou enviar WoL.</span></div>
 
                 <div id="node-menu">
                     <h4 id="menu-node-title">Dispositivo</h4>
@@ -827,7 +827,7 @@
             var options = {
                 nodes: { shape: 'box', font: { color: '#0B1728', face: 'JetBrains Mono', bold: true }, borderWidth: 2, shadow: { enabled: true, color: 'rgba(0,0,0,0.5)', size: 10 } },
                 edges: { width: 2, color: { color: cssVar('--border'), highlight: cssVar('--brand-cyan') }, smooth: { type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.5 } },
-                layout: { hierarchical: { direction: 'LR', sortMethod: 'directed', levelSeparation: 260, nodeSpacing: 70, treeSpacing: 90, shakeTowards: 'roots' } },
+                layout: { hierarchical: { direction: 'LR', sortMethod: 'directed', levelSeparation: 250, nodeSpacing: 52, treeSpacing: 70, shakeTowards: 'roots' } },
                 physics: false,
                 interaction: { hover: true }
             };
@@ -843,13 +843,13 @@
                 var options = {
                     nodes: { shape: 'box', font: { color: '#0B1728', face: 'JetBrains Mono', bold: true }, borderWidth: 2, shadow: { enabled: true, color: 'rgba(0,0,0,0.5)', size: 10 } },
                     edges: { width: 2, color: { color: cssVar('--border'), highlight: cssVar('--brand-cyan') }, smooth: { type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.5 } },
-                    layout: { hierarchical: { direction: 'LR', sortMethod: 'directed', levelSeparation: 260, nodeSpacing: 70, treeSpacing: 90, shakeTowards: 'roots' } },
+                    layout: { hierarchical: { direction: 'LR', sortMethod: 'directed', levelSeparation: 250, nodeSpacing: 52, treeSpacing: 70, shakeTowards: 'roots' } },
                 physics: false,
                     interaction: { hover: true }
                 };
                 networkModal = new vis.Network(document.getElementById('network-modal-canvas'), data, options);
                 configurarEventosGrafo(networkModal, true);
-                networkModal.fit();
+                MapaRede.enquadrar();
             }, 200);
         }
 
@@ -1042,7 +1042,7 @@
         });
     </script>
 <script src="/static/location.js?v=2.3"></script>
-<script src="/static/mapa_rede.js?v=1"></script>
+<script src="/static/mapa_rede.js?v=3"></script>
 <script src="/static/acoes.js?v=2.2.0-rc1-auto"></script>
 <script src="/static/host.js?v=2.2.0-rc1"></script>
 <script src="/static/diagnostico.js?v=2.2.0-rc1"></script>

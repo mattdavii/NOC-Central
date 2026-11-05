@@ -21,6 +21,35 @@
         return {background: c, border: c};
     }
 
+    const curto = t => (t || '').length > 26 ? t.slice(0, 25) + '…' : (t || '');
+    const ZOOM_MINIMO = 0.75;   // abaixo disso o texto das caixas fica ilegível
+
+    function folhas() {
+        const pais = new Set(estado.arvore.map(n => n.pai).filter(Boolean));
+        return estado.arvore.filter(n => !pais.has(n.id)).length;
+    }
+
+    // A área cresce com a rede (uma linha por equipamento na ponta), em vez de encolher o desenho.
+    function enquadrar() {
+        const area = document.getElementById('network-topology');
+        if (area) area.style.height = Math.max(450, Math.min(1800, folhas() * 54 + 80)) + 'px';
+        setTimeout(() => {
+            for (const grafo of [network, networkModal]) {
+                if (!grafo) continue;
+                grafo.redraw(); grafo.fit({animation: false});
+                const apertado = grafo.getScale() < ZOOM_MINIMO;
+                if (grafo === network) { const dica = document.getElementById('mapa-rede-dica'); if (dica) dica.hidden = !apertado; }
+                if (apertado) {
+                    // Rede larga demais (celular): mantém o texto legível e começa pela Internet; arraste para ver o resto.
+                    const raiz = grafo.getPositions(['internet']).internet || {x: 0, y: 0};
+                    const largura = grafo.body.container.clientWidth;
+                    const centro = grafo.getViewPosition();
+                    grafo.moveTo({scale: ZOOM_MINIMO, position: {x: raiz.x + (largura / 2 - 40) / ZOOM_MINIMO, y: centro.y}, animation: false});
+                }
+            }
+        }, 60);
+    }
+
     function desenhar() {
         nodes.clear(); edges.clear();
         const status = {online: 'ON', sem_icmp: 'SEM ICMP', offline: 'OFF'};
@@ -29,7 +58,7 @@
             const linha2 = [no.tipo !== 'dispositivo' && no.tipo !== 'internet' ? no.tipo_rotulo : null, no.sub].filter(Boolean).join(' · ');
             nodes.add({
                 id: no.id, ip: no.sub, mac: no.mac, rawName: no.nome, tipo: no.tipo,
-                label: `${ICONES[no.tipo] || '▫️'} ${no.nome}${st}${linha2 ? '\n' + linha2 : ''}`,
+                label: `${ICONES[no.tipo] || '▫️'} ${curto(no.nome)}${st}${linha2 ? '\n' + linha2 : ''}`,
                 title: [no.tipo_rotulo, no.sub, no.mac ? 'MAC: ' + no.mac : null, no.fabricante ? 'Marca: ' + no.fabricante : null,
                         no.meio_rotulo ? 'Ligação: ' + no.meio_rotulo : null, no.informado ? 'Ligação informada pela equipe' : null].filter(Boolean).join('\n'),
                 shape: 'box', color: corDoNo(no),
@@ -43,6 +72,7 @@
                            label: no.meio_rotulo || undefined, font: {size: 10, color: cssVar('--text-muted'), strokeWidth: 0, align: 'middle'}});
             }
         }
+        enquadrar();
         const info = document.getElementById('mapa-rede-info');
         if (info) {
             const informados = estado.arvore.filter(n => n.informado).length + (estado.mapa.extras || []).length;
@@ -166,7 +196,6 @@
             const dados = await r.json();
             if (!r.ok) throw new Error(dados.error || 'Não foi possível salvar o diagrama.');
             estado = dados; desenhar(); fecharEditor();
-            (network || networkModal) && setTimeout(() => { network && network.fit(); networkModal && networkModal.fit(); }, 300);
         } catch (e) { erro.textContent = e.message; } finally { botao.disabled = false; }
     }
 
@@ -202,5 +231,5 @@
         });
     });
 
-    window.MapaRede = {carregar, abrirEditor};
+    window.MapaRede = {carregar, abrirEditor, enquadrar};
 })();
