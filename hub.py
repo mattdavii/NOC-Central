@@ -14,9 +14,10 @@ DESCRICOES = {
     'pulse': 'Monitoramento da rede 24/7: sites, links, provedores e diagnóstico da causa de cada queda.',
     'guard': 'Postura de segurança: firewall, portas expostas, atualizações e uma nota de 0 a 100.',
     'report': 'Relatório mensal em PDF com o resumo da sua rede, pronto para a diretoria.',
+    'desk': 'Chamados e suporte: peça ajuda à MD e acompanhe cada pedido até o fim.',
 }
 # Aplicativos que já têm telas; os demais aparecem como "em breve" para quem contratou.
-DISPONIVEIS = {'pulse', 'report'}
+DISPONIVEIS = {'pulse', 'report', 'desk'}
 
 
 def resumo_pulse(conn, empresa_id=None):
@@ -219,7 +220,7 @@ def disponibilidade_por_dia(conn, empresa_id=None, agora=None):
             'dias_sem_queda': sum(1 for d in medidos if not d['fora_s']), 'dias_medidos': len(medidos)}
 
 
-def cards(conn, empresa_id, acesso):
+def cards(conn, empresa_id, acesso, usuario=None):
     """Cards da página inicial do cliente: liberado, em breve (contratado sem telas) ou vitrine (não contratado).
 
     Aplicativo contratado sem nível para o usuário não aparece (decisão "Sem acesso" do escopo)."""
@@ -245,6 +246,9 @@ def cards(conn, empresa_id, acesso):
                     r = nexoreport.relatorio(conn, empresa_id, ultimo['ano_mes'])
                     card['ultimo'] = {'ano_mes': ultimo['ano_mes'], 'rotulo': r['dados']['periodo']['rotulo'],
                                       'pct': r['dados']['totais']['pct'], 'situacao': r['dados']['totais']['situacao']}
+            elif app == 'desk' and usuario:
+                import nexodesk
+                card['desk'] = nexodesk.contar_abertos(conn, usuario)
         saida.append(card)
     # Liberados primeiro, depois "em breve", vitrine por último.
     ordem = {'liberado': 0, 'em_breve': 1, 'vitrine': 2}

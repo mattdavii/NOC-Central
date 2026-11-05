@@ -225,6 +225,8 @@
         {'rotulo': 'Saúde', 'href': '/saude', 'icone': 'fa-heart-pulse', 'nota': 'Central e banco'},
         {'rotulo': 'NexoGuard', 'href': None, 'marca': 'guard', 'nota': 'Em breve'},
         {'rotulo': 'NexoReport', 'href': '/report', 'marca': 'report', 'nota': 'Relatórios mensais'},
+        {'rotulo': 'NexoDesk', 'href': '/desk', 'marca': 'desk',
+         'nota': (desk.abertos ~ ' chamado' ~ ('s' if desk.abertos != 1 else '') ~ ' aberto' ~ ('s' if desk.abertos != 1 else '')) if desk and desk.abertos else 'Chamados'},
     ] %}
     {% set lancador_nota = None %}
     {% include '_lancador.html' %}
@@ -411,7 +413,7 @@
     {% set atalhos = [] %}
     {% for c in cards %}
         {% set _ = atalhos.append({'rotulo': c.nome, 'marca': c.app,
-            'href': {'pulse': '/pulse', 'report': '/report'}.get(c.app) if c.estado == 'liberado' else None,
+            'href': {'pulse': '/pulse', 'report': '/report', 'desk': '/desk'}.get(c.app) if c.estado == 'liberado' else None,
             'nota': {'liberado': None, 'em_breve': 'Em breve', 'vitrine': 'Não contratado'}[c.estado]}) %}
     {% endfor %}
     {% set _ = atalhos.append({'rotulo': 'Minha conta', 'href': '/conta', 'icone': 'fa-user-gear'}) %}
@@ -486,6 +488,24 @@
                 {% if not ver_como %}
                 <a class="abrir" href="/report"><i class="fa-solid fa-file-pdf"></i> Abrir os relatórios</a>
                 {% endif %}
+            {% elif c.estado == 'liberado' and c.app == 'desk' %}
+            {% set d = c.desk %}
+            {% if d and d.abertos %}
+            <div class="kpis">
+                <div class="kpi"><strong>{{ d.abertos }}</strong><span>aberto{{ 's' if d.abertos != 1 }}</span></div>
+                <div class="kpi"><strong class="{{ 'num-off' if d.com_voce }}">{{ d.com_voce }}</strong><span>esperando você</span></div>
+            </div>
+            <ul class="lista-diag">
+                {% for r in d.recentes %}
+                <li><span class="site">#{{ r.numero }}</span><span>{{ r.titulo }}</span><span class="quando" data-ts="{{ r.atualizado_em }}"></span></li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p>Nenhum chamado aberto. Precisa de ajuda da MD? Abra um chamado e acompanhe a resposta por aqui.</p>
+            {% endif %}
+            {% if not ver_como %}
+            <a class="abrir" href="/desk"><i class="fa-solid fa-headset"></i> {{ 'Ver os chamados' if d and d.abertos else 'Abrir um chamado' }}</a>
+            {% endif %}
             {% elif c.estado == 'em_breve' %}
                 <p>{{ c.descricao }}</p>
                 <p>Já está no seu contrato. Assim que estiver disponível, ele aparece aqui.</p>

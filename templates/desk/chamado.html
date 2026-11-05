@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+{% include 'desk/_head.html' %}
+    <title>NexoHub - Chamado #{{ c.numero }}</title>
+</head>
+<body>
+<script src="/static/security.js?v=2.2.0-rc1"></script>
+{% include '_brand_bar.html' %}
+{% macro iniciais(nome) -%}{%- set partes = (nome or '?').split() -%}{{ (partes[0][:1] ~ (partes[1][:1] if partes|length > 1 else partes[0][1:2])) | upper }}{%- endmacro %}
+<main class="page-main">
+    <div class="trilha"><a href="/desk">{{ 'Chamados' if md else 'Meus chamados' }}</a> / #{{ c.numero }}</div>
+    <div class="titulo-chamado">
+        <div>
+            <h1>{% if c.interno %}<i class="fa-solid fa-lock muted" style="font-size:1rem" aria-label="Interno"></i> {% endif %}{{ c.titulo }}</h1>
+            <div class="chips">
+                <span class="status {{ c.status }}">{{ c.status_rotulo }}</span>
+                <span class="prio {{ c.prioridade }}">{{ c.prioridade_rotulo }}</span>
+                <span>· {{ c.categoria_rotulo }}</span>
+                <span>· Aberto por {{ c.solicitante or 'MD' }}{% if md %}, {{ c.empresa }}{% endif %}, <span data-ts="{{ c.criado_em }}"></span></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="grade-chamado">
+        <section class="card linha-tempo" aria-label="Conversa do chamado">
+            {% for m in mensagens %}
+                {% if m.tipo == 'evento' %}
+                <div class="evento"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> {{ m.texto }} · <span data-ts="{{ m.criado_em }}"></span></div>
+                {% else %}
+                <article class="msg {{ 'nota' if m.tipo == 'nota' }}">
+                    <span class="av {{ 'md' if m.lado == 'md' }}" aria-hidden="true">{{ iniciais(m.autor) }}</span>
+                    <div>
+                        <div class="quem"><b>{{ m.autor }}</b>
+                            {% if m.tipo == 'nota' %}<span class="tag"><i class="fa-solid fa-lock" aria-hidden="true"></i> Nota interna, o cliente não vê</span>{% endif %}
+                            <span class="muted">{{ 'MD Soluções' if m.lado == 'md' else c.empresa }} · <span data-ts="{{ m.criado_em }}"></span>{% if m.tipo == 'abertura' and c.canal not in ('nexohub', 'interno') %} · registrado pela MD, pedido via {{ c.canal_rotulo }}{% endif %}</span></div>
+                        {% if m.texto %}<div class="texto">{{ m.texto }}</div>{% endif %}
+                        {% if m.anexos %}
+                        <div class="anexos">
+                            {% for a in m.anexos %}
+                            {% set imagem = a.tipo_mime.startswith('image/') %}
+                            <a class="anexo" href="/desk/anexo/{{ a.id }}" target="_blank" rel="noopener">
+                                <span class="mini">{% if imagem %}<img src="/desk/anexo/{{ a.id }}?mini=1" alt="" loading="lazy">{% else %}<i class="fa-solid {{ 'fa-file-pdf' if a.tipo_mime == 'application/pdf' else 'fa-file-lines' }}" aria-hidden="true"></i>{% endif %}</span>
+                                <span><b>{{ a.nome }}</b><span class="muted">{{ '%.1f MB' % (a.tamanho / 1048576) if a.tamanho >= 1048576 else '%d KB' % ((a.tamanho / 1024) | round(0, 'ceil')) }}</span></span>
+                            </a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </article>
+                {% endif %}
+            {% endfor %}
+
+            {% if c.status in ('fechado', 'cancelado') %}
+            <div class="encerrado"><i class="fa-solid fa-lock" aria-hidden="true"></i> Este chamado está {{ c.status_rotulo | lower }}. Se precisar de algo mais, <a href="/desk/novo" style="color:var(--link)">abra um novo chamado</a>.</div>
+            {% else %}
+            <form class="compor" action="/api/v2/desk/{{ c.numero }}/mensagens" data-desk data-ok="Mensagem enviada." id="compor">
+                {% if md %}
+                <div class="abas" role="tablist">
+                    <button type="button" role="tab" aria-selected="true" data-nota="0"><i class="fa-solid fa-reply" aria-hidden="true"></i> Responder ao cliente</button>
+                    <button type="button" role="tab" aria-selected="false" data-nota="1" class="nota"><i class="fa-solid fa-lock" aria-hidden="true"></i> Nota interna</button>
+                </div>
+                <input type="hidden" name="nota" value="0">
+                {% endif %}
+                <label for="texto" class="sr-only">Mensagem</label>
+                <textarea id="texto" name="texto" maxlength="20000" placeholder="{{ 'Escreva a resposta para o cliente' if md else 'Escreva para a MD' }}"></textarea>
+                <div class="anexar">
+                    <div class="soltar" data-max="{{ max_arquivos }}" data-max-mb="{{ max_mb }}">
+                        <i class="fa-solid fa-paperclip" aria-hidden="true"></i>
+                        <span>Arraste arquivos aqui ou <label for="arquivos">escolha</label> (até {{ max_arquivos }} de {{ max_mb }} MB)</span>
+                        <input type="file" id="arquivos" name="arquivos" multiple accept="{% for t in tipos %}.{{ t }}{{ ',' if not loop.last }}{% endfor %}">
+                        <div class="escolhidos"></div>
+                    </div>
+                </div>
+                <div class="rodape">
+                    <p class="msg-form" role="status" style="margin:0"></p>
+                    <button class="btn primario" type="submit"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Enviar</button>
+                </div>
+            </form>
+            {% endif %}
+        </section>
+
+        <aside class="lateral">
+            <div class="card bloco">
+                <h3>Dados do chamado</h3>
+                <dl class="dados">
+                    {% if md %}<dt>Empresa</dt><dd>{{ c.empresa }}{% if c.interno %} (interno){% endif %}</dd>{% endif %}
+                    <dt>Solicitante</dt><dd>{{ c.solicitante or '—' }}</dd>
+                    {% if md %}<dt>Canal</dt><dd>{{ c.canal_rotulo }}</dd>{% endif %}
+                    <dt>Local</dt><dd>{% if c.local_nome or c.sensor_mac %}{{ c.local_nome or c.sensor_mac }}{% if md or 'pulse' in menu_nexo().acesso %} · <a href="/sensor/{{ c.sensor_mac }}">abrir no NexoPulse <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:.7rem" aria-hidden="true"></i></a>{% endif %}{% else %}—{% endif %}</dd>
+                    <dt>Responsável</dt><dd>{{ c.responsavel or ('Ninguém ainda' if md else 'A MD vai assumir') }}</dd>
+                    <dt>Prioridade</dt><dd><span class="prio {{ c.prioridade }}">{{ c.prioridade_rotulo }}</span></dd>
+                    <dt>Categoria</dt><dd>{{ c.categoria_rotulo }}</dd>
+                    <dt>Aberto</dt><dd data-ts="{{ c.criado_em }}"></dd>
+                </dl>
+            </div>
+        </aside>
+    </div>
+</main>
+<script src="/static/desk.js?v=1"></script>
+{% if md %}
+<script>
+    // Abas da MD: a mesma caixa envia resposta ao cliente ou nota interna.
+    (function () {
+        const form = document.getElementById('compor');
+        if (!form) return;
+        const campo = form.querySelector('input[name=nota]');
+        const texto = form.querySelector('textarea');
+        form.querySelectorAll('[data-nota]').forEach(aba => aba.addEventListener('click', () => {
+            form.querySelectorAll('[data-nota]').forEach(a => a.setAttribute('aria-selected', String(a === aba)));
+            campo.value = aba.dataset.nota;
+            form.classList.toggle('nota-ativa', aba.dataset.nota === '1');
+            texto.placeholder = aba.dataset.nota === '1' ? 'Nota só para a equipe da MD' : 'Escreva a resposta para o cliente';
+            texto.focus();
+        }));
+    })();
+</script>
+{% endif %}
+</body>
+</html>

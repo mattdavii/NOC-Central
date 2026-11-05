@@ -134,6 +134,12 @@ Definido para a v1 (05/11/2026):
 4. **Fechamento e NexoHub:** resolvido → confirmação, nota e fechamento automático; reabrir; card e contador no Hub;
    Telegram do cliente.
 
+### Andamento
+- **Entrega 1 no ar (05/11/2026):** aplicativo `desk` (ligado por padrão), tabelas `chamados`, `chamado_mensagens` e
+  `chamado_anexos`, regras em `nexodesk.py`, telas `/desk`, `/desk/novo` e `/desk/<número>`, anexos com auditoria,
+  a MD abrindo em nome do cliente e chamados internos, card e atalho no NexoHub, aviso no Telegram da MD para chamado
+  novo e resposta do cliente. Nível leitura também abre e responde os próprios chamados.
+
 ## 6. Testes e critérios de aceite
 - Usuário de uma empresa nunca vê, responde ou baixa anexo de chamado de outra; nota interna nunca chega ao cliente
   (página, API e Telegram).

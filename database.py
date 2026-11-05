@@ -221,6 +221,17 @@ def init_db():
             'medicoes_rede': 'sensor_mac TEXT NOT NULL, coletado_em DOUBLE PRECISION NOT NULL, tipo TEXT, papel TEXT, alvo TEXT, latencia_ms DOUBLE PRECISION, jitter_ms DOUBLE PRECISION, perda_pct DOUBLE PRECISION, amostras INTEGER',
             'starlink_medicoes': 'sensor_mac TEXT NOT NULL, coletado_em DOUBLE PRECISION NOT NULL, dados TEXT',
             'rotas_rede': 'sensor_mac TEXT NOT NULL, coletado_em DOUBLE PRECISION NOT NULL, motivo TEXT, ferramenta TEXT, saltos TEXT, pior_salto TEXT',
+            # NexoDesk: o número do chamado é o id. Horários em epoch (segundos, UTC).
+            'chamados': "empresa_id INTEGER NOT NULL, interno INTEGER NOT NULL DEFAULT 0, solicitante_id INTEGER, solicitante TEXT, "
+                        "aberto_por_id INTEGER, canal TEXT NOT NULL DEFAULT 'nexohub', categoria TEXT NOT NULL, sensor_mac TEXT, "
+                        "impacto TEXT, prioridade TEXT NOT NULL, titulo TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'novo', "
+                        'responsavel_id INTEGER, criado_em DOUBLE PRECISION NOT NULL, atualizado_em DOUBLE PRECISION NOT NULL, '
+                        'resolvido_em DOUBLE PRECISION, fechado_em DOUBLE PRECISION',
+            # tipo: resposta (o cliente vê), nota (só a MD) ou evento (histórico: status, prioridade, responsável).
+            'chamado_mensagens': 'chamado_id INTEGER NOT NULL, autor_id INTEGER, autor TEXT, lado TEXT NOT NULL, tipo TEXT NOT NULL, '
+                                 'texto TEXT, criado_em DOUBLE PRECISION NOT NULL',
+            'chamado_anexos': f"chamado_id INTEGER NOT NULL, mensagem_id INTEGER NOT NULL, nome TEXT NOT NULL, tipo_mime TEXT NOT NULL, "
+                              f"tamanho INTEGER NOT NULL, conteudo {'BYTEA' if DATABASE_URL else 'BLOB'} NOT NULL, criado_em DOUBLE PRECISION NOT NULL",
             'diagnosticos': "sensor_mac TEXT, provedor TEXT, chave TEXT NOT NULL, camada TEXT, causa TEXT, gravidade TEXT, confianca TEXT, inicio DOUBLE PRECISION NOT NULL, fim DOUBLE PRECISION, atualizado_em DOUBLE PRECISION, evidencias TEXT, acao TEXT, detalhe TEXT, mensagem TEXT, estado TEXT DEFAULT 'ativo', janelas INTEGER DEFAULT 1, janelas_ok INTEGER DEFAULT 0, notificado INTEGER DEFAULT 0, grupo_id INTEGER",
         }
         for table, definition in tables.items():
@@ -230,6 +241,9 @@ def init_db():
                                               'hostname_fonte TEXT', 'visto_em TEXT',
                                               'modelo TEXT', 'tipo_equipamento TEXT', 'cftv TEXT',
                                               'comunicacao TEXT', 'firmware TEXT', 'rede_origem TEXT'])
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_chamados_empresa ON chamados (empresa_id, status)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_chamado_mensagens ON chamado_mensagens (chamado_id, criado_em)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_chamado_anexos ON chamado_anexos (chamado_id)')
         conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_relatorios_mensais ON relatorios_mensais (empresa_id, ano_mes, versao)')
         conn.execute('CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)')
         # Alertas que o sensor guardou com a Central fora: id de origem (sem duplicar no reenvio)
