@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NexoPulse · Monitoramento de rede gerenciado | MD Soluções Tecnológicas</title>
 <meta name="description" content="Um sensor no seu local mede a conexão o tempo todo. Quando a internet cai, o NexoPulse aponta em que ponto está o problema: rede interna, antena, provedor ou DNS.">
-<meta name="theme-color" content="#082E56">
+<meta name="theme-color" content="#071A31">
 <link rel="canonical" href="https://www.mdsolucoes.eng.br/nexopulse">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.mdsolucoes.eng.br/nexopulse">
@@ -17,11 +17,35 @@
 <link rel="icon" href="/img/md-simbolo.png" type="image/png">
 <link rel="preload" href="/fontes/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fontes/ibm-plex-sans.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/estilo.css?v=3">
+<link rel="stylesheet" href="/md.css?v=4">
 </head>
 <body>
 <a class="pular" href="#conteudo">Pular para o conteúdo</a>
-
+<!-- Ícones de linha, os mesmos na linha de operação e em "O que fazemos". -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-solar" viewBox="0 0 24 24"><circle cx="17.5" cy="4.5" r="2"/><path d="M17.5 0.8v.7M21.2 4.5h-.7M14.5 4.5h-.7"/><path d="M2.5 20.5l2.6-9h11l2.6 9z"/><path d="M3.8 16h14.6M8.5 11.5l-1 9M13 11.5l1 9"/><path d="M10.5 20.5v2.5"/></symbol>
+  <symbol id="i-eletrica" viewBox="0 0 24 24"><path d="M13.5 2.5L5.5 13.5h6l-1.5 8 8.5-11.5h-6z"/></symbol>
+  <symbol id="i-iot" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/><circle cx="12" cy="12" r="1.5"/></symbol>
+  <symbol id="i-redes" viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><circle cx="4.5" cy="19.5" r="2"/><circle cx="19.5" cy="19.5" r="2"/><circle cx="12" cy="13" r="1.6"/><path d="M12 6.5v4.9M10.7 14.2l-4.7 3.9M13.3 14.2l4.7 3.9M6.5 19.5h11"/></symbol>
+  <symbol id="i-seguranca" viewBox="0 0 24 24"><path d="M12 2.5l7.5 3v5.5c0 5-3.6 8.8-7.5 10.5C8.1 19.8 4.5 16 4.5 11V5.5z"/><path d="M8.8 12l2.2 2.2 4.3-4.4"/></symbol>
+  <symbol id="i-software" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="14" rx="2"/><path d="M8 20.5h8M9 9l-2.5 2.5L9 14M15 9l2.5 2.5L15 14M13 8.5l-2 6"/></symbol>
+  <symbol id="i-consultoria" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="7"/><path d="M15.6 15.6L21 21M7 12.5l2.3-2.3 2 1.6 3-3.3"/></symbol>
+  <symbol id="i-local" viewBox="0 0 24 24"><path d="M12 21.5s7-6.2 7-12a7 7 0 10-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+  <symbol id="i-camadas" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></symbol>
+  <symbol id="i-plataforma" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="4.5" cy="5" r="1.8"/><circle cx="19.5" cy="5" r="1.8"/><circle cx="12" cy="20.5" r="1.8"/><path d="M6 6.2l3.8 3.8M18 6.2l-3.8 3.8M12 15v3.7"/></symbol>
+  <symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.3l2.7 2.7L16 9.6"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M4 20l1.2-3.8A8.5 8.5 0 1112 20.5a8.4 8.4 0 01-4.1-1z"/><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.6-2-1.2-1 .9c-1.2-.4-2.2-1.4-2.6-2.6l.9-1-1.2-2z"/></symbol>
+  <symbol id="i-email" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M3 6.5l9 6.5 9-6.5"/></symbol>
+  <symbol id="i-seta" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-entrar" viewBox="0 0 24 24"><path d="M14 4h4a2 2 0 012 2v12a2 2 0 01-2 2h-4M10 16l4-4-4-4M14 12H3"/></symbol>
+  <symbol id="i-loja" viewBox="0 0 24 24"><path d="M3.5 9.5l1.5-5h14l1.5 5"/><path d="M3.5 9.5a2.8 2.8 0 005.5 0 2.8 2.8 0 005.5 0 2.8 2.8 0 005.5 0"/><path d="M5 12v8.5h14V12M10 20.5v-5h4v5"/></symbol>
+  <symbol id="i-agro" viewBox="0 0 24 24"><path d="M12 21V10"/><path d="M12 13c-4 0-6-2.5-6-6.5 4 0 6 2.5 6 6.5zM12 10c0-4 2-6.5 6-6.5 0 4-2 6.5-6 6.5z"/><path d="M4 21h16"/></symbol>
+  <symbol id="i-saude" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M12 8v8M8 12h8"/></symbol>
+  <symbol id="i-filiais" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="5" rx="1"/><rect x="2.5" y="16.5" width="6" height="5" rx="1"/><rect x="15.5" y="16.5" width="6" height="5" rx="1"/><path d="M12 7.5v4.5M5.5 16.5V12h13v4.5"/></symbol>
+  <symbol id="i-ferramenta" viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 00-5.3 5.3L3.5 17.5l3 3 5.7-5.7a4 4 0 005.3-5.3l-2.5 2.5-2.5-.5-.5-2.5z"/></symbol>
+  <symbol id="i-ciclo" viewBox="0 0 24 24"><path d="M20 11a8 8 0 00-14.3-4.7L4 8M4 13a8 8 0 0014.3 4.7L20 16"/><path d="M4 3.5V8h4.5M20 20.5V16h-4.5"/></symbol>
+  <symbol id="i-guardado" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7.5" ry="2.5"/><path d="M4.5 5.5v13c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5v-13M4.5 12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5"/></symbol>
+</svg>
 <header class="topo">
   <div class="miolo">
     <a class="marca" href="/" aria-label="MD Soluções Tecnológicas, início"><img src="/img/md-logo.png" alt="MD Soluções Tecnológicas" width="640" height="227"></a>
@@ -29,60 +53,47 @@
       <a href="/">A MD</a>
       <a href="#como-funciona">Como funciona</a>
       <a href="#para-quem">Para quem é</a>
-      <a href="#familia-nexo">Família Nexo</a>
+      <a href="/#nexo">Ecossistema Nexo</a>
       <a href="#contato">Contato</a>
     </nav>
-    <a class="botao botao-linha" href="{{ env "SITE_HUB_URL" | default "https://nexopulse.mdsolucoes.eng.br" }}">Entrar no NexoHub</a>
+    <a class="botao botao-azul" href="{{ env "SITE_HUB_URL" | default "https://hub.mdsolucoes.eng.br" }}"><svg class="icone" style="width:18px;height:18px"><use href="#i-entrar"/></svg> Área do cliente</a>
   </div>
 </header>
 
 <main id="conteudo">
-  <section class="abertura">
+  <section class="abertura" aria-labelledby="t-abertura">
     <div class="miolo">
-      <h1>Quando a internet cai, a gente diz onde está o problema.</h1>
+      <img class="logo-produto" src="/img/nexopulse-escuro.svg" alt="NexoPulse" width="748" height="216">
+      <h1 id="t-abertura">Quando a internet cai, a gente diz <span class="degrade">onde está o problema.</span></h1>
       <p class="sub">O NexoPulse, da MD Soluções Tecnológicas, acompanha a rede da sua empresa 24 horas por dia. Um sensor no seu local mede a conexão o tempo todo e, quando algo falha, aponta em que ponto está o problema, com as medições como prova.</p>
       <div class="acoes">
-        <a class="botao botao-cheio" href="#contato">Agendar uma avaliação</a>
-        <a class="botao botao-linha" href="#como-funciona">Ver como funciona</a>
+        <a class="botao botao-sinal" href="#contato">Agendar uma avaliação <svg class="icone" style="width:18px;height:18px"><use href="#i-seta"/></svg></a>
+        <a class="botao botao-vidro" href="#como-funciona">Ver como funciona</a>
       </div>
 
-      <figure class="caminho" aria-labelledby="laudo-titulo">
-        <span class="pulso" aria-hidden="true"></span>
+      <figure class="diag" aria-labelledby="laudo-titulo" style="margin-inline:0">
+        <p class="operacao-titulo"><strong>Exemplo de diagnóstico</strong><span>Dados de demonstração.</span></p>
         <ol>
-          <li class="camada ok">
-            <span class="no" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 17h.01M11 17h.01M8 14V9a4 4 0 0 1 8 0v5"/></svg></span>
-            <h3>Rede interna</h3><span class="estado">Normal</span>
-          </li>
-          <li class="camada causa">
-            <span class="no" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10a8 8 0 0 1 16 0H4z"/><path d="M12 10v8M8 21h8"/></svg></span>
-            <h3>Antena Starlink</h3><span class="estado">Causa encontrada</span>
-          </li>
-          <li class="camada">
-            <span class="no" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12a7 7 0 0 1 14 0M8.5 12a3.5 3.5 0 0 1 7 0"/><circle cx="12" cy="12" r="1"/><path d="M12 13v8"/></svg></span>
-            <h3>Provedor</h3><span class="estado">Sem resposta (consequência)</span>
-          </li>
-          <li class="camada">
-            <span class="no" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></span>
-            <h3>Internet</h3><span class="estado">Sem resposta (consequência)</span>
-          </li>
-          <li class="camada">
-            <span class="no" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="16" r="3"/><path d="m20.5 18.5 1.5 1.5"/></svg></span>
-            <h3>DNS</h3><span class="estado">Sem resposta (consequência)</span>
-          </li>
+          <li class="ok"><span class="no" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 17h.01M11 17h.01M8 14V9a4 4 0 0 1 8 0v5"/></svg></span><h3>Rede interna</h3><span class="estado">Normal</span></li>
+          <li class="causa"><span class="no" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10a8 8 0 0 1 16 0H4z"/><path d="M12 10v8M8 21h8"/></svg></span><h3>Antena Starlink</h3><span class="estado">Causa encontrada</span></li>
+          <li class="consequencia"><span class="no" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12a7 7 0 0 1 14 0M8.5 12a3.5 3.5 0 0 1 7 0"/><circle cx="12" cy="12" r="1"/><path d="M12 13v8"/></svg></span><h3>Provedor</h3><span class="estado">Sem resposta (consequência)</span></li>
+          <li class="consequencia"><span class="no" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></span><h3>Internet</h3><span class="estado">Sem resposta (consequência)</span></li>
+          <li class="consequencia"><span class="no" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="16" r="3"/><path d="m20.5 18.5 1.5 1.5"/></svg></span><h3>DNS</h3><span class="estado">Sem resposta (consequência)</span></li>
         </ol>
         <figcaption class="laudo">
-          <p id="laudo-titulo"><strong>Antena da Fazenda Boa Vista obstruída desde 20h31.</strong></p>
+          <span class="marca-laudo" aria-hidden="true"><svg class="icone"><use href="#i-consultoria"/></svg></span>
+          <strong id="laudo-titulo">Antena da Fazenda Boa Vista obstruída desde 20h31.</strong>
           <p>6% de obstrução no campo de visão. A rede interna está normal, e o provedor, a internet e o DNS pararam de responder no mesmo horário: tudo aponta para a antena. Próximo passo: verificar árvores ou estruturas na frente dela.</p>
         </figcaption>
       </figure>
     </div>
   </section>
 
-  <section class="secao" aria-labelledby="desafio">
-    <div class="miolo dupla">
-      <div>
-        <h2 id="desafio">Cada minuto sem conexão custa, e ninguém sabe dizer por quê.</h2>
-        <p class="intro" style="margin-top:18px;color:var(--tinta-suave);max-width:46ch">Vendas paradas, sistemas fora do ar, equipe sem trabalhar. A primeira pergunta é sempre a mesma: é aqui dentro, é o provedor ou é a antena?</p>
+  <section class="secao" aria-labelledby="t-desafio">
+    <div class="miolo">
+      <div class="cabeca">
+        <h2 id="t-desafio">Cada minuto sem conexão custa, e ninguém sabe dizer por quê.</h2>
+        <p>Vendas paradas, sistemas fora do ar, equipe sem trabalhar. A primeira pergunta é sempre a mesma: é aqui dentro, é o provedor ou é a antena?</p>
       </div>
       <ul class="dores">
         <li><b>Você descobre por último</b><span>A queda aparece quando alguém reclama, não quando começou.</span></li>
@@ -93,138 +104,136 @@
     </div>
   </section>
 
-  <section class="secao" id="como-funciona" aria-labelledby="como" style="padding-top:0">
+  <section class="secao" id="como-funciona" aria-labelledby="t-como" style="padding-top:0">
     <div class="miolo">
-      <h2 id="como">A MD monitora, diagnostica e age pela sua rede.</h2>
-      <div class="passos3">
-        <div>
-          <h3>Monitoramos</h3>
-          <p>Instalamos um sensor na sua rede, que mede a conexão a cada poucos segundos, 24 horas por dia, em todos os seus locais.</p>
-        </div>
-        <div>
-          <h3>Diagnosticamos</h3>
-          <p>Não paramos no "caiu". O NexoPulse aponta em que ponto está o problema: rede interna, antena, provedor ou DNS, com as medições como prova. Quando os dados não bastam para cravar a causa, o alerta diz isso.</p>
-        </div>
-        <div>
-          <h3>Agimos</h3>
-          <p>Você é avisado na hora, com o que foi encontrado. No horário combinado em contrato, nossa equipe aciona o provedor com os dados em mãos e, se contratado, leva o suporte até você.</p>
-        </div>
+      <div class="cabeca">
+        <h2 id="t-como">A MD monitora, diagnostica e age pela sua rede.</h2>
+        <p>Não paramos no "caiu": o NexoPulse aponta em que ponto está o problema e a equipe da MD age com os dados em mãos.</p>
       </div>
+      <ol class="etapas tres">
+        <li><h3>Monitoramos</h3><p>Instalamos um sensor na sua rede, que mede a conexão a cada poucos segundos, 24 horas por dia, em todos os seus locais.</p></li>
+        <li><h3>Diagnosticamos</h3><p>Apontamos em que ponto está o problema: rede interna, antena, provedor ou DNS, com as medições como prova. Quando os dados não bastam para cravar a causa, o alerta diz isso.</p></li>
+        <li><h3>Agimos</h3><p>Você é avisado na hora, com o que foi encontrado. No horário combinado em contrato, nossa equipe aciona o provedor com os dados em mãos e, se contratado, leva o suporte até você.</p></li>
+      </ol>
     </div>
   </section>
 
-  <section class="secao escura" aria-labelledby="vemos">
+  <section class="secao escura ve" aria-labelledby="t-ve">
     <div class="miolo">
-      <h2 id="vemos">O que a nossa equipe vê quando a antena da fazenda fica obstruída.</h2>
-      <p class="intro" style="margin-top:18px;max-width:60ch">Cada camada da conexão com o seu estado, a leitura da antena e a linha do tempo com a causa e a ação recomendada.</p>
-      <div class="tela"><img src="/img/diagnostico-recorte.jpg" alt="Tela da plataforma NexoPulse: diagnóstico de rede com a rede local normal e a Starlink em estado crítico, leitura da antena com 6% de obstrução e linha do tempo explicando a causa." width="1600" height="529" loading="lazy"></div>
+      <div class="cabeca">
+        <h2 id="t-ve">O que a nossa equipe vê quando a antena da fazenda fica obstruída.</h2>
+        <p>Cada camada da conexão com o seu estado, a leitura da antena e a linha do tempo com a causa e a ação recomendada.</p>
+      </div>
+      <figure class="monitor" style="margin:0">
+        <div class="barra" aria-hidden="true"><i></i><i></i><i></i></div>
+        <img src="/img/diagnostico-recorte.jpg" alt="Tela da plataforma NexoPulse: diagnóstico de rede com a rede local normal e a Starlink em estado crítico, leitura da antena com 6% de obstrução e linha do tempo explicando a causa." width="1600" height="529" loading="lazy">
+      </figure>
       <p class="legenda">Plataforma NexoPulse, com dados de demonstração.</p>
 
-      <div class="monitora">
+      <div class="colunas3">
         <div>
           <h3>Sua conexão</h3>
           <ul>
-            <li>Tempo de resposta, oscilação e perda de dados, do equipamento local até a internet.</li>
-            <li>DNS verificado à parte, separando falha de configuração de bloqueio.</li>
-            <li>Caminho da conexão, apontando o trecho que piorou.</li>
-            <li>Equipamentos da rede, câmeras e serviços importantes do seu negócio.</li>
+            <li><svg class="icone"><use href="#i-ok"/></svg><span>Tempo de resposta, oscilação e perda de dados, do equipamento local até a internet.</span></li>
+            <li><svg class="icone"><use href="#i-ok"/></svg><span>DNS verificado à parte, separando falha de configuração de bloqueio.</span></li>
+            <li><svg class="icone"><use href="#i-ok"/></svg><span>Caminho da conexão, apontando o trecho que piorou.</span></li>
+            <li><svg class="icone"><use href="#i-ok"/></svg><span>Equipamentos da rede, câmeras e serviços importantes do seu negócio.</span></li>
           </ul>
         </div>
         <div>
           <h3>Internet via satélite</h3>
           <ul>
-            <li>Obstrução e quedas da última hora, com a causa provável de cada uma.</li>
-            <li>Alinhamento da antena, com o desvio em graus.</li>
-            <li>Qualidade até a estação da Starlink.</li>
-            <li>Alertas da própria antena.</li>
+            <li><svg class="icone"><use href="#i-ok"/></svg><span>Obstrução e quedas da última hora, com a causa provável de cada uma.</span></li>
+            <li><svg class="icone"><use href="#i-ok"/></svg><span>Alinhamento da antena, com o desvio em graus.</span></li>
+            <li><svg class="icone"><use href="#i-ok"/></svg><span>Qualidade até a estação da Starlink.</span></li>
+            <li><svg class="icone"><use href="#i-ok"/></svg><span>Alertas da própria antena.</span></li>
           </ul>
         </div>
         <div>
           <h3>Você fica sabendo assim</h3>
-          <div class="mensagem" role="img" aria-label="Exemplo de alerta no Telegram">
+          <div class="alerta" role="img" aria-label="Exemplo de alerta no Telegram">
             <span class="de">MD Soluções · Alertas da sua empresa</span>
             <p class="titulo">Starlink obstruída</p>
             <p>Starlink do site Fazenda Boa Vista com 6% de obstrução desde 20h31. Verificar árvores ou estruturas no campo de visão da antena.</p>
             <span class="hora">20:33</span>
           </div>
-          <p style="margin-top:14px;font-size:.95rem;color:#A9C1D8">Só avisamos o que foi confirmado, e avisamos de novo quando normaliza.</p>
+          <p class="nota">Só avisamos o que foi confirmado, e avisamos de novo quando normaliza.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="secao" id="para-quem" aria-labelledby="quem">
+  <section class="secao" id="para-quem" aria-labelledby="t-quem">
     <div class="miolo">
-      <h2 id="quem">Para empresas que não podem ficar sem internet.</h2>
-      <div class="segmentos">
-        <div><h3>Comércio e varejo</h3><p>Caixas, maquininhas e sistemas de venda sempre conectados, em uma loja ou em toda a rede.</p></div>
-        <div><h3>Agronegócio</h3><p>Fazendas e unidades remotas com Starlink acompanhadas de perto, mesmo longe de tudo.</p></div>
-        <div><h3>Saúde</h3><p>Clínicas e consultórios com agenda, prontuário e sistemas online sem surpresas.</p></div>
-        <div><h3>Empresas com filiais</h3><p>Todas as unidades num só acompanhamento, vendo onde está cada problema.</p></div>
+      <div class="cabeca">
+        <h2 id="t-quem">Para empresas que não podem ficar sem internet.</h2>
+        <p>Do caixa da loja à fazenda com Starlink: onde a conexão para, o negócio para junto.</p>
       </div>
+      <ul class="segmentos">
+        <li><span class="marcador"><svg class="icone"><use href="#i-loja"/></svg></span><h3>Comércio e varejo</h3><p>Caixas, maquininhas e sistemas de venda sempre conectados, em uma loja ou em toda a rede.</p></li>
+        <li><span class="marcador"><svg class="icone"><use href="#i-agro"/></svg></span><h3>Agronegócio</h3><p>Fazendas e unidades remotas com Starlink acompanhadas de perto, mesmo longe de tudo.</p></li>
+        <li><span class="marcador"><svg class="icone"><use href="#i-saude"/></svg></span><h3>Saúde</h3><p>Clínicas e consultórios com agenda, prontuário e sistemas online sem surpresas.</p></li>
+        <li><span class="marcador"><svg class="icone"><use href="#i-filiais"/></svg></span><h3>Empresas com filiais</h3><p>Todas as unidades num só acompanhamento, vendo onde está cada problema.</p></li>
+      </ul>
 
-      <h2 style="margin-top:clamp(64px,9vw,112px)">Nós cuidamos de tudo. Você cuida do seu negócio.</h2>
       <div class="cuidamos">
-        <div><h3>Implantação pela MD</h3><p>Nossa equipe instala e configura o sensor. Você não precisa de conhecimento técnico.</p></div>
-        <div><h3>Manutenção contínua</h3><p>Atualizamos e mantemos o monitoramento funcionando, sem interromper a sua operação.</p></div>
-        <div><h3>Nada se perde</h3><p>Se a internet cair, as medições e os alertas ficam guardados no sensor e chegam depois, com o horário certo.</p></div>
-        <div><h3>Suporte presencial</h3><p>Opcional: quando for preciso ir ao local, nossa equipe vai, com prazo definido em contrato.</p></div>
-        <div><h3>Seus dados protegidos</h3><p>Cada sensor tem uma chave própria, e você acessa apenas as informações da sua empresa.</p></div>
-        <div><h3>Sob medida</h3><p>Alertas, relatórios e atendimento ajustados à realidade do seu negócio.</p></div>
+        <div class="cabeca">
+          <h2>Nós cuidamos de tudo. Você cuida do seu negócio.</h2>
+          <p>O NexoPulse vem como serviço da MD: da instalação ao suporte, sem exigir conhecimento técnico da sua equipe.</p>
+        </div>
+        <ul class="frentes tres">
+          <li><span class="marcador"><svg class="icone"><use href="#i-ferramenta"/></svg></span><h3>Implantação pela MD</h3><p>Nossa equipe instala e configura o sensor. Você não precisa de conhecimento técnico.</p></li>
+          <li><span class="marcador"><svg class="icone"><use href="#i-ciclo"/></svg></span><h3>Manutenção contínua</h3><p>Atualizamos e mantemos o monitoramento funcionando, sem interromper a sua operação.</p></li>
+          <li><span class="marcador"><svg class="icone"><use href="#i-guardado"/></svg></span><h3>Nada se perde</h3><p>Se a internet cair, as medições e os alertas ficam guardados no sensor e chegam depois, com o horário certo.</p></li>
+          <li><span class="marcador"><svg class="icone"><use href="#i-local"/></svg></span><h3>Suporte presencial</h3><p>Opcional: quando for preciso ir ao local, nossa equipe vai, com prazo definido em contrato.</p></li>
+          <li><span class="marcador"><svg class="icone"><use href="#i-seguranca"/></svg></span><h3>Seus dados protegidos</h3><p>Cada sensor tem uma chave própria, e você acessa apenas as informações da sua empresa.</p></li>
+          <li><span class="marcador"><svg class="icone"><use href="#i-consultoria"/></svg></span><h3>Sob medida</h3><p>Alertas, relatórios e atendimento ajustados à realidade do seu negócio.</p></li>
+        </ul>
       </div>
     </div>
   </section>
 
-  <section class="secao familia" id="familia-nexo" aria-labelledby="nexo">
+  <section class="secao" aria-labelledby="t-comecar" style="padding-top:0">
     <div class="miolo">
-      <h2 id="nexo">Tecnologia própria: a Família Nexo.</h2>
-      <p class="intro">Para prestar um serviço de mais qualidade, a MD desenvolve as próprias ferramentas. Elas evoluem conforme as necessidades dos nossos clientes, sem depender de terceiros.</p>
-      <div class="apps">
-        <div class="app">
-          <img src="/img/nexohub-claro.svg" alt="NexoHub" width="220" height="46">
-          <p><b>O portal do cliente.</b> Um login só para acompanhar todos os serviços contratados com a MD.</p>
-          <span class="situacao pronto">Disponível</span>
-        </div>
-        <div class="app">
-          <img class="pulse" src="/img/nexopulse-claro.svg" alt="NexoPulse" width="220" height="46">
-          <p><b>Monitoramento de rede.</b> Sensores nos seus locais, diagnóstico de onde está cada queda e alertas no Telegram.</p>
-          <span class="situacao pronto">Disponível</span>
-        </div>
-        <div class="app">
-          <img src="/img/nexoguard-claro.svg" alt="NexoGuard" width="220" height="46">
-          <p><b>Segurança da rede.</b> Vai acompanhar portas expostas, firewall e atualizações da sua rede.</p>
-          <span class="situacao breve">Em desenvolvimento</span>
-        </div>
-        <div class="app">
-          <img src="/img/nexoreport-claro.svg" alt="NexoReport" width="220" height="46">
-          <p><b>Relatórios.</b> Vai gerar o resumo mensal da sua rede em PDF, pronto para a diretoria.</p>
-          <span class="situacao breve">Em desenvolvimento</span>
-        </div>
+      <div class="cabeca">
+        <h2 id="t-comecar">Três passos para a sua rede passar a ser monitorada.</h2>
+        <p>Da primeira conversa ao monitoramento funcionando, com a equipe da MD em cada etapa.</p>
       </div>
-    </div>
-  </section>
-
-  <section class="secao" aria-labelledby="comecar">
-    <div class="miolo">
-      <h2 id="comecar">Três passos para a sua rede passar a ser monitorada.</h2>
-      <ol class="passos">
+      <ol class="etapas tres">
         <li><h3>Avaliamos a sua rede</h3><p>Entendemos os seus locais, os links e o que é crítico para o seu negócio.</p></li>
         <li><h3>Instalamos o sensor</h3><p>Nossa equipe implanta e configura, sem parar a sua operação.</p></li>
         <li><h3>Monitoramento 24/7</h3><p>O monitoramento automático começa, junto com o seu grupo de alertas e o seu acesso ao NexoHub.</p></li>
       </ol>
+      <div class="faixa-nexo" style="margin-top:clamp(56px,7vw,88px)">
+        <div class="simbolos" aria-hidden="true"><img src="/img/nexohub-simbolo-escuro.svg" alt="" width="40" height="40"><img src="/img/nexopulse-simbolo-escuro.svg" alt="" width="40" height="40"><img src="/img/nexoguard-simbolo-escuro.svg" alt="" width="40" height="40"><img src="/img/nexoreport-simbolo-escuro.svg" alt="" width="40" height="40"></div>
+        <p><strong>Parte do Ecossistema Nexo</strong>O NexoPulse é uma das plataformas próprias da MD, acessadas pelo NexoHub com um único login.</p>
+        <a class="botao botao-vidro" href="/#nexo">Conhecer o ecossistema</a>
+      </div>
     </div>
   </section>
 
-  <section class="secao contato" id="contato" aria-labelledby="falar">
-    <div class="miolo">
+  <section class="secao contato" id="contato" aria-labelledby="t-contato">
+    <div class="miolo grade">
       <div>
-        <h2 id="falar">Vamos cuidar da sua conexão?</h2>
-        <p class="intro" style="margin-top:18px;max-width:46ch">Fale com a MD Soluções Tecnológicas e agende uma avaliação da sua rede.</p>
+        <h2 id="t-contato">Vamos cuidar da sua conexão?</h2>
+        <p class="sub">Fale com a MD Soluções Tecnológicas e agende uma avaliação da sua rede.</p>
       </div>
-      <div class="acoes">
-        {{ $zap := env "SITE_WHATSAPP" }}{{ if $zap }}<a class="botao botao-cheio" href="https://wa.me/{{ $zap }}?text={{ "Olá! Quero agendar uma avaliação da minha rede." | urlquery }}" rel="noopener">Conversar no WhatsApp</a>{{ end }}
-        {{ $email := env "SITE_EMAIL" }}{{ if $email }}<a class="botao botao-linha" href="mailto:{{ $email }}?subject={{ "Avaliação da rede" | urlquery }}">Enviar um e-mail</a>{{ end }}
-        {{ if and (not $zap) (not $email) }}<a class="botao botao-cheio" href="{{ env "SITE_HUB_URL" | default "https://nexopulse.mdsolucoes.eng.br" }}">Entrar no NexoHub</a>{{ end }}
+      <div class="canais">
+        {{ $zap := env "SITE_WHATSAPP" }}{{ if $zap }}<a class="canal principal" href="https://wa.me/{{ $zap }}?text=Ol%C3%A1!%20Quero%20agendar%20uma%20avalia%C3%A7%C3%A3o%20da%20minha%20rede." rel="noopener">
+          <span class="marcador"><svg class="icone"><use href="#i-zap"/></svg></span>
+          <span><small>WhatsApp</small><strong>{{ env "SITE_TELEFONE" | default "Conversar agora" }}</strong></span>
+          <svg class="icone seta"><use href="#i-seta"/></svg>
+        </a>{{ end }}
+        {{ $email := env "SITE_EMAIL" }}{{ if $email }}<a class="canal" href="mailto:{{ $email }}?subject=Avalia%C3%A7%C3%A3o%20da%20rede">
+          <span class="marcador"><svg class="icone"><use href="#i-email"/></svg></span>
+          <span><small>E-mail</small><strong>{{ $email }}</strong></span>
+          <svg class="icone seta"><use href="#i-seta"/></svg>
+        </a>{{ end }}
+        <a class="canal" href="{{ env "SITE_HUB_URL" | default "https://hub.mdsolucoes.eng.br" }}">
+          <span class="marcador"><svg class="icone"><use href="#i-entrar"/></svg></span>
+          <span><small>Já é cliente?</small><strong>Entrar no NexoHub</strong></span>
+          <svg class="icone seta"><use href="#i-seta"/></svg>
+        </a>
       </div>
     </div>
   </section>
