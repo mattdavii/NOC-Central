@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
-    <link rel="stylesheet" href="/static/sensor.css?v=sensor-5">
+    <link rel="stylesheet" href="/static/sensor.css?v=sensor-6">
 <link rel="stylesheet" href="/static/product.css?v=nexopulse-3">
 <script src="/static/brand.js?v=nexopulse-2"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -156,7 +156,7 @@
             </div>
         </div>
 
-        <div class="painel-grid" id="diag-rede" data-mac="{{ sensor.mac_id }}">
+        <div class="painel-grid" id="diag-rede" data-mac="{{ sensor.mac_id }}" data-desk="{{ 1 if 'desk' in menu_nexo().acesso else 0 }}">
             <div class="card card-stack" style="border-top: 4px solid var(--blue);">
                 <h3><span><i class="fa-solid fa-layer-group"></i> Diagnóstico de rede</span><span class="iface-tag" id="diag-atualizado">--</span></h3>
                 <ul class="saude-lista" id="diag-camadas"><li class="hist-empty">Aguardando a primeira janela de medições do sensor…</li></ul>
@@ -1065,6 +1065,6 @@
 <script src="/static/mapa_rede.js?v=5"></script>
 <script src="/static/acoes.js?v=2.2.0-rc1-auto"></script>
 <script src="/static/host.js?v=2.2.0-rc1"></script>
-<script src="/static/diagnostico.js?v=2.2.0-rc1"></script>
+<script src="/static/diagnostico.js?v=3"></script>
 </body>
 </html>

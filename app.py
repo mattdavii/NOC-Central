@@ -1488,9 +1488,19 @@ def desk_novo():
         md = nexodesk.eh_md(autor)
         empresas = nexodesk.empresas_para_md(conn) if md else []
         empresa_id = request.args.get('empresa', type=int) if md else acessos.empresa_de(autor)
+        # Chamado a partir de uma queda do NexoPulse: o formulário vem preenchido (a pessoa revisa antes de abrir).
+        previa, ja_aberto, diag = {}, None, None
+        if request.args.get('diagnostico'):
+            diag = nexodesk.diagnostico_da_empresa(conn, request.args.get('diagnostico'), None if md else empresa_id)
+            if diag:
+                previa = nexodesk.rascunho_da_queda(diag)
+                if md:
+                    empresa_id = diag['cliente_id']
+                existente = nexodesk.chamados_das_quedas(conn, [diag['id']]).get(diag['id'])
+                ja_aberto = existente if existente and existente['aberto'] else None
         if md and empresa_id not in {e['id'] for e in empresas}:
             empresa_id = None
-        return render_template('desk/novo.html', md=md, empresas=empresas, empresa_id=empresa_id,
+        return render_template('desk/novo.html', md=md, empresas=empresas, empresa_id=empresa_id, previa=previa, ja_aberto=ja_aberto,
                                locais=nexodesk.locais_da_empresa(conn, empresa_id) if empresa_id else [],
                                categorias=nexodesk.CATEGORIAS, impactos=nexodesk.IMPACTOS, prioridades=nexodesk.PRIORIDADES,
                                canais={c: nexodesk.CANAIS[c] for c in nexodesk.CANAIS_DA_MD},
@@ -1535,7 +1545,9 @@ def desk_ver(numero):
         if not c:
             return render_template('sem_acesso.html', mensagem='Chamado não encontrado ou sem permissão para vê-lo.'), 404
         md = nexodesk.eh_md(autor)
-        return render_template('desk/chamado.html', md=md, c=c, mensagens=nexodesk.mensagens(conn, numero, md),
+        queda = nexodesk.diagnostico_da_empresa(conn, c['diagnostico_id']) if c.get('diagnostico_id') else None
+        return render_template('desk/chamado.html', md=md, c=c, mensagens=nexodesk.mensagens(conn, numero, md), queda=queda,
+                               quando_txt=nexodesk.quando_txt, duracao_txt=nexodesk.duracao_txt,
                                equipe=nexodesk.equipe_md(conn) if md else [], eu=autor['id'],
                                fecha_sozinho=nexodesk.quando_txt(nexodesk.prazo_fechamento(c)) if nexodesk.prazo_fechamento(c) else None,
                                pode_reabrir=nexodesk.pode_reabrir(c), reabrir_dias=nexodesk.REABRIR_DIAS,
@@ -3991,6 +4003,9 @@ def diagnostico_sensor(mac_id):
             return jsonify(error='Sensor não encontrado.'), 404
         diags = [_diag_publico(r) for r in conn.execute(
             'SELECT * FROM diagnosticos WHERE sensor_mac=? ORDER BY inicio DESC LIMIT 40', (mac_id,)).fetchall()]
+        chamados = nexodesk.chamados_das_quedas(conn, [d['id'] for d in diags])   # chamado aberto a partir da queda
+        for d in diags:
+            d['chamado'] = chamados.get(d['id'])
         grupos_ids = sorted({d['grupo_id'] for d in diags if d.get('grupo_id')})
         grupos = [_diag_publico(r) for r in conn.execute(
             f"SELECT * FROM diagnosticos WHERE id IN ({','.join('?' * len(grupos_ids))})", grupos_ids).fetchall()] if grupos_ids else []

@@ -32,8 +32,9 @@ STATUS = {'novo': 'Novo', 'atendimento': 'Em atendimento', 'aguardando': 'Aguard
           'resolvido': 'Resolvido', 'fechado': 'Fechado', 'cancelado': 'Cancelado'}
 ABERTOS = ('novo', 'atendimento', 'aguardando', 'resolvido')   # "resolvido" ainda espera a confirmação do cliente
 ENCERRADOS = ('fechado', 'cancelado')
-CANAIS = {'nexohub': 'NexoHub', 'whatsapp': 'WhatsApp', 'telefone': 'Telefone', 'presencial': 'Presencial', 'interno': 'Interno'}
-CANAIS_DA_MD = ('whatsapp', 'telefone', 'presencial')   # a MD registrando um pedido que chegou por fora
+CANAIS = {'nexohub': 'NexoHub', 'whatsapp': 'WhatsApp', 'telefone': 'Telefone', 'presencial': 'Presencial', 'interno': 'Interno',
+          'nexopulse': 'Detectado pelo NexoPulse'}
+CANAIS_DA_MD = ('whatsapp', 'telefone', 'presencial', 'nexopulse')   # a MD registrando um pedido que chegou por fora
 
 # Tipo do arquivo pela extensão (nunca pelo que o navegador mandou).
 TIPOS_ANEXO = {
@@ -446,15 +447,21 @@ def abrir(conn, autor, dados, arquivos=(), agora=None):
     sensor_mac = (dados.get('sensor_mac') or '').strip() or None
     if sensor_mac and not conn.execute('SELECT 1 FROM sensores WHERE mac_id = ? AND cliente_id = ?', (sensor_mac, empresa_id)).fetchone():
         raise Recusa('Esse local não é da empresa do chamado.')
+    diagnostico_id = None
+    if dados.get('diagnostico_id'):
+        diag = diagnostico_da_empresa(conn, dados.get('diagnostico_id'), empresa_id)
+        if not diag:
+            raise Recusa('Essa queda não é de um local da empresa do chamado.')
+        diagnostico_id, sensor_mac = diag['id'], sensor_mac or diag['sensor_mac']
     contrato = None
     if not interno:
         cfg = sla_da_empresa(conn, empresa_id)
         contrato = json.dumps({'horario': cfg['horario'], 'prazos': cfg['prazos']})   # o SLA fica gravado no chamado
     numero = _inserir_id(conn,
         'INSERT INTO chamados (empresa_id, interno, solicitante_id, solicitante, aberto_por_id, canal, categoria, sensor_mac, '
-        'impacto, prioridade, titulo, status, criado_em, atualizado_em, sla, pausas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'impacto, prioridade, titulo, status, criado_em, atualizado_em, sla, pausas, diagnostico_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         (empresa_id, interno, solicitante_id, solicitante, autor['id'], canal, categoria, sensor_mac, impacto, prioridade,
-         titulo, 'novo', agora, agora, contrato, '[]'))
+         titulo, 'novo', agora, agora, contrato, '[]', diagnostico_id))
     _mensagem(conn, numero, autor, 'abertura', texto, arquivos, agora)
     return numero
 
@@ -755,3 +762,61 @@ def aviso_cliente(c, o_que, texto=None):
     fim = {'aguardando': '\nResponda no NexoHub para o atendimento continuar.',
            'resolvido': '\nConfirme no NexoHub se resolveu. Sem resposta, ele fecha sozinho em 3 dias úteis.'}.get(o_que, '')
     return f"{titulos[o_que]}: <b>chamado #{c['numero']}</b>\n📝 {html.escape(c['titulo'])}{trecho}{fim}"
+
+
+# ------------------------------------------------------------------ chamado a partir de uma queda do NexoPulse
+NOMES_EVIDENCIAS = {'perda_pct': 'perda', 'latencia_ms': 'latência (ms)', 'jitter_ms': 'oscilação (ms)'}
+
+
+def diagnostico_da_empresa(conn, diagnostico_id, empresa_id=None):
+    """A queda/diagnóstico com o local dela; None se não existir ou (com empresa) se o local for de outra empresa."""
+    try:
+        diagnostico_id = int(diagnostico_id)
+    except (TypeError, ValueError):
+        return None
+    row = conn.execute('SELECT d.*, s.nome_local, s.cliente_id FROM diagnosticos d JOIN sensores s ON s.mac_id = d.sensor_mac '
+                       'WHERE d.id = ?', (diagnostico_id,)).fetchone()
+    if not row or (empresa_id is not None and row['cliente_id'] != empresa_id):
+        return None
+    return dict(row)
+
+
+def chamados_das_quedas(conn, ids):
+    """{id do diagnóstico: chamado mais recente ligado a ele} para mostrar o vínculo na linha do tempo."""
+    ids = [int(i) for i in ids if i]
+    if not ids:
+        return {}
+    rows = conn.execute(f"SELECT id, diagnostico_id, status FROM chamados WHERE diagnostico_id IN ({', '.join('?' for _ in ids)}) "
+                        'ORDER BY id', ids).fetchall()
+    return {r['diagnostico_id']: {'numero': r['id'], 'status': r['status'], 'status_rotulo': STATUS.get(r['status'], r['status']),
+                                  'aberto': r['status'] in ABERTOS} for r in rows}
+
+
+def rascunho_da_queda(diag, agora=None):
+    """Campos do formulário já preenchidos com o que o NexoPulse viu (a pessoa revisa antes de abrir)."""
+    agora = agora or time.time()
+    local = diag.get('nome_local') or diag['sensor_mac']
+    em_andamento = diag.get('estado') == 'ativo' or not diag.get('fim')
+    queda = diag.get('chave') == 'sem_comunicacao'
+    linhas = [f"Detectado pelo NexoPulse em {local}.",
+              f"Início: {quando_txt(diag['inicio'], agora)}" + ('' if em_andamento else
+                                                                f" · fim: {quando_txt(diag['fim'], agora)} · duração: {duracao_txt(diag['fim'] - diag['inicio'])}"),
+              f"Situação: {'em andamento' if em_andamento else 'normalizado'}."]
+    if diag.get('causa'):
+        linhas.append(f"Diagnóstico: {diag['causa']}" + (f" (confiança {diag['confianca']})" if diag.get('confianca') else ''))
+    if diag.get('mensagem'):
+        linhas.append(diag['mensagem'])
+    try:
+        evidencias = json.loads(diag.get('evidencias') or '{}') if isinstance(diag.get('evidencias'), str) else (diag.get('evidencias') or {})
+    except ValueError:
+        evidencias = {}
+    ev = [f"- {NOMES_EVIDENCIAS.get(k, k.replace('_', ' '))}: {', '.join(map(str, v)) if isinstance(v, list) else v}"
+          for k, v in evidencias.items() if v not in (None, '', [])]
+    if ev:
+        linhas += ['', 'Evidências:'] + ev[:12]
+    if diag.get('acao'):
+        linhas += ['', f"Ação sugerida pelo diagnóstico: {diag['acao']}"]
+    titulo = (f"Sem conexão em {local}" if queda else f"{diag.get('causa') or 'Problema na rede'} em {local}")[:MAX_TITULO]
+    return {'categoria': 'rede', 'impacto': 'parou' if queda and em_andamento else 'atrapalha', 'titulo': titulo,
+            'descricao': '\n'.join(linhas)[:MAX_TEXTO], 'sensor_mac': diag['sensor_mac'], 'diagnostico_id': diag['id'],
+            'canal': 'nexopulse', 'solicitante': 'Monitoramento NexoPulse'}
