@@ -109,8 +109,22 @@ class CampoViewModel(app: Application) : AndroidViewModel(app) {
     var precisaLiberarInstalacao by mutableStateOf(false); private set
     private var apkBaixado: File? = null
 
+    private var ultimaVerificacao = 0L
+
+    /** Procura versão nova ao abrir e ao voltar para o app (no máximo a cada 2 minutos). */
+    fun verificarAtualizacao() {
+        val agora = System.currentTimeMillis()
+        if (agora - ultimaVerificacao < 120_000 || baixandoAtualizacao) return
+        ultimaVerificacao = agora
+        viewModelScope.launch {
+            val v = Atualizador.verificar(contexto)
+            if (v != null) novaVersao = v
+            else ultimaVerificacao = agora - 90_000   // falhou ou já em dia: tenta de novo em 30 s
+        }
+    }
+
     init {
-        viewModelScope.launch { novaVersao = Atualizador.verificar(contexto) }
+        verificarAtualizacao()
         recarregarVisitas()
         if (contaCentral != null) carregarEmpresas()
     }
