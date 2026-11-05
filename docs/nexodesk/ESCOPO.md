@@ -139,6 +139,10 @@ Definido para a v1 (05/11/2026):
   `chamado_anexos`, regras em `nexodesk.py`, telas `/desk`, `/desk/novo` e `/desk/<número>`, anexos com auditoria,
   a MD abrindo em nome do cliente e chamados internos, card e atalho no NexoHub, aviso no Telegram da MD para chamado
   novo e resposta do cliente. Nível leitura também abre e responde os próprios chamados.
+- **Entrega 2 no ar (05/11/2026):** fila da MD em `/desk` (contadores clicáveis, busca, filtros por empresa,
+  responsável, status e categoria; ordem por prioridade até o SLA chegar), assumir e trocar responsável, prioridade e
+  categoria com histórico, "Pedir informação" e "Marcar como resolvido" junto da resposta ao cliente, cancelar e
+  reabrir. O cliente vê uma faixa quando a MD espera a resposta dele ou marcou como resolvido.
 
 ## 6. Testes e critérios de aceite
 - Usuário de uma empresa nunca vê, responde ou baixa anexo de chamado de outra; nota interna nunca chega ao cliente

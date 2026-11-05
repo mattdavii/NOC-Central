@@ -1403,6 +1403,14 @@ def desk_lista():
     try:
         autor = _autor(conn)
         md = nexodesk.eh_md(autor)
+        if md:
+            filtros = {'eu': autor['id'], 'empresa_id': request.args.get('empresa', type=int),
+                       'responsavel': request.args.get('responsavel') or None, 'status': request.args.get('status') or 'abertos',
+                       'categoria': request.args.get('categoria') or None, 'busca': request.args.get('busca') or ''}
+            chamados, contadores = nexodesk.fila(conn, filtros)
+            return render_template('desk/fila.html', chamados=chamados, contadores=contadores, filtros=filtros,
+                                   empresas=nexodesk.empresas_para_md(conn), equipe=nexodesk.equipe_md(conn),
+                                   categorias=nexodesk.CATEGORIAS, status_rotulos=nexodesk.STATUS, eu=autor['id'])
         todos = request.args.get('ver') == 'todos'
         empresa_id = request.args.get('empresa', type=int) if md else None
         chamados = nexodesk.listar(conn, autor, abertos=not todos, empresa_id=empresa_id)
@@ -1474,6 +1482,8 @@ def desk_ver(numero):
             return render_template('sem_acesso.html', mensagem='Chamado não encontrado ou sem permissão para vê-lo.'), 404
         md = nexodesk.eh_md(autor)
         return render_template('desk/chamado.html', md=md, c=c, mensagens=nexodesk.mensagens(conn, numero, md),
+                               equipe=nexodesk.equipe_md(conn) if md else [], eu=autor['id'],
+                               prioridades=nexodesk.PRIORIDADES, categorias=nexodesk.CATEGORIAS,
                                max_arquivos=nexodesk.MAX_ARQUIVOS, max_mb=nexodesk.MAX_ARQUIVO // (1024 * 1024),
                                tipos=sorted(nexodesk.TIPOS_ANEXO))
     finally:
@@ -1491,7 +1501,8 @@ def desk_responder(numero):
             return jsonify(error='Chamado não encontrado.'), 404
         nota = request.form.get('nota') == '1'
         try:
-            status = nexodesk.responder(conn, autor, c, request.form.get('texto'), _desk_arquivos(), nota=nota)
+            status = nexodesk.responder(conn, autor, c, request.form.get('texto'), _desk_arquivos(), nota=nota,
+                                        depois=request.form.get('depois') or None)
         except nexodesk.Recusa as r:
             conn.rollback()
             return jsonify(error=r.mensagem), r.status
@@ -1500,6 +1511,33 @@ def desk_responder(numero):
                                  f"🏢 {html.escape(c['empresa'])} · {html.escape(c['titulo'])}")
         conn.commit()
         return jsonify(status='OK', situacao=status), 201
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/desk/<int:numero>', methods=['PATCH'])
+def desk_atualizar(numero):
+    """A MD muda responsável, prioridade, categoria ou status (cancelar, reabrir)."""
+    if 'user_id' not in session:
+        return jsonify(error='Faça login de novo.'), 401
+    if session.get('role') not in acessos.ROLES_MASTER:
+        return jsonify(error='Só a MD muda os dados do chamado.'), 403
+    dados = request.get_json(silent=True) or {}
+    permitidos = {k: dados[k] for k in ('responsavel_id', 'prioridade', 'categoria', 'status') if k in dados}
+    if not permitidos:
+        return jsonify(error='Nada para mudar.'), 400
+    conn = database.get_db()
+    try:
+        autor, c = _desk_chamado_visivel(conn, numero)
+        if not c:
+            return jsonify(error='Chamado não encontrado.'), 404
+        try:
+            c = nexodesk.atualizar(conn, autor, c, permitidos)
+        except nexodesk.Recusa as r:
+            conn.rollback()
+            return jsonify(error=r.mensagem), r.status
+        conn.commit()
+        return jsonify(status='OK', chamado={k: c[k] for k in ('status', 'prioridade', 'categoria', 'responsavel_id')})
     finally:
         conn.close()
 

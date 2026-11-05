@@ -211,3 +211,82 @@ def test_desk_is_on_by_default_and_shows_in_the_hub(client, login):
     pagina = cli.get('/').get_data(as_text=True)
     assert 'href="/desk"' in pagina and 'Ver os chamados' in pagina
     assert 'NexoDesk' in login().get('/').get_data(as_text=True)
+
+
+# ------------------------------------------------------------------ entrega 2: fila e atendimento da MD
+def _md_extra(conn, ident=7, role='Operador Master'):
+    conn.execute('INSERT INTO clientes (id, usuario, nome, senha, role, ativo) VALUES (?, ?, ?, ?, ?, 1)',
+                 (ident, f'user{ident}', 'Vicente Vinagre', 'x', role))
+    conn.commit()
+
+
+def test_queue_orders_by_priority_and_counts(client, login):
+    cli = login(EMPRESA, 'Cliente')
+    baixa = _abrir(cli, impacto='duvida', titulo='Dúvida').json['numero']
+    critica = _abrir(cli, impacto='parou', titulo='Parou tudo').json['numero']
+    _abrir(login(OUTRA, 'Cliente'), titulo='Lentidão na outra').json['numero']
+    md = login()
+    pagina = md.get('/desk').get_data(as_text=True)
+    assert 'Fila de atendimento' in pagina and '3 chamados abertos em 2 empresas' in pagina
+    assert pagina.index(f'/desk/{critica}"') < pagina.index(f'/desk/{baixa}"')
+    assert f'/desk/{baixa}"' not in md.get('/desk?busca=parou').get_data(as_text=True)
+    assert f'/desk/{critica}"' in md.get(f'/desk?busca=%23{critica}').get_data(as_text=True)
+    so_outra = md.get(f'/desk?empresa={OUTRA}').get_data(as_text=True)
+    assert f'/desk/{critica}"' not in so_outra and 'Lentidão na outra' in so_outra
+    conn = database.get_db()
+    _, cont = nexodesk.fila(conn, {'eu': 1})
+    conn.close()
+    assert cont['novos'] == 3 and cont['abertos'] == 3 and cont['empresas'] == 2
+
+
+def test_md_changes_owner_priority_and_category_with_history(client, login):
+    numero = _abrir(login(EMPRESA, 'Cliente')).json['numero']
+    conn = database.get_db()
+    _md_extra(conn)
+    conn.close()
+    md = login()
+    assert md.patch(f'/api/v2/desk/{numero}', json={'responsavel_id': 7}).json['chamado']['status'] == 'atendimento'
+    assert md.patch(f'/api/v2/desk/{numero}', json={'prioridade': 'critica', 'categoria': 'seguranca'}).status_code == 200
+    assert md.patch(f'/api/v2/desk/{numero}', json={'responsavel_id': EMPRESA}).status_code == 400   # cliente não é da equipe
+    assert md.patch(f'/api/v2/desk/{numero}', json={'prioridade': 'urgentissima'}).status_code == 400
+    assert md.patch(f'/api/v2/desk/{numero}', json={'status': 'resolvido'}).status_code == 400     # solução vai com mensagem
+    pagina = login(EMPRESA, 'Cliente').get(f'/desk/{numero}').get_data(as_text=True)
+    assert 'Responsável: Vicente Vinagre' in pagina and 'Prioridade: Alta → Crítica' in pagina
+    assert 'Categoria: Internet e rede → Segurança e câmeras' in pagina
+    assert login(EMPRESA, 'Cliente').patch(f'/api/v2/desk/{numero}', json={'prioridade': 'critica'}).status_code == 403
+
+
+def test_ask_for_information_then_solve_then_client_reopens(client, login):
+    cliente = login(EMPRESA, 'Cliente')
+    numero = _abrir(cliente).json['numero']
+    md = login()
+    assert md.post(f'/api/v2/desk/{numero}/mensagens', data={'texto': '', 'depois': 'aguardando'}).status_code == 400
+    assert md.post(f'/api/v2/desk/{numero}/mensagens', data={'texto': 'x', 'nota': '1', 'depois': 'resolvido'}).status_code == 400
+    r = md.post(f'/api/v2/desk/{numero}/mensagens', data={'texto': 'Manda uma foto da antena?', 'depois': 'aguardando'})
+    assert r.json['situacao'] == 'aguardando'
+    pagina = login(EMPRESA, 'Cliente').get(f'/desk/{numero}').get_data(as_text=True)
+    assert 'A MD está esperando a sua resposta' in pagina
+    assert login(EMPRESA, 'Cliente').post(f'/api/v2/desk/{numero}/mensagens', data={'texto': 'Foto enviada'}).json['situacao'] == 'atendimento'
+    r = login().post(f'/api/v2/desk/{numero}/mensagens', data={'texto': 'Subimos o mastro.', 'depois': 'resolvido'})
+    assert r.json['situacao'] == 'resolvido'
+    conn = database.get_db()
+    assert nexodesk.chamado(conn, numero)['resolvido_em']
+    conn.close()
+    assert 'marcou este chamado como resolvido' in login(EMPRESA, 'Cliente').get(f'/desk/{numero}').get_data(as_text=True)
+    assert login(EMPRESA, 'Cliente').post(f'/api/v2/desk/{numero}/mensagens', data={'texto': 'Caiu de novo'}).json['situacao'] == 'atendimento'
+    conn = database.get_db()
+    assert nexodesk.chamado(conn, numero)['resolvido_em'] is None
+    conn.close()
+
+
+def test_cancel_and_reopen(client, login):
+    numero = _abrir(login(EMPRESA, 'Cliente')).json['numero']
+    md = login()
+    assert md.patch(f'/api/v2/desk/{numero}', json={'status': 'cancelado'}).json['chamado']['status'] == 'cancelado'
+    assert md.patch(f'/api/v2/desk/{numero}', json={'prioridade': 'baixa'}).status_code == 400   # encerrado
+    assert login(EMPRESA, 'Cliente').post(f'/api/v2/desk/{numero}/mensagens', data={'texto': 'oi'}).status_code == 400
+    assert login().patch(f'/api/v2/desk/{numero}', json={'status': 'atendimento'}).json['chamado']['status'] == 'atendimento'
+    conn = database.get_db()
+    c = nexodesk.chamado(conn, numero)
+    conn.close()
+    assert c['fechado_em'] is None and 'Reaberto pela MD' in login(EMPRESA, 'Cliente').get(f'/desk/{numero}').get_data(as_text=True)

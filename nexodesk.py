@@ -275,18 +275,148 @@ def abrir(conn, autor, dados, arquivos=(), agora=None):
     return numero
 
 
-def responder(conn, autor, chamado, texto, arquivos=(), nota=False, agora=None):
-    """Resposta (o cliente vê) ou nota interna (só a MD). Devolve o novo status."""
+# Para onde a MD pode levar o chamado (o "fechado" vem da confirmação do cliente, na entrega 4).
+STATUS_DA_MD = ('atendimento', 'aguardando', 'resolvido', 'cancelado')
+TEXTO_DO_STATUS = {
+    'atendimento': 'Em atendimento',
+    'aguardando': 'A MD pediu uma informação: aguardando o cliente',
+    'resolvido': 'Marcado como resolvido: aguardando a confirmação do cliente',
+    'cancelado': 'Chamado cancelado',
+}
+ORDEM_PRIORIDADE = {'critica': 0, 'alta': 1, 'media': 2, 'baixa': 3}
+ORDEM_STATUS = {'novo': 0, 'atendimento': 1, 'aguardando': 2, 'resolvido': 3, 'fechado': 4, 'cancelado': 5}
+
+
+def equipe_md(conn):
+    rows = conn.execute(f"SELECT id, nome, usuario FROM clientes WHERE role IN ({', '.join('?' for _ in acessos.ROLES_MASTER)}) "
+                        'AND COALESCE(ativo, 1) = 1', acessos.ROLES_MASTER).fetchall()
+    return sorted(({'id': r['id'], 'nome': r['nome'] or r['usuario']} for r in rows), key=lambda u: u['nome'].lower())
+
+
+def fila(conn, filtros=None):
+    """Fila da MD: chamados filtrados, na ordem de atendimento, e os contadores dos abertos."""
+    f = filtros or {}
+    todos = [_enfeitar(r) for r in conn.execute(_CAMPOS).fetchall()]
+    abertos = [c for c in todos if c['status'] in ABERTOS]
+    contadores = {
+        'novos': sum(1 for c in abertos if c['status'] == 'novo' and not c['responsavel_id']),
+        'atendimento': sum(1 for c in abertos if c['status'] == 'atendimento'),
+        'aguardando': sum(1 for c in abertos if c['status'] == 'aguardando'),
+        'resolvidos': sum(1 for c in abertos if c['status'] == 'resolvido'),
+        'meus': sum(1 for c in abertos if f.get('eu') and c['responsavel_id'] == f['eu'] and c['status'] != 'resolvido'),
+        'abertos': len(abertos), 'empresas': len({c['empresa_id'] for c in abertos}),
+    }
+    status = f.get('status') or 'abertos'
+    if status == 'abertos':
+        lista = abertos
+    elif status == 'todos':
+        lista = todos
+    else:
+        lista = [c for c in todos if c['status'] == status]
+    if f.get('empresa_id'):
+        lista = [c for c in lista if c['empresa_id'] == f['empresa_id']]
+    resp = f.get('responsavel')
+    if resp == 'ninguem':
+        lista = [c for c in lista if not c['responsavel_id']]
+    elif resp:
+        lista = [c for c in lista if str(c['responsavel_id']) == str(resp)]
+    if f.get('categoria') in CATEGORIAS:
+        lista = [c for c in lista if c['categoria'] == f['categoria']]
+    busca = (f.get('busca') or '').strip().lower().lstrip('#')
+    if busca:
+        lista = [c for c in lista if busca == str(c['numero']) or any(busca in (c.get(k) or '').lower()
+                 for k in ('titulo', 'solicitante', 'empresa', 'local_nome'))]
+    # Sem SLA ainda (entrega 3): prioridade, depois quem está esperando a MD, depois o mais antigo.
+    lista.sort(key=lambda c: (c['status'] not in ABERTOS, ORDEM_PRIORIDADE.get(c['prioridade'], 9),
+                              ORDEM_STATUS.get(c['status'], 9), c['criado_em']))
+    return lista, contadores
+
+
+def _mudar_status(conn, autor, chamado, novo, agora):
+    """Grava a troca de status com o evento no histórico; devolve o novo status."""
+    if novo == chamado['status']:
+        return novo
+    campos = {'status': novo, 'atualizado_em': agora}
+    if novo == 'resolvido':
+        campos['resolvido_em'] = agora
+    elif chamado['status'] == 'resolvido':
+        campos['resolvido_em'] = None
+    if novo == 'cancelado':
+        campos['fechado_em'] = agora
+    elif chamado['status'] in ENCERRADOS:
+        campos['fechado_em'] = None
+    texto = TEXTO_DO_STATUS[novo]
+    if novo == 'atendimento' and chamado['status'] in ('aguardando', 'resolvido', 'cancelado', 'fechado'):
+        texto = 'Reaberto pela MD: em atendimento'
+    evento(conn, chamado['id'], autor, texto, agora)
+    conn.execute(f"UPDATE chamados SET {', '.join(k + ' = ?' for k in campos)} WHERE id = ?", (*campos.values(), chamado['id']))
+    chamado.update(campos)
+    return novo
+
+
+def atualizar(conn, autor, chamado, mudancas, agora=None):
+    """A MD muda responsável, prioridade, categoria ou status; cada mudança entra no histórico."""
+    if not eh_md(autor):
+        raise Recusa('Só a MD muda os dados do chamado.', 403)
+    if chamado['status'] in ENCERRADOS and mudancas.get('status') != 'atendimento':
+        raise Recusa('Este chamado está encerrado.')
+    agora = agora or time.time()
+    passo = 0.000001
+    if 'responsavel_id' in mudancas:
+        novo = mudancas['responsavel_id'] or None
+        if novo is not None:
+            try:
+                novo = int(novo)
+            except (TypeError, ValueError):
+                raise Recusa('Responsável inválido.')
+            pessoa = next((u for u in equipe_md(conn) if u['id'] == novo), None)
+            if not pessoa:
+                raise Recusa('O responsável precisa ser da equipe da MD.')
+        if novo != chamado['responsavel_id']:
+            texto = (f"{nome_de(autor)} assumiu o chamado" if novo == autor['id']
+                     else f"Responsável: {pessoa['nome']}" if novo else 'Chamado sem responsável')
+            evento(conn, chamado['id'], autor, texto, agora)
+            conn.execute('UPDATE chamados SET responsavel_id = ?, atualizado_em = ? WHERE id = ?', (novo, agora, chamado['id']))
+            chamado['responsavel_id'] = novo
+            if novo and chamado['status'] == 'novo':
+                _mudar_status(conn, autor, chamado, 'atendimento', agora + passo)
+    for campo, opcoes, rotulo in (('prioridade', PRIORIDADES, 'Prioridade'), ('categoria', {k: v[0] for k, v in CATEGORIAS.items()}, 'Categoria')):
+        if campo in mudancas and mudancas[campo] != chamado[campo]:
+            if mudancas[campo] not in opcoes:
+                raise Recusa(f'{rotulo} inválida.')
+            agora += passo
+            evento(conn, chamado['id'], autor, f'{rotulo}: {opcoes.get(chamado[campo], chamado[campo])} → {opcoes[mudancas[campo]]}', agora)
+            conn.execute(f'UPDATE chamados SET {campo} = ?, atualizado_em = ? WHERE id = ?', (mudancas[campo], agora, chamado['id']))
+            chamado[campo] = mudancas[campo]
+    if mudancas.get('status'):
+        novo = mudancas['status']
+        if novo not in STATUS_DA_MD:
+            raise Recusa('Status inválido.')
+        if novo in ('aguardando', 'resolvido'):
+            raise Recusa('Escreva a mensagem para o cliente junto (pedido de informação ou a solução).')
+        _mudar_status(conn, autor, chamado, novo, agora + 2 * passo)
+    return chamado
+
+
+def responder(conn, autor, chamado, texto, arquivos=(), nota=False, depois=None, agora=None):
+    """Resposta (o cliente vê) ou nota interna (só a MD). A MD pode, junto da resposta, pedir uma informação
+    (depois='aguardando') ou dar a solução (depois='resolvido'). Devolve o novo status."""
     agora = agora or time.time()
     md = eh_md(autor)
     if nota and not md:
         raise Recusa('Só a MD escreve notas internas.', 403)
     if chamado['status'] in ENCERRADOS:
         raise Recusa('Este chamado está encerrado. Abra um novo chamado se precisar.')
+    if depois and (not md or depois not in ('aguardando', 'resolvido')):
+        raise Recusa('Ação inválida.')
+    if depois and nota:
+        raise Recusa('Pedido de informação e solução vão para o cliente: use "Responder ao cliente".')
     texto = (texto or '').strip()
     arquivos = validar_arquivos(arquivos)
     if not texto and not arquivos:
         raise Recusa('Escreva a mensagem ou anexe um arquivo.')
+    if depois and not texto:
+        raise Recusa('Escreva a pergunta para o cliente.' if depois == 'aguardando' else 'Descreva a solução para o cliente.')
     if len(texto) > MAX_TEXTO:
         raise Recusa(f'A mensagem passa de {MAX_TEXTO} caracteres.')
     _mensagem(conn, chamado['id'], autor, 'nota' if nota else 'resposta', texto, arquivos, agora + 0.000001)
@@ -303,6 +433,10 @@ def responder(conn, autor, chamado, texto, arquivos=(), nota=False, agora=None):
         elif not md and status == 'resolvido':
             status = 'atendimento'
             evento(conn, chamado['id'], autor, 'O cliente disse que ainda não resolveu: em atendimento de novo', agora + 0.000002)
-    conn.execute('UPDATE chamados SET status = ?, responsavel_id = ?, atualizado_em = ? WHERE id = ?',
-                 (status, responsavel, agora, chamado['id']))
+    reaberto = chamado['status'] == 'resolvido' and status != 'resolvido'
+    conn.execute('UPDATE chamados SET status = ?, responsavel_id = ?, atualizado_em = ?' + (', resolvido_em = NULL' if reaberto else '') +
+                 ' WHERE id = ?', (status, responsavel, agora, chamado['id']))
+    chamado.update(status=status, responsavel_id=responsavel)
+    if depois:
+        status = _mudar_status(conn, autor, chamado, depois, agora + 0.000003)
     return status

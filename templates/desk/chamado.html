@@ -20,7 +20,29 @@
                 <span>· Aberto por {{ c.solicitante or 'MD' }}{% if md %}, {{ c.empresa }}{% endif %}, <span data-ts="{{ c.criado_em }}"></span></span>
             </div>
         </div>
+        {% if md %}
+        <div class="acoes-topo">
+            {% if c.status in ('novo', 'atendimento') %}
+            <button class="btn" type="button" data-depois="aguardando"><i class="fa-solid fa-circle-question" aria-hidden="true"></i> Pedir informação</button>
+            {% elif c.status == 'aguardando' %}
+            <button class="btn" type="button" data-mudar='{"status": "atendimento"}'><i class="fa-solid fa-play" aria-hidden="true"></i> Voltar para atendimento</button>
+            {% else %}
+            <button class="btn" type="button" data-mudar='{"status": "atendimento"}'><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Reabrir</button>
+            {% endif %}
+            {% if c.status in ('novo', 'atendimento', 'aguardando') %}
+            <button class="btn primario" type="button" data-depois="resolvido"><i class="fa-solid fa-check" aria-hidden="true"></i> Marcar como resolvido</button>
+            {% endif %}
+        </div>
+        {% endif %}
     </div>
+
+    {% if not md and c.status == 'aguardando' %}
+    <div class="faixa aguardando" role="status"><i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+        <div><strong>A MD está esperando a sua resposta.</strong> Responda no fim da conversa para o atendimento continuar.</div></div>
+    {% elif not md and c.status == 'resolvido' %}
+    <div class="faixa resolvido" role="status"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+        <div><strong>A MD marcou este chamado como resolvido.</strong> Se ainda não resolveu, responda no fim da conversa que o chamado volta para atendimento.</div></div>
+    {% endif %}
 
     <div class="grade-chamado">
         <section class="card linha-tempo" aria-label="Conversa do chamado">
@@ -56,6 +78,7 @@
             {% else %}
             <form class="compor" action="/api/v2/desk/{{ c.numero }}/mensagens" data-desk data-ok="Mensagem enviada." id="compor">
                 {% if md %}
+                <input type="hidden" name="depois" value="">
                 <div class="abas" role="tablist">
                     <button type="button" role="tab" aria-selected="true" data-nota="0"><i class="fa-solid fa-reply" aria-hidden="true"></i> Responder ao cliente</button>
                     <button type="button" role="tab" aria-selected="false" data-nota="1" class="nota"><i class="fa-solid fa-lock" aria-hidden="true"></i> Nota interna</button>
@@ -74,7 +97,17 @@
                 </div>
                 <div class="rodape">
                     <p class="msg-form" role="status" style="margin:0"></p>
-                    <button class="btn primario" type="submit"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Enviar</button>
+                    <div class="dir">
+                        {% if md %}
+                        <label for="depois" class="muted">Depois de enviar:</label>
+                        <select class="campo" id="depois" data-depois-select>
+                            <option value="">{{ 'Colocar em atendimento' if c.status == 'novo' else 'Manter ' ~ c.status_rotulo|lower }}</option>
+                            {% if c.status != 'aguardando' %}<option value="aguardando">Aguardar o cliente (pedir informação)</option>{% endif %}
+                            {% if c.status != 'resolvido' %}<option value="resolvido">Marcar como resolvido</option>{% endif %}
+                        </select>
+                        {% endif %}
+                        <button class="btn primario" type="submit"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Enviar</button>
+                    </div>
                 </div>
             </form>
             {% endif %}
@@ -88,31 +121,79 @@
                     <dt>Solicitante</dt><dd>{{ c.solicitante or '—' }}</dd>
                     {% if md %}<dt>Canal</dt><dd>{{ c.canal_rotulo }}</dd>{% endif %}
                     <dt>Local</dt><dd>{% if c.local_nome or c.sensor_mac %}{{ c.local_nome or c.sensor_mac }}{% if md or 'pulse' in menu_nexo().acesso %} · <a href="/sensor/{{ c.sensor_mac }}">abrir no NexoPulse <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:.7rem" aria-hidden="true"></i></a>{% endif %}{% else %}—{% endif %}</dd>
+                    {% if md and c.aberto %}
+                    <dt><label for="m-resp">Responsável</label></dt><dd>
+                        <select class="campo" id="m-resp" data-campo="responsavel_id">
+                            <option value="">Ninguém ainda</option>
+                            {% for u in equipe %}<option value="{{ u.id }}" {% if u.id == c.responsavel_id %}selected{% endif %}>{{ u.nome }}{% if u.id == eu %} (você){% endif %}</option>{% endfor %}
+                        </select>
+                        {% if c.responsavel_id != eu %}<button class="btn pequeno assumir" type="button" data-mudar='{"responsavel_id": {{ eu }}}'><i class="fa-solid fa-hand" aria-hidden="true"></i> Assumir</button>{% endif %}
+                    </dd>
+                    <dt><label for="m-prio">Prioridade</label></dt><dd>
+                        <select class="campo" id="m-prio" data-campo="prioridade">{% for k, v in prioridades.items() %}<option value="{{ k }}" {% if k == c.prioridade %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></dd>
+                    <dt><label for="m-cat">Categoria</label></dt><dd>
+                        <select class="campo" id="m-cat" data-campo="categoria">{% for k, (rotulo, _i) in categorias.items() %}<option value="{{ k }}" {% if k == c.categoria %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}</select></dd>
+                    {% else %}
                     <dt>Responsável</dt><dd>{{ c.responsavel or ('Ninguém ainda' if md else 'A MD vai assumir') }}</dd>
                     <dt>Prioridade</dt><dd><span class="prio {{ c.prioridade }}">{{ c.prioridade_rotulo }}</span></dd>
                     <dt>Categoria</dt><dd>{{ c.categoria_rotulo }}</dd>
+                    {% endif %}
                     <dt>Aberto</dt><dd data-ts="{{ c.criado_em }}"></dd>
                 </dl>
+                {% if md and c.aberto %}
+                <p class="msg-form" id="msg-dados" role="status"></p>
+                <button class="btn pequeno cancelar" type="button" data-mudar='{"status": "cancelado"}' data-confirmar="Cancelar o chamado #{{ c.numero }}? O cliente vê que ele foi cancelado."><i class="fa-solid fa-ban" aria-hidden="true"></i> Cancelar chamado</button>
+                {% endif %}
             </div>
         </aside>
     </div>
 </main>
-<script src="/static/desk.js?v=1"></script>
+<script src="/static/desk.js?v=2"></script>
 {% if md %}
 <script>
-    // Abas da MD: a mesma caixa envia resposta ao cliente ou nota interna.
+    // Ferramentas da MD no chamado: abas resposta/nota, "depois de enviar" e mudanças de dados (PATCH).
     (function () {
         const form = document.getElementById('compor');
-        if (!form) return;
-        const campo = form.querySelector('input[name=nota]');
-        const texto = form.querySelector('textarea');
-        form.querySelectorAll('[data-nota]').forEach(aba => aba.addEventListener('click', () => {
-            form.querySelectorAll('[data-nota]').forEach(a => a.setAttribute('aria-selected', String(a === aba)));
-            campo.value = aba.dataset.nota;
-            form.classList.toggle('nota-ativa', aba.dataset.nota === '1');
-            texto.placeholder = aba.dataset.nota === '1' ? 'Nota só para a equipe da MD' : 'Escreva a resposta para o cliente';
-            texto.focus();
-        }));
+        const depois = form && form.querySelector('input[name=depois]');
+        const seletor = form && form.querySelector('[data-depois-select]');
+        if (form) {
+            const campo = form.querySelector('input[name=nota]');
+            const texto = form.querySelector('textarea');
+            const dicas = {'': 'Escreva a resposta para o cliente', aguardando: 'O que você precisa saber do cliente?', resolvido: 'Descreva a solução para o cliente'};
+            const sincronizar = () => { depois.value = seletor.value; texto.placeholder = dicas[seletor.value] || dicas['']; };
+            seletor.addEventListener('change', sincronizar);
+            form.querySelectorAll('[data-nota]').forEach(aba => aba.addEventListener('click', () => {
+                form.querySelectorAll('[data-nota]').forEach(a => a.setAttribute('aria-selected', String(a === aba)));
+                campo.value = aba.dataset.nota;
+                const nota = aba.dataset.nota === '1';
+                form.classList.toggle('nota-ativa', nota);
+                seletor.closest('.dir').querySelectorAll('label, select').forEach(el => el.hidden = nota);
+                if (nota) { seletor.value = ''; depois.value = ''; texto.placeholder = 'Nota só para a equipe da MD'; } else sincronizar();
+                texto.focus();
+            }));
+            document.querySelectorAll('[data-depois]').forEach(b => b.addEventListener('click', () => {
+                form.querySelector('[data-nota="0"]').click();
+                seletor.value = b.dataset.depois; sincronizar();
+                form.scrollIntoView({behavior: 'smooth', block: 'center'});
+                texto.focus();
+            }));
+        }
+        const aviso = document.getElementById('msg-dados');
+        async function mudar(dados, el) {
+            if (el && el.dataset.confirmar && !confirm(el.dataset.confirmar)) return;
+            if (el) el.disabled = true;
+            try {
+                const r = await fetch('/api/v2/desk/{{ c.numero }}', {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(dados)});
+                const d = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(d.error || 'Não foi possível salvar.');
+                location.reload();
+            } catch (e) {
+                if (aviso) { aviso.className = 'msg-form erro'; aviso.textContent = e.message; } else alert(e.message);
+                if (el) el.disabled = false;
+            }
+        }
+        document.querySelectorAll('[data-campo]').forEach(sel => sel.addEventListener('change', () => mudar({[sel.dataset.campo]: sel.value || null}, sel)));
+        document.querySelectorAll('[data-mudar]').forEach(b => b.addEventListener('click', () => mudar(JSON.parse(b.dataset.mudar), b)));
     })();
 </script>
 {% endif %}
