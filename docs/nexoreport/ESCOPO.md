@@ -107,6 +107,9 @@ emitido.
   JSON emitido (não guardamos o arquivo: o mesmo JSON gera sempre o mesmo PDF, e há cache em memória); página
   `/report` com Ver/Baixar, auditoria, prévia do mês corrente e "Emitir de novo" para a MD; card e atalho do NexoReport
   ativos no NexoHub; "Em resumo" e recomendações por regras.
+- **MD vê todas as empresas (05/11/2026):** em `/report`, a MD escolhe qualquer empresa cliente; as sem o NexoReport no
+  contrato aparecem marcadas e aceitam prévia e emissão manual. O fechamento do dia 1 e o acesso do cliente continuam
+  dependendo do contrato.
 - O fechamento automático começa em **novembro de 2026** (`PRIMEIRO_MES`): outubro já tinha perdido os dias 1 a 4
   pela retenção antiga de 30 dias, e um relatório incompleto não deve sair sozinho.
 - O mês anterior só entra na comparação se tiver relatório emitido ou se as medições dele ainda existirem; a

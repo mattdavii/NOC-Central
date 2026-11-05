@@ -44,6 +44,11 @@
         .btn:disabled { opacity: .5; cursor: wait; }
         .vazio { background: var(--bg-card); border: 1px dashed var(--border); border-radius: 14px; padding: 26px; color: var(--text-muted); line-height: 1.6; }
         .vazio strong { color: var(--text-main); }
+        .aviso-contrato { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; padding: 14px 18px; border-radius: 12px;
+                          border: 1px solid color-mix(in srgb, var(--status-warn) 50%, var(--border));
+                          background: color-mix(in srgb, var(--status-warn) 8%, var(--bg-card)); font-size: .9rem; line-height: 1.55; color: var(--text-muted); }
+        .aviso-contrato i { color: var(--status-warn); margin-top: 3px; }
+        .aviso-contrato strong { color: var(--text-main); }
         .ferramentas-md { margin-top: 26px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
         .ferramentas-md h3 { margin: 0 0 6px; font-size: 1rem; }
         .ferramentas-md p { margin: 0 0 12px; color: var(--text-muted); font-size: .88rem; line-height: 1.5; }
@@ -74,7 +79,7 @@
         <form class="escolha" method="get">
             <label for="empresa" class="sr-only">Empresa</label>
             <select id="empresa" name="empresa" onchange="this.form.submit()">
-                {% for e in empresas %}<option value="{{ e.id }}" {% if empresa and e.id == empresa.id %}selected{% endif %}>{{ e.nome or e.usuario }}</option>{% endfor %}
+                {% for e in empresas %}<option value="{{ e.id }}" {% if empresa and e.id == empresa.id %}selected{% endif %}>{{ e.nome or e.usuario }}{% if not e.contratado %} (sem NexoReport no contrato){% endif %}</option>{% endfor %}
             </select>
         </form>
         {% endif %}
@@ -82,10 +87,18 @@
 
     {% if not empresa %}
         <div class="vazio">
-            {% if master %}<strong>Nenhuma empresa com o NexoReport contratado.</strong> Ligue o NexoReport no contrato da empresa em Acessos e defina a meta de disponibilidade.
+            {% if master %}<strong>Nenhuma empresa cliente cadastrada.</strong> Cadastre a empresa em Acessos para ver a prévia do relatório dela.
             {% else %}<strong>O NexoReport não está liberado para a sua empresa.</strong> Fale com a MD para incluir no seu contrato.{% endif %}
         </div>
     {% else %}
+        {% if master and not contratado %}
+        <div class="aviso-contrato" role="note">
+            <i class="fa-solid fa-circle-info"></i>
+            <div><strong>Esta empresa não tem o NexoReport no contrato.</strong> Só a MD vê esta página: o cliente não tem acesso e o
+            relatório não sai sozinho no dia 1. A prévia e a emissão manual funcionam normalmente. Para liberar, ligue o NexoReport
+            no contrato da empresa em Acessos.</div>
+        </div>
+        {% endif %}
         <section class="meses" aria-label="Relatórios emitidos">
         {% for m in meses %}
             <article class="mes">
@@ -110,7 +123,7 @@
         {% else %}
             <div class="vazio">
                 <strong>Nenhum relatório emitido ainda.</strong>
-                O primeiro sai automaticamente no dia 1, com os números de {{ proximo_rotulo }}.
+                {% if contratado %}O primeiro sai automaticamente no dia 1, com os números de {{ proximo_rotulo }}.{% endif %}
                 {% if master %}Enquanto isso, a prévia abaixo mostra o mês corrente até agora.{% endif %}
             </div>
         {% endfor %}

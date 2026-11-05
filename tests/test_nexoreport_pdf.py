@@ -162,3 +162,24 @@ def test_hub_card_and_launcher_open_the_reports(client, login):
     conn.close()
     pagina = login(EMPRESA, 'Cliente').get('/').get_data(as_text=True)
     assert 'Abrir os relatórios' in pagina and 'href="/report"' in pagina
+
+
+def test_master_sees_every_company_even_without_the_contract(client, login, monkeypatch):
+    monkeypatch.setattr(nexoreport_pdf, 'gerar_pdf', lambda dados, versao=None: b'%PDF-fake')
+    conn = database.get_db()
+    _mes(conn)
+    acessos.definir_contrato(conn, EMPRESA, 'report', False)
+    conn.commit(); conn.close()
+    m = login()
+    pagina = m.get('/report?empresa=2').get_data(as_text=True)
+    assert 'sem NexoReport no contrato' in pagina and 'não tem o NexoReport no contrato' in pagina
+    assert 'Prévia do mês atual' in pagina
+    assert m.get('/report/2/previa.pdf').status_code == 200
+    r = m.post('/api/v2/report/2/2026-10/emitir', json={})
+    assert r.status_code == 201
+    assert m.get('/report/2/2026-10.pdf').status_code == 200
+    # o cliente continua sem acesso e o fechamento automático continua ignorando a empresa
+    assert login(EMPRESA, 'Cliente').get('/report/2/2026-10.pdf').status_code == 403
+    conn = database.get_db()
+    assert EMPRESA not in nexoreport.empresas_com_report(conn)
+    conn.close()
