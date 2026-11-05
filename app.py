@@ -6,6 +6,7 @@ import levantamento
 import mapa_rede
 import nexoreport
 import nexoreport_pdf
+import nexodesk
 import notifications
 import oui
 import diagnostico
@@ -60,6 +61,22 @@ app.config.update(
     CSRF_PROTECT=os.environ.get('CSRF_PROTECT', '1') != '0',
     PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
 )
+
+class _Requisicao(Flask.request_class):
+    """O corpo da requisição fica em 1 MB, menos nas rotas do NexoDesk que recebem arquivos."""
+
+    @property
+    def max_content_length(self):
+        if self.method == 'POST' and self.path.startswith('/api/v2/desk/'):
+            return nexodesk.LIMITE_REQUISICAO
+        return super().max_content_length
+
+    @max_content_length.setter
+    def max_content_length(self, valor):
+        Flask.request_class.max_content_length.fset(self, valor)
+
+
+app.request_class = _Requisicao
 
 socketio = SocketIO(app, cors_allowed_origins=SOCKETIO_ALLOWED_ORIGINS, async_mode='gevent')
 
@@ -552,7 +569,8 @@ def exigir_acesso_aplicativo():
     if not aplicativo:
         return None
     leitura = request.method in ('GET', 'HEAD') and request.endpoint not in ROTAS_GET_DE_OPERADOR
-    minimo = 'leitura' if leitura else 'operador'
+    # No NexoDesk, quem tem leitura também abre e responde os próprios chamados (as regras finas ficam em nexodesk.py).
+    minimo = 'leitura' if leitura or aplicativo == 'desk' else 'operador'
     conn = database.get_db()
     try:
         nivel = acessos.nivel_app(conn, session['user_id'], aplicativo)
@@ -1184,7 +1202,8 @@ def hub_inicio():
                                    atencao=hub.precisa_de_atencao(conn, AGENT_BUILD), grafico=hub.disponibilidade_por_dia(conn),
                                    eventos=hub.eventos_recentes(conn),
                                    sem_empresa=hub.sem_empresa(conn), aplicativos=acessos.APLICATIVOS,
-                                   disponibilidade=hub.disponibilidade_mes(conn))
+                                   disponibilidade=hub.disponibilidade_mes(conn),
+                                   desk=nexodesk.contar_abertos(conn, _autor(conn)))
         if ver_como:
             # "Ver como cliente": a MD enxerga o Hub da conta principal da empresa, só para consulta.
             empresa = _empresa_ou_404(conn, ver_como)
@@ -1195,7 +1214,7 @@ def hub_inicio():
             empresa_id = acessos.empresa_de(_autor(conn))
             acesso = acessos.acesso_efetivo(conn, session['user_id'])
         dono = conn.execute('SELECT nome, usuario, logo_url FROM clientes WHERE id=?', (empresa_id,)).fetchone() if empresa_id else None
-        return render_template('hub.html', modo='cliente', pessoa=_nome_curto(conn), cards=hub.cards(conn, empresa_id, acesso) if empresa_id else [],
+        return render_template('hub.html', modo='cliente', pessoa=_nome_curto(conn), cards=hub.cards(conn, empresa_id, acesso, usuario=acessos._usuario(conn, empresa_id if ver_como else session['user_id'])) if empresa_id else [],
                                empresa=(dict(dono) if dono else None), ver_como=ver_como, rotulos_nivel=acessos.ROTULOS_NIVEL)
     finally:
         conn.close()
@@ -1339,6 +1358,178 @@ def report_emitir(empresa_id, ano_mes):
         _auditar(conn, 'relatorio_emitido', alvo=f'{ano_mes} v{versao}', empresa_id=empresa_id)
         conn.commit()
         return jsonify(status='OK', versao=versao, parcial_qualidade=bool(dados.get('qualidade_desde'))), 201
+    finally:
+        conn.close()
+
+
+@app.errorhandler(413)
+def corpo_grande_demais(_erro):
+    mensagem = (f'Os arquivos passam do limite: até {nexodesk.MAX_ARQUIVOS} arquivos de '
+                f'{nexodesk.MAX_ARQUIVO // (1024 * 1024)} MB.' if request.path.startswith('/api/v2/desk/')
+                else 'Envio grande demais.')
+    if request.path.startswith('/api/'):
+        return jsonify(error=mensagem), 413
+    return mensagem, 413
+
+
+# ==========================================
+# 🎧 NEXODESK: chamados e suporte (docs/nexodesk/ESCOPO.md)
+# ==========================================
+def _desk_arquivos():
+    return [(f.filename, f.read()) for f in request.files.getlist('arquivos') if f and f.filename]
+
+
+def _desk_aviso_md(conn, texto):
+    """Avisa o grupo de Telegram da MD (falha de envio não impede o chamado)."""
+    try:
+        notifications.enqueue(texto, None, conn=conn)
+    except Exception as erro:  # noqa: BLE001
+        print(f'⚠️ NexoDesk: aviso do Telegram não entrou na fila: {erro}')
+
+
+def _desk_chamado_visivel(conn, numero):
+    autor = _autor(conn)
+    chamado = nexodesk.chamado(conn, numero)
+    if not chamado or not nexodesk.pode_ver(conn, autor, chamado):
+        return autor, None
+    return autor, chamado
+
+
+@app.route('/desk')
+def desk_lista():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    conn = database.get_db()
+    try:
+        autor = _autor(conn)
+        md = nexodesk.eh_md(autor)
+        todos = request.args.get('ver') == 'todos'
+        empresa_id = request.args.get('empresa', type=int) if md else None
+        chamados = nexodesk.listar(conn, autor, abertos=not todos, empresa_id=empresa_id)
+        empresa = None
+        if not md:
+            row = conn.execute('SELECT nome, usuario FROM clientes WHERE id = ?', (acessos.empresa_de(autor),)).fetchone()
+            empresa = (row['nome'] or row['usuario']) if row else None
+        return render_template('desk/lista.html', md=md, chamados=chamados, todos=todos, empresa=empresa,
+                               empresas=nexodesk.empresas_para_md(conn) if md else [], empresa_id=empresa_id,
+                               toda_empresa=md or nexodesk.ve_toda_empresa(conn, autor),
+                               total_abertos=None if not todos else len(nexodesk.listar(conn, autor, abertos=True, empresa_id=empresa_id)))
+    finally:
+        conn.close()
+
+
+@app.route('/desk/novo')
+def desk_novo():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    conn = database.get_db()
+    try:
+        autor = _autor(conn)
+        md = nexodesk.eh_md(autor)
+        empresas = nexodesk.empresas_para_md(conn) if md else []
+        empresa_id = request.args.get('empresa', type=int) if md else acessos.empresa_de(autor)
+        if md and empresa_id not in {e['id'] for e in empresas}:
+            empresa_id = None
+        return render_template('desk/novo.html', md=md, empresas=empresas, empresa_id=empresa_id,
+                               locais=nexodesk.locais_da_empresa(conn, empresa_id) if empresa_id else [],
+                               categorias=nexodesk.CATEGORIAS, impactos=nexodesk.IMPACTOS, prioridades=nexodesk.PRIORIDADES,
+                               canais={c: nexodesk.CANAIS[c] for c in nexodesk.CANAIS_DA_MD},
+                               max_arquivos=nexodesk.MAX_ARQUIVOS, max_mb=nexodesk.MAX_ARQUIVO // (1024 * 1024),
+                               tipos=sorted(nexodesk.TIPOS_ANEXO), telefone_md=nexodesk.TELEFONE_MD)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/desk/chamados', methods=['POST'])
+def desk_criar():
+    if 'user_id' not in session:
+        return jsonify(error='Faça login de novo.'), 401
+    conn = database.get_db()
+    try:
+        autor = _autor(conn)
+        try:
+            numero = nexodesk.abrir(conn, autor, request.form, _desk_arquivos())
+        except nexodesk.Recusa as r:
+            conn.rollback()
+            return jsonify(error=r.mensagem), r.status
+        c = nexodesk.chamado(conn, numero)
+        _auditar(conn, 'chamado_aberto', alvo=f'#{numero}', empresa_id=c['empresa_id'])
+        _desk_aviso_md(conn, f"🎧 <b>Chamado #{numero}</b> aberto ({html.escape(c['prioridade_rotulo'])})\n"
+                             f"🏢 {html.escape(c['empresa'])} · {html.escape(c['solicitante'] or '')}\n"
+                             f"📝 {html.escape(c['titulo'])}")
+        conn.commit()
+        return jsonify(status='OK', numero=numero), 201
+    finally:
+        conn.close()
+
+
+@app.route('/desk/<int:numero>')
+def desk_ver(numero):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    conn = database.get_db()
+    try:
+        autor, c = _desk_chamado_visivel(conn, numero)
+        if not c:
+            return render_template('sem_acesso.html', mensagem='Chamado não encontrado ou sem permissão para vê-lo.'), 404
+        md = nexodesk.eh_md(autor)
+        return render_template('desk/chamado.html', md=md, c=c, mensagens=nexodesk.mensagens(conn, numero, md),
+                               max_arquivos=nexodesk.MAX_ARQUIVOS, max_mb=nexodesk.MAX_ARQUIVO // (1024 * 1024),
+                               tipos=sorted(nexodesk.TIPOS_ANEXO))
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/desk/<int:numero>/mensagens', methods=['POST'])
+def desk_responder(numero):
+    if 'user_id' not in session:
+        return jsonify(error='Faça login de novo.'), 401
+    conn = database.get_db()
+    try:
+        autor, c = _desk_chamado_visivel(conn, numero)
+        if not c:
+            return jsonify(error='Chamado não encontrado.'), 404
+        nota = request.form.get('nota') == '1'
+        try:
+            status = nexodesk.responder(conn, autor, c, request.form.get('texto'), _desk_arquivos(), nota=nota)
+        except nexodesk.Recusa as r:
+            conn.rollback()
+            return jsonify(error=r.mensagem), r.status
+        if not nexodesk.eh_md(autor):
+            _desk_aviso_md(conn, f"💬 <b>Chamado #{numero}</b>: nova mensagem de {html.escape(nexodesk.nome_de(autor))}\n"
+                                 f"🏢 {html.escape(c['empresa'])} · {html.escape(c['titulo'])}")
+        conn.commit()
+        return jsonify(status='OK', situacao=status), 201
+    finally:
+        conn.close()
+
+
+@app.route('/desk/anexo/<int:anexo_id>')
+def desk_anexo(anexo_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    conn = database.get_db()
+    try:
+        a = nexodesk.anexo(conn, anexo_id)
+        autor, c = _desk_chamado_visivel(conn, a['chamado_id']) if a else (None, None)
+        if not a or not c:
+            return render_template('sem_acesso.html', mensagem='Arquivo não encontrado ou sem permissão para baixá-lo.'), 404
+        if not nexodesk.eh_md(autor):
+            tipo = conn.execute('SELECT tipo FROM chamado_mensagens WHERE id = ?', (a['mensagem_id'],)).fetchone()
+            if not tipo or tipo['tipo'] == 'nota':
+                return render_template('sem_acesso.html', mensagem='Arquivo não encontrado ou sem permissão para baixá-lo.'), 404
+        baixar = request.args.get('baixar') == '1' or a['tipo_mime'] not in nexodesk.ABRE_NO_NAVEGADOR
+        if request.args.get('mini') != '1':   # a miniatura na conversa não vai para a auditoria
+            _auditar(conn, 'anexo_baixado' if baixar else 'anexo_visto', alvo=f"#{c['numero']} {a['nome']}", empresa_id=c['empresa_id'])
+            conn.commit()
+        nome_ascii = unicodedata.normalize('NFKD', a['nome']).encode('ascii', 'ignore').decode().replace('"', '') or 'arquivo'
+        resposta = app.response_class(a['conteudo'], mimetype=a['tipo_mime'])
+        resposta.headers['Content-Disposition'] = f'{"attachment" if baixar else "inline"}; filename="{nome_ascii}"'
+        resposta.headers['Cache-Control'] = 'private, no-store'
+        resposta.headers['X-Content-Type-Options'] = 'nosniff'
+        if a['tipo_mime'].startswith('image/'):
+            resposta.headers['Content-Security-Policy'] = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox"
+        return resposta
     finally:
         conn.close()
 

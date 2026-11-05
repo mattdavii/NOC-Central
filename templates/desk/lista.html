@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+{% include 'desk/_head.html' %}
+    <title>NexoHub - NexoDesk</title>
+</head>
+<body>
+<script src="/static/security.js?v=2.2.0-rc1"></script>
+{% include '_brand_bar.html' %}
+<main class="page-main">
+    <div class="cabeca">
+        <div class="marca">
+            {% include 'desk/_marca.html' %}
+            <div>
+                <h1>{% if md %}Chamados{% elif toda_empresa %}Chamados da empresa{% else %}Meus chamados{% endif %}</h1>
+                <p>{% if md %}Pedidos de suporte de todas as empresas e os chamados internos da MD.
+                   {% else %}{{ empresa }}{% if not toda_empresa %} · os chamados que você abriu{% endif %}{% endif %}</p>
+            </div>
+        </div>
+        <div class="acoes-topo">
+            <a class="btn primario" href="/desk/novo"><i class="fa-solid fa-plus" aria-hidden="true"></i> Abrir chamado</a>
+        </div>
+    </div>
+
+    <div class="barra-lista">
+        {% set q_empresa = ('&empresa=' ~ empresa_id) if empresa_id else '' %}
+        <nav class="segmento" aria-label="Quais chamados mostrar">
+            <a href="/desk?{{ q_empresa[1:] }}" class="{{ 'ativa' if not todos }}" {% if not todos %}aria-current="page"{% endif %}>Abertos{% if not todos %} ({{ chamados|length }}){% else %} ({{ total_abertos }}){% endif %}</a>
+            <a href="/desk?ver=todos{{ q_empresa }}" class="{{ 'ativa' if todos }}" {% if todos %}aria-current="page"{% endif %}>Todos</a>
+        </nav>
+        {% if md %}
+        <form method="get">
+            {% if todos %}<input type="hidden" name="ver" value="todos">{% endif %}
+            <label for="f-empresa" class="sr-only">Empresa</label>
+            <select class="campo" id="f-empresa" name="empresa" onchange="this.form.submit()">
+                <option value="">Todas as empresas</option>
+                {% for e in empresas %}<option value="{{ e.id }}" {% if e.id == empresa_id %}selected{% endif %}>{{ e.nome }}{% if e.master %} (internos da MD){% endif %}</option>{% endfor %}
+            </select>
+        </form>
+        {% endif %}
+    </div>
+
+    {% if chamados %}
+    <section class="card lista" aria-label="Chamados">
+        <div class="linha-chamado cabecalho" aria-hidden="true">
+            <span>#</span><span>Chamado</span><span>Categoria</span><span>Prioridade</span><span>Status</span><span>Responsável</span><span>Atualizado</span>
+        </div>
+        {% for c in chamados %}
+        <a class="linha-chamado" href="/desk/{{ c.numero }}">
+            <span class="num">#{{ c.numero }}</span>
+            <span class="titulo"><b>{% if c.interno %}<i class="fa-solid fa-lock muted" style="font-size:.75rem" aria-label="Interno"></i> {% endif %}{{ c.titulo }}</b>
+                <span>{% if md %}{{ c.empresa }}{% else %}{{ c.solicitante }}{% endif %}{% if c.local_nome %} · {{ c.local_nome }}{% endif %}{% if md and c.canal not in ('nexohub', 'interno') %} · via {{ c.canal_rotulo }}{% endif %}</span></span>
+            <span class="cat">{{ c.categoria_rotulo }}</span>
+            <span class="prio-cel"><span class="prio {{ c.prioridade }}">{{ c.prioridade_rotulo }}</span></span>
+            <span class="status-cel"><span class="status {{ c.status }}">{{ c.status_rotulo }}</span></span>
+            <span class="resp">{% if c.responsavel %}<span class="av md" aria-hidden="true">{{ c.responsavel[:2] }}</span><span>{{ c.responsavel }}</span>{% else %}<span class="muted">{% if md %}Ninguém ainda{% else %}A MD vai assumir{% endif %}</span>{% endif %}</span>
+            <span class="quando" data-ts="{{ c.atualizado_em }}"></span>
+        </a>
+        {% endfor %}
+    </section>
+    {% else %}
+    <div class="vazio">
+        {% if todos %}<strong>Nenhum chamado por aqui ainda.</strong>
+        {% else %}<strong>Nenhum chamado aberto.</strong>{% endif %}
+        {% if md %} Quando um cliente pedir suporte pelo NexoHub, o chamado aparece nesta lista.
+        {% else %} Precisa de ajuda da MD? Abra um chamado e acompanhe a resposta por aqui.{% endif %}
+    </div>
+    {% endif %}
+</main>
+<script src="/static/desk.js?v=1"></script>
+</body>
+</html>

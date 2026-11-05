@@ -7,14 +7,15 @@ tomada — inclusive "nenhum" (sem acesso) e contrato desligado.
 """
 import json
 
-APLICATIVOS = {'pulse': 'NexoPulse', 'guard': 'NexoGuard', 'report': 'NexoReport'}
+APLICATIVOS = {'pulse': 'NexoPulse', 'guard': 'NexoGuard', 'report': 'NexoReport', 'desk': 'NexoDesk'}
 NIVEIS = ('leitura', 'operador', 'admin')  # do menor para o maior; 'nenhum' = sem acesso
 NIVEL_NENHUM = 'nenhum'
 ROLES_MASTER = ('Administrador Master', 'Operador Master')
 ROLES_ADMIN_EMPRESA = ('Cliente', 'Administrador Cliente')
 
 # Sem contrato registrado, a empresa tem o que a Central sempre ofereceu: a NexoPulse.
-CONTRATO_PADRAO = {'pulse': True, 'guard': False, 'report': False}
+# O NexoDesk vem ligado: todo cliente precisa conseguir pedir suporte (o que muda por contrato é o SLA).
+CONTRATO_PADRAO = {'pulse': True, 'guard': False, 'report': False, 'desk': True}
 # Sem nível registrado, o usuário recebe o padrão do perfil em cada aplicativo contratado.
 NIVEL_PADRAO_POR_PERFIL = {'Cliente': 'admin', 'Administrador Cliente': 'admin', 'Operador Cliente': 'operador'}
 ROTULOS_NIVEL = {'nenhum': 'Sem acesso', 'leitura': 'Leitura', 'operador': 'Operador', 'admin': 'Administrador'}
@@ -22,11 +23,11 @@ ROTULOS_NIVEL = {'nenhum': 'Sem acesso', 'leitura': 'Leitura', 'operador': 'Oper
 # Atalhos da Central de Acessos: aplicativo fora da lista fica "Sem acesso".
 PERFIS_PRONTOS = {
     'diretoria': {'nome': 'Diretoria', 'descricao': 'Acompanha a rede e os relatórios, sem agir.',
-                  'niveis': {'pulse': 'leitura', 'report': 'leitura'}},
+                  'niveis': {'pulse': 'leitura', 'report': 'leitura', 'desk': 'leitura'}},
     'tecnico': {'nome': 'Técnico', 'descricao': 'Opera o dia a dia da rede e da segurança.',
-                'niveis': {'pulse': 'operador', 'guard': 'operador'}},
+                'niveis': {'pulse': 'operador', 'guard': 'operador', 'desk': 'operador'}},
     'gestor_ti': {'nome': 'Gestor de TI', 'descricao': 'Administra todos os aplicativos contratados.',
-                  'niveis': {'pulse': 'admin', 'guard': 'admin', 'report': 'admin'}},
+                  'niveis': {'pulse': 'admin', 'guard': 'admin', 'report': 'admin', 'desk': 'admin'}},
 }
 
 # Rotas do próprio Hub (portal, login, administração de acessos, servidor): não pertencem
@@ -94,6 +95,8 @@ def aplicativo_da_rota(endpoint):
         return None
     if endpoint.startswith('report_'):
         return 'report'
+    if endpoint.startswith('desk_'):
+        return 'desk'
     return 'pulse'
 
 

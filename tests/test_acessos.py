@@ -22,10 +22,11 @@ def _auditoria(acao):
 def test_padrao_mantem_acesso_de_hoje(login):
     _add_operador()
     conn = database.get_db()
-    assert acessos.acesso_efetivo(conn, 1) == {'pulse': 'admin', 'guard': 'admin', 'report': 'admin'}
-    assert acessos.acesso_efetivo(conn, 2) == {'pulse': 'admin'}
-    assert acessos.acesso_efetivo(conn, 4) == {'pulse': 'admin'}
-    assert acessos.acesso_efetivo(conn, 5) == {'pulse': 'operador'}
+    assert acessos.acesso_efetivo(conn, 1) == {'pulse': 'admin', 'guard': 'admin', 'report': 'admin', 'desk': 'admin'}
+    # O NexoDesk vem ligado para todas as empresas (decisão D4 do escopo do NexoDesk).
+    assert acessos.acesso_efetivo(conn, 2) == {'pulse': 'admin', 'desk': 'admin'}
+    assert acessos.acesso_efetivo(conn, 4) == {'pulse': 'admin', 'desk': 'admin'}
+    assert acessos.acesso_efetivo(conn, 5) == {'pulse': 'operador', 'desk': 'operador'}
     conn.close()
     client = login(5, 'Operador Cliente')
     assert client.get('/pulse').status_code == 200
@@ -41,7 +42,7 @@ def test_contrato_desligado_bloqueia_empresa_inteira(login):
     assert client.get('/api/v2/diagnosticos').status_code == 403
     # Outra empresa e telas do Hub seguem funcionando.
     assert login(3, 'Cliente').get('/api/v2/diagnosticos').status_code == 200
-    assert login(4, 'Administrador Cliente').get('/api/v2/acessos/me').get_json()['acesso'] == {}
+    assert login(4, 'Administrador Cliente').get('/api/v2/acessos/me').get_json()['acesso'] == {'desk': 'admin'}
     assert _auditoria('contrato_alterado')[0]['empresa_id'] == 2
 
 
@@ -142,13 +143,13 @@ def test_perfil_pronto_aplica_so_no_contratado(login):
     _add_operador()
     r = login(1).post('/api/v2/acessos/usuarios/5/perfil', json={'perfil': 'diretoria'})
     assert r.status_code == 200
-    # Só a NexoPulse está contratada: Report (leitura) não é gravado.
-    assert r.get_json()['usuario']['acesso_efetivo'] == {'pulse': 'leitura'}
+    # Só a NexoPulse (e o NexoDesk, que vem ligado) estão contratados: Report (leitura) não é gravado.
+    assert r.get_json()['usuario']['acesso_efetivo'] == {'pulse': 'leitura', 'desk': 'leitura'}
     conn = database.get_db()
-    assert acessos.niveis_registrados(conn, 5) == {'pulse': 'leitura'}
+    assert acessos.niveis_registrados(conn, 5) == {'pulse': 'leitura', 'desk': 'leitura'}
     conn.close()
     detalhes = json.loads(_auditoria('perfil_aplicado')[0]['detalhes'])
-    assert detalhes == {'perfil': 'Diretoria', 'niveis': {'pulse': 'leitura'}}
+    assert detalhes == {'perfil': 'Diretoria', 'niveis': {'pulse': 'leitura', 'desk': 'leitura'}}
 
 
 def test_perfil_pronto_e_tudo_ou_nada(login):
@@ -187,4 +188,4 @@ def test_tela_central_de_acessos_admin_da_empresa(login):
     dados = page.split('id="dados-acessos" type="application/json">')[1].split('</script>')[0]
     dados = json.loads(dados)
     assert dados['master'] is False and set(dados['usuarios']) == {'5'}
-    assert dados['meu_acesso'] == {'pulse': 'admin'}
+    assert dados['meu_acesso'] == {'pulse': 'admin', 'desk': 'admin'}
