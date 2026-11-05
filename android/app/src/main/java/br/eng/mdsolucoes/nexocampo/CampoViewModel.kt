@@ -54,6 +54,51 @@ class CampoViewModel(app: Application) : AndroidViewModel(app) {
     var etapaVarredura by mutableStateOf(""); private set
     var varreduraFeita by mutableStateOf(false); private set
 
+    // Atualização do app
+    var novaVersao by mutableStateOf<Atualizador.Versao?>(null); private set
+    var baixandoAtualizacao by mutableStateOf(false); private set
+    var progressoAtualizacao by mutableStateOf(0f); private set
+    var precisaLiberarInstalacao by mutableStateOf(false); private set
+    private var apkBaixado: java.io.File? = null
+
+    init {
+        viewModelScope.launch { novaVersao = Atualizador.verificar(contexto) }
+    }
+
+    fun atualizar() {
+        val v = novaVersao ?: return
+        apkBaixado?.let { if (it.exists()) { instalarBaixado(); return } }
+        if (baixandoAtualizacao) return
+        baixandoAtualizacao = true; progressoAtualizacao = 0f
+        viewModelScope.launch {
+            try {
+                apkBaixado = Atualizador.baixar(contexto, v) { p -> progressoAtualizacao = p }
+                instalarBaixado()
+            } catch (e: Exception) {
+                mensagem = "Não foi possível baixar a versão nova: ${e.message}"
+            } finally {
+                baixandoAtualizacao = false
+            }
+        }
+    }
+
+    private fun instalarBaixado() {
+        val apk = apkBaixado ?: return
+        if (!Atualizador.podeInstalar(contexto)) {
+            precisaLiberarInstalacao = true
+            return
+        }
+        precisaLiberarInstalacao = false
+        runCatching { Atualizador.instalar(contexto, apk) }.onFailure { mensagem = "Não foi possível abrir a instalação: ${it.message}" }
+    }
+
+    fun liberarInstalacao() = Atualizador.abrirPermissao(contexto)
+
+    /** Volta da tela de permissão: se liberou, segue para a instalação. */
+    fun aoVoltar() {
+        if (precisaLiberarInstalacao && Atualizador.podeInstalar(contexto)) instalarBaixado()
+    }
+
     // Relatório
     var local by mutableStateOf("")
     var tecnico by mutableStateOf("")

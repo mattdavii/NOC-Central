@@ -47,5 +47,6 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         permissoesOk.value = temPermissao()
         vm.atualizarRede()
+        vm.aoVoltar()
     }
 }

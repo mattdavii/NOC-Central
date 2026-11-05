@@ -30,7 +30,9 @@ jobs:
           path: android/nexocampo-*.apk
           retention-days: 30
       # Versão para instalar no celular: página de lançamento com o .apk direto (sem zip).
+      # Só a branch principal publica: é dela que os celulares recebem a atualização (pela Central).
       - name: Publicar a versão
+        if: github.ref == 'refs/heads/work/railway-tailscale-db' || github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nexocampo-v0.1.${{ github.run_number }}
@@ -41,4 +43,5 @@ jobs:
           body: |
             App de campo do NexoPulse (Android 8 ou mais novo).
             No celular: baixe o arquivo .apk abaixo e abra. Na primeira vez, o Android pede para permitir instalar apps desta origem.
+            Quem já tem o app recebe o aviso "Versão nova disponível" ao abrir.
             Commit: ${{ github.sha }}

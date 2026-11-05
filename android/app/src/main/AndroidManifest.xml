@@ -10,6 +10,8 @@
     <!-- Android exige localização para mostrar o nome do Wi-Fi e as redes ao redor. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Atualização pelo próprio app: abre a instalação do APK novo (o usuário confirma). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="33" />
