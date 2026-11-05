@@ -677,6 +677,12 @@ ARQUIVOS_AGENTE = ['nexopulse_edge.py', 'host_metrics.py', 'starlink.py', 'netdi
                    'static/product.css', 'static/sensor.css', 'static/brand.js', 'static/host.js', 'static/mapa_rede.js',
                    'static/brand/nexopulse/favicon.svg', 'static/brand/nexopulse/favicon.ico',
                    'static/brand/nexopulse/logo-claro.svg', 'static/brand/nexopulse/logo-escuro.svg',
+                   # Ícones e fontes dentro do sensor: o painel local funciona igual sem internet.
+                   'static/vendor/fontawesome/css/all.min.css', 'static/vendor/fontawesome/LICENSE.txt',
+                   'static/vendor/fontawesome/webfonts/fa-solid-900.woff2', 'static/vendor/fontawesome/webfonts/fa-regular-400.woff2',
+                   'static/vendor/fontawesome/webfonts/fa-brands-400.woff2', 'static/vendor/fontawesome/webfonts/fa-v4compatibility.woff2',
+                   'static/fontes/fontes.css', 'static/fontes/inter.woff2', 'static/fontes/jetbrains-mono.woff2',
+                   'static/fontes/OFL-inter.txt', 'static/fontes/OFL-jetbrains-mono.txt',
                    'requirements-starlink.txt', 'linux/install.sh', 'linux/nexopulse-admin', 'linux/nexopulse-guard.sh',
                    'linux/liberar-root.sh']
 
