@@ -145,6 +145,23 @@ elif [[ -f /usr/local/sbin/nexopulse-admin ]]; then
   sudo install -o root -g root -m 0755 "${ROOT_DIR}/linux/nexopulse-admin" /usr/local/sbin/nexopulse-admin
 fi
 
+# Painel local (porta 10000): com firewall ligado (ufw no Ubuntu/Mint, firewalld no Fedora/openSUSE), libera só
+# para as redes locais (10/8, 172.16/12, 192.168/16), para o técnico e o app NexoCampo abrirem o painel.
+PORTA_PAINEL="$(grep -E '^NOC_LOCAL_PORT=' "${ENV_FILE}" 2>/dev/null | cut -d= -f2)"
+PORTA_PAINEL="${PORTA_PAINEL:-10000}"
+if command -v ufw >/dev/null 2>&1 && sudo ufw status 2>/dev/null | grep -q "Status: active"; then
+  echo "==> Firewall (ufw) ligado: liberando a porta ${PORTA_PAINEL} do painel local para a rede local..."
+  for rede in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
+    sudo ufw allow from "${rede}" to any port "${PORTA_PAINEL}" proto tcp comment "NexoPulse painel local" >/dev/null
+  done
+elif command -v firewall-cmd >/dev/null 2>&1 && sudo firewall-cmd --state >/dev/null 2>&1; then
+  echo "==> Firewall (firewalld) ligado: liberando a porta ${PORTA_PAINEL} do painel local para a rede local..."
+  for rede in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
+    sudo firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=${rede} port port=${PORTA_PAINEL} protocol=tcp accept" >/dev/null
+  done
+  sudo firewall-cmd --reload >/dev/null
+fi
+
 sudo systemctl daemon-reload
 # enable = sobe sozinho a cada boot; --now = já inicia agora.
 sudo systemctl enable --now "${SERVICE}.service"

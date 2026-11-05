@@ -94,7 +94,9 @@ def _linux(central):
                 ],
                 'notas': [
                     'Não aparece na Central: confira a internet da máquina (ping 1.1.1.1) e o horário do sistema.',
-                    'Painel local não abre de outro aparelho: confira se o firewall da máquina libera a porta 10000 na rede local.',
+                    'Painel local não abre de outro aparelho: o instalador já libera a porta 10000 para a rede local no ufw e no '
+                    'firewalld; se a máquina usa outro firewall, libere a porta 10000/TCP só para a rede local '
+                    '(ex.: sudo ufw allow from 192.168.0.0/16 to any port 10000 proto tcp).',
                     'As configurações ficam em /etc/default/nexopulse-edge (depois de mudar, reinicie o sensor).',
                 ],
             },
