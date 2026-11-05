@@ -293,6 +293,38 @@ METODO = [
 ]
 
 
+METODO_ATENDIMENTO = {'titulo': 'Atendimento', 'texto': 'Chamados que a empresa abriu no NexoDesk, sem os internos da MD. Os prazos são os do contrato de cada chamado, contados no horário dele e sem o tempo em que a MD esperava uma resposta do cliente.'}
+SITUACAO_PRAZO = {'cumprido': ('ok', 'No prazo'), 'estourou': ('critico', 'Fora do prazo')}
+
+
+def _atendimento(a):
+    """Seção do atendimento da MD (NexoDesk); None se a empresa não tem o Desk (ou relatório anterior a ele)."""
+    if a is None:
+        return None
+
+    def placar(p):
+        if not p:
+            return {'pct': '—', 'det': 'nenhum no período'}
+        return {'pct': f"{p['pct']}%", 'det': f"{p['no_prazo']} de {p['total']} no prazo · média de {dur_txt(p['media_s'])}"}
+
+    def linha(c):
+        if c['status'] in ('resolvido', 'fechado'):
+            classe, rotulo = SITUACAO_PRAZO.get(c['prazo'], ('sem', '—'))
+        else:
+            classe, rotulo = 'sem', c['status_rotulo']
+        return {**c, 'aberto_txt': data_txt(c['criado_em']), 'prazo_classe': classe, 'prazo_rotulo': rotulo}
+
+    av = a.get('avaliacao')
+    return {
+        **{k: a[k] for k in ('abertos', 'resolvidos', 'pendentes', 'cancelados', 'de_quedas', 'chamados_omitidos')},
+        'resposta': placar(a['resposta']), 'solucao': placar(a['solucao']),
+        'nota': {'valor': num_txt(av['media'], 1), 'det': plural(av['total'], 'avaliação', 'avaliações')} if av else None,
+        'categorias': svg_barras_h([(c['rotulo'], c['chamados'], str(c['chamados'])) for c in a['por_categoria']], cor='#12B5E5'),
+        'chamados': [linha(c) for c in a['chamados']],
+        'pendentes_lista': [linha(c) for c in a['pendentes_lista']],
+    }
+
+
 # ------------------------------------------------------------------ contexto e PDF
 def contexto(d, versao=None):
     t, meta = d['totais'], d['meta']
@@ -365,7 +397,8 @@ def contexto(d, versao=None):
                              'evidencia': q['evidencia'] or 'Falha a partir do primeiro trecho do provedor, com a rede interna normal.'} for q in prov],
         },
         'recomendacoes': recomendacoes(d),
-        'metodo': METODO,
+        'atendimento': _atendimento(d.get('atendimento')),
+        'metodo': METODO + ([METODO_ATENDIMENTO] if d.get('atendimento') is not None else []),
     }
 
 

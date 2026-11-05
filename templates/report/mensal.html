@@ -101,6 +101,11 @@ tr { break-inside: avoid; }
 .aviso { border: 1px solid #F2C27A; background: #FFF7E8; color: #6E470B; border-radius: 3mm; padding: 3mm 4mm; font-size: 8.8pt; margin-bottom: 5mm; }
 .capa .aviso-capa { margin-top: 6mm; border: 1px solid rgba(242,169,59,.6); background: rgba(242,169,59,.12); color: #F7C773; border-radius: 3mm; padding: 2.5mm 4mm; font-size: 8.8pt; }
 .vazio { color: var(--suave); font-size: 9.6pt; padding: 4mm 0; }
+.numeros { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4mm; margin-bottom: 4mm; }
+.numeros .cartao { margin: 0; }
+.numeros strong { display: block; font: 800 18pt/1.15 'Bricolage'; color: var(--azul); margin: .5mm 0 1mm; }
+.numeros strong small { font-size: 9pt; font-weight: 600; color: var(--suave); }
+.numeros .nota { margin: 0; }
 </style>
 </head>
 <body>
@@ -238,7 +243,50 @@ tr { break-inside: avoid; }
   {% endif %}
 </section>
 
-<!-- ============ 5. Rede local: uma página em paisagem por local ============ -->
+<!-- ============ 5. Atendimento da MD (NexoDesk) ============ -->
+{% if atendimento %}
+{% set a = atendimento %}
+<section class="secao">
+  <h2>Atendimento da MD</h2>
+  <p class="lead">Os chamados abertos no NexoDesk neste mês e se a MD respondeu e resolveu dentro dos prazos do contrato.</p>
+  <div class="numeros">
+    <div class="cartao"><p class="nota">Chamados abertos</p><strong>{{ a.abertos }}</strong><span class="nota">{{ a.resolvidos }} resolvidos no mês{% if a.de_quedas %} · {{ a.de_quedas }} a partir de quedas{% endif %}</span></div>
+    <div class="cartao"><p class="nota">1ª resposta no prazo</p><strong>{{ a.resposta.pct }}</strong><span class="nota">{{ a.resposta.det }}</span></div>
+    <div class="cartao"><p class="nota">Solução no prazo</p><strong>{{ a.solucao.pct }}</strong><span class="nota">{{ a.solucao.det }}</span></div>
+    <div class="cartao"><p class="nota">Avaliação do cliente</p>{% if a.nota %}<strong>{{ a.nota.valor }}<small> de 5</small></strong><span class="nota">{{ a.nota.det }}</span>{% else %}<strong>—</strong><span class="nota">nenhuma avaliação no mês</span>{% endif %}</div>
+  </div>
+  {% if a.chamados %}
+  <div class="cartao" style="margin-top:2mm">
+    <h3>Sobre o que foram os chamados</h3>
+    <div class="grafico" style="max-width:120mm">{{ a.categorias|safe }}</div>
+  </div>
+  <h3 style="margin-top:3mm">Chamados do mês</h3>
+  <table>
+    <thead><tr><th class="num">Nº</th><th>Aberto em</th><th>Assunto</th><th>Prioridade</th><th>Situação</th></tr></thead>
+    <tbody>
+    {% for c in a.chamados %}
+      <tr><td class="num">#{{ c.numero }}</td><td class="mono">{{ c.aberto_txt }}</td><td>{{ c.titulo }}{% if c.local or c.da_queda %}<br><span class="nota">{{ c.local or '' }}{% if c.local and c.da_queda %} · {% endif %}{% if c.da_queda %}aberto a partir de uma queda{% endif %}</span>{% endif %}</td><td>{{ c.prioridade_rotulo }}</td><td><span class="faixa {{ c.prazo_classe }}">{{ c.prazo_rotulo }}</span></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if a.chamados_omitidos %}<p class="nota" style="margin-top:2mm">Mais {{ a.chamados_omitidos }} chamados anteriores no mês; a lista completa fica no NexoDesk.</p>{% endif %}
+  {% else %}<p class="vazio">Nenhum chamado aberto neste mês.</p>{% endif %}
+  {% if a.pendentes_lista %}
+  <h3 style="margin-top:6mm">Em aberto, de meses anteriores</h3>
+  <table>
+    <thead><tr><th class="num">Nº</th><th>Aberto em</th><th>Assunto</th><th>Prioridade</th><th>Situação</th></tr></thead>
+    <tbody>
+    {% for c in a.pendentes_lista %}
+      <tr><td class="num">#{{ c.numero }}</td><td class="mono">{{ c.aberto_txt }}</td><td>{{ c.titulo }}</td><td>{{ c.prioridade_rotulo }}</td><td><span class="faixa sem">{{ c.status_rotulo }}</span></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  <p class="nota" style="margin-top:3mm">{% if a.pendentes %}{{ a.pendentes }} {{ 'chamado continuava' if a.pendentes == 1 else 'chamados continuavam' }} sem solução no fim do mês. {% endif %}Prazos contados no horário do contrato, sem o tempo em que a MD aguardava resposta do cliente.</p>
+</section>
+{% endif %}
+
+<!-- ============ 6. Rede local: uma página em paisagem por local ============ -->
 {% for l in empresa.locais %}
 <section class="secao paisagem">
   <h2>Rede local · {{ l.nome }}</h2>
@@ -256,7 +304,7 @@ tr { break-inside: avoid; }
 </section>
 {% endfor %}
 
-<!-- ============ 6. Recomendações e método ============ -->
+<!-- ============ 7. Recomendações e método ============ -->
 <section class="secao">
   <h2>Recomendações da MD</h2>
   <p class="lead">O que fazer a partir dos números deste mês, em ordem de prioridade.</p>

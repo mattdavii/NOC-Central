@@ -13,6 +13,10 @@ tempo caiu? por quê? de quem foi a culpa? o que fazer agora?
 
 Definido para a v1 (04/11/2026):
 - **Conteúdo:** só a rede, com os dados do NexoPulse. Serviços da MD (visitas, manutenções) e dados de usina ficam para depois.
+- **Atualização 05/11/2026:** entra a seção **Atendimento da MD**, com os chamados do NexoDesk no mês (abertos,
+  resolvidos, 1ª resposta e solução no prazo do contrato, avaliação do cliente, lista dos chamados e os que
+  seguem em aberto de meses anteriores). Só para empresas com o NexoDesk no contrato; fica gravada no fechamento
+  como o resto do relatório. Relatórios emitidos antes disso não têm a seção.
 - **Entrega:** fica **no NexoHub** para ver e baixar, com o histórico dos meses anteriores. Sem envio automático
   e sem etapa de revisão pela MD nesta versão.
 
