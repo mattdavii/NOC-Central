@@ -3,18 +3,19 @@ BeforeAll {
     $raiz = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
     . (Join-Path $raiz 'windows\instalar-nexopulse-wsl.ps1')
     . (Join-Path $raiz 'windows\verificar-nexopulse-windows.ps1')
+    . (Join-Path $raiz 'windows\vigia-nexopulse.ps1')
     $script:raiz = $raiz
 }
 
 Describe 'Arquivos' {
     It 'tem BOM UTF-8 (o Windows PowerShell 5.1 lê acentos certos)' {
-        foreach ($f in 'instalar-nexopulse-wsl.ps1', 'verificar-nexopulse-windows.ps1', 'ponte-painel-local.ps1') {
+        foreach ($f in 'instalar-nexopulse-wsl.ps1', 'verificar-nexopulse-windows.ps1', 'ponte-painel-local.ps1', 'vigia-nexopulse.ps1') {
             $bytes = [System.IO.File]::ReadAllBytes((Join-Path $script:raiz "windows\$f"))
             $bytes[0..2] | Should -Be @(0xEF, 0xBB, 0xBF)
         }
     }
     It 'abre sem erro de sintaxe no Windows PowerShell' {
-        foreach ($f in 'instalar-nexopulse-wsl.ps1', 'verificar-nexopulse-windows.ps1', 'ponte-painel-local.ps1') {
+        foreach ($f in 'instalar-nexopulse-wsl.ps1', 'verificar-nexopulse-windows.ps1', 'ponte-painel-local.ps1', 'vigia-nexopulse.ps1') {
             $tokens = $null; $erros = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $script:raiz "windows\$f"), [ref]$tokens, [ref]$erros) | Out-Null
             $erros | Should -BeNullOrEmpty
@@ -146,5 +147,54 @@ Describe 'Verificação numa máquina sem o sensor' {
         $saida | Should -Match 'NexoPulse Edge no Windows'
         $saida | Should -Match 'FALHA'
         Get-Content "$env:TEMP\nexo-verif.txt" -Raw | Should -Match 'Windows'
+    }
+}
+
+Describe 'Vigia (religa o sensor sozinho)' {
+    It 'liga o Ubuntu quando a tarefa que o mantém ligado parou' {
+        $d = Get-DecisaoVigia -TarefaRodando $false -Servico '' -Painel -1 -Estado @{}
+        $d.Acao | Should -Be 'ligar-ubuntu'
+    }
+    It 'reinicia o serviço parado ou com falha, mas não atrapalha quando ele está subindo' {
+        (Get-DecisaoVigia -TarefaRodando $true -Servico 'failed' -Painel -1 -Estado @{}).Acao | Should -Be 'reiniciar-servico'
+        (Get-DecisaoVigia -TarefaRodando $true -Servico 'inactive' -Painel -1 -Estado @{}).Acao | Should -Be 'reiniciar-servico'
+        (Get-DecisaoVigia -TarefaRodando $true -Servico 'activating' -Painel -1 -Estado @{}).Acao | Should -Be 'nada'
+    }
+    It 'com tudo de pé não faz nada e zera os contadores' {
+        $d = Get-DecisaoVigia -TarefaRodando $true -Servico 'active' -Painel 200 -Estado @{ falhas_wsl = 2; falhas_painel = 2 }
+        $d.Acao | Should -Be 'nada'
+        $d.Estado.falhas_painel | Should -Be 0
+        $d.Estado.falhas_wsl | Should -Be 0
+    }
+    It 'painel travado: espera 3 rodadas seguidas antes de reiniciar o serviço' {
+        $e = @{}
+        foreach ($i in 1..2) {
+            $d = Get-DecisaoVigia -TarefaRodando $true -Servico 'active' -Painel 0 -Estado $e
+            $d.Acao | Should -Be 'esperar'
+            $e = $d.Estado
+        }
+        $d = Get-DecisaoVigia -TarefaRodando $true -Servico 'active' -Painel 0 -Estado $e
+        $d.Acao | Should -Be 'reiniciar-servico'
+        $d.Estado.falhas_painel | Should -Be 0
+    }
+    It 'WSL sem resposta: espera 3 rodadas seguidas antes de reiniciar o WSL' {
+        $e = @{}
+        foreach ($i in 1..2) { $d = Get-DecisaoVigia -TarefaRodando $true -Servico '' -Painel -1 -Estado $e; $d.Acao | Should -Be 'esperar'; $e = $d.Estado }
+        (Get-DecisaoVigia -TarefaRodando $true -Servico '' -Painel -1 -Estado $e).Acao | Should -Be 'reiniciar-wsl'
+    }
+    It 'uma resposta boa no meio zera a contagem' {
+        $d = Get-DecisaoVigia -TarefaRodando $true -Servico 'active' -Painel 0 -Estado @{ falhas_painel = 2 }
+        $d.Acao | Should -Be 'reiniciar-servico'
+        $d = Get-DecisaoVigia -TarefaRodando $true -Servico 'active' -Painel 200 -Estado @{ falhas_painel = 2 }
+        $d.Estado.falhas_painel | Should -Be 0
+    }
+    It 'o registro guarda só as últimas linhas' {
+        Get-LinhasLogAparadas @('a', 'b', 'c', 'd') 2 | Should -Be @('c', 'd')
+        Get-LinhasLogAparadas @('a') 2 | Should -Be @('a')
+    }
+    It 'Invoke-WslComPrazo não trava quando o programa não termina a tempo' {
+        $inicio = Get-Date
+        $null = Invoke-WslComPrazo '--list' 5
+        ((Get-Date) - $inicio).TotalSeconds | Should -BeLessThan 30
     }
 }

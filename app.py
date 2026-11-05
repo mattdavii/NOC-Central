@@ -777,6 +777,17 @@ def ponte_painel_windows():
     return resposta
 
 
+@app.route('/vigia-windows.ps1')
+def vigia_windows():
+    """Vigia do sensor no Windows: religa o NexoPulse Edge (WSL) sozinho se ele parar."""
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(raiz, 'windows', 'vigia-nexopulse.ps1'), encoding='utf-8') as arquivo:
+        resposta = app.response_class(arquivo.read(), mimetype='text/plain')
+    resposta.headers['Content-Disposition'] = 'attachment; filename=vigia-nexopulse.ps1'
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
+
+
 @app.route('/instalar-windows.ps1')
 def instalar_windows():
     """Instalador para Windows (via WSL), já apontando para esta Central."""

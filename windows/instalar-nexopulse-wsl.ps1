@@ -12,7 +12,8 @@
   5. Baixa o agente da Central e roda o instalador Linux dentro do WSL.
   6. Libera no firewall do Windows e no do Hyper-V (o que vale para o WSL espelhado)
      a porta do painel local (10000) e a descoberta MikroTik (UDP 5678), só para a rede local.
-  7. Cria uma tarefa agendada que liga o WSL quando o Windows inicia.
+  7. Cria uma tarefa agendada que liga o WSL quando o Windows inicia, e o vigia que religa o
+     sensor sozinho se ele parar (vigia-nexopulse.ps1, a cada 2 minutos).
   8. Confere se ficou tudo de pé: serviço, painel pelo IP da rede e inicialização automática.
 
   Rode num PowerShell como Administrador:
@@ -250,6 +251,18 @@ function Invoke-Instalacao {
     Passo 'Criando a inicialização automática'
     Register-TarefaInicializacao -Distro $Distro
     $modo = Test-TarefaInicializacao -Distro $Distro
+
+    # 7b. Vigia: a tarefa acima liga o Ubuntu com o Windows, mas não volta se o wsl.exe dela morrer
+    #     (o "reiniciar se falhar" do Agendador só vale quando a tarefa nem começa). O vigia confere a
+    #     cada 2 minutos e religa o Ubuntu ou o serviço; também tira a suspensão do PC na tomada.
+    Passo 'Instalando o vigia (religa o sensor sozinho se ele parar)'
+    $vigia = Join-Path $env:TEMP 'vigia-nexopulse.ps1'
+    try {
+        Invoke-WebRequest -Uri "$Central/vigia-windows.ps1" -OutFile $vigia -UseBasicParsing
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $vigia -Instalar -Distro $Distro -PortaPainel $PortaPainel
+    } catch {
+        Write-Host "  Não foi possível instalar o vigia: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
 
     # 8. Ponte para abrir o painel no próprio Windows: na rede espelhada, em algumas versões do
     #    Windows 11 o próprio PC não alcança o Ubuntu (nem por 127.0.0.1 nem pelo IP).

@@ -12,7 +12,8 @@ param(
     [string]$Distro = 'Ubuntu',
     [int]$PortaPainel = 10000,
     [int]$PortaPonte = 10010,
-    [string]$Relatorio = ''
+    [string]$Relatorio = '',
+    [string]$Central = 'https://nexopulse.up.railway.app'
 )
 
 $script:resultados = @()
@@ -146,6 +147,14 @@ function Invoke-Verificacao {
             Add-Item 'Liga sozinho com o Windows' 'FALHA' 'tarefa antiga: liga o Ubuntu e ele desliga sozinho segundos depois' 'Rode o instalador de novo (ele refaz a tarefa para manter o Ubuntu ligado).'
         } elseif ($tarefa.State -eq 'Running') { Add-Item 'Liga sozinho com o Windows' 'OK' "$quando; mantendo o Ubuntu ligado desde $($info.LastRunTime)" }
         else { Add-Item 'Liga sozinho com o Windows' 'FALHA' "a tarefa não está rodando (último código $($info.LastTaskResult)); o Ubuntu desliga sozinho" "Rode: Start-ScheduledTask -TaskName 'NexoPulse Edge (WSL)'  (se não ficar rodando, rode o instalador de novo)" }
+        $vigia = Get-ScheduledTask -TaskName 'NexoPulse Vigia' -ErrorAction SilentlyContinue
+        if (-not $vigia) { Add-Item 'Volta sozinho se parar (vigia)' 'AVISO' 'vigia não instalado' "Instale: irm $Central/vigia-windows.ps1 -OutFile vigia.ps1; powershell -ExecutionPolicy Bypass -File vigia.ps1 -Instalar  (como Administrador)" }
+        elseif ($vigia.State -eq 'Disabled') { Add-Item 'Volta sozinho se parar (vigia)' 'FALHA' 'tarefa do vigia desativada' "Rode: Enable-ScheduledTask -TaskName 'NexoPulse Vigia'" }
+        else {
+            $log = Join-Path $env:ProgramData 'NexoPulse\vigia.log'
+            $acoes = if (Test-Path $log) { @(Get-Content $log -Encoding UTF8 | Where-Object { $_ -match ' AÇÃO ' }) } else { @() }
+            Add-Item 'Volta sozinho se parar (vigia)' 'OK' ("confere a cada 2 minutos; " + $(if ($acoes) { "última ação: $($acoes[-1])" } else { 'nunca precisou agir' }))
+        }
         $boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
         if ($info.LastRunTime -lt $boot) { Add-Item 'Subiu depois do último boot' 'AVISO' "boot em $boot; tarefa rodou antes" 'A tarefa não rodou desde que o Windows ligou: o sensor pode só voltar quando alguém entrar.' }
     }

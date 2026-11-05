@@ -74,3 +74,12 @@ def test_central_serve_a_verificacao_do_windows(client):
     assert texto.startswith('\ufeff') and 'function Invoke-Verificacao' in texto     # BOM preservado
     instalador = client.get('/instalar-windows.ps1').get_data(as_text=True)
     assert instalador.startswith('\ufeff') and 'Set-RegrasFirewall' in instalador
+
+
+def test_central_serve_o_vigia_do_windows(client):
+    r = client.get('/vigia-windows.ps1')
+    assert r.status_code == 200 and 'attachment' in r.headers['Content-Disposition']
+    texto = r.get_data(as_text=True)
+    assert texto.startswith('﻿') and 'function Get-DecisaoVigia' in texto and 'function Install-Vigia' in texto
+    instalador = client.get('/instalar-windows.ps1').get_data(as_text=True)
+    assert '/vigia-windows.ps1' in instalador and '-Instalar -Distro $Distro' in instalador
