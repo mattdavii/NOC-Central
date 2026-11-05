@@ -124,6 +124,11 @@ button.action-btn.btn-danger { background:transparent; color:var(--status-crit);
 button.action-btn.btn-danger:hover { background:color-mix(in srgb,var(--status-crit) 10%,transparent); filter:none; }
 button.action-btn.btn-danger-solid { background:var(--status-crit); color:#fff; }
 button.action-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; }
+/* Links com cara de botão (abrir/baixar um arquivo): mesma hierarquia dos botões. */
+a.action-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:9px 14px; border-radius:8px; font-weight:700; font-size:.88rem; text-decoration:none; white-space:nowrap; border:1px solid transparent; }
+a.action-btn.btn-primary { background:var(--blue); color:var(--bg-base); }
+a.action-btn.btn-secondary { background:transparent; color:var(--text-main); border-color:var(--border); }
+a.action-btn.btn-secondary:hover { border-color:var(--blue); }
 .client-logo { height:30px; max-width:140px; object-fit:contain; border-radius:4px; }
 button.action-btn:disabled { opacity:.55; cursor:progress; }
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }

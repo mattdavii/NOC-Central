@@ -83,3 +83,27 @@ def test_central_serve_o_vigia_do_windows(client):
     assert texto.startswith('﻿') and 'function Get-DecisaoVigia' in texto and 'function Install-Vigia' in texto
     instalador = client.get('/instalar-windows.ps1').get_data(as_text=True)
     assert '/vigia-windows.ps1' in instalador and '-Instalar -Distro $Distro' in instalador
+
+
+def test_guias_de_instalacao_so_para_o_master(client, login):
+    login()
+    pagina = client.get('/guias')
+    assert pagina.status_code == 200
+    texto = pagina.get_data(as_text=True)
+    assert '/guias/linux.pdf' in texto and '/guias/windows.pdf' in texto and '/instalar-windows.ps1' in texto
+    pdf = client.get('/guias/windows.pdf?baixar=1')
+    assert pdf.status_code == 200 and pdf.data.startswith(b'%PDF') and 'attachment' in pdf.headers['Content-Disposition']
+    assert client.get('/guias/linux.pdf').headers['Content-Disposition'].startswith('inline')
+    assert client.get('/guias/macos.pdf').status_code == 404
+    login(2, 'Cliente')
+    assert client.get('/guias').status_code == 403
+    assert client.get('/guias/linux.pdf').status_code == 403
+
+
+def test_guias_trazem_os_comandos_desta_central():
+    import guias
+    g = guias.guia('windows', 'https://central.exemplo.com.br/')
+    texto = repr(g)
+    assert 'https://central.exemplo.com.br/instalar-windows.ps1' in g['comando']
+    assert '/vigia-windows.ps1' in texto and '/verificar-windows.ps1' in texto and 'nexopulse.up.railway.app' not in texto
+    assert 'curl -fsSL https://central.exemplo.com.br/instalar.sh' in guias.guia('linux', 'https://central.exemplo.com.br')['comando']

@@ -7,6 +7,7 @@ import levantamento
 import mapa_rede
 import nexoreport
 import nexoreport_pdf
+import guias
 import nexodesk
 import sla
 import notifications
@@ -811,6 +812,25 @@ def pagina_saude():
     if session.get('role') != 'Administrador Master':
         return "Acesso Negado.", 403
     return render_template('saude.html')
+
+
+@app.route('/guias')
+def pagina_guias():
+    """Guias de instalação do sensor (PDF) e os comandos prontos, para a equipe da MD."""
+    if session.get('role') != 'Administrador Master':
+        return "Acesso Negado.", 403
+    central = _url_central()
+    return render_template('guias.html', guias=[guias.guia(s, central) for s in guias.SISTEMAS])
+
+
+@app.route('/guias/<sistema>.pdf')
+def guia_pdf(sistema):
+    if session.get('role') != 'Administrador Master':
+        return "Acesso Negado.", 403
+    if sistema not in guias.SISTEMAS:
+        return "Guia não encontrado.", 404
+    return _pdf_resposta(guias.gerar_pdf(sistema, _url_central()), f'nexopulse-guia-instalacao-{sistema}.pdf',
+                         request.args.get('baixar') == '1')
 
 
 @app.route('/api/v2/saude', methods=['GET'])
