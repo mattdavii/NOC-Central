@@ -57,10 +57,11 @@
             const st = status[no.status] ? ` [${status[no.status]}]` : '';
             const linha2 = [no.tipo !== 'dispositivo' && no.tipo !== 'internet' ? no.tipo_rotulo : null, no.sub].filter(Boolean).join(' · ');
             nodes.add({
-                id: no.id, ip: no.sub, mac: no.mac, rawName: no.nome, tipo: no.tipo,
+                id: no.id, ip: no.sub, mac: no.mac, rawName: no.nome, tipo: no.tipo, status: no.status,
                 label: `${ICONES[no.tipo] || '▫️'} ${curto(no.nome)}${st}${linha2 ? '\n' + linha2 : ''}`,
                 title: [no.tipo_rotulo, no.sub, no.mac ? 'MAC: ' + no.mac : null, no.fabricante ? 'Marca: ' + no.fabricante : null,
-                        no.meio_rotulo ? 'Ligação: ' + no.meio_rotulo : null, no.informado ? 'Ligação informada pela equipe' : null].filter(Boolean).join('\n'),
+                        no.meio_rotulo ? 'Ligação: ' + no.meio_rotulo : null, no.informado ? 'Ligação informada pela equipe' : null,
+                        no.status === 'offline' && no.visto_em ? 'Fora da rede · visto por último em ' + new Date(no.visto_em).toLocaleString('pt-BR') : null].filter(Boolean).join('\n'),
                 shape: 'box', color: corDoNo(no),
                 borderWidth: no.adicionado ? 2 : 1, shapeProperties: {borderDashes: no.adicionado ? [5, 4] : false},
                 font: {color: '#0B1728', face: 'JetBrains Mono', bold: no.tipo === 'internet' || INFRA.has(no.tipo)}

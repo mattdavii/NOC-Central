@@ -143,7 +143,8 @@ def montar(sensor, dispositivos, mapa):
         if nome in ('Desconhecido', 'Gateway / Roteador') and d.get('fabricante'):
             nome = d['fabricante']
         nos[ident] = {'id': ident, 'nome': nome, 'sub': d.get('ip'), 'tipo': _tipo_observado(d),
-                      'status': d.get('status'), 'mac': d.get('mac'), 'fabricante': d.get('fabricante')}
+                      'status': d.get('status'), 'mac': d.get('mac'), 'fabricante': d.get('fabricante'),
+                      'visto_em': str(d['visto_em']) if d.get('visto_em') else None}
     for e in mapa.get('extras', []):
         nos[e['id']] = {'id': e['id'], 'nome': e['nome'], 'sub': e.get('obs'), 'tipo': 'outro', 'status': None, 'adicionado': True}
 
