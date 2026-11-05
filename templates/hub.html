@@ -224,7 +224,7 @@
         {'rotulo': 'Acessos', 'href': '/usuarios', 'icone': 'fa-users-gear', 'nota': 'Empresas e usuários'},
         {'rotulo': 'Saúde', 'href': '/saude', 'icone': 'fa-heart-pulse', 'nota': 'Central e banco'},
         {'rotulo': 'NexoGuard', 'href': None, 'marca': 'guard', 'nota': 'Em breve'},
-        {'rotulo': 'NexoReport', 'href': None, 'marca': 'report', 'nota': 'Em breve'},
+        {'rotulo': 'NexoReport', 'href': '/report', 'marca': 'report', 'nota': 'Relatórios mensais'},
     ] %}
     {% set lancador_nota = None %}
     {% include '_lancador.html' %}
@@ -411,7 +411,7 @@
     {% set atalhos = [] %}
     {% for c in cards %}
         {% set _ = atalhos.append({'rotulo': c.nome, 'marca': c.app,
-            'href': ('/pulse' if c.app == 'pulse' else None) if c.estado == 'liberado' else None,
+            'href': {'pulse': '/pulse', 'report': '/report'}.get(c.app) if c.estado == 'liberado' else None,
             'nota': {'liberado': None, 'em_breve': 'Em breve', 'vitrine': 'Não contratado'}[c.estado]}) %}
     {% endfor %}
     {% set _ = atalhos.append({'rotulo': 'Minha conta', 'href': '/conta', 'icone': 'fa-user-gear'}) %}
@@ -470,6 +470,21 @@
                 {% endif %}
                 {% if not ver_como %}
                 <a class="abrir" href="/pulse"><i class="fa-solid fa-gauge-high"></i> Abrir a Operação</a>
+                {% endif %}
+            {% elif c.estado == 'liberado' and c.app == 'report' %}
+                {% if c.ultimo %}
+                <div class="disp {{ {'ok': 'ok', 'atencao': 'atencao', 'critico': 'critico'}.get(c.ultimo.situacao, '') }}">
+                    <strong>{{ ('%.1f' % c.ultimo.pct).replace('.', ',') ~ '%' if c.ultimo.pct is not none else '—' }}</strong>
+                    <div class="disp-txt">
+                        <span>de disponibilidade em {{ c.ultimo.rotulo }}</span>
+                        <small>Último relatório emitido</small>
+                    </div>
+                </div>
+                {% else %}
+                <p>O primeiro relatório sai automaticamente no dia 1, com os números do mês que terminou.</p>
+                {% endif %}
+                {% if not ver_como %}
+                <a class="abrir" href="/report"><i class="fa-solid fa-file-pdf"></i> Abrir os relatórios</a>
                 {% endif %}
             {% elif c.estado == 'em_breve' %}
                 <p>{{ c.descricao }}</p>

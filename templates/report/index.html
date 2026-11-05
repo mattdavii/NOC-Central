@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#082E56">
+    <link rel="icon" href="/static/brand/nexohub/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/brand/nexohub/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="apple-touch-icon" href="/static/brand/nexohub/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.json?v=nexopulse-2">
+    <title>NexoHub - NexoReport</title>
+    <link rel="stylesheet" href="/static/fontes/fontes.css?v=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/product.css?v=nexopulse-3">
+    <style>
+        body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-base); color: var(--text-main); }
+        .cabeca-report { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+        .cabeca-report .marca { display: flex; align-items: center; gap: 14px; }
+        .cabeca-report .marca img { height: 34px; width: auto; }
+        .cabeca-report p { margin: 4px 0 0; color: var(--text-muted); font-size: .92rem; max-width: 60ch; line-height: 1.5; }
+        .escolha { display: flex; align-items: center; gap: 10px; }
+        .escolha select { background: var(--bg-input); border: 1px solid var(--border); color: var(--text-main); padding: 9px 12px; border-radius: 8px; font: inherit; min-width: 220px; }
+        .meses { display: grid; gap: 12px; }
+        .mes { display: grid; grid-template-columns: minmax(150px, 1.2fr) auto minmax(170px, 1.3fr) auto; align-items: center; gap: 14px 22px;
+               background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; box-shadow: var(--shadow); }
+        .mes:first-child { border-color: color-mix(in srgb, var(--blue) 55%, var(--border)); }
+        .mes h2 { margin: 0; font-size: 1.12rem; }
+        .mes .emitido { color: var(--text-muted); font-size: .8rem; margin-top: 4px; }
+        .pct { font: 800 1.7rem/1 'Inter', sans-serif; letter-spacing: -0.02em; }
+        .pct.ok { color: var(--status-ok); } .pct.atencao { color: var(--status-warn); } .pct.critico { color: var(--status-crit); }
+        .detalhe { color: var(--text-muted); font-size: .88rem; line-height: 1.5; }
+        .detalhe b { color: var(--text-main); }
+        .selo { display: inline-block; font-size: .72rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1px solid currentColor; margin-bottom: 6px; }
+        .selo.ok { color: var(--status-ok); } .selo.atencao { color: var(--status-warn); } .selo.critico { color: var(--status-crit); }
+        .acoes { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        .btn { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-main);
+               padding: 9px 14px; border-radius: 8px; font: inherit; font-weight: 600; font-size: .88rem; cursor: pointer; text-decoration: none; }
+        .btn.primario { background: var(--blue); border-color: var(--blue); color: var(--bg-base); }
+        .btn:disabled { opacity: .5; cursor: wait; }
+        .vazio { background: var(--bg-card); border: 1px dashed var(--border); border-radius: 14px; padding: 26px; color: var(--text-muted); line-height: 1.6; }
+        .vazio strong { color: var(--text-main); }
+        .ferramentas-md { margin-top: 26px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
+        .ferramentas-md h3 { margin: 0 0 6px; font-size: 1rem; }
+        .ferramentas-md p { margin: 0 0 12px; color: var(--text-muted); font-size: .88rem; line-height: 1.5; }
+        .linha-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .linha-form input { background: var(--bg-input); border: 1px solid var(--border); color: var(--text-main); padding: 9px 12px; border-radius: 8px; font: inherit; }
+        .msg { margin-top: 10px; font-size: .88rem; font-weight: 600; min-height: 1.2em; }
+        .msg.erro { color: var(--status-crit); } .msg.ok { color: var(--status-ok); }
+        @media (max-width: 760px) {
+            .mes { grid-template-columns: 1fr auto; }
+            .mes .detalhe, .mes .acoes { grid-column: 1 / -1; justify-content: flex-start; }
+        }
+    </style>
+<script src="/static/brand.js?v=nexopulse-2"></script>
+</head>
+<body>
+<script src="/static/security.js?v=2.2.0-rc1"></script>
+{% include '_brand_bar.html' %}
+<main class="page-main">
+    <div class="cabeca-report">
+        <div>
+            <div class="marca">
+                <img class="sym-dark" src="/static/brand/nexoreport/logo-escuro.svg" alt="NexoReport">
+                <img class="sym-light" src="/static/brand/nexoreport/logo-claro.svg" alt="NexoReport">
+            </div>
+            <p>O relatório mensal da rede{% if empresa %} de <strong>{{ empresa.nome or empresa.usuario }}</strong>{% endif %}, pronto para a diretoria. Ele é emitido no dia 1 com os números do mês anterior e fica guardado como foi emitido.</p>
+        </div>
+        {% if master and empresas %}
+        <form class="escolha" method="get">
+            <label for="empresa" class="sr-only">Empresa</label>
+            <select id="empresa" name="empresa" onchange="this.form.submit()">
+                {% for e in empresas %}<option value="{{ e.id }}" {% if empresa and e.id == empresa.id %}selected{% endif %}>{{ e.nome or e.usuario }}</option>{% endfor %}
+            </select>
+        </form>
+        {% endif %}
+    </div>
+
+    {% if not empresa %}
+        <div class="vazio">
+            {% if master %}<strong>Nenhuma empresa com o NexoReport contratado.</strong> Ligue o NexoReport no contrato da empresa em Acessos e defina a meta de disponibilidade.
+            {% else %}<strong>O NexoReport não está liberado para a sua empresa.</strong> Fale com a MD para incluir no seu contrato.{% endif %}
+        </div>
+    {% else %}
+        <section class="meses" aria-label="Relatórios emitidos">
+        {% for m in meses %}
+            <article class="mes">
+                <div>
+                    <h2>{{ m.rotulo }}</h2>
+                    <div class="emitido">Emitido em <span data-ts="{{ m.criado_em }}"></span>{% if m.versao > 1 %} · versão {{ m.versao }}{% endif %}</div>
+                </div>
+                <div>
+                    {% if m.situacao %}<span class="selo {{ m.situacao }}">{{ rotulo_situacao[m.situacao] }}</span>{% endif %}
+                    <div class="pct {{ m.situacao or '' }}">{{ pct(m.pct) }}</div>
+                </div>
+                <div class="detalhe">
+                    Meta <b>{{ pct(m.meta) }}</b><br>
+                    {% if m.quedas %}<b>{{ m.quedas }}</b> queda{{ 's' if m.quedas != 1 }}, {{ dur(m.fora_s) }} sem conexão{% else %}Nenhuma queda no mês{% endif %}
+                </div>
+                <div class="acoes">
+                    <a class="btn primario" href="/report/{{ empresa.id }}/{{ m.ano_mes }}.pdf" target="_blank" rel="noopener"><i class="fa-solid fa-file-pdf"></i> Ver</a>
+                    <a class="btn" href="/report/{{ empresa.id }}/{{ m.ano_mes }}.pdf?baixar=1"><i class="fa-solid fa-download"></i> Baixar</a>
+                    {% if master %}<button class="btn" type="button" data-emitir="{{ m.ano_mes }}" title="Calcula o mês de novo e cria uma nova versão; as anteriores ficam guardadas"><i class="fa-solid fa-rotate"></i> Emitir de novo</button>{% endif %}
+                </div>
+            </article>
+        {% else %}
+            <div class="vazio">
+                <strong>Nenhum relatório emitido ainda.</strong>
+                O primeiro sai automaticamente no dia 1, com os números de {{ proximo_rotulo }}.
+                {% if master %}Enquanto isso, a prévia abaixo mostra o mês corrente até agora.{% endif %}
+            </div>
+        {% endfor %}
+        </section>
+
+        {% if master %}
+        <section class="ferramentas-md" aria-labelledby="t-md">
+            <h3 id="t-md"><i class="fa-solid fa-screwdriver-wrench"></i> Ferramentas da MD</h3>
+            <p>Meta desta empresa: <strong>{{ pct(meta) if meta is not none else '99,5% (padrão)' }}</strong> (altere em Acessos, editando a empresa). A prévia calcula o mês corrente até agora e não fica guardada; o cliente não a vê.</p>
+            <div class="linha-form">
+                <a class="btn primario" href="/report/{{ empresa.id }}/previa.pdf" target="_blank" rel="noopener"><i class="fa-solid fa-eye"></i> Prévia do mês atual</a>
+                <label for="mes-emitir" class="sr-only">Mês a emitir</label>
+                <input type="month" id="mes-emitir">
+                <button class="btn" type="button" id="emitir-mes"><i class="fa-solid fa-file-circle-plus"></i> Emitir mês</button>
+            </div>
+            <p class="msg" id="msg-md" role="status"></p>
+        </section>
+        {% endif %}
+    {% endif %}
+</main>
+<script>
+    document.querySelectorAll('[data-ts]').forEach(el => {
+        const d = new Date(Number(el.dataset.ts) * 1000);
+        el.textContent = d.toLocaleString('pt-BR', {dateStyle: 'short', timeStyle: 'short'});
+    });
+    {% if master and empresa %}
+    const msg = document.getElementById('msg-md');
+    async function emitir(anoMes, botao) {
+        if (!anoMes) { msg.className = 'msg erro'; msg.textContent = 'Escolha o mês.'; return; }
+        if (!confirm(`Emitir o relatório de ${anoMes}? Se já existir, vira uma nova versão e a anterior fica guardada.`)) return;
+        botao.disabled = true;
+        msg.className = 'msg'; msg.textContent = 'Calculando o mês…';
+        try {
+            const r = await fetch(`/api/v2/report/{{ empresa.id }}/${anoMes}/emitir`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'Não foi possível emitir.');
+            msg.className = 'msg ok';
+            msg.textContent = `Versão ${d.versao} emitida.` + (d.parcial_qualidade ? ' Parte das medições de qualidade desse mês já tinha sido descartada; o relatório avisa isso.' : '');
+            setTimeout(() => location.reload(), 1200);
+        } catch (e) { msg.className = 'msg erro'; msg.textContent = e.message; } finally { botao.disabled = false; }
+    }
+    document.querySelectorAll('[data-emitir]').forEach(b => b.addEventListener('click', () => emitir(b.dataset.emitir, b)));
+    document.getElementById('emitir-mes').addEventListener('click', ev => emitir(document.getElementById('mes-emitir').value, ev.currentTarget));
+    {% endif %}
+</script>
+</body>
+</html>
