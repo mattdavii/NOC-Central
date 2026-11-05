@@ -53,5 +53,6 @@ class MainActivity : ComponentActivity() {
         permissoesOk.value = temPermissao()
         vm.atualizarRede()
         vm.aoVoltar()
+        vm.verificarAtualizacao()
     }
 }
