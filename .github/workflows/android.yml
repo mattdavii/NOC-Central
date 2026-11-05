@@ -1,0 +1,44 @@
+name: NexoCampo (Android)
+on:
+  push:
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+      - name: Compilar o APK
+        run: gradle --no-daemon assembleRelease
+      - name: Nome do arquivo
+        run: cp app/build/outputs/apk/release/app-release.apk "nexocampo-0.1.${{ github.run_number }}.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexocampo-apk
+          path: android/nexocampo-*.apk
+          retention-days: 30
+      # Versão para instalar no celular: página de lançamento com o .apk direto (sem zip).
+      - name: Publicar a versão
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nexocampo-v0.1.${{ github.run_number }}
+          name: NexoCampo 0.1.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          files: android/nexocampo-*.apk
+          body: |
+            App de campo do NexoPulse (Android 8 ou mais novo).
+            No celular: baixe o arquivo .apk abaixo e abra. Na primeira vez, o Android pede para permitir instalar apps desta origem.
+            Commit: ${{ github.sha }}
