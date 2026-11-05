@@ -42,7 +42,8 @@ def _mes(conn, quedas=True, meta=99.7):
             conn.execute("INSERT INTO diagnosticos (sensor_mac, chave, camada, causa, gravidade, confianca, inicio, fim, estado, mensagem) VALUES (?, 'starlink_obstruida', 'starlink', 'x', 'Alerta', 'alta', ?, ?, 'resolvido', 'obstrução')", (UFV, ini - 60, ini + dur * 60))
         ini = t(9, 10)
         conn.execute("INSERT INTO diagnosticos (sensor_mac, chave, camada, causa, gravidade, confianca, inicio, fim, estado) VALUES (?, 'sem_comunicacao', 'comunicacao', 'x', 'Crítica', 'alta', ?, ?, 'resolvido')", (ESC, ini, ini + 2760))
-        conn.execute("INSERT INTO diagnosticos (sensor_mac, chave, camada, causa, gravidade, confianca, inicio, fim, estado, mensagem) VALUES (?, 'provedor', 'provedor', 'x', 'Crítica', 'alta', ?, ?, 'resolvido', 'perda de 100% a partir do 1º salto do provedor')", (ESC, ini - 30, ini + 2760))
+        conn.execute("INSERT INTO diagnosticos (sensor_mac, chave, camada, causa, gravidade, confianca, inicio, fim, estado, mensagem) VALUES (?, 'provedor', 'provedor', 'x', 'Crítica', 'alta', ?, ?, 'resolvido', ?)",
+                     (ESC, ini - 30, ini + 2760, 'perda de 100% a partir do 1º salto do provedor'))
         conn.execute("INSERT INTO starlink_medicoes (sensor_mac, coletado_em, dados) VALUES (?, ?, ?)",
                      (UFV, t(3, 17), json.dumps({'detectada': True, 'obstrucao': {'percentual': 5.2}, 'alinhamento': {'desvio_graus': 0.4}})))
         conn.execute("INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, status) VALUES (?, '192.168.0.27', '10:00:00:00:00:27', 'Intelbras', 'online')", (UFV,))
