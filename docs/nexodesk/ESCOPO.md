@@ -150,6 +150,12 @@ Definido para a v1 (05/11/2026):
   ordenada pelo prazo que vence primeiro, contadores "perto de vencer", "estourado" e "% no prazo no mês", prazo manual
   nos chamados internos e aviso no Telegram da MD a cada 5 minutos (uma vez por marco). Chamados abertos antes desta
   entrega ficam sem prazo.
+- **Entrega 4 no ar (05/11/2026):** o cliente confirma a solução com nota de 1 a 5 (opcional) e comentário; "ainda
+  não resolveu" volta para atendimento; fechamento automático 3 dias úteis depois de resolvido (verificado a cada 5 min);
+  o cliente reabre respondendo em até 7 dias depois de fechado (a MD reabre a qualquer momento); a MD pode fechar um
+  resolvido sem esperar; o admin da empresa cancela chamados ainda não resolvidos; o grupo de Telegram da empresa
+  recebe resposta da MD, pedido de informação, resolvido e fechado (nunca nota interna nem chamado interno), e a MD
+  recebe a confirmação com a nota e os cancelamentos. Com isto, a v1 do NexoDesk está completa.
 
 ## 6. Testes e critérios de aceite
 - Usuário de uma empresa nunca vê, responde ou baixa anexo de chamado de outra; nota interna nunca chega ao cliente

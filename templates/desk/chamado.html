@@ -30,6 +30,9 @@
             {% else %}
             <button class="btn" type="button" data-mudar='{"status": "atendimento"}'><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Reabrir</button>
             {% endif %}
+            {% if c.status == 'resolvido' %}
+            <button class="btn primario" type="button" data-confirmar-md data-confirmar="Fechar o chamado #{{ c.numero }} sem esperar a confirmação do cliente?"><i class="fa-solid fa-lock" aria-hidden="true"></i> Fechar agora</button>
+            {% endif %}
             {% if c.status in ('novo', 'atendimento', 'aguardando') %}
             <button class="btn primario" type="button" data-depois="resolvido"><i class="fa-solid fa-check" aria-hidden="true"></i> Marcar como resolvido</button>
             {% endif %}
@@ -41,8 +44,28 @@
     <div class="faixa aguardando" role="status"><i class="fa-solid fa-circle-question" aria-hidden="true"></i>
         <div><strong>A MD está esperando a sua resposta.</strong> Responda no fim da conversa para o atendimento continuar.</div></div>
     {% elif not md and c.status == 'resolvido' %}
-    <div class="faixa resolvido" role="status"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>
-        <div><strong>A MD marcou este chamado como resolvido.</strong> Se ainda não resolveu, responda no fim da conversa que o chamado volta para atendimento.</div></div>
+    <section class="faixa resolvido confirmar" aria-labelledby="t-confirmar"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+        <div>
+            <strong id="t-confirmar">A MD marcou este chamado como resolvido. Resolveu para você?</strong>
+            {% if fecha_sozinho %}<span>Sem resposta, ele fecha sozinho {{ fecha_sozinho }}.</span>{% endif %}
+            <form id="form-confirmar" class="form-confirmar">
+                <fieldset class="estrelas">
+                    <legend>Como foi o atendimento? <small>opcional</small></legend>
+                    {% for n in range(5, 0, -1) %}<input type="radio" name="nota" id="nota{{ n }}" value="{{ n }}"><label for="nota{{ n }}" title="{{ n }} de 5"><i class="fa-solid fa-star" aria-hidden="true"></i><span class="sr-only">{{ n }} de 5</span></label>{% endfor %}
+                </fieldset>
+                <label for="comentario" class="sr-only">Comentário</label>
+                <input class="campo" id="comentario" name="comentario" maxlength="1000" placeholder="Quer deixar um comentário? (opcional)">
+                <div class="acoes-form" style="justify-content:flex-start">
+                    <button class="btn primario" type="submit"><i class="fa-solid fa-check" aria-hidden="true"></i> Sim, resolveu: fechar o chamado</button>
+                    <button class="btn" type="button" id="ainda-nao">Ainda não resolveu</button>
+                </div>
+                <p class="msg-form" role="status"></p>
+            </form>
+        </div>
+    </section>
+    {% elif not md and c.status == 'fechado' %}
+    <div class="faixa fechado" role="status"><i class="fa-solid fa-lock" aria-hidden="true"></i>
+        <div><strong>Chamado fechado.</strong>{% if pode_reabrir %} Se o problema voltar, escreva no fim da conversa em até {{ reabrir_dias }} dias que ele é reaberto.{% else %} Se precisar de algo mais, <a href="/desk/novo" style="color:var(--link)">abra um novo chamado</a>.{% endif %}</div></div>
     {% endif %}
 
     <div class="grade-chamado">
@@ -74,7 +97,7 @@
                 {% endif %}
             {% endfor %}
 
-            {% if c.status in ('fechado', 'cancelado') %}
+            {% if c.status == 'cancelado' or (c.status == 'fechado' and (md or not pode_reabrir)) %}
             <div class="encerrado"><i class="fa-solid fa-lock" aria-hidden="true"></i> Este chamado está {{ c.status_rotulo | lower }}. Se precisar de algo mais, <a href="/desk/novo" style="color:var(--link)">abra um novo chamado</a>.</div>
             {% else %}
             <form class="compor" action="/api/v2/desk/{{ c.numero }}/mensagens" data-desk data-ok="Mensagem enviada." id="compor">
@@ -87,7 +110,7 @@
                 <input type="hidden" name="nota" value="0">
                 {% endif %}
                 <label for="texto" class="sr-only">Mensagem</label>
-                <textarea id="texto" name="texto" maxlength="20000" placeholder="{{ 'Escreva a resposta para o cliente' if md else 'Escreva para a MD' }}"></textarea>
+                <textarea id="texto" name="texto" maxlength="20000" placeholder="{{ 'Escreva a resposta para o cliente' if md else ('O problema voltou? Escreva aqui para reabrir o chamado' if c.status == 'fechado' else 'Escreva para a MD') }}"></textarea>
                 <div class="anexar">
                     <div class="soltar" data-max="{{ max_arquivos }}" data-max-mb="{{ max_mb }}">
                         <i class="fa-solid fa-paperclip" aria-hidden="true"></i>
@@ -159,7 +182,13 @@
                     <dt>Categoria</dt><dd>{{ c.categoria_rotulo }}</dd>
                     {% endif %}
                     <dt>Aberto</dt><dd data-ts="{{ c.criado_em }}"></dd>
+                    {% if c.fechado_em %}<dt>{{ 'Cancelado' if c.status == 'cancelado' else 'Fechado' }}</dt><dd data-ts="{{ c.fechado_em }}"></dd>{% endif %}
+                    {% if c.avaliacao %}<dt>Avaliação</dt><dd><span class="nota-estrelas" aria-label="{{ c.avaliacao }} de 5">{% for n in range(1, 6) %}<i class="fa-solid fa-star {{ 'acesa' if n <= c.avaliacao }}" aria-hidden="true"></i>{% endfor %}</span> {{ c.avaliacao }}/5{% if c.avaliacao_comentario %}<br><span class="muted">"{{ c.avaliacao_comentario }}"</span>{% endif %}</dd>{% endif %}
                 </dl>
+                {% if pode_cancelar %}
+                <p class="msg-form" id="msg-dados" role="status"></p>
+                <button class="btn pequeno cancelar" type="button" id="cancelar-cliente"><i class="fa-solid fa-ban" aria-hidden="true"></i> Cancelar chamado</button>
+                {% endif %}
                 {% if md and c.aberto %}
                 <p class="msg-form" id="msg-dados" role="status"></p>
                 <button class="btn pequeno cancelar" type="button" data-mudar='{"status": "cancelado"}' data-confirmar="Cancelar o chamado #{{ c.numero }}? O cliente vê que ele foi cancelado."><i class="fa-solid fa-ban" aria-hidden="true"></i> Cancelar chamado</button>
@@ -169,6 +198,40 @@
     </div>
 </main>
 <script src="/static/desk.js?v=3"></script>
+<script>
+    // Fechamento: o cliente confirma a solução (nota opcional), diz que ainda não resolveu ou cancela; a MD pode fechar.
+    (function () {
+        async function postar(url, corpo, aviso) {
+            const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(corpo || {})});
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) { if (aviso) { aviso.className = 'msg-form erro'; aviso.textContent = d.error || 'Não foi possível concluir.'; } return false; }
+            location.reload(); return true;
+        }
+        const form = document.getElementById('form-confirmar');
+        if (form) {
+            form.addEventListener('submit', e => {
+                e.preventDefault();
+                const nota = (form.querySelector('input[name=nota]:checked') || {}).value || null;
+                form.querySelector('button[type=submit]').disabled = true;
+                postar('/api/v2/desk/{{ c.numero }}/confirmar', {nota, comentario: form.comentario.value}, form.querySelector('.msg-form'))
+                    .then(ok => { if (!ok) form.querySelector('button[type=submit]').disabled = false; });
+            });
+            document.getElementById('ainda-nao').addEventListener('click', () => {
+                const texto = document.getElementById('texto');
+                texto.placeholder = 'O que ainda não está resolvido?';
+                texto.scrollIntoView({behavior: 'smooth', block: 'center'}); texto.focus();
+            });
+        }
+        const cancelar = document.getElementById('cancelar-cliente');
+        if (cancelar) cancelar.addEventListener('click', () => {
+            if (confirm('Cancelar o chamado #{{ c.numero }}? A MD é avisada e o chamado deixa de ser atendido.'))
+                postar('/api/v2/desk/{{ c.numero }}/cancelar', {}, document.getElementById('msg-dados'));
+        });
+        document.querySelectorAll('[data-confirmar-md]').forEach(b => b.addEventListener('click', () => {
+            if (confirm(b.dataset.confirmar)) postar('/api/v2/desk/{{ c.numero }}/confirmar', {}, document.getElementById('msg-dados'));
+        }));
+    })();
+</script>
 {% if md %}
 <script>
     // Ferramentas da MD no chamado: abas resposta/nota, "depois de enviar" e mudanças de dados (PATCH).

@@ -160,7 +160,7 @@ def test_client_reply_brings_waiting_ticket_back(client, login):
     conn.execute("UPDATE chamados SET status = 'fechado' WHERE id = ?", (numero,))
     conn.commit(); conn.close()
     r = login(EMPRESA, 'Cliente').post(f'/api/v2/desk/{numero}/mensagens', data={'texto': 'Mais uma coisa'})
-    assert r.status_code == 400 and 'encerrado' in r.json['error']
+    assert r.status_code == 400 and 'Abra um novo chamado' in r.json['error']
 
 
 def test_attachment_download_is_audited(client, login):
@@ -399,3 +399,103 @@ def test_queue_puts_the_nearest_deadline_first_and_internal_manual_deadline(clie
     conn.close()
     assert p['manual'] and p['solucao']['estado'] == 'ok'
     assert 'Prazo do contrato' in login(EMPRESA, 'Cliente').get(f'/desk/{cedo}').get_data(as_text=True)
+
+
+# ------------------------------------------------------------------ entrega 4: fechamento
+def _resolvido(cli_md, cliente, quando=None):
+    numero = _abrir(cliente).json['numero']
+    assert cli_md().post(f'/api/v2/desk/{numero}/mensagens', data={'texto': 'Trocamos o cabo.', 'depois': 'resolvido'}).status_code == 201
+    return numero
+
+
+def test_client_confirms_with_rating_and_md_is_told(client, login):
+    numero = _resolvido(login, login(EMPRESA, 'Cliente'))
+    cli = login(EMPRESA, 'Cliente')
+    assert 'Resolveu para você?' in cli.get(f'/desk/{numero}').get_data(as_text=True)
+    assert cli.post(f'/api/v2/desk/{numero}/confirmar', json={'nota': 9}).status_code == 400
+    assert cli.post(f'/api/v2/desk/{numero}/confirmar', json={'nota': 5, 'comentario': 'Rápido!'}).status_code == 200
+    conn = database.get_db()
+    c = nexodesk.chamado(conn, numero)
+    assert (c['status'], c['avaliacao'], c['avaliacao_comentario']) == ('fechado', 5, 'Rápido!') and c['resolvido_em'] and c['fechado_em']
+    assert conn.execute("SELECT 1 FROM telegram_outbox WHERE message LIKE ?", (f'%#{numero}</b>: user2 confirmou a solução · nota 5/5%',)).fetchone()
+    p = nexodesk.prazos(c)
+    assert p['solucao']['estado'] == 'cumprido' and p['proximo'] is None
+    conn.close()
+    pagina = login().get(f'/desk/{numero}').get_data(as_text=True)
+    assert 'confirmou a solução · nota 5/5' in pagina and '5/5' in pagina and 'Rápido!' in pagina
+    assert cli.post(f'/api/v2/desk/{numero}/confirmar', json={}).status_code == 400   # já fechado
+
+
+def test_client_reopens_within_seven_days_only(client, login):
+    numero = _resolvido(login, login(EMPRESA, 'Cliente'))
+    login(EMPRESA, 'Cliente').post(f'/api/v2/desk/{numero}/confirmar', json={})
+    assert login().post(f'/api/v2/desk/{numero}/mensagens', data={'texto': 'oi'}).status_code == 400   # MD usa "Reabrir"
+    r = login(EMPRESA, 'Cliente').post(f'/api/v2/desk/{numero}/mensagens', data={'texto': 'Voltou a cair'})
+    assert r.json['situacao'] == 'atendimento'
+    conn = database.get_db()
+    c = nexodesk.chamado(conn, numero)
+    assert c['fechado_em'] is None and c['resolvido_em'] is None
+    nexodesk.responder(conn, acessos._usuario(conn, 1), c, 'Resolvido de vez.', depois='resolvido')
+    nexodesk.confirmar(conn, acessos._usuario(conn, EMPRESA), nexodesk.chamado(conn, numero))
+    conn.execute('UPDATE chamados SET fechado_em = ? WHERE id = ?', (time.time() - 8 * 86400, numero))
+    conn.commit(); conn.close()
+    r = login(EMPRESA, 'Cliente').post(f'/api/v2/desk/{numero}/mensagens', data={'texto': 'De novo'})
+    assert r.status_code == 400 and 'mais de 7 dias' in r.json['error']
+
+
+def test_auto_close_after_three_business_days_and_client_group_is_told(client, login):
+    import app as central
+    conn = database.get_db()
+    conn.execute("UPDATE clientes SET telegram_chat_id = '-100123' WHERE id = ?", (EMPRESA,))
+    md = acessos._usuario(conn, 1)
+    numero = _abrir_em(conn, _ts(11, 6, 9))                                   # sexta
+    nexodesk.responder(conn, md, nexodesk.chamado(conn, numero), 'Feito.', depois='resolvido', agora=_ts(11, 6, 15))
+    c = nexodesk.chamado(conn, numero)
+    assert nexodesk.prazo_fechamento(c) == pytest.approx(_ts(11, 11, 15), abs=1)   # seg, ter, qua → quarta 15h
+    conn.commit(); conn.close()
+    central.verificar_prazos_desk(agora=_ts(11, 11, 14))
+    conn = database.get_db()
+    assert nexodesk.chamado(conn, numero)['status'] == 'resolvido'
+    conn.close()
+    central.verificar_prazos_desk(agora=_ts(11, 11, 15, 5))
+    conn = database.get_db()
+    c = nexodesk.chamado(conn, numero)
+    assert c['status'] == 'fechado' and c['avaliacao'] is None
+    assert conn.execute("SELECT 1 FROM telegram_outbox WHERE client_id = ? AND message LIKE ?", (EMPRESA, '%Chamado fechado%')).fetchone()
+    conn.close()
+    assert 'Fechado automaticamente' in login(EMPRESA, 'Cliente').get(f'/desk/{numero}').get_data(as_text=True)
+
+
+def test_client_group_gets_md_replies_but_never_internal_notes(client, login):
+    conn = database.get_db()
+    conn.execute("UPDATE clientes SET telegram_chat_id = '-100123' WHERE id = ?", (EMPRESA,))
+    conn.commit(); conn.close()
+    numero = _abrir(login(EMPRESA, 'Cliente')).json['numero']
+    md = login()
+    md.post(f'/api/v2/desk/{numero}/mensagens', data={'texto': 'Segredo da equipe', 'nota': '1'})
+    md.post(f'/api/v2/desk/{numero}/mensagens', data={'texto': 'Qual o modelo do roteador?', 'depois': 'aguardando'})
+    conn = database.get_db()
+    msgs = [r['message'] for r in conn.execute('SELECT message FROM telegram_outbox WHERE client_id = ?', (EMPRESA,)).fetchall()]
+    conn.close()
+    assert len(msgs) == 1 and 'precisa de uma informação' in msgs[0] and 'Qual o modelo do roteador?' in msgs[0]
+    assert not any('Segredo' in m for m in msgs)
+
+
+def test_company_admin_cancels_and_reader_cannot(client, login):
+    conn = database.get_db()
+    _usuario_leitura(conn)
+    conn.close()
+    numero = _abrir(login(6, 'Operador Cliente')).json['numero']
+    assert login(6, 'Operador Cliente').post(f'/api/v2/desk/{numero}/cancelar').status_code == 403
+    assert login().post(f'/api/v2/desk/{numero}/cancelar').status_code == 403            # a MD usa o próprio botão
+    assert login(EMPRESA, 'Cliente').post(f'/api/v2/desk/{numero}/cancelar').status_code == 200
+    conn = database.get_db()
+    assert nexodesk.chamado(conn, numero)['status'] == 'cancelado'
+    conn.close()
+
+
+def test_md_closes_a_resolved_ticket_without_rating(client, login):
+    numero = _resolvido(login, login(EMPRESA, 'Cliente'))
+    assert login().post(f'/api/v2/desk/{numero}/confirmar', json={'nota': 5}).status_code == 400
+    assert login().post(f'/api/v2/desk/{numero}/confirmar', json={}).status_code == 200
+    assert 'Fechado pela MD' in login(EMPRESA, 'Cliente').get(f'/desk/{numero}').get_data(as_text=True)

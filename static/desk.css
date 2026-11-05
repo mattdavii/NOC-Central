@@ -228,3 +228,19 @@ html[data-theme="light"] .contador.aguard b { color: #6D28D9; }
 }
 
 .prazo-cli { color: var(--text-main); }
+
+/* ---------- fechamento ---------- */
+.faixa.confirmar { align-items: flex-start; }
+.faixa.confirmar > div { display: grid; gap: 8px; flex: 1; min-width: 0; }
+.faixa.fechado i { margin-top: 3px; }
+.form-confirmar { display: grid; gap: 10px; margin-top: 4px; }
+.form-confirmar .campo { width: 100%; box-sizing: border-box; max-width: 560px; }
+.estrelas { border: 0; padding: 0; margin: 0; display: flex; flex-direction: row-reverse; justify-content: flex-end; gap: 4px; align-items: center; flex-wrap: wrap; }
+.estrelas legend { float: left; width: 100%; font-size: .86rem; color: var(--text-main); margin-bottom: 4px; }
+.estrelas legend small { color: var(--text-muted); font-weight: 400; }
+.estrelas input { position: absolute; opacity: 0; pointer-events: none; }
+.estrelas label { font-size: 1.5rem; color: var(--border); cursor: pointer; padding: 2px; line-height: 1; }
+.estrelas input:checked ~ label, .estrelas label:hover, .estrelas label:hover ~ label { color: var(--status-warn); }
+.estrelas input:focus-visible + label { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
+.nota-estrelas i { color: var(--border); font-size: .8rem; } .nota-estrelas i.acesa { color: var(--status-warn); }
+.faixa .estrelas label i { color: inherit; margin: 0; }

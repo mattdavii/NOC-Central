@@ -243,7 +243,8 @@ def init_db():
                                               'comunicacao TEXT', 'firmware TEXT', 'rede_origem TEXT'])
         # NexoDesk/SLA: o contrato usado fica gravado no chamado; pausas = [[início, fim], ...] enquanto espera o cliente.
         ensure_columns(conn, 'chamados', ['sla TEXT', 'primeira_resposta_em DOUBLE PRECISION', 'pausas TEXT',
-                                          'pausado_desde DOUBLE PRECISION', 'sla_avisos TEXT', 'prazo_manual DOUBLE PRECISION'])
+                                          'pausado_desde DOUBLE PRECISION', 'sla_avisos TEXT', 'prazo_manual DOUBLE PRECISION',
+                                          'avaliacao INTEGER', 'avaliacao_comentario TEXT'])
         conn.execute('CREATE INDEX IF NOT EXISTS idx_chamados_empresa ON chamados (empresa_id, status)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_chamado_mensagens ON chamado_mensagens (chamado_id, criado_em)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_chamado_anexos ON chamado_anexos (chamado_id)')

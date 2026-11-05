@@ -90,7 +90,7 @@ def pode_ver(conn, usuario, chamado):
 
 
 # ------------------------------------------------------------------ prazo do contrato (SLA)
-PAUSAM = ('aguardando', 'resolvido')   # o relógio para enquanto a MD espera o cliente
+PAUSAM = ('aguardando', 'resolvido', 'fechado')   # o relógio para enquanto a MD espera o cliente (ou depois de resolvido)
 DIAS_SEMANA = ('seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom')
 
 
@@ -466,6 +466,7 @@ TEXTO_DO_STATUS = {
     'aguardando': 'A MD pediu uma informação: aguardando o cliente',
     'resolvido': 'Marcado como resolvido: aguardando a confirmação do cliente',
     'cancelado': 'Chamado cancelado',
+    'fechado': 'Chamado fechado',
 }
 ORDEM_PRIORIDADE = {'critica': 0, 'alta': 1, 'media': 2, 'baixa': 3}
 ORDEM_STATUS = {'novo': 0, 'atendimento': 1, 'aguardando': 2, 'resolvido': 3, 'fechado': 4, 'cancelado': 5}
@@ -525,23 +526,24 @@ def fila(conn, filtros=None):
     return lista, contadores
 
 
-def _mudar_status(conn, autor, chamado, novo, agora):
+def _mudar_status(conn, autor, chamado, novo, agora, texto=None):
     """Grava a troca de status com o evento no histórico; devolve o novo status."""
     if novo == chamado['status']:
         return novo
     campos = {'status': novo, 'atualizado_em': agora}
     if novo == 'resolvido':
         campos['resolvido_em'] = agora
-    elif chamado['status'] == 'resolvido':
+    elif novo != 'fechado' and chamado.get('resolvido_em'):
         campos['resolvido_em'] = None
-    if novo == 'cancelado':
+    if novo in ENCERRADOS:
         campos['fechado_em'] = agora
     elif chamado['status'] in ENCERRADOS:
         campos['fechado_em'] = None
     _ajustar_pausa(conn, chamado, novo, agora)
-    texto = TEXTO_DO_STATUS[novo]
-    if novo == 'atendimento' and chamado['status'] in ('aguardando', 'resolvido', 'cancelado', 'fechado'):
-        texto = 'Reaberto pela MD: em atendimento'
+    if texto is None:
+        texto = TEXTO_DO_STATUS[novo]
+        if novo == 'atendimento' and chamado['status'] in ('aguardando', 'resolvido', 'cancelado', 'fechado'):
+            texto = 'Reaberto pela MD: em atendimento'
     evento(conn, chamado['id'], autor, texto, agora)
     conn.execute(f"UPDATE chamados SET {', '.join(k + ' = ?' for k in campos)} WHERE id = ?", (*campos.values(), chamado['id']))
     chamado.update(campos)
@@ -615,8 +617,11 @@ def responder(conn, autor, chamado, texto, arquivos=(), nota=False, depois=None,
     md = eh_md(autor)
     if nota and not md:
         raise Recusa('Só a MD escreve notas internas.', 403)
-    if chamado['status'] in ENCERRADOS:
-        raise Recusa('Este chamado está encerrado. Abra um novo chamado se precisar.')
+    if chamado['status'] in ENCERRADOS and (md or nota or not pode_reabrir(chamado, agora)):
+        if md and chamado['status'] == 'fechado':
+            raise Recusa('Este chamado está fechado. Use "Reabrir" para voltar a atendê-lo.')
+        raise Recusa(f'Este chamado está encerrado. Abra um novo chamado se precisar.' if chamado['status'] == 'cancelado'
+                     else f'Este chamado fechou há mais de {REABRIR_DIAS} dias. Abra um novo chamado se precisar.')
     if depois and (not md or depois not in ('aguardando', 'resolvido')):
         raise Recusa('Ação inválida.')
     if depois and nota:
@@ -643,15 +648,110 @@ def responder(conn, autor, chamado, texto, arquivos=(), nota=False, depois=None,
         elif not md and status == 'resolvido':
             status = 'atendimento'
             evento(conn, chamado['id'], autor, 'O cliente disse que ainda não resolveu: em atendimento de novo', agora + 0.000002)
+        elif not md and status == 'fechado':
+            status = 'atendimento'
+            evento(conn, chamado['id'], autor, f'Reaberto por {nome_de(autor)}: em atendimento de novo', agora + 0.000002)
     if md and not nota and not chamado.get('primeira_resposta_em'):
         conn.execute('UPDATE chamados SET primeira_resposta_em = ? WHERE id = ?', (agora, chamado['id']))
         chamado['primeira_resposta_em'] = agora
     if status != chamado['status']:
         _ajustar_pausa(conn, chamado, status, agora)
-    reaberto = chamado['status'] == 'resolvido' and status != 'resolvido'
-    conn.execute('UPDATE chamados SET status = ?, responsavel_id = ?, atualizado_em = ?' + (', resolvido_em = NULL' if reaberto else '') +
-                 ' WHERE id = ?', (status, responsavel, agora, chamado['id']))
+    reaberto = chamado['status'] in ('resolvido', 'fechado') and status == 'atendimento'
+    conn.execute('UPDATE chamados SET status = ?, responsavel_id = ?, atualizado_em = ?' +
+                 (', resolvido_em = NULL, fechado_em = NULL' if reaberto else '') + ' WHERE id = ?',
+                 (status, responsavel, agora, chamado['id']))
     chamado.update(status=status, responsavel_id=responsavel)
     if depois:
         status = _mudar_status(conn, autor, chamado, depois, agora + 0.000003)
     return status
+
+
+# ------------------------------------------------------------------ fechamento (entrega 4)
+DIAS_PARA_FECHAR = 3     # dias úteis em "resolvido" sem resposta do cliente
+REABRIR_DIAS = 7         # o cliente reabre um chamado fechado até 7 dias depois
+SISTEMA = {'id': None, 'nome': 'NexoDesk', 'usuario': 'nexodesk', 'role': 'Administrador Master'}
+
+
+def prazo_fechamento(c):
+    """Quando o chamado resolvido fecha sozinho: no mesmo horário, 3 dias úteis depois (sem fins de semana e feriados)."""
+    if c['status'] != 'resolvido' or not c.get('resolvido_em'):
+        return None
+    d = datetime.fromtimestamp(c['resolvido_em'], FUSO_BR)
+    contados = 0
+    while contados < DIAS_PARA_FECHAR:
+        d += timedelta(days=1)
+        if sla.dia_util(d.date()):
+            contados += 1
+    return d.timestamp()
+
+
+def pode_reabrir(c, agora=None):
+    agora = agora or time.time()
+    return c['status'] == 'fechado' and bool(c.get('fechado_em')) and agora - c['fechado_em'] <= REABRIR_DIAS * 86400
+
+
+def confirmar(conn, autor, c, nota=None, comentario=None, agora=None):
+    """O cliente confirma a solução (com nota de 1 a 5, opcional) e o chamado fecha; a MD pode fechar sem nota."""
+    agora = agora or time.time()
+    if c['status'] != 'resolvido':
+        raise Recusa('Só um chamado resolvido pode ser fechado.')
+    md = eh_md(autor)
+    if md and nota:
+        raise Recusa('A nota é do cliente.')
+    if nota not in (None, ''):
+        try:
+            nota = int(nota)
+        except (TypeError, ValueError):
+            raise Recusa('A nota vai de 1 a 5.')
+        if not 1 <= nota <= 5:
+            raise Recusa('A nota vai de 1 a 5.')
+    else:
+        nota = None
+    comentario = (comentario or '').strip()[:1000] or None
+    texto = (f'Fechado pela MD ({nome_de(autor)})' if md else
+             f'{nome_de(autor)} confirmou a solução' + (f' · nota {nota}/5' if nota else ''))
+    _mudar_status(conn, autor, c, 'fechado', agora, texto)
+    if not md:
+        conn.execute('UPDATE chamados SET avaliacao = ?, avaliacao_comentario = ? WHERE id = ?', (nota, comentario, c['id']))
+        c.update(avaliacao=nota, avaliacao_comentario=comentario)
+    return c
+
+
+def cancelar_pelo_cliente(conn, autor, c, agora=None):
+    """O admin da empresa cancela um chamado que ainda não foi resolvido."""
+    if eh_md(autor) or nivel(conn, autor) != 'admin':
+        raise Recusa('Só o administrador da empresa cancela chamados.', 403)
+    if c['status'] not in ('novo', 'atendimento', 'aguardando'):
+        raise Recusa('Este chamado não pode ser cancelado agora.')
+    agora = agora or time.time()
+    _mudar_status(conn, autor, c, 'cancelado', agora, f'Cancelado por {nome_de(autor)}')
+    return c
+
+
+def fechar_automaticos(conn, agora=None):
+    """Fecha os chamados resolvidos há 3 dias úteis sem resposta do cliente; devolve os fechados."""
+    agora = agora or time.time()
+    fechados = []
+    for row in conn.execute(_CAMPOS + " WHERE c.status = 'resolvido'").fetchall():
+        c = _enfeitar(row)
+        prazo = prazo_fechamento(c)
+        if prazo and agora >= prazo:
+            _mudar_status(conn, SISTEMA, c, 'fechado', agora,
+                          f'Fechado automaticamente: {DIAS_PARA_FECHAR} dias úteis sem resposta depois de resolvido')
+            fechados.append(c)
+    return fechados
+
+
+def aviso_cliente(c, o_que, texto=None):
+    """Mensagem para o grupo de Telegram do cliente (nunca de chamado interno nem de nota interna)."""
+    if c.get('interno'):
+        return None
+    titulos = {'resposta': '💬 A MD respondeu', 'aguardando': '❓ A MD precisa de uma informação',
+               'resolvido': '✅ A MD marcou como resolvido', 'fechado': '🔒 Chamado fechado'}
+    trecho = ''
+    if texto:
+        trecho = texto.strip().replace('\n', ' ')
+        trecho = '\n' + html.escape(trecho[:280] + ('…' if len(trecho) > 280 else ''))
+    fim = {'aguardando': '\nResponda no NexoHub para o atendimento continuar.',
+           'resolvido': '\nConfirme no NexoHub se resolveu. Sem resposta, ele fecha sozinho em 3 dias úteis.'}.get(o_que, '')
+    return f"{titulos[o_que]}: <b>chamado #{c['numero']}</b>\n📝 {html.escape(c['titulo'])}{trecho}{fim}"
