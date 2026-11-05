@@ -1098,6 +1098,9 @@ def verificar_prazos_desk(agora=None):
         avisos = nexodesk.verificar_prazos(conn, agora)
         for texto in avisos:
             notifications.enqueue(texto, None, conn=conn)
+        for c in nexodesk.fechar_automaticos(conn, agora):
+            _desk_aviso_cliente(conn, c, 'fechado', 'Fechado automaticamente: 3 dias úteis sem resposta depois de resolvido. '
+                                                    f'Se o problema voltar, responda no chamado em até {nexodesk.REABRIR_DIAS} dias para reabrir.')
         conn.commit()
         return avisos
     finally:
@@ -1416,6 +1419,16 @@ def _desk_aviso_md(conn, texto):
         print(f'⚠️ NexoDesk: aviso do Telegram não entrou na fila: {erro}')
 
 
+def _desk_aviso_cliente(conn, c, o_que, texto=None):
+    """Avisa o grupo de Telegram da empresa, se ela tiver um configurado."""
+    try:
+        mensagem = nexodesk.aviso_cliente(c, o_que, texto)
+        if mensagem and notifications.client_has_chat(c['empresa_id'], conn):
+            notifications.enqueue(mensagem, c['empresa_id'], conn=conn)
+    except Exception as erro:  # noqa: BLE001
+        print(f'⚠️ NexoDesk: aviso ao cliente não entrou na fila: {erro}')
+
+
 def _desk_chamado_visivel(conn, numero):
     autor = _autor(conn)
     chamado = nexodesk.chamado(conn, numero)
@@ -1516,6 +1529,9 @@ def desk_ver(numero):
         md = nexodesk.eh_md(autor)
         return render_template('desk/chamado.html', md=md, c=c, mensagens=nexodesk.mensagens(conn, numero, md),
                                equipe=nexodesk.equipe_md(conn) if md else [], eu=autor['id'],
+                               fecha_sozinho=nexodesk.quando_txt(nexodesk.prazo_fechamento(c)) if nexodesk.prazo_fechamento(c) else None,
+                               pode_reabrir=nexodesk.pode_reabrir(c), reabrir_dias=nexodesk.REABRIR_DIAS,
+                               pode_cancelar=not md and nexodesk.nivel(conn, autor) == 'admin' and c['status'] in ('novo', 'atendimento', 'aguardando'),
                                prazo_manual_local=datetime.fromtimestamp(c['prazo_manual'], hub.FUSO_BR).strftime('%Y-%m-%dT%H:%M') if c.get('prazo_manual') else None,
                                prioridades=nexodesk.PRIORIDADES, categorias=nexodesk.CATEGORIAS,
                                max_arquivos=nexodesk.MAX_ARQUIVOS, max_mb=nexodesk.MAX_ARQUIVO // (1024 * 1024),
@@ -1543,6 +1559,8 @@ def desk_responder(numero):
         if not nexodesk.eh_md(autor):
             _desk_aviso_md(conn, f"💬 <b>Chamado #{numero}</b>: nova mensagem de {html.escape(nexodesk.nome_de(autor))}\n"
                                  f"🏢 {html.escape(c['empresa'])} · {html.escape(c['titulo'])}")
+        elif not nota:
+            _desk_aviso_cliente(conn, c, request.form.get('depois') or 'resposta', request.form.get('texto'))
         conn.commit()
         return jsonify(status='OK', situacao=status), 201
     finally:
@@ -1572,6 +1590,58 @@ def desk_atualizar(numero):
             return jsonify(error=r.mensagem), r.status
         conn.commit()
         return jsonify(status='OK', chamado={k: c[k] for k in ('status', 'prioridade', 'categoria', 'responsavel_id')})
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/desk/<int:numero>/confirmar', methods=['POST'])
+def desk_confirmar(numero):
+    """O cliente confirma a solução (nota de 1 a 5 opcional) e o chamado fecha; a MD também pode fechar."""
+    if 'user_id' not in session:
+        return jsonify(error='Faça login de novo.'), 401
+    dados = request.get_json(silent=True) or {}
+    conn = database.get_db()
+    try:
+        autor, c = _desk_chamado_visivel(conn, numero)
+        if not c:
+            return jsonify(error='Chamado não encontrado.'), 404
+        try:
+            nexodesk.confirmar(conn, autor, c, dados.get('nota'), dados.get('comentario'))
+        except nexodesk.Recusa as r:
+            conn.rollback()
+            return jsonify(error=r.mensagem), r.status
+        if nexodesk.eh_md(autor):
+            _desk_aviso_cliente(conn, c, 'fechado')
+        else:
+            nota = f" · nota {c['avaliacao']}/5" if c.get('avaliacao') else ''
+            _desk_aviso_md(conn, f"🔒 <b>Chamado #{numero}</b>: {html.escape(nexodesk.nome_de(autor))} confirmou a solução{nota}\n"
+                                 f"🏢 {html.escape(c['empresa'])} · {html.escape(c['titulo'])}"
+                                 + (f"\n💬 {html.escape(c['avaliacao_comentario'][:280])}" if c.get('avaliacao_comentario') else ''))
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/desk/<int:numero>/cancelar', methods=['POST'])
+def desk_cancelar(numero):
+    """O administrador da empresa cancela um chamado ainda não resolvido."""
+    if 'user_id' not in session:
+        return jsonify(error='Faça login de novo.'), 401
+    conn = database.get_db()
+    try:
+        autor, c = _desk_chamado_visivel(conn, numero)
+        if not c:
+            return jsonify(error='Chamado não encontrado.'), 404
+        try:
+            nexodesk.cancelar_pelo_cliente(conn, autor, c)
+        except nexodesk.Recusa as r:
+            conn.rollback()
+            return jsonify(error=r.mensagem), r.status
+        _desk_aviso_md(conn, f"🚫 <b>Chamado #{numero}</b> cancelado por {html.escape(nexodesk.nome_de(autor))}\n"
+                             f"🏢 {html.escape(c['empresa'])} · {html.escape(c['titulo'])}")
+        conn.commit()
+        return jsonify(status='OK')
     finally:
         conn.close()
 
