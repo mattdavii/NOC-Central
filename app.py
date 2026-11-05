@@ -4,6 +4,7 @@ from flask_socketio import SocketIO
 import database
 import levantamento
 import mapa_rede
+import nexoreport
 import notifications
 import oui
 import diagnostico
@@ -1031,6 +1032,43 @@ if GUARDIAO_LIGADO:
     threading.Thread(target=_loop_saude, name="noc-saude", daemon=True).start()
 
 # ==========================================
+# 📄 NEXOREPORT: FECHAMENTO DO MÊS
+# ==========================================
+NEXOREPORT_INTERVALO = max(60, int(os.environ.get('NEXOREPORT_INTERVALO', '900')))
+_nexoreport_falhas_avisadas = set()
+
+
+def fechar_relatorios_pendentes(agora=None):
+    """Dia 1 às 00:30 (e a cada 15 min até dar certo): fecha o mês anterior das empresas com o NexoReport."""
+    conn = database.get_db()
+    try:
+        emitidos, falhas = nexoreport.fechar_pendentes(conn, agora, RETENCAO_MEDICOES_S)
+        for empresa_id in emitidos:
+            acessos.registrar(conn, None, 'automático', empresa_id, 'relatorio_emitido', str(empresa_id), 'fechamento automático do mês')
+        novas = [f for f in falhas if f[0] not in _nexoreport_falhas_avisadas]
+        if novas:
+            _nexoreport_falhas_avisadas.update(e for e, _ in novas)
+            enviar_telegram('📄 <b>NEXOREPORT</b>\n\nNão consegui fechar o mês de ' + ', '.join(f'empresa {e}' for e, _ in novas) +
+                            '. Vou tentar de novo a cada 15 min; as medições ficam guardadas por 40 dias.', conn=conn)
+        conn.commit()
+        return emitidos, falhas
+    finally:
+        conn.close()
+
+
+def _loop_nexoreport():
+    while True:
+        time.sleep(NEXOREPORT_INTERVALO)
+        try:
+            fechar_relatorios_pendentes()
+        except Exception as e:
+            print(f"⚠️ NexoReport: {e}")
+
+
+if GUARDIAO_LIGADO:
+    threading.Thread(target=_loop_nexoreport, name="noc-nexoreport", daemon=True).start()
+
+# ==========================================
 # 🔐 SISTEMA DE LOGIN E SESSÃO
 # ==========================================
 @app.route('/login', methods=['GET', 'POST'])
@@ -2052,14 +2090,14 @@ def gerenciar_usuarios():
     if bloqueio: return bloqueio
     conn = database.get_db()
     if session['role'] == 'Administrador Master':
-        usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id, totp_ativo, empresa_master FROM clientes ORDER BY id DESC").fetchall()
+        usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id, totp_ativo, empresa_master, meta_disponibilidade FROM clientes ORDER BY id DESC").fetchall()
         clientes_pais = conn.execute("SELECT id, nome, usuario, empresa_master FROM clientes WHERE role = 'Cliente' ORDER BY empresa_master DESC, nome").fetchall()
     else:
         if session['role'] == 'Cliente': tenant_id = session['user_id']
         else:
             user_info = db_execute(conn, "SELECT cliente_pai_id FROM clientes WHERE id = ?", (session['user_id'],)).fetchone()
             tenant_id = user_info['cliente_pai_id']
-        usuarios = db_execute(conn, "SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id, totp_ativo, empresa_master FROM clientes WHERE cliente_pai_id = ? ORDER BY id DESC", (tenant_id,)).fetchall()
+        usuarios = db_execute(conn, "SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id, totp_ativo, empresa_master, meta_disponibilidade FROM clientes WHERE cliente_pai_id = ? ORDER BY id DESC", (tenant_id,)).fetchall()
         clientes_pais = []
     try:
         usuarios = [dict(u) for u in usuarios]
@@ -2188,6 +2226,23 @@ def alterar_senha_user(id_user):
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
 
+_SEM_MUDANCA = object()
+
+
+def _meta_do_pedido(data):
+    """Meta em % (90 a 100, até duas casas); vazio volta para a referência padrão (None)."""
+    valor = data.get('meta_disponibilidade')
+    if valor in (None, ''):
+        return None
+    try:
+        meta = float(str(valor).replace(',', '.'))
+    except ValueError:
+        raise ValueError('Meta de disponibilidade inválida.') from None
+    if not math.isfinite(meta) or not 90 <= meta <= 100:
+        raise ValueError('A meta de disponibilidade deve ficar entre 90% e 100%.')
+    return round(meta, 2)
+
+
 @app.route('/api/v2/usuarios/<int:id_user>/info', methods=['PUT'])
 def editar_usuario_info(id_user):
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return jsonify({"error": "Acesso Negado"}), 403
@@ -2204,6 +2259,8 @@ def editar_usuario_info(id_user):
             raise ValueError('URL do logo deve usar HTTP ou HTTPS.')
         tg_token = bounded_text(data.get('telegram_token', ''), 'Token Telegram', maximum=256, allow_empty=True)
         tg_chat = bounded_text(data.get('telegram_chat_id', ''), 'Chat Telegram', maximum=128, allow_empty=True)
+        # Meta de disponibilidade do contrato (NexoReport): só a MD define; vazio = referência padrão.
+        meta = _meta_do_pedido(data) if 'meta_disponibilidade' in data and session.get('role') == 'Administrador Master' else _SEM_MUDANCA
     except ValueError as error:
         return jsonify(error=str(error), status='Erro de validação'), 400
     conn = database.get_db()
@@ -2212,6 +2269,12 @@ def editar_usuario_info(id_user):
         if existing:
             return jsonify(error='Login já está em uso.', status='Erro: Login já está em uso.'), 409
         db_execute(conn, "UPDATE clientes SET nome = ?, usuario = ?, logo_url = ?, telegram_token = ?, telegram_chat_id = ? WHERE id = ?", (nome, usuario, logo_url, tg_token, tg_chat, id_user))
+        if meta is not _SEM_MUDANCA:
+            alvo = conn.execute('SELECT role, meta_disponibilidade FROM clientes WHERE id = ?', (id_user,)).fetchone()
+            if alvo and alvo['role'] == 'Cliente' and alvo['meta_disponibilidade'] != meta:
+                conn.execute('UPDATE clientes SET meta_disponibilidade = ? WHERE id = ?', (meta, id_user))
+                _auditar_alvo(conn, 'meta_disponibilidade', id_user,
+                              f"{alvo['meta_disponibilidade'] if alvo['meta_disponibilidade'] is not None else 'padrão'} → {meta if meta is not None else 'padrão'}")
         _auditar_alvo(conn, 'usuario_editado', id_user)
         conn.commit(); status = "OK"
     except Exception:
@@ -2871,7 +2934,8 @@ def processar_host_info(conn, mac, sensor, info):
 MAX_ITENS_MEDICAO = 200
 LIMITE_ITEM_MEDICAO = 32 * 1024
 NOTIFICAR_ATE_S = 600  # medição mais velha que isso (veio do buffer) entra na linha do tempo sem Telegram
-RETENCAO_MEDICOES_S = max(1, int(os.environ.get('DIAG_RETENCAO_DIAS', '30'))) * 86400
+# 40 dias: o fechamento do mês (NexoReport, dia 1) precisa das medições do mês inteiro, com folga para atraso.
+RETENCAO_MEDICOES_S = max(1, int(os.environ.get('DIAG_RETENCAO_DIAS', '40'))) * 86400
 ICONES_GRAVIDADE = {'Crítica': '🚨', 'Alerta': '⚠️', 'Aviso': 'ℹ️'}
 _ultima_limpeza_medicoes = 0.0
 

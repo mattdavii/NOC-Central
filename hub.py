@@ -75,13 +75,13 @@ def duracao(segundos):
     return ' '.join(p for p in partes if p)
 
 
-def _janelas_do_mes(conn, empresa_id, agora):
-    """Base das contas de disponibilidade: de quando cada site conta no mês e os trechos sem comunicação dele.
+def janelas_periodo(conn, empresa_id, inicio, fim):
+    """Base das contas de disponibilidade num período [inicio, fim): de quando cada site conta e os trechos sem comunicação.
 
-    Cada site fora de manutenção conta do início do mês ou da primeira medição dele no mês (sensor instalado no
-    meio do mês não ganha dias que não monitorou). Uma queda aberta antes do mês prova que o site já existia no
-    dia 1; sem medição nenhuma (agente antigo, que não envia medições), conta o mês inteiro."""
-    inicio, mes = inicio_do_mes(agora)
+    Cada site fora de manutenção conta do início do período ou da primeira medição dele no período (sensor instalado
+    no meio do mês não ganha dias que não monitorou). Uma queda aberta antes do período prova que o site já existia;
+    sem medição nenhuma no período, conta o período inteiro (agente antigo, que não envia medições), a não ser que a
+    primeira medição do site seja posterior ao período: aí ele ainda não estava instalado e fica fora."""
     filtro, params = ('', ()) if empresa_id is None else (' AND cliente_id = ?', (empresa_id,))
     macs = [r['mac_id'] for r in conn.execute(
         'SELECT mac_id FROM sensores WHERE COALESCE(em_manutencao, 0) = 0' + filtro, params).fetchall()]
@@ -89,23 +89,81 @@ def _janelas_do_mes(conn, empresa_id, agora):
     for mac in macs:
         aberta = conn.execute("SELECT 1 FROM diagnosticos WHERE sensor_mac = ? AND chave = 'sem_comunicacao' "
                               'AND inicio < ? AND (fim IS NULL OR fim > ?) LIMIT 1', (mac, inicio, inicio)).fetchone()
-        primeira = conn.execute('SELECT MIN(coletado_em) AS t FROM medicoes_rede WHERE sensor_mac = ? AND coletado_em >= ?',
-                                (mac, inicio)).fetchone()['t']
-        comeco[mac] = inicio if aberta or primeira is None else min(agora, max(inicio, primeira))
+        primeira = conn.execute('SELECT MIN(coletado_em) AS t FROM medicoes_rede WHERE sensor_mac = ? AND coletado_em >= ? '
+                                'AND coletado_em < ?', (mac, inicio, fim)).fetchone()['t']
+        if primeira is None and not aberta:
+            depois = conn.execute('SELECT MIN(coletado_em) AS t FROM medicoes_rede WHERE sensor_mac = ? AND coletado_em >= ?',
+                                  (mac, fim)).fetchone()['t']
+            if depois is not None:
+                antes = conn.execute('SELECT 1 FROM medicoes_rede WHERE sensor_mac = ? AND coletado_em < ? LIMIT 1',
+                                     (mac, inicio)).fetchone()
+                if not antes:
+                    continue  # instalado depois do período
+        comeco[mac] = inicio if aberta or primeira is None else min(fim, max(inicio, primeira))
     quedas, por_site = [], {}
     if comeco:
         marcas = ','.join('?' * len(comeco))
         quedas = conn.execute(
-            "SELECT sensor_mac, inicio, fim FROM diagnosticos WHERE chave = 'sem_comunicacao' "
+            "SELECT id, sensor_mac, inicio, fim, grupo_id FROM diagnosticos WHERE chave = 'sem_comunicacao' "
             f'AND sensor_mac IN ({marcas}) AND inicio < ? AND (fim IS NULL OR fim > ?)',
-            (*comeco, agora, inicio)).fetchall()
+            (*comeco, fim, inicio)).fetchall()
     for q in quedas:
-        ini, fim = max(q['inicio'], comeco[q['sensor_mac']]), min(q['fim'] or agora, agora)
-        if fim > ini:
-            por_site.setdefault(q['sensor_mac'], []).append((ini, fim))
+        ini, fim_q = max(q['inicio'], comeco[q['sensor_mac']]), min(q['fim'] or fim, fim)
+        if fim_q > ini:
+            por_site.setdefault(q['sensor_mac'], []).append((ini, fim_q))
     quedas = [q for q in quedas if q['sensor_mac'] in por_site]
     trechos = {mac: _unir(t) for mac, t in por_site.items()}
+    return comeco, trechos, quedas
+
+
+def _janelas_do_mes(conn, empresa_id, agora):
+    """Mês corrente até agora (a página inicial do NexoHub)."""
+    inicio, mes = inicio_do_mes(agora)
+    comeco, trechos, quedas = janelas_periodo(conn, empresa_id, inicio, agora)
     return inicio, mes, comeco, trechos, quedas
+
+
+def limites_do_mes(ano, mes):
+    """Início e fim (exclusivo) de um mês no horário de Brasília, em epoch."""
+    inicio = datetime(ano, mes, 1, tzinfo=FUSO_BR)
+    fim = datetime(ano + (mes == 12), 1 if mes == 12 else mes + 1, 1, tzinfo=FUSO_BR)
+    return inicio.timestamp(), fim.timestamp()
+
+
+def disponibilidade_periodo(conn, empresa_id, inicio, fim, meta=None):
+    """Disponibilidade de um período fechado, no total e por site (as mesmas regras do card do mês)."""
+    comeco, trechos, quedas = janelas_periodo(conn, empresa_id, inicio, fim)
+    por_site = {}
+    for mac, c in comeco.items():
+        periodo = fim - c
+        fora = sum(b - a for a, b in trechos.get(mac, []))
+        pct = _pct_exibido(fora, periodo) if periodo > 0 else None
+        por_site[mac] = {'desde': c, 'periodo_s': int(periodo), 'fora_s': int(fora), 'pct': pct,
+                         'quedas': sum(1 for q in quedas if q['sensor_mac'] == mac),
+                         'situacao': situacao(pct, meta) if pct is not None else None}
+    periodo = sum(fim - c for c in comeco.values())
+    fora = sum(s['fora_s'] for s in por_site.values())
+    pct = _pct_exibido(fora, periodo) if periodo > 0 else None
+    return {'pct': pct, 'fora_s': int(fora), 'periodo_s': int(periodo), 'quedas': len(quedas),
+            'situacao': situacao(pct, meta) if pct is not None else None, 'por_site': por_site,
+            'comeco': comeco, 'trechos': trechos, 'lista_quedas': [dict(q) for q in quedas]}
+
+
+META_PADRAO = 99.5  # sem meta no contrato, a referência do NexoHub
+
+
+def situacao(pct, meta=None):
+    """Contra a meta do contrato: 'ok' a partir dela, 'atencao' até 1 p.p. abaixo, 'critico' mais que isso."""
+    meta = META_PADRAO if meta is None else meta
+    if pct >= meta:
+        return 'ok'
+    return 'atencao' if pct >= meta - 1 else 'critico'
+
+
+def meta_da_empresa(conn, empresa_id):
+    row = conn.execute('SELECT meta_disponibilidade FROM clientes WHERE id = ?', (empresa_id,)).fetchone()
+    valor = row['meta_disponibilidade'] if row else None
+    return float(valor) if valor is not None else None
 
 
 def _faixa(pct):
