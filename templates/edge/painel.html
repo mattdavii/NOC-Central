@@ -198,6 +198,8 @@
                         <button class="action-btn btn-secondary" onclick="baixar('/api/levantamento.csv')"><i class="fa-solid fa-file-csv"></i> CSV</button>
                         {% if xlsx %}<button class="action-btn btn-secondary" onclick="baixar('/api/levantamento.xlsx')"><i class="fa-solid fa-file-excel"></i> XLSX</button>{% endif %}
                         <button class="action-btn btn-secondary" onclick="baixar('/api/levantamento.json')" title="Formato para IA e integrações"><i class="fa-solid fa-file-code"></i> JSON</button>
+                        <button class="action-btn btn-secondary" onclick="baixar('/api/diagrama.svg?baixar=1')" title="Diagrama da rede em imagem vetorial"><i class="fa-solid fa-diagram-project"></i> Diagrama (SVG)</button>
+                        <a class="action-btn btn-secondary" href="/diagrama" target="_blank" rel="noopener" title="Abre o diagrama para imprimir ou salvar em PDF"><i class="fa-solid fa-print"></i> Diagrama (PDF)</a>
                     </span>
                 </h3>
                 <div class="kpis" id="disp-kpis"></div>
@@ -216,7 +218,7 @@
                     <label class="sr-only" for="disp-busca">Buscar dispositivo</label>
                     <input type="search" id="disp-busca" class="cresce" placeholder="Buscar por IP, MAC, nome, marca ou modelo">
                     <label class="sr-only" for="disp-status">Status</label>
-                    <select id="disp-status"><option value="">Todos os status</option><option value="online">Online</option><option value="sem_icmp">Sem ICMP</option><option value="desconhecido">Desconhecido</option></select>
+                    <select id="disp-status"><option value="">Todos os status</option><option value="online">Online</option><option value="sem_icmp">Sem ICMP</option><option value="desconhecido">Desconhecido</option><option value="offline">Fora da rede</option></select>
                     <label class="sr-only" for="disp-categoria">Categoria</label>
                     <select id="disp-categoria"><option value="">Todas as categorias</option><option value="cftv">Só CFTV</option><option value="comunicacao">Só comunicação</option><option value="outros">Outros</option></select>
                     <label class="chk"><input type="checkbox" id="disp-ocultar"> Ocultar nomes na exportação</label>
@@ -433,7 +435,7 @@
 
     // ---------- dispositivos, CFTV e comunicação (a cada 20 s)
     let dispositivos = [];
-    const rotuloStatus = {online: ['pill-ok', 'Online'], sem_icmp: ['pill-warn', 'Sem ICMP'], desconhecido: ['pill-unknown', 'Desconhecido'], offline: ['pill-fail', 'Offline']};
+    const rotuloStatus = {online: ['pill-ok', 'Online'], sem_icmp: ['pill-warn', 'Sem ICMP'], desconhecido: ['pill-unknown', 'Desconhecido'], offline: ['pill-fail', 'Fora da rede']};
     const ident = d => d.cftv || d.comunicacao || null;
     const presente = d => d.status === 'online' || d.status === 'sem_icmp';   // sem ICMP = está na rede, só não responde a ping
     const categoria = d => d.cftv ? 'cftv' : d.comunicacao ? 'comunicacao' : 'outros';
@@ -452,9 +454,10 @@
                 <td>${esc(nomeDe(d)) || '<span class="txt-muted">—</span>'}${d.nome.fonte && !d.apelido ? `<span class="sub">${esc(d.nome.fonte)}</span>` : ''}</td>
                 <td>${esc(d.marca.valor || (d.mac_privado ? 'MAC privado' : '—'))}</td>
                 <td>${tipo} ${esc(d.modelo || '')}${d.firmware ? `<span class="sub">${esc(d.firmware)}</span>` : ''}</td><td><span class="status-pill ${cls}">${txt}</span></td>
-                <td class="mono">${d.latencia_ms ? d.latencia_ms + ' ms' : '—'}</td>
+                <td class="mono">${d.latencia_ms ? d.latencia_ms + ' ms' : d.status === 'offline' && d.visto_em ? `<span class="sub" title="Visto pela última vez">visto ${esc(vistoEm(d.visto_em))}</span>` : '—'}</td>
                 <td><span class="acoes-linha">${d.papel === 'sensor' ? '' : `${d.mac ? `<button title="Renomear" data-acao="renomear" data-mac="${esc(d.mac)}" data-nome="${esc(nomeDe(d))}">Renomear</button>` : ''}
-                    <button title="Vigiar no Radar de Pings" data-acao="vigiar" data-ip="${esc(d.ip)}" data-nome="${esc(nomeDe(d) || d.modelo || d.ip)}">Vigiar</button>`}</span></td></tr>`;
+                    <button title="Vigiar no Radar de Pings" data-acao="vigiar" data-ip="${esc(d.ip)}" data-nome="${esc(nomeDe(d) || d.modelo || d.ip)}">Vigiar</button>
+                    ${d.status === 'offline' ? `<button title="Tirar do inventário (volta se aparecer de novo na rede)" data-acao="esquecer" data-chave="${esc(d.mac || 'ip:' + d.ip)}" data-nome="${esc(nomeDe(d) || d.ip)}">Esquecer</button>` : ''}`}</span></td></tr>`;
         }).join('') : '<tr><td colspan="8" class="hist-empty">Nenhum dispositivo com esses filtros.</td></tr>';
     }
 
@@ -549,8 +552,19 @@
         const b = ev.target.closest('button[data-acao]');
         if (!b) return;
         if (b.dataset.acao === 'renomear') renomear(b.dataset.mac, b.dataset.nome);
+        else if (b.dataset.acao === 'esquecer') esquecer(b.dataset.chave, b.dataset.nome);
         else vigiar(b.dataset.ip, b.dataset.nome);
     });
+    function vistoEm(iso) {
+        const d = new Date(iso);
+        return isNaN(d) ? iso : d.toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'});
+    }
+    async function esquecer(chave, nome) {
+        if (!confirm(`Tirar "${nome}" do inventário? Ele sai da lista e do diagrama, e volta sozinho se aparecer de novo na rede.`)) return;
+        const r = await fetch('/api/inventario/esquecer', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({chave})});
+        if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.erro || 'Não foi possível esquecer.'); return; }
+        carregarDispositivos();
+    }
 
     async function carregarRedesExtras() {
         try {

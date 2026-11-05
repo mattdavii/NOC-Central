@@ -238,6 +238,7 @@
                     <button class="node-btn" id="btn-menu-rename"><i class="fa-solid fa-pen"></i> Renomear</button>
                     <button class="node-btn" id="btn-menu-watchdog"><i class="fa-solid fa-eye"></i> Adicionar ao Watchdog</button>
                     <button class="node-btn btn-red" id="btn-menu-wol"><i class="fa-solid fa-bolt"></i> Enviar Wake-on-LAN</button>
+                    <button class="node-btn" id="btn-menu-esquecer" title="Tira do inventário um equipamento que saiu da rede; ele volta sozinho se aparecer de novo"><i class="fa-solid fa-eraser"></i> Esquecer (fora da rede)</button>
                     <button class="node-btn" onclick="document.getElementById('node-menu').style.display='none'" style="text-align: center; color: var(--text-muted); background: transparent; margin-top: 10px;">Fechar</button>
                 </div>
             </div>
@@ -409,9 +410,18 @@
                 <button onclick="baixarLevantamento('xlsx')" style="width: 100%; padding: 12px; margin-bottom: 10px; background: var(--green); color: var(--bg-base); border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
                     <i class="fa-solid fa-file-excel"></i> Planilha (.xlsx)
                 </button>
-                <a href="/api/v2/sensor/{{ sensor.mac_id|urlencode }}/diagrama.svg" style="display:block; text-align:center; box-sizing:border-box; width: 100%; padding: 12px; margin-bottom: 10px; background: var(--purple); color: #fff; border-radius: 8px; font-weight: bold; text-decoration:none;">
-                    <i class="fa-solid fa-diagram-project"></i> Diagrama da rede (imagem SVG)
-                </a>
+                <button onclick="baixarLevantamento('csv')" style="width: 100%; padding: 12px; margin-bottom: 10px; background: var(--bg-input); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; font-weight: bold; cursor: pointer;">
+                    <i class="fa-solid fa-file-csv"></i> Lista em CSV
+                </button>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <a href="/api/v2/sensor/{{ sensor.mac_id|urlencode }}/diagrama.pdf" style="display:block; text-align:center; box-sizing:border-box; padding: 12px; background: var(--purple); color: #fff; border-radius: 8px; font-weight: bold; text-decoration:none;">
+                        <i class="fa-solid fa-file-pdf"></i> Diagrama (PDF)
+                    </a>
+                    <a href="/api/v2/sensor/{{ sensor.mac_id|urlencode }}/diagrama.svg" style="display:block; text-align:center; box-sizing:border-box; padding: 12px; background: var(--purple); color: #fff; border-radius: 8px; font-weight: bold; text-decoration:none;">
+                        <i class="fa-solid fa-diagram-project"></i> Diagrama (SVG)
+                    </a>
+                </div>
+                <p style="margin: 0 0 12px; font-size: 0.8em; color: var(--text-muted);">A lista e o diagrama trazem também os equipamentos que já saíram da rede, marcados como fora da rede, com a última vez em que foram vistos.</p>
                 <button onclick="baixarLevantamento('json')" style="width: 100%; padding: 12px; background: var(--blue); color: var(--bg-base); border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
                     <i class="fa-solid fa-code"></i> JSON para IA
                 </button>
@@ -809,6 +819,8 @@
                         document.getElementById('btn-menu-rename').onclick = () => { renomearDisp(node.mac, node.rawName); menu.style.display = 'none'; };
                         document.getElementById('btn-menu-watchdog').onclick = () => { monitorarIP(node.ip, node.rawName); menu.style.display = 'none'; };
                         document.getElementById('btn-menu-wol').onclick = () => { dispararWoL(node.mac, node.rawName); menu.style.display = 'none'; };
+                        document.getElementById('btn-menu-esquecer').style.display = descoberto && node.status === 'offline' ? '' : 'none';
+                        document.getElementById('btn-menu-esquecer').onclick = () => { menu.style.display = 'none'; esquecerDisp(node.mac || 'ip:' + node.ip, node.rawName); };
 
                         menu.style.left = (params.event.srcEvent.clientX + 15) + 'px';
                         menu.style.top = (params.event.srcEvent.clientY) + 'px';
@@ -927,6 +939,12 @@
             } catch (error) { alert("Erro ao comunicar com a Central."); }
         }
 
+        async function esquecerDisp(chave, nome) {
+            if (!confirm(`Tirar "${nome}" do inventário? Ele sai da lista e do diagrama, e volta sozinho se aparecer de novo na rede.`)) return;
+            const r = await fetch(`/api/v2/sensor/${encodeURIComponent(mac_id)}/esquecer_dispositivo`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({chave})});
+            if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.error || 'Não foi possível esquecer o equipamento.'); return; }
+            carregarRadar();
+        }
         async function renomearDisp(mac, atual) { let n = prompt("Nome para este dispositivo:", atual); if(n) { await fetch('/api/v2/renomear_dispositivo', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mac, nome:n, sensor_mac:mac_id}) }); carregarRadar(); } }
 
         async function carregarCustomIPs() {
@@ -1042,7 +1060,7 @@
         });
     </script>
 <script src="/static/location.js?v=2.3"></script>
-<script src="/static/mapa_rede.js?v=3"></script>
+<script src="/static/mapa_rede.js?v=4"></script>
 <script src="/static/acoes.js?v=2.2.0-rc1-auto"></script>
 <script src="/static/host.js?v=2.2.0-rc1"></script>
 <script src="/static/diagnostico.js?v=2.2.0-rc1"></script>

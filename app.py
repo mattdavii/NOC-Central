@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request, render_template, session, redirect, u
 from werkzeug.security import check_password_hash, generate_password_hash
 from flask_socketio import SocketIO
 import database
+import edge_local
 import levantamento
 import mapa_rede
 import nexoreport
@@ -670,8 +671,9 @@ def _pode_gerenciar_usuarios(conn):
 # ==========================================
 # Só o que o sensor precisa para rodar; docs e o instalador do Windows ficam no servidor.
 ARQUIVOS_AGENTE = ['nexopulse_edge.py', 'host_metrics.py', 'starlink.py', 'netdiag.py', 'nomes_rede.py', 'fila_envio.py', 'requirements-agente.txt',
-                   'descoberta.py', 'localizacao_sensor.py', 'cftv.py', 'comunicacao.py', 'oui.py', 'dados/oui.tsv.gz', 'levantamento.py', 'edge_local.py',
+                   'descoberta.py', 'localizacao_sensor.py', 'cftv.py', 'comunicacao.py', 'oui.py', 'dados/oui.tsv.gz', 'levantamento.py', 'edge_local.py', 'mapa_rede.py',
                    'templates/edge/painel.html', 'templates/edge/relatorio.html', 'templates/edge/login.html',
+                   'templates/edge/diagrama.html',
                    'static/product.css', 'static/sensor.css', 'static/brand.js', 'static/host.js',
                    'static/brand/nexopulse/favicon.svg', 'static/brand/nexopulse/favicon.ico',
                    'static/brand/nexopulse/logo-claro.svg', 'static/brand/nexopulse/logo-escuro.svg',
@@ -1877,10 +1879,13 @@ def report_data():
                 app.logger.exception('Falha ao processar métricas do host')
 
         comando = consumir_comando(conn, mac)
+        mapa_para_sensor = _mapa_para_o_sensor(conn, mac, data.get('mapa_rede_versao'))
         conn.close()
 
         socketio.emit('atualizacao_global', {})
         resposta = {"status": "OK", "command": comando}
+        if mapa_para_sensor:
+            resposta["mapa_rede"] = mapa_para_sensor
         if PAINEL_LOCAL:
             resposta["painel_local"] = PAINEL_LOCAL
         return jsonify(resposta)
@@ -2194,20 +2199,37 @@ def atualizar_dispositivos():
     nomes_salvos = {row['mac']: row['nome'] for row in conn.execute("SELECT mac, nome FROM nomes_conhecidos").fetchall()}
     visto_em = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
-    db_execute(conn, "DELETE FROM dispositivos WHERE sensor_mac = ?", (sensor_mac,))
-    for disp in normalized_devices:
+    # Inventário por MAC: quem trocou de IP é o mesmo registro (sem duplicar) e quem saiu da rede
+    # continua, como "offline", com o visto_em da última vez em que apareceu (o diagrama precisa dele).
+    existentes = {}
+    for row in conn.execute('SELECT id, ip, mac FROM dispositivos WHERE sensor_mac = ? ORDER BY id DESC', (sensor_mac,)).fetchall():
+        chave = edge_local.chave_dispositivo(dict(row))
+        if chave in existentes:
+            db_execute(conn, 'DELETE FROM dispositivos WHERE id = ?', (row['id'],))   # duplicado de antes desta versão
+        else:
+            existentes[chave] = row['id']
+    atuais = {}
+    for disp in edge_local.deduplicar_por_mac(normalized_devices):
+        chave = edge_local.chave_dispositivo(disp)
+        if chave not in atuais or edge_local._ip_ordem(disp['ip']) < edge_local._ip_ordem(atuais[chave]['ip']):
+            atuais[chave] = disp
+    campos = ('ip', 'mac', 'fabricante', 'nome_custom', 'status', 'latencia', 'neighbor_state', 'fabricante_registro',
+              'fabricante_fonte', 'hostname', 'hostname_fonte', 'visto_em', 'modelo', 'tipo_equipamento', 'cftv',
+              'comunicacao', 'firmware', 'rede_origem')
+    for chave, disp in atuais.items():
         # nome_custom é só o apelido dado pelo usuário (ou o gateway); a tela cai para hostname e marca.
         nome = nomes_salvos.get(disp['mac']) or ("Gateway / Roteador" if disp['ip'] == ip_gw else None)
-        db_execute(
-            conn,
-            "INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, nome_custom, status, latencia, neighbor_state, "
-            "fabricante_registro, fabricante_fonte, hostname, hostname_fonte, visto_em, modelo, tipo_equipamento, cftv, "
-            "comunicacao, firmware, rede_origem) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (sensor_mac, disp['ip'], disp['mac'], disp['fabricante'], nome, disp['status'], disp.get('latencia'),
-             disp.get('neighbor_state'), disp['fabricante_registro'], disp['fabricante_fonte'], disp['hostname'],
-             disp['hostname_fonte'], visto_em, disp['modelo'], disp['tipo_equipamento'], disp['cftv'],
-             disp['comunicacao'], disp['firmware'], disp['rede_origem'])
-        )
+        valores = {**{k: disp.get(k) for k in campos}, 'nome_custom': nome, 'visto_em': visto_em}
+        if chave in existentes:
+            db_execute(conn, f"UPDATE dispositivos SET {', '.join(k + ' = ?' for k in campos)} WHERE id = ?",
+                       (*[valores[k] for k in campos], existentes[chave]))
+        else:
+            db_execute(conn, f"INSERT INTO dispositivos (sensor_mac, {', '.join(campos)}) VALUES ({', '.join('?' for _ in range(len(campos) + 1))})",
+                       (sensor_mac, *[valores[k] for k in campos]))
+    fora = [i for chave, i in existentes.items() if chave not in atuais]
+    if fora:
+        db_execute(conn, f"UPDATE dispositivos SET status = 'offline', latencia = NULL, neighbor_state = NULL "
+                         f"WHERE id IN ({', '.join('?' for _ in fora)})", fora)
     conn.commit()
     conn.close()
     return jsonify({"status": "OK"})
@@ -2523,6 +2545,21 @@ def exportar_levantamento(mac_id, formato):
     resposta.headers['Cache-Control'] = 'no-store'
     return resposta
 
+def _mapa_para_o_sensor(conn, mac, versao_do_sensor):
+    """Diagrama salvo na Central para o painel local desenhar sem internet: só vai quando mudou."""
+    try:
+        row = conn.execute('SELECT mapa_rede, mapa_rede_em, provedor FROM sensores WHERE mac_id = ?', (mac,)).fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+    versao = f"{row['mapa_rede_em'] or 'sem-mapa'}|{row['provedor'] or ''}"
+    if versao_do_sensor == versao:
+        return None
+    mapa = mapa_rede.carregar(row['mapa_rede']) if row['mapa_rede'] else None
+    return {'versao': versao, 'em': row['mapa_rede_em'], 'provedor': row['provedor'], 'mapa': mapa}
+
+
 def _arvore_do_sensor(conn, mac_id):
     sensor = db_execute(conn, "SELECT * FROM sensores WHERE mac_id = ?", (mac_id,)).fetchone()
     if not sensor:
@@ -2530,6 +2567,29 @@ def _arvore_do_sensor(conn, mac_id):
     dispositivos = db_execute(conn, "SELECT * FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
     mapa = mapa_rede.carregar(sensor['mapa_rede'])
     return sensor, mapa, mapa_rede.montar(sensor, dispositivos, mapa)
+
+
+@app.route('/api/v2/sensor/<mac_id>/esquecer_dispositivo', methods=['POST'])
+def esquecer_dispositivo(mac_id):
+    """Tira do inventário um equipamento que saiu da rede (volta sozinho se aparecer de novo)."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    chave = str((request.get_json(silent=True) or {}).get('chave') or '')[:80]
+    if not chave:
+        return jsonify(error='Equipamento não informado.'), 400
+    conn = database.get_db()
+    try:
+        alvo = next((r for r in conn.execute("SELECT id, ip, mac, status FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
+                     if edge_local.chave_dispositivo(dict(r)) == chave), None)
+        if not alvo:
+            return jsonify(error='Equipamento não encontrado.'), 404
+        if alvo['status'] != 'offline':
+            return jsonify(error='Só dá para esquecer um equipamento que está fora da rede.'), 400
+        conn.execute('DELETE FROM dispositivos WHERE id = ?', (alvo['id'],))
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
 
 
 @app.route('/api/v2/sensor/<mac_id>/mapa_rede', methods=['GET', 'PUT'])
@@ -2575,6 +2635,34 @@ def diagrama_rede_svg(mac_id):
     resposta.headers['Content-Disposition'] = f'attachment; filename="diagrama-rede-{nome}.svg"'
     resposta.headers['Cache-Control'] = 'no-store'
     return resposta
+
+@app.route('/api/v2/sensor/<mac_id>/diagrama.pdf')
+def diagrama_rede_pdf(mac_id):
+    """O mesmo diagrama em PDF (A4 paisagem), para mandar ao cliente ou anexar a um laudo."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        sensor, _, arvore = _arvore_do_sensor(conn, mac_id)
+    finally:
+        conn.close()
+    if sensor is None:
+        return jsonify(error='Sensor não encontrado.'), 404
+    try:
+        from weasyprint import HTML
+    except ImportError:
+        return jsonify(error='Geração de PDF indisponível neste servidor; use o SVG.'), 501
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    pagina = render_template('pdf/diagrama.html', sensor=dict(sensor), svg=mapa_rede.svg(arvore),
+                             informado=bool(sensor['mapa_rede']), fora=sum(1 for n in arvore if n.get('status') == 'offline'),
+                             emitido=datetime.now(hub.FUSO_BR).strftime('%d/%m/%Y %H:%M'))
+    pdf = HTML(string=pagina, base_url=raiz + '/').write_pdf()
+    nome = re.sub(r'[^A-Za-z0-9]+', '-', unicodedata.normalize('NFKD', sensor['nome_local'] or 'sensor').encode('ascii', 'ignore').decode()).strip('-') or 'sensor'
+    resposta = app.response_class(pdf, mimetype='application/pdf')
+    resposta.headers['Content-Disposition'] = f'attachment; filename="diagrama-rede-{nome}.pdf"'
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
+
 
 @app.route('/manifest.json')
 def manifest():

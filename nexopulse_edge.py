@@ -529,6 +529,12 @@ def get_topologia_arp(contexto_rede, forcar_varredura=False):
             futures = [executor.submit(checar_status, d) for d in encontrados.values()]
             for future in concurrent.futures.as_completed(futures):
                 dispositivos.append(future.result())
+    # Mesmo MAC em dois IPs (trocou de IP e o antigo ainda está na tabela ARP): fica só o atual.
+    dispositivos = edge_local.deduplicar_por_mac(dispositivos)
+    ip_do_mac = {d["mac"]: d["ip"] for d in dispositivos if d.get("mac")}
+    for ip, (anterior, _visto) in list(_vistos_l2.items()):
+        if anterior.get("mac") in ip_do_mac and ip_do_mac[anterior["mac"]] != ip:
+            del _vistos_l2[ip]
     for d in dispositivos:
         if d["status"] != "desconhecido" or d.get("neighbor_state") != "AUSENTE":
             _vistos_l2[d["ip"]] = (dict(d), agora)
@@ -616,9 +622,12 @@ def init_local_db():
     conn.commit()
     conn.close()
     EVENTOS_LOCAIS.iniciar()
+    INVENTARIO_LOCAL.iniciar()
 
 # Registro de eventos do painel local: guarda NOC_LOG_DIAS dias (padrão 90), até NOC_LOG_MAX linhas.
 EVENTOS_LOCAIS = edge_local.Eventos('sensor_local.db')
+# Todos os equipamentos já vistos, um por MAC (os que saem da rede continuam, como "fora da rede").
+INVENTARIO_LOCAL = edge_local.InventarioLocal('sensor_local.db')
 
 def log_local_event(tipo, detalhes, gravidade="Alerta"):
     EVENTOS_LOCAIS.registrar(tipo, detalhes, gravidade)
@@ -1270,6 +1279,9 @@ def loop_telemetria():
             if forcar_varredura:
                 ultima_varredura = agora
                 dados_sensores["visto_em"] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+                # Inventário local: um registro por MAC; quem saiu da rede fica como "fora da rede".
+                try: INVENTARIO_LOCAL.atualizar(dispositivos, dados_sensores["visto_em"])
+                except Exception as e: log_local_event("Inventário", f"Falha ao gravar o inventário local: {e}", "Alerta")
 
             # 🌪️ MÓDULO STORM WATCH
             gw_mac_atual = None
@@ -1328,7 +1340,9 @@ def loop_telemetria():
                 "link_speed_mbps": rede.get("link_speed_mbps", 0),
                 "interface_up": rede.get("interface_up", False),
                 "scan_rede": rede.get("scan_rede", ""),
-                "scan_limitado": rede.get("scan_limitado", False)
+                "scan_limitado": rede.get("scan_limitado", False),
+                # Versão do diagrama que o sensor já tem: a Central só manda o mapa quando mudou.
+                "mapa_rede_versao": (edge_local.ler_config('sensor_local.db', 'mapa_rede') or {}).get('versao')
             }
             
             espera_remota = TELEMETRIA_INTERVALO
@@ -1337,6 +1351,11 @@ def loop_telemetria():
                 with urllib.request.urlopen(req, timeout=REPORT_TIMEOUT) as response:
                     res_data = json.loads(response.read().decode('utf-8'))
                     _confirmar_atualizacao()
+                    try:
+                        if isinstance(res_data.get("mapa_rede"), dict):
+                            edge_local.gravar_config('sensor_local.db', 'mapa_rede', res_data["mapa_rede"])
+                    except Exception as e:
+                        log_local_event("Diagrama", f"Falha ao gravar o diagrama recebido da Central: {e}", "Alerta")
                     try:
                         if ACESSO_LOCAL.receber_da_central(res_data.get("painel_local")):
                             log_local_event("Acesso local", "Usuário/senha do painel local atualizados pela Central.", "OK")
@@ -1557,6 +1576,7 @@ def exigir_login_local():
 class _EstadoPainel:
     """O que o painel local lê do agente (edge_local.criar_blueprint)."""
     acesso = ACESSO_LOCAL
+    inventario = INVENTARIO_LOCAL
     dados = staticmethod(lambda: dados_sensores)
     mac = staticmethod(lambda: get_mac())
     nome = staticmethod(lambda: NOME_SENSOR)

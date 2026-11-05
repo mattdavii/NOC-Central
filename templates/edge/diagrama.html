@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="same-origin">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.svg" type="image/svg+xml">
+    <title>NexoPulse Edge - Diagrama da rede - {{ sensor.nome_local }}</title>
+    <link rel="stylesheet" href="/static/fontes/fontes.css?v=1">
+    <style>
+        /* Folha em paisagem, cores fixas de papel, como o relatório local. */
+        @page { size: A4 landscape; margin: 12mm; }
+        body { font-family: 'Inter', system-ui, sans-serif; color: #1f2937; margin: 0; background: #eee; }
+        .folha { color-scheme: light; background: #fff; width: 297mm; min-height: 210mm; margin: 20px auto; padding: 28px 32px; box-sizing: border-box; box-shadow: 0 0 10px rgba(0,0,0,.1); }
+        .cabeca { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; padding-bottom: 14px; margin-bottom: 18px;
+                  border-bottom: 3px solid #05A9DC; border-image: linear-gradient(90deg, #05A9DC, #05A88C) 1; }
+        .cabeca img { height: 40px; }
+        h1 { font-size: 20px; color: #082E56; margin: 0 0 4px; }
+        .sub { font-size: 12px; color: #526077; }
+        .desenho svg { width: 100%; height: auto; }
+        .legenda { display: flex; gap: 18px; flex-wrap: wrap; font-size: 11px; color: #526077; margin-top: 14px; }
+        .legenda i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+        .nota { font-size: 11px; color: #526077; margin-top: 8px; line-height: 1.5; }
+        .barra-acoes { position: sticky; top: 0; background: #082E56; color: #fff; padding: 10px 20px; display: flex; gap: 12px; align-items: center; justify-content: space-between; font-size: 14px; }
+        .barra-acoes a, .barra-acoes button { background: #05A9DC; color: #082E56; border: 0; border-radius: 6px; padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer; text-decoration: none; }
+        @media print { body { background: #fff; } .folha { box-shadow: none; margin: 0; width: auto; min-height: auto; padding: 0; } .barra-acoes { display: none; } }
+    </style>
+</head>
+<body>
+<div class="barra-acoes">
+    <span>Diagrama da rede · {{ sensor.nome_local }}</span>
+    <span style="display:flex; gap:8px;">
+        <a href="/api/diagrama.svg?baixar=1">Baixar imagem (SVG)</a>
+        <button type="button" onclick="window.print()">Imprimir ou salvar em PDF</button>
+    </span>
+</div>
+<main class="folha">
+    <div class="cabeca">
+        <div>
+            <h1>Diagrama da rede · {{ sensor.nome_local }}</h1>
+            <div class="sub">Sensor {{ sensor.ip_sensor or '—' }} · gateway {{ sensor.ip_gateway or '—' }} · emitido em {{ data_emissao }}, pelo painel local</div>
+        </div>
+        <img src="/static/brand/nexopulse/logo-claro.svg" alt="NexoPulse">
+    </div>
+    <div class="desenho">{{ svg | safe }}</div>
+    <div class="legenda">
+        <span><i style="background:#05A88C"></i>Online</span><span><i style="background:#E39B2D"></i>Sem resposta a ping</span>
+        <span><i style="background:#DC2626"></i>Fora da rede (visto antes)</span>
+    </div>
+    <p class="nota">
+        {% if informado %}Ligações informadas pela equipe na Central{% if mapa_em %} (diagrama salvo em {{ mapa_em }}){% endif %}; o que não foi informado aparece ligado direto no gateway.
+        {% else %}O diagrama ainda não foi editado na Central: todos os equipamentos aparecem ligados direto no gateway, como o sensor os enxerga.{% endif %}
+        Equipamentos que saíram da rede continuam no desenho, em vermelho, até serem esquecidos no painel.
+    </p>
+</main>
+</body>
+</html>

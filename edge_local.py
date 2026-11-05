@@ -32,6 +32,10 @@ try:
     import oui
 except ImportError:
     oui = None
+try:
+    import mapa_rede
+except ImportError:
+    mapa_rede = None
 
 RETENCAO_DIAS = max(1, int(os.environ.get("NOC_LOG_DIAS", "90")))
 MAX_EVENTOS = max(1000, int(os.environ.get("NOC_LOG_MAX", "100000")))
@@ -265,6 +269,108 @@ def _mesma_origem():
     return urlparse(origem).netloc == request.host
 
 
+# ------------------------------------------------------------------ inventário de dispositivos
+# Quanto mais "presente" o status, melhor: decide qual IP fica quando o mesmo MAC aparece em dois.
+_PESO_STATUS = {'online': 0, 'sem_icmp': 1, 'desconhecido': 2, 'offline': 3}
+
+
+def chave_dispositivo(d):
+    """Identidade do equipamento: o MAC; sem MAC (outra VLAN, rede roteada), o IP."""
+    mac = (d.get('mac') or '').strip().upper().replace('-', ':')
+    return mac if mac else ('ip:' + str(d.get('ip') or ''))
+
+
+def deduplicar_por_mac(dispositivos):
+    """Um mesmo MAC em dois IPs (o equipamento trocou de IP e o antigo ainda está na tabela ARP)
+    vira um só, com o IP mais "presente". Dois IPs igualmente presentes ficam os dois: é um
+    equipamento com mais de um IP de verdade. Sem MAC, nada muda."""
+    grupos, sem_mac = {}, []
+    for d in dispositivos:
+        if d.get('mac'):
+            grupos.setdefault(chave_dispositivo(d), []).append(d)
+        else:
+            sem_mac.append(d)
+    saida = list(sem_mac)
+    for itens in grupos.values():
+        melhor = min(_PESO_STATUS.get(d.get('status'), 2) for d in itens)
+        saida += [d for d in itens if _PESO_STATUS.get(d.get('status'), 2) == melhor]
+    return saida
+
+
+class InventarioLocal:
+    """Todos os equipamentos que o sensor já viu, um por MAC, no sensor_local.db.
+
+    Quem sai da rede continua no inventário como "offline", com a hora em que foi visto pela última
+    vez; quem troca de IP é o mesmo registro (o IP é atualizado pelo MAC, sem duplicar)."""
+
+    def __init__(self, caminho='sensor_local.db'):
+        self.caminho = caminho
+        self._trava = threading.Lock()
+
+    def _conectar(self):
+        conn = sqlite3.connect(self.caminho, timeout=5)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def iniciar(self):
+        with self._conectar() as conn:
+            conn.execute('CREATE TABLE IF NOT EXISTS inventario_rede (chave TEXT PRIMARY KEY, mac TEXT, ip TEXT, dados TEXT, '
+                         'primeiro_visto TEXT, ultimo_visto TEXT, presente INTEGER DEFAULT 1)')
+
+    def atualizar(self, topologia, visto_em=None):
+        """Grava a varredura: atualiza (pelo MAC) quem apareceu e marca os demais como fora da rede."""
+        visto_em = visto_em or datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+        atuais = {}
+        for d in deduplicar_por_mac(topologia or []):
+            chave = chave_dispositivo(d)
+            if chave in atuais:   # mais de um IP presente para o mesmo MAC: fica o menor
+                if _ip_ordem(d.get('ip')) >= _ip_ordem(atuais[chave].get('ip')):
+                    continue
+            atuais[chave] = d
+        with self._trava, self._conectar() as conn:
+            for chave, d in atuais.items():
+                dados = json.dumps({k: v for k, v in d.items() if k not in ('visto_em',)}, ensure_ascii=False, default=str)
+                conn.execute('INSERT INTO inventario_rede (chave, mac, ip, dados, primeiro_visto, ultimo_visto, presente) '
+                             'VALUES (?, ?, ?, ?, ?, ?, 1) ON CONFLICT(chave) DO UPDATE SET ip=excluded.ip, mac=excluded.mac, '
+                             'dados=excluded.dados, ultimo_visto=excluded.ultimo_visto, presente=1',
+                             (chave, d.get('mac'), d.get('ip'), dados, visto_em, visto_em))
+            if atuais:
+                marcas = ','.join('?' for _ in atuais)
+                conn.execute(f'UPDATE inventario_rede SET presente=0 WHERE chave NOT IN ({marcas})', list(atuais))
+            else:
+                conn.execute('UPDATE inventario_rede SET presente=0')
+        return len(atuais)
+
+    def listar(self):
+        """Equipamentos no formato da varredura; os fora da rede vêm com status "offline"."""
+        with self._conectar() as conn:
+            rows = conn.execute('SELECT * FROM inventario_rede').fetchall()
+        saida = []
+        for r in rows:
+            try:
+                d = json.loads(r['dados'] or '{}')
+            except ValueError:
+                d = {}
+            d.update(ip=r['ip'], mac=r['mac'], visto_em=r['ultimo_visto'], primeiro_visto=r['primeiro_visto'],
+                     chave=r['chave'])
+            if not r['presente']:
+                d.update(status='offline', latencia=None, neighbor_state=None)
+            saida.append(d)
+        return sorted(saida, key=lambda d: _ip_ordem(d.get('ip')))
+
+    def esquecer(self, chave):
+        """Remove do inventário um equipamento que saiu da rede (os presentes voltam na próxima varredura)."""
+        with self._trava, self._conectar() as conn:
+            return conn.execute('DELETE FROM inventario_rede WHERE chave=? AND presente=0', (chave,)).rowcount > 0
+
+
+def _ip_ordem(ip):
+    try:
+        return int(ipaddress.ip_address(str(ip)))
+    except ValueError:
+        return 1 << 40
+
+
 # ------------------------------------------------------------------ levantamento local
 def linhas_dispositivos(topologia, nomes_salvos, visto_em):
     """Converte a última varredura do Edge para o formato de linhas que levantamento.montar usa."""
@@ -282,7 +388,7 @@ def linhas_dispositivos(topologia, nomes_salvos, visto_em):
             'nome_custom': nomes_salvos.get(mac),
             'hostname': d.get('hostname'), 'hostname_fonte': d.get('hostname_fonte'),
             'status': d.get('status'), 'latencia': d.get('latencia'),
-            'neighbor_state': d.get('neighbor_state'), 'visto_em': visto_em,
+            'neighbor_state': d.get('neighbor_state'), 'visto_em': d.get('visto_em') or visto_em,
             'modelo': d.get('modelo'), 'tipo_equipamento': d.get('tipo_equipamento'), 'cftv': d.get('cftv'),
             'comunicacao': d.get('comunicacao'), 'firmware': d.get('firmware'), 'rede_origem': d.get('rede'),
         })
@@ -351,11 +457,40 @@ def criar_blueprint(eventos, estado):
             'cliente_nome': None, 'last_seen': datetime.now().isoformat(timespec='seconds'),
         }
 
-    def montar_levantamento(ocultar_nomes=False):
+    def linhas_atuais():
+        """Todos os equipamentos já vistos (inventário local, com os que saíram da rede); antes da
+        primeira varredura gravada, a varredura em memória."""
+        inventario = getattr(estado, 'inventario', None)
+        lista = inventario.listar() if inventario else []
+        if not lista:
+            lista = estado.dados().get('topologia') or []
+        return linhas_dispositivos(lista, estado.nomes_salvos(), estado.visto_em())
+
+    def mapa_salvo():
+        return ler_config(eventos.caminho, 'mapa_rede') or {}
+
+    def sensor_do_diagrama():
         d = estado.dados()
-        linhas = linhas_dispositivos(d.get('topologia') or [], estado.nomes_salvos(), estado.visto_em())
-        return levantamento.montar(contexto_sensor(), linhas, ocultar_nomes=ocultar_nomes,
-                                   gerado_por=f'NexoPulse Edge {estado.versao()} (painel local)')
+        ctx = contexto_sensor()
+        ctx.update(status='ONLINE', ping_gateway=d.get('ping_gateway'), provedor=mapa_salvo().get('provedor'))
+        return ctx
+
+    def arvore():
+        try:
+            mapa = mapa_rede.validar(mapa_salvo().get('mapa'))
+        except (ValueError, TypeError, AttributeError):
+            mapa = mapa_rede.carregar(None)   # sem diagrama salvo (ou inválido): todos ligados no gateway
+        return mapa_rede.montar(sensor_do_diagrama(), linhas_atuais(), mapa)
+
+    def montar_levantamento(ocultar_nomes=False):
+        dados = levantamento.montar(sensor_do_diagrama(), linhas_atuais(), ocultar_nomes=ocultar_nomes,
+                                    gerado_por=f'NexoPulse Edge {estado.versao()} (painel local)')
+        if mapa_rede and not dados['nomes_ocultos']:
+            try:
+                dados['diagrama'] = mapa_rede.resumo_ligacoes(arvore())
+            except Exception:   # diagrama inválido não impede a lista
+                pass
+        return dados
 
     def baixar(conteudo, tipo, nome):
         resposta = Response(conteudo, mimetype=tipo)
@@ -419,6 +554,41 @@ def criar_blueprint(eventos, estado):
                           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                           levantamento.nome_arquivo(dados, 'xlsx'))
         return jsonify(erro='Formato inválido: use json, csv ou xlsx.'), 400
+
+    @bp.route('/api/diagrama.svg')
+    def api_diagrama_svg():
+        if mapa_rede is None:
+            return jsonify(erro='Módulo do diagrama ausente neste sensor; atualize o agente.'), 501
+        resposta = Response(mapa_rede.svg(arvore()), mimetype='image/svg+xml')
+        resposta.headers['Cache-Control'] = 'no-store'
+        if request.args.get('baixar') == '1':
+            resposta.headers['Content-Disposition'] = f'attachment; filename="diagrama-rede-{_slug(estado.nome())}.svg"'
+        return resposta
+
+    @bp.route('/diagrama')
+    def pagina_diagrama():
+        """Diagrama em página própria, pronto para imprimir ou salvar em PDF pelo navegador."""
+        if mapa_rede is None:
+            return 'Módulo do diagrama ausente neste sensor; atualize o agente.', 501
+        info = mapa_salvo()
+        try:
+            em = datetime.fromisoformat(str(info['em'])).astimezone().strftime('%d/%m/%Y %H:%M') if info.get('em') else None
+        except ValueError:
+            em = None
+        return render_template('edge/diagrama.html', sensor=contexto_sensor(), svg=mapa_rede.svg(arvore()),
+                               informado=bool(info.get('mapa')), mapa_em=em,
+                               data_emissao=datetime.now().strftime('%d/%m/%Y às %H:%M'))
+
+    @bp.route('/api/inventario/esquecer', methods=['POST'])
+    def api_esquecer():
+        inventario = getattr(estado, 'inventario', None)
+        chave = str((request.json or {}).get('chave') or '')[:80]
+        if not inventario or not chave:
+            return jsonify(erro='Equipamento não informado.'), 400
+        if not inventario.esquecer(chave):
+            return jsonify(erro='Só dá para esquecer um equipamento que está fora da rede.'), 400
+        eventos.registrar('Inventário', f'Equipamento {chave} removido do inventário local.', 'OK')
+        return jsonify(ok=True)
 
     @bp.route('/api/config/redes_extras', methods=['GET', 'POST'])
     def config_redes_extras():
