@@ -2,11 +2,16 @@
 
 Escopo: docs/nexodesk/ESCOPO.md. Horários em epoch (segundos, UTC); o número do chamado é o id da tabela.
 """
+import html
+import json
 import os
 import time
+from datetime import datetime, timedelta
 
 import acessos
 import database
+import sla
+from hub import FUSO_BR
 
 CATEGORIAS = {
     'rede': ('Internet e rede', 'fa-wifi'),
@@ -84,6 +89,180 @@ def pode_ver(conn, usuario, chamado):
     return chamado['solicitante_id'] == usuario['id'] or ve_toda_empresa(conn, usuario)
 
 
+# ------------------------------------------------------------------ prazo do contrato (SLA)
+PAUSAM = ('aguardando', 'resolvido')   # o relógio para enquanto a MD espera o cliente
+DIAS_SEMANA = ('seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom')
+
+
+def sla_da_empresa(conn, empresa_id):
+    """Configuração de SLA do contrato da empresa (a tabela padrão se não houver uma própria)."""
+    row = conn.execute('SELECT sla_config FROM clientes WHERE id = ?', (empresa_id,)).fetchone()
+    if row and row['sla_config']:
+        try:
+            return {**sla.normalizar(json.loads(row['sla_config'])), 'proprio': True}
+        except (ValueError, TypeError):
+            pass
+    return {**json.loads(json.dumps(sla.PADRAO)), 'proprio': False}
+
+
+def definir_sla(conn, empresa_id, config):
+    """Grava o SLA do contrato (None volta para a tabela padrão). Chamados já abertos não mudam."""
+    valor = None if config is None else json.dumps(sla.normalizar(config))
+    conn.execute('UPDATE clientes SET sla_config = ? WHERE id = ?', (valor, empresa_id))
+
+
+def quando_txt(ts, agora=None):
+    """Data e hora em Brasília, curta: "hoje 13:30", "amanhã 10:00", "seg 09/11 10:00"."""
+    agora = agora or time.time()
+    d, hoje = datetime.fromtimestamp(ts, FUSO_BR), datetime.fromtimestamp(agora, FUSO_BR).date()
+    hora = d.strftime('%H:%M')
+    if d.date() == hoje:
+        return f'hoje {hora}'
+    if d.date() == hoje + timedelta(days=1):
+        return f'amanhã {hora}'
+    if d.date() == hoje - timedelta(days=1):
+        return f'ontem {hora}'
+    return f'{DIAS_SEMANA[d.weekday()]} {d.strftime("%d/%m")} {hora}'
+
+
+def duracao_txt(segundos):
+    segundos = max(0, int(segundos))
+    h, m = divmod(segundos // 60, 60)
+    if h and m:
+        return f'{h} h {m:02d}'
+    return f'{h} h' if h else f'{m} min'
+
+
+def _pausas(c):
+    try:
+        lista = [list(p) for p in json.loads(c.get('pausas') or '[]')]
+    except (TypeError, ValueError):
+        lista = []
+    if c.get('pausado_desde'):
+        lista.append([c['pausado_desde'], None])
+    return lista
+
+
+def _relogio(c, meta_h, fim, agora, horario, pausas):
+    meta_s = meta_h * 3600
+    usado = sla.consumido(c['criado_em'], fim or agora, horario, pausas)
+    r = {'meta_h': meta_h, 'meta_txt': duracao_txt(meta_s), 'usado_s': usado, 'pct': min(100, round(100 * usado / meta_s)) if meta_s else 100}
+    if fim:
+        r.update(estado='cumprido' if usado <= meta_s else 'estourou', em_txt=duracao_txt(usado), fim_txt=quando_txt(fim, agora))
+        return r
+    vence = sla.vencimento(c['criado_em'], meta_s, horario, pausas)
+    falta = meta_s - usado
+    r.update(vence_em=vence, vence_txt=quando_txt(vence, agora) if vence else None, falta_txt=duracao_txt(abs(falta)))
+    if c.get('pausado_desde'):
+        r['estado'] = 'pausado'
+    elif falta <= 0:
+        r['estado'] = 'estourado'
+    elif usado >= sla.PERTO * meta_s:
+        r['estado'] = 'perto'
+    else:
+        r['estado'] = 'ok'
+    return r
+
+
+def prazos(c, agora=None):
+    """Os relógios do chamado (1ª resposta e solução) e o próximo a vencer; None sem SLA (ou cancelado)."""
+    agora = agora or time.time()
+    if c['status'] == 'cancelado':
+        return None
+    if c.get('interno') or not c.get('sla'):
+        if not c.get('prazo_manual'):
+            return None
+        fim = c.get('resolvido_em') if c['status'] in ('resolvido', 'fechado') else None
+        total = max(1.0, c['prazo_manual'] - c['criado_em'])
+        usado = (fim or agora) - c['criado_em']
+        r = {'manual': True, 'vence_em': c['prazo_manual'], 'vence_txt': quando_txt(c['prazo_manual'], agora),
+             'pct': min(100, round(100 * usado / total)), 'falta_txt': duracao_txt(abs(c['prazo_manual'] - agora))}
+        if fim:
+            r['estado'] = 'cumprido' if fim <= c['prazo_manual'] else 'estourou'
+        else:
+            r['estado'] = 'estourado' if agora >= c['prazo_manual'] else 'perto' if usado >= sla.PERTO * total else 'ok'
+        return {'manual': True, 'solucao': r, 'proximo': r if not fim else None, 'horario': None}
+    cfg = json.loads(c['sla'])
+    horario = cfg['horario']
+    resp_h, sol_h = cfg['prazos'].get(c['prioridade'], sla.PADRAO['prazos'][c['prioridade']])
+    pausas = _pausas(c)
+    resposta = _relogio(c, resp_h, c.get('primeira_resposta_em'), agora, horario, pausas)
+    fim_sol = c.get('resolvido_em') if c['status'] in ('resolvido', 'fechado') else None
+    solucao = _relogio(c, sol_h, fim_sol, agora, horario, pausas)
+    proximo = None
+    if c['status'] in ABERTOS and not fim_sol:
+        proximo = dict(solucao if c.get('primeira_resposta_em') else resposta, qual='solucao' if c.get('primeira_resposta_em') else 'resposta')
+    return {'manual': False, 'horario': horario, 'horario_txt': sla.HORARIOS[horario], 'resposta': resposta,
+            'solucao': solucao, 'proximo': proximo}
+
+
+def _ajustar_pausa(conn, c, novo, agora):
+    """Abre ou fecha a pausa do relógio quando o status entra ou sai de "esperando o cliente"."""
+    antigo = c['status']
+    pausas = [list(p) for p in json.loads(c.get('pausas') or '[]')]
+    desde = c.get('pausado_desde')
+    if novo in PAUSAM and antigo not in PAUSAM and not desde:
+        desde = agora
+    elif novo not in PAUSAM and desde:
+        pausas.append([desde, agora])
+        desde = None
+    else:
+        return
+    conn.execute('UPDATE chamados SET pausas = ?, pausado_desde = ? WHERE id = ?', (json.dumps(pausas), desde, c['id']))
+    c['pausas'], c['pausado_desde'] = json.dumps(pausas), desde
+
+
+def verificar_prazos(conn, agora=None):
+    """Mensagens para o Telegram da MD: cada relógio avisa uma vez ao chegar a 80% e uma vez ao estourar."""
+    agora = agora or time.time()
+    avisos = []
+    rows = conn.execute(_CAMPOS + f" WHERE c.status IN ({', '.join('?' for _ in ABERTOS)})", ABERTOS).fetchall()
+    for row in rows:
+        c = _enfeitar(row)
+        p = prazos(c, agora)
+        if not p:
+            continue
+        ja = set(json.loads(c.get('sla_avisos') or '[]'))
+        novos = []
+        for qual, rotulo in (('resposta', '1ª resposta'), ('solucao', 'solução')):
+            r = p.get(qual)
+            if not r or r['estado'] not in ('perto', 'estourado'):
+                continue
+            if r['estado'] == 'estourado' and f'{qual}:estourado' not in ja:
+                marco = 'estourado'
+            elif r['estado'] == 'perto' and f'{qual}:perto' not in ja:
+                marco = 'perto'
+            else:
+                continue
+            chaves = {f'{qual}:perto', f'{qual}:estourado'} if marco == 'estourado' else {f'{qual}:perto'}
+            ja |= chaves
+            novos += sorted(chaves)
+            if marco == 'perto':
+                avisos.append(f"⏳ <b>Chamado #{c['numero']}</b>: {rotulo} perto de vencer (vence {r['vence_txt']})\n"
+                              f"🏢 {html.escape(c['empresa'])} · {c['prioridade_rotulo']} · {html.escape(c['responsavel'] or 'sem responsável')}\n📝 {html.escape(c['titulo'])}")
+            else:
+                avisos.append(f"🚨 <b>Chamado #{c['numero']}</b>: {rotulo} com prazo estourado (meta {r['meta_txt']})\n"
+                              f"🏢 {html.escape(c['empresa'])} · {c['prioridade_rotulo']} · {html.escape(c['responsavel'] or 'sem responsável')}\n📝 {html.escape(c['titulo'])}")
+        if novos:
+            conn.execute('UPDATE chamados SET sla_avisos = ? WHERE id = ?', (json.dumps(sorted(ja)), c['id']))
+    return avisos
+
+
+def no_prazo_do_mes(conn, agora=None):
+    """% dos chamados resolvidos no mês (Brasília) dentro do prazo de solução; None se nenhum."""
+    agora = agora or time.time()
+    d = datetime.fromtimestamp(agora, FUSO_BR)
+    inicio = d.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp()
+    rows = conn.execute(_CAMPOS + ' WHERE c.resolvido_em >= ? AND c.interno = 0', (inicio,)).fetchall()
+    relogios = [p['solucao'] for p in (prazos(dict(_enfeitar(r)), agora) for r in rows) if p and p.get('solucao')]
+    finais = [r for r in relogios if r['estado'] in ('cumprido', 'estourou')]
+    if not finais:
+        return None
+    return {'pct': round(100 * sum(1 for r in finais if r['estado'] == 'cumprido') / len(finais)), 'total': len(finais),
+            'mes': ('janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro',
+                    'novembro', 'dezembro')[d.month - 1]}
+
+
 # ------------------------------------------------------------------ leitura
 _CAMPOS = ('SELECT c.*, e.nome AS empresa_nome, e.usuario AS empresa_usuario, s.nome_local AS local_nome, '
            'r.nome AS responsavel_nome, r.usuario AS responsavel_usuario FROM chamados c '
@@ -103,6 +282,7 @@ def _enfeitar(row):
     c['status_rotulo'] = STATUS.get(c['status'], c['status'])
     c['canal_rotulo'] = CANAIS.get(c['canal'], c['canal'])
     c['aberto'] = c['status'] in ABERTOS
+    c['prazo'] = prazos(c)
     return c
 
 
@@ -266,11 +446,15 @@ def abrir(conn, autor, dados, arquivos=(), agora=None):
     sensor_mac = (dados.get('sensor_mac') or '').strip() or None
     if sensor_mac and not conn.execute('SELECT 1 FROM sensores WHERE mac_id = ? AND cliente_id = ?', (sensor_mac, empresa_id)).fetchone():
         raise Recusa('Esse local não é da empresa do chamado.')
+    contrato = None
+    if not interno:
+        cfg = sla_da_empresa(conn, empresa_id)
+        contrato = json.dumps({'horario': cfg['horario'], 'prazos': cfg['prazos']})   # o SLA fica gravado no chamado
     numero = _inserir_id(conn,
         'INSERT INTO chamados (empresa_id, interno, solicitante_id, solicitante, aberto_por_id, canal, categoria, sensor_mac, '
-        'impacto, prioridade, titulo, status, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'impacto, prioridade, titulo, status, criado_em, atualizado_em, sla, pausas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         (empresa_id, interno, solicitante_id, solicitante, autor['id'], canal, categoria, sensor_mac, impacto, prioridade,
-         titulo, 'novo', agora, agora))
+         titulo, 'novo', agora, agora, contrato, '[]'))
     _mensagem(conn, numero, autor, 'abertura', texto, arquivos, agora)
     return numero
 
@@ -298,7 +482,10 @@ def fila(conn, filtros=None):
     f = filtros or {}
     todos = [_enfeitar(r) for r in conn.execute(_CAMPOS).fetchall()]
     abertos = [c for c in todos if c['status'] in ABERTOS]
+    proximos = [c['prazo']['proximo'] for c in abertos if c['prazo'] and c['prazo'].get('proximo')]
     contadores = {
+        'perto': sum(1 for p in proximos if p['estado'] == 'perto'),
+        'estourados': sum(1 for p in proximos if p['estado'] == 'estourado'),
         'novos': sum(1 for c in abertos if c['status'] == 'novo' and not c['responsavel_id']),
         'atendimento': sum(1 for c in abertos if c['status'] == 'atendimento'),
         'aguardando': sum(1 for c in abertos if c['status'] == 'aguardando'),
@@ -320,15 +507,21 @@ def fila(conn, filtros=None):
         lista = [c for c in lista if not c['responsavel_id']]
     elif resp:
         lista = [c for c in lista if str(c['responsavel_id']) == str(resp)]
+    if f.get('prazo') in ('perto', 'estourado'):
+        lista = [c for c in lista if c['prazo'] and (c['prazo'].get('proximo') or {}).get('estado') == f['prazo']]
     if f.get('categoria') in CATEGORIAS:
         lista = [c for c in lista if c['categoria'] == f['categoria']]
     busca = (f.get('busca') or '').strip().lower().lstrip('#')
     if busca:
         lista = [c for c in lista if busca == str(c['numero']) or any(busca in (c.get(k) or '').lower()
                  for k in ('titulo', 'solicitante', 'empresa', 'local_nome'))]
-    # Sem SLA ainda (entrega 3): prioridade, depois quem está esperando a MD, depois o mais antigo.
-    lista.sort(key=lambda c: (c['status'] not in ABERTOS, ORDEM_PRIORIDADE.get(c['prioridade'], 9),
-                              ORDEM_STATUS.get(c['status'], 9), c['criado_em']))
+    # O prazo que vence primeiro no topo; pausados (esperando o cliente) e sem prazo depois, por prioridade.
+    def ordem(c):
+        p = (c['prazo'] or {}).get('proximo')
+        correndo = bool(p and p.get('vence_em') and p['estado'] != 'pausado')
+        return (c['status'] not in ABERTOS, not correndo, p['vence_em'] if correndo else 0,
+                ORDEM_PRIORIDADE.get(c['prioridade'], 9), ORDEM_STATUS.get(c['status'], 9), c['criado_em'])
+    lista.sort(key=ordem)
     return lista, contadores
 
 
@@ -345,6 +538,7 @@ def _mudar_status(conn, autor, chamado, novo, agora):
         campos['fechado_em'] = agora
     elif chamado['status'] in ENCERRADOS:
         campos['fechado_em'] = None
+    _ajustar_pausa(conn, chamado, novo, agora)
     texto = TEXTO_DO_STATUS[novo]
     if novo == 'atendimento' and chamado['status'] in ('aguardando', 'resolvido', 'cancelado', 'fechado'):
         texto = 'Reaberto pela MD: em atendimento'
@@ -388,6 +582,22 @@ def atualizar(conn, autor, chamado, mudancas, agora=None):
             evento(conn, chamado['id'], autor, f'{rotulo}: {opcoes.get(chamado[campo], chamado[campo])} → {opcoes[mudancas[campo]]}', agora)
             conn.execute(f'UPDATE chamados SET {campo} = ?, atualizado_em = ? WHERE id = ?', (mudancas[campo], agora, chamado['id']))
             chamado[campo] = mudancas[campo]
+    if 'prazo_manual' in mudancas:
+        if not chamado['interno']:
+            raise Recusa('Chamado de cliente segue o prazo do contrato.')
+        valor = mudancas['prazo_manual']
+        if valor:
+            try:
+                prazo = datetime.strptime(str(valor)[:16], '%Y-%m-%dT%H:%M').replace(tzinfo=FUSO_BR).timestamp()
+            except ValueError:
+                raise Recusa('Data do prazo inválida.')
+            texto = f'Prazo: {quando_txt(prazo, agora)}'
+        else:
+            prazo, texto = None, 'Prazo removido'
+        agora += passo
+        evento(conn, chamado['id'], autor, texto, agora)
+        conn.execute('UPDATE chamados SET prazo_manual = ?, atualizado_em = ? WHERE id = ?', (prazo, agora, chamado['id']))
+        chamado['prazo_manual'] = prazo
     if mudancas.get('status'):
         novo = mudancas['status']
         if novo not in STATUS_DA_MD:
@@ -433,6 +643,11 @@ def responder(conn, autor, chamado, texto, arquivos=(), nota=False, depois=None,
         elif not md and status == 'resolvido':
             status = 'atendimento'
             evento(conn, chamado['id'], autor, 'O cliente disse que ainda não resolveu: em atendimento de novo', agora + 0.000002)
+    if md and not nota and not chamado.get('primeira_resposta_em'):
+        conn.execute('UPDATE chamados SET primeira_resposta_em = ? WHERE id = ?', (agora, chamado['id']))
+        chamado['primeira_resposta_em'] = agora
+    if status != chamado['status']:
+        _ajustar_pausa(conn, chamado, status, agora)
     reaberto = chamado['status'] == 'resolvido' and status != 'resolvido'
     conn.execute('UPDATE chamados SET status = ?, responsavel_id = ?, atualizado_em = ?' + (', resolvido_em = NULL' if reaberto else '') +
                  ' WHERE id = ?', (status, responsavel, agora, chamado['id']))

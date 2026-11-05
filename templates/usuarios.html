@@ -70,6 +70,17 @@
         .empresas td.centro, .empresas th.centro { text-align: center; }
         .empresas input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--blue); cursor: pointer; }
         @media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; } .form-grid > * { grid-column: auto !important; } .nivel-linha { grid-template-columns: 1fr; } }
+        .sla-contrato { border: 1px dashed var(--border); border-radius: 8px; padding: 12px 15px 15px; margin: 0 0 15px; }
+        .sla-contrato legend { color: var(--blue); font-weight: bold; font-size: 0.85em; padding: 0 6px; }
+        .sla-horario { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+        .sla-horario label { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--border); border-radius: 8px; padding: 10px; cursor: pointer; font-size: .85em; }
+        .sla-horario label:has(input:checked) { border-color: var(--blue); }
+        .sla-horario small { color: var(--text-muted); }
+        .sla-tabela { width: 100%; border-collapse: collapse; font-size: .85em; }
+        .sla-tabela th { text-align: left; color: var(--text-muted); font-weight: 600; padding: 4px; }
+        .sla-tabela td { padding: 4px; }
+        .sla-tabela input { width: 90px; }
+        @media (max-width: 560px) { .sla-horario { grid-template-columns: 1fr; } }
     </style>
 <link rel="stylesheet" href="/static/product.css?v=nexopulse-3">
 <script src="/static/brand.js?v=nexopulse-2"></script>
@@ -344,6 +355,26 @@
                 <small style="color: var(--text-muted); font-size: 0.8em;">Usada no NexoReport: "dentro da meta" a partir dela, "abaixo da meta" até 1 ponto abaixo, "crítico" mais que isso.</small>
             </div>
 
+            <fieldset id="edit_div_sla" class="sla-contrato" style="display: none;">
+                <legend><i class="fa-solid fa-headset"></i> Atendimento e SLA (NexoDesk)</legend>
+                <div class="sla-horario" role="radiogroup" aria-label="Horário de atendimento">
+                    <label><input type="radio" name="sla_horario" value="comercial"> <b>Comercial</b><small>Seg a sex, 8h às 18h (Brasília). Fins de semana e feriados nacionais não contam.</small></label>
+                    <label><input type="radio" name="sla_horario" value="24x7"> <b>24 horas, todos os dias</b><small>O prazo corre sem parar.</small></label>
+                </div>
+                <table class="sla-tabela">
+                    <thead><tr><th>Prioridade</th><th>1ª resposta (h)</th><th>Solução (h)</th></tr></thead>
+                    <tbody>
+                        {% for k, rotulo in [('critica', 'Crítica'), ('alta', 'Alta'), ('media', 'Média'), ('baixa', 'Baixa')] %}
+                        <tr><td>{{ rotulo }}</td>
+                            <td><input type="number" min="0.25" step="0.25" data-sla="{{ k }}" data-i="0" aria-label="1ª resposta {{ rotulo }} em horas" {{ 'disabled' if not pode_editar_sla }}></td>
+                            <td><input type="number" min="0.25" step="0.25" data-sla="{{ k }}" data-i="1" aria-label="Solução {{ rotulo }} em horas" {{ 'disabled' if not pode_editar_sla }}></td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <small id="sla_nota" style="color: var(--text-muted); font-size: 0.8em;"></small>
+                {% if pode_editar_sla %}<button type="button" class="btn-action" id="sla_padrao" style="margin-top:8px"><i class="fa-solid fa-rotate-left"></i> Usar a tabela padrão da MD</button>{% endif %}
+            </fieldset>
+
             <div id="edit-telegram-status" class="telegram-status" role="status"></div>
             <div id="edit_div_telegram" style="background: var(--bg-input); padding: 15px; border-radius: 8px; border: 1px dashed var(--border); margin-bottom: 15px;">
                 <label style="color: var(--blue); font-weight: bold; font-size: 0.85em; margin-bottom: 8px; display: block;"><i class="fa-brands fa-telegram"></i> Alertas VIP via Telegram</label>
@@ -453,6 +484,7 @@
             campoMeta.style.display = (role === 'Cliente' && ACESSOS.master) ? 'flex' : 'none';
             campoMeta.style.flexDirection = 'column';
             document.getElementById('edit_meta').value = (meta === null || meta === undefined) ? '' : meta;
+            carregarSla(id, role);
             refreshTelegramStatus(id, document.getElementById('edit-telegram-status'));
             document.getElementById('edit_id').value = id;
             document.getElementById('edit_role').value = role;
@@ -532,6 +564,49 @@
             }
         }
 
+        // SLA do contrato (NexoDesk): carrega ao abrir a empresa e salva junto com a edição.
+        let slaEstado = null;
+        async function carregarSla(id, role) {
+            const caixa = document.getElementById('edit_div_sla');
+            slaEstado = null;
+            caixa.style.display = 'none';
+            if (role !== 'Cliente' || !ACESSOS.master) return;
+            const r = await fetch('/api/v2/desk/sla/' + id);
+            if (!r.ok) return;
+            const d = await r.json();
+            slaEstado = {id, original: JSON.stringify({horario: d.horario, prazos: d.prazos}), padrao: d.padrao, usarPadrao: false};
+            preencherSla(d.horario, d.prazos, d.proprio);
+            caixa.style.display = 'block';
+        }
+        function preencherSla(horario, prazos, proprio) {
+            document.querySelectorAll('input[name=sla_horario]').forEach(r => r.checked = r.value === horario);
+            document.querySelectorAll('[data-sla]').forEach(i => i.value = prazos[i.dataset.sla][Number(i.dataset.i)]);
+            document.getElementById('sla_nota').textContent = proprio ? 'Esta empresa tem um SLA próprio. Mudanças valem para os chamados abertos a partir de agora.'
+                : 'Esta empresa usa a tabela padrão da MD. Mudanças valem para os chamados abertos a partir de agora.';
+        }
+        function lerSla() {
+            const prazos = {};
+            document.querySelectorAll('[data-sla]').forEach(i => { (prazos[i.dataset.sla] = prazos[i.dataset.sla] || [])[Number(i.dataset.i)] = Number(i.value); });
+            const h = document.querySelector('input[name=sla_horario]:checked');
+            return {horario: h ? h.value : null, prazos};
+        }
+        const botaoPadrao = document.getElementById('sla_padrao');
+        if (botaoPadrao) botaoPadrao.addEventListener('click', () => {
+            if (!slaEstado) return;
+            preencherSla(slaEstado.padrao.horario, slaEstado.padrao.prazos, false);
+            slaEstado.usarPadrao = true;
+        });
+        async function salvarSla() {
+            if (!slaEstado || !{{ 'true' if pode_editar_sla else 'false' }}) return true;
+            const atual = lerSla();
+            const igualPadrao = JSON.stringify(atual) === JSON.stringify(slaEstado.padrao);
+            if (JSON.stringify(atual) === slaEstado.original && !slaEstado.usarPadrao) return true;
+            const corpo = (slaEstado.usarPadrao && igualPadrao) ? {padrao: true} : atual;
+            const r = await fetch('/api/v2/desk/sla/' + slaEstado.id, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(corpo)});
+            if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.error || 'Não foi possível salvar o SLA.'); return false; }
+            return true;
+        }
+
         async function salvarEdicao() {
             const id = document.getElementById('edit_id').value;
             const payload = {
@@ -542,6 +617,7 @@
                 telegram_chat_id: document.getElementById('edit_telegram_chat_id').value
             };
             if (document.getElementById('edit_div_meta').style.display !== 'none') payload.meta_disponibilidade = document.getElementById('edit_meta').value;
+            if (!(await salvarSla())) return;
 
             const res = await fetch('/api/v2/usuarios/' + id + '/info', {
                 method: 'PUT',

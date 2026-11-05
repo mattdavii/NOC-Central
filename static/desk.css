@@ -67,8 +67,33 @@ html[data-theme="light"] .status.aguardando { color: #6D28D9; }
     .linha-chamado .prio-cel { grid-column: 1; grid-row: 4; }
 }
 
+/* ---------- prazo do contrato ---------- */
+.prazo { display: block; min-width: 0; }
+.prazo .txt { font-size: .82rem; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.prazo .sub { display: block; font-size: .74rem; color: var(--text-muted); margin-top: 2px; font-weight: 400; }
+.barra { display: block; height: 5px; background: var(--bg-input); border-radius: 99px; margin-top: 6px; overflow: hidden; }
+.barra i { display: block; height: 100%; border-radius: 99px; background: var(--status-ok); }
+.prazo.perto .txt { color: var(--status-warn); } .prazo.perto .barra i { background: var(--status-warn); }
+.prazo.estourado .txt, .prazo.estourou .txt { color: var(--status-crit); } .prazo.estourado .barra i { background: var(--status-crit); }
+.prazo.pausado .txt { color: #A78BFA; } .prazo.pausado .barra i { background: #A78BFA; opacity: .6; }
+html[data-theme="light"] .prazo.pausado .txt { color: #6D28D9; }
+.vazio-prazo { font-size: .82rem; }
+.relogio { padding: 12px 0; border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.relogio:first-of-type { border-top: 0; padding-top: 0; }
+.relogio .rot { font-size: .8rem; color: var(--text-muted); display: flex; justify-content: space-between; gap: 8px; }
+.relogio .val { font-size: 1rem; font-weight: 700; margin-top: 4px; display: flex; align-items: center; gap: 8px; }
+.relogio .val.ok { color: var(--status-ok); }
+.relogio .barra { height: 7px; }
+.relogio .sub { font-size: .78rem; color: var(--text-muted); margin-top: 6px; }
+.bloco .rodape-prazo { font-size: .76rem; color: var(--text-muted); margin-top: 4px; line-height: 1.45; }
+.prazo-contrato { border-color: color-mix(in srgb, var(--blue) 45%, var(--border)); }
+.prazo-contrato table { width: 100%; border-collapse: collapse; font-size: .84rem; margin: 6px 0 10px; }
+.prazo-contrato th { text-align: left; font-weight: 600; color: var(--text-muted); font-size: .76rem; padding: 4px 0; }
+.prazo-contrato td { padding: 6px 0; border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.prazo-contrato tr.sel td { color: var(--text-main); font-weight: 700; }
+
 /* ---------- fila da MD ---------- */
-.contadores { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
+.contadores { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 16px; }
 .contador { padding: 14px 16px; display: flex; align-items: baseline; gap: 10px; text-decoration: none; color: inherit;
             background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; }
 .contador:hover { border-color: color-mix(in srgb, var(--blue) 45%, var(--border)); }
@@ -77,11 +102,19 @@ html[data-theme="light"] .status.aguardando { color: #6D28D9; }
 .contador span { color: var(--text-muted); font-size: .84rem; line-height: 1.35; }
 .contador.destaque b { color: var(--purple); }
 .contador.aguard b { color: #A78BFA; } .contador.resolv b { color: var(--status-ok); }
+.contador.perto b { color: var(--status-warn); } .contador.estourado b { color: var(--status-crit); }
+.contador.estourado.tem { border-color: color-mix(in srgb, var(--status-crit) 55%, var(--border)); }
 html[data-theme="light"] .contador.aguard b { color: #6D28D9; }
 .filtros-fila { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
 .filtros-fila .busca { flex: 1 1 260px; }
+.lista.com-prazo .linha-chamado { grid-template-columns: 160px 60px minmax(220px, 1fr) 170px 90px 150px 130px 100px; }
+.linha-chamado.atrasado { box-shadow: inset 3px 0 0 var(--status-crit); }
 .linha-chamado.sem-dono .num { color: var(--purple); font-weight: 700; }
-@media (max-width: 1100px) { .contadores { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 1100px) {
+    .contadores { grid-template-columns: repeat(3, 1fr); }
+    .lista.com-prazo .linha-chamado { grid-template-columns: 1fr auto; }
+    .linha-chamado .prazo-cel { grid-column: 1 / -1; grid-row: 5; }
+}
 @media (max-width: 640px) { .contadores { grid-template-columns: 1fr 1fr; } .filtros-fila select { flex: 1 1 45%; } }
 
 /* ---------- abrir ---------- */
@@ -193,3 +226,5 @@ html[data-theme="light"] .contador.aguard b { color: #6D28D9; }
     .linha-tempo { padding: 4px 16px 16px; }
     .msg.nota { margin: 10px -8px; }
 }
+
+.prazo-cli { color: var(--text-main); }

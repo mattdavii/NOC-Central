@@ -241,6 +241,9 @@ def init_db():
                                               'hostname_fonte TEXT', 'visto_em TEXT',
                                               'modelo TEXT', 'tipo_equipamento TEXT', 'cftv TEXT',
                                               'comunicacao TEXT', 'firmware TEXT', 'rede_origem TEXT'])
+        # NexoDesk/SLA: o contrato usado fica gravado no chamado; pausas = [[início, fim], ...] enquanto espera o cliente.
+        ensure_columns(conn, 'chamados', ['sla TEXT', 'primeira_resposta_em DOUBLE PRECISION', 'pausas TEXT',
+                                          'pausado_desde DOUBLE PRECISION', 'sla_avisos TEXT', 'prazo_manual DOUBLE PRECISION'])
         conn.execute('CREATE INDEX IF NOT EXISTS idx_chamados_empresa ON chamados (empresa_id, status)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_chamado_mensagens ON chamado_mensagens (chamado_id, criado_em)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_chamado_anexos ON chamado_anexos (chamado_id)')
@@ -307,7 +310,7 @@ def init_db():
 
 
 SENSOR_COLUMNS = ['last_seen TIMESTAMP', 'ip_gateway TEXT', 'ultima_rota TEXT', 'download REAL', 'upload REAL', 'alerta_reconhecido INTEGER DEFAULT 1', 'disco REAL', 'net_up REAL', 'net_down REAL', 'portas TEXT', 'em_manutencao INTEGER DEFAULT 0', 'cliente_id INTEGER', 'gpu_temp REAL', "memoria_alerta TEXT DEFAULT 'ONLINE'", 'so_nome TEXT', 'so_versao TEXT', 'so_arquitetura TEXT', 'interface_nome TEXT', 'interface_mac TEXT', 'rede_mascara TEXT', 'rede_cidr TEXT', 'link_speed_mbps REAL', 'interface_up BOOLEAN', 'scan_rede TEXT', 'scan_limitado BOOLEAN', 'cliente_nome TEXT', 'latitude REAL', 'longitude REAL', 'accuracy_m REAL', 'location_source TEXT', 'location_updated_at TEXT', 'agent_version TEXT', 'traceroute TEXT', 'acoes_remotas INTEGER DEFAULT 0', 'host_info TEXT', 'alertas_host TEXT', 'provedor TEXT', 'provedor_origem TEXT', 'starlink_info TEXT', 'camadas_rede TEXT', 'diag_atualizado_em DOUBLE PRECISION', 'agent_build TEXT', 'build_recusado TEXT', 'auto_update_guard INTEGER', 'auto_atualizar INTEGER DEFAULT 1', 'mapa_rede TEXT', 'mapa_rede_em TEXT', 'mapa_rede_por TEXT']
-CLIENT_COLUMNS = ['meta_disponibilidade REAL', 'nome TEXT', 'cliente_pai_id INTEGER', 'ativo INTEGER DEFAULT 1', 'logo_url TEXT', 'telegram_token TEXT', 'telegram_chat_id TEXT', 'delegacao_acessos INTEGER DEFAULT 1',
+CLIENT_COLUMNS = ['meta_disponibilidade REAL', 'sla_config TEXT', 'nome TEXT', 'cliente_pai_id INTEGER', 'ativo INTEGER DEFAULT 1', 'logo_url TEXT', 'telegram_token TEXT', 'telegram_chat_id TEXT', 'delegacao_acessos INTEGER DEFAULT 1',
                   # Verificação em duas etapas, sessões encerráveis e exigência de 2FA (esta na conta da empresa).
                   'totp_segredo TEXT', 'totp_ativo INTEGER DEFAULT 0', 'totp_ultimo_passo INTEGER', 'codigos_recuperacao TEXT',
                   'sessao_versao INTEGER DEFAULT 0', 'exigir_2fa INTEGER DEFAULT 0',

@@ -1,3 +1,4 @@
+import time
 import io
 
 import pytest
@@ -290,3 +291,111 @@ def test_cancel_and_reopen(client, login):
     c = nexodesk.chamado(conn, numero)
     conn.close()
     assert c['fechado_em'] is None and 'Reaberto pela MD' in login(EMPRESA, 'Cliente').get(f'/desk/{numero}').get_data(as_text=True)
+
+
+# ------------------------------------------------------------------ entrega 3: prazo do contrato (SLA)
+from datetime import datetime as _dt
+
+from hub import FUSO_BR as _FUSO
+
+
+def _ts(m, d, h, mi=0):
+    return _dt(2026, m, d, h, mi, tzinfo=_FUSO).timestamp()
+
+
+def _abrir_em(conn, quando, impacto='atrapalha', empresa=EMPRESA):
+    autor = acessos._usuario(conn, empresa)
+    return nexodesk.abrir(conn, autor, {'categoria': 'rede', 'impacto': impacto, 'titulo': 'Lento', 'descricao': 'x'}, agora=quando)
+
+
+def test_ticket_clocks_follow_the_contract_snapshot(client):
+    conn = database.get_db()
+    numero = _abrir_em(conn, _ts(11, 6, 17))                     # sexta 17h, prioridade alta (2 h / 16 h)
+    p = nexodesk.prazos(nexodesk.chamado(conn, numero), agora=_ts(11, 6, 17, 30))
+    assert p['resposta']['vence_em'] == _ts(11, 9, 9) and p['resposta']['estado'] == 'ok'
+    assert p['solucao']['vence_em'] == _ts(11, 10, 13) and p['proximo']['qual'] == 'resposta'
+    assert nexodesk.prazos(nexodesk.chamado(conn, numero), agora=_ts(11, 9, 8, 40))['resposta']['estado'] == 'perto'
+    assert nexodesk.prazos(nexodesk.chamado(conn, numero), agora=_ts(11, 9, 9, 30))['resposta']['estado'] == 'estourado'
+    # Mudar o contrato depois não muda o chamado já aberto.
+    nexodesk.definir_sla(conn, EMPRESA, {'horario': '24x7', 'prazos': {'critica': [1, 2], 'alta': [1, 2], 'media': [1, 2], 'baixa': [1, 2]}})
+    assert nexodesk.prazos(nexodesk.chamado(conn, numero), agora=_ts(11, 6, 17, 30))['resposta']['vence_em'] == _ts(11, 9, 9)
+    assert nexodesk.prazos(nexodesk.chamado(conn, _abrir_em(conn, _ts(11, 6, 17))), agora=_ts(11, 6, 17, 1))['resposta']['vence_em'] == _ts(11, 6, 18)
+    conn.close()
+
+
+def test_first_reply_priority_change_and_pause(client):
+    conn = database.get_db()
+    md = acessos._usuario(conn, 1)
+    numero = _abrir_em(conn, _ts(11, 9, 9))                      # segunda 9h, alta
+    nexodesk.responder(conn, md, nexodesk.chamado(conn, numero), 'Olhando.', agora=_ts(11, 9, 9, 30))
+    c = nexodesk.chamado(conn, numero)
+    p = nexodesk.prazos(c, agora=_ts(11, 9, 10))
+    assert p['resposta']['estado'] == 'cumprido' and p['proximo']['qual'] == 'solucao'
+    nexodesk.atualizar(conn, md, c, {'prioridade': 'critica'}, agora=_ts(11, 9, 10))   # solução 8 h a partir da abertura
+    assert nexodesk.prazos(nexodesk.chamado(conn, numero), agora=_ts(11, 9, 10))['solucao']['vence_em'] == _ts(11, 9, 17)
+    nexodesk.responder(conn, md, nexodesk.chamado(conn, numero), 'Manda a foto?', depois='aguardando', agora=_ts(11, 9, 11))
+    pausado = nexodesk.prazos(nexodesk.chamado(conn, numero), agora=_ts(11, 9, 15))
+    assert pausado['solucao']['estado'] == 'pausado' and pausado['solucao']['vence_em'] is None
+    cliente = acessos._usuario(conn, EMPRESA)
+    nexodesk.responder(conn, cliente, nexodesk.chamado(conn, numero), 'Foto', agora=_ts(11, 9, 14))
+    p = nexodesk.prazos(nexodesk.chamado(conn, numero), agora=_ts(11, 9, 14, 30))
+    assert p['solucao']['vence_em'] == pytest.approx(_ts(11, 10, 10), abs=1)   # as 3 h pausadas empurram o prazo
+    nexodesk.responder(conn, md, nexodesk.chamado(conn, numero), 'Resolvido.', depois='resolvido', agora=_ts(11, 9, 16))
+    assert nexodesk.prazos(nexodesk.chamado(conn, numero), agora=_ts(11, 12, 9))['solucao']['estado'] == 'cumprido'
+    conn.close()
+
+
+def test_deadline_alerts_go_once_per_milestone(client):
+    import app as central
+    conn = database.get_db()
+    numero = _abrir_em(conn, _ts(11, 9, 9), impacto='parou')     # crítica: resposta 1 h
+    conn.commit(); conn.close()
+    assert central.verificar_prazos_desk(agora=_ts(11, 9, 9, 10)) == []
+    avisos = central.verificar_prazos_desk(agora=_ts(11, 9, 9, 50))
+    assert len(avisos) == 1 and 'perto de vencer' in avisos[0] and f'#{numero}' in avisos[0]
+    assert central.verificar_prazos_desk(agora=_ts(11, 9, 9, 55)) == []
+    avisos = central.verificar_prazos_desk(agora=_ts(11, 9, 10, 5))
+    assert len(avisos) == 1 and 'estourado' in avisos[0]
+    assert central.verificar_prazos_desk(agora=_ts(11, 9, 10, 30)) == []
+    conn = database.get_db()
+    assert conn.execute("SELECT COUNT(*) AS n FROM telegram_outbox WHERE message LIKE '%prazo estourado%'").fetchone()['n'] == 1
+    conn.close()
+
+
+def test_sla_api_permissions_validation_and_audit(client, login):
+    md = login()
+    d = md.get(f'/api/v2/desk/sla/{EMPRESA}').json
+    assert d['proprio'] is False and d['horario'] == 'comercial' and d['prazos']['alta'] == [2, 16]
+    novo = {'horario': '24x7', 'prazos': {'critica': [1, 4], 'alta': [2, 8], 'media': [4, 24], 'baixa': [8, 40]}}
+    r = md.put(f'/api/v2/desk/sla/{EMPRESA}', json=novo)
+    assert r.status_code == 200 and r.json['proprio'] is True and r.json['prazos']['alta'] == [2.0, 8.0]
+    assert md.put(f'/api/v2/desk/sla/{EMPRESA}', json={'horario': '24x7', 'prazos': {}}).status_code == 400
+    assert login(EMPRESA, 'Cliente').get(f'/api/v2/desk/sla/{EMPRESA}').status_code == 403
+    conn = database.get_db()
+    conn.execute("INSERT INTO clientes (id, usuario, senha, role, ativo) VALUES (8, 'op', 'x', 'Operador Master', 1)")
+    conn.commit(); conn.close()
+    assert login(8, 'Operador Master').put(f'/api/v2/desk/sla/{EMPRESA}', json={'padrao': True}).status_code == 403
+    assert login().put(f'/api/v2/desk/sla/{EMPRESA}', json={'padrao': True}).json['proprio'] is False
+    conn = database.get_db()
+    assert conn.execute("SELECT COUNT(*) AS n FROM auditoria_acessos WHERE acao = 'sla_alterado'").fetchone()['n'] == 2
+    conn.close()
+    assert 'Pelo seu contrato' in login(EMPRESA, 'Cliente').get('/desk/novo').get_data(as_text=True)
+
+
+def test_queue_puts_the_nearest_deadline_first_and_internal_manual_deadline(client, login):
+    conn = database.get_db()
+    tarde = _abrir_em(conn, time.time() - 60, impacto='duvida')          # baixa: resposta 8 h
+    cedo = _abrir_em(conn, time.time() - 120, impacto='parou')           # crítica: resposta 1 h
+    conn.execute("INSERT INTO clientes (id, usuario, senha, role, ativo, empresa_master) VALUES (5, 'md', 'x', 'Cliente', 1, 1)")
+    conn.commit()
+    interno = nexodesk.abrir(conn, acessos._usuario(conn, 1), {'empresa_id': 5, 'categoria': 'sistemas', 'impacto': 'duvida', 'titulo': 'Interno', 'descricao': 'x'})
+    conn.commit(); conn.close()
+    pagina = login().get('/desk').get_data(as_text=True)
+    assert pagina.index(f'/desk/{cedo}"') < pagina.index(f'/desk/{tarde}"') < pagina.index(f'/desk/{interno}"')
+    assert login().patch(f'/api/v2/desk/{cedo}', json={'prazo_manual': '2026-12-01T10:00'}).status_code == 400
+    assert login().patch(f'/api/v2/desk/{interno}', json={'prazo_manual': '2099-12-01T10:00'}).status_code == 200
+    conn = database.get_db()
+    p = nexodesk.chamado(conn, interno)['prazo']
+    conn.close()
+    assert p['manual'] and p['solucao']['estado'] == 'ok'
+    assert 'Prazo do contrato' in login(EMPRESA, 'Cliente').get(f'/desk/{cedo}').get_data(as_text=True)
