@@ -7,6 +7,7 @@
 <body>
 <script src="/static/security.js?v=2.2.0-rc1"></script>
 {% include '_brand_bar.html' %}
+{% import 'desk/_prazo.html' as prazo %}
 {% macro iniciais(nome) -%}{%- set partes = (nome or '?').split() -%}{{ (partes[0][:1] ~ (partes[1][:1] if partes|length > 1 else partes[0][1:2])) | upper }}{%- endmacro %}
 <main class="page-main">
     <div class="trilha"><a href="/desk">{{ 'Chamados' if md else 'Meus chamados' }}</a> / #{{ c.numero }}</div>
@@ -114,6 +115,25 @@
         </section>
 
         <aside class="lateral">
+            {% set p = c.prazo %}
+            {% if p and not p.manual %}
+            <div class="card bloco">
+                <h3>Prazo do contrato</h3>
+                {{ prazo.relogio(p.resposta, '1ª resposta da MD', cliente=not md) }}
+                {{ prazo.relogio(p.solucao, 'Solução', cliente=not md) }}
+                <p class="rodape-prazo">{{ 'Contrato ' ~ c.empresa ~ ' · ' if md }}{{ p.horario_txt }}. O tempo esperando {{ 'o cliente' if md else 'a sua resposta' }} não conta.</p>
+            </div>
+            {% elif c.interno and md %}
+            <div class="card bloco">
+                <h3>Prazo</h3>
+                {% if p %}{{ prazo.relogio(p.solucao, 'Prazo manual') }}{% else %}<p class="rodape-prazo" style="margin:0 0 10px">Chamado interno: sem prazo de contrato. Se quiser, marque um prazo.</p>{% endif %}
+                {% if c.aberto %}
+                <label for="m-prazo" class="sr-only">Prazo manual</label>
+                <input class="campo" type="datetime-local" id="m-prazo" data-campo="prazo_manual" style="width:100%;box-sizing:border-box;margin-top:8px"
+                       value="{{ prazo_manual_local or '' }}">
+                {% endif %}
+            </div>
+            {% endif %}
             <div class="card bloco">
                 <h3>Dados do chamado</h3>
                 <dl class="dados">
@@ -148,7 +168,7 @@
         </aside>
     </div>
 </main>
-<script src="/static/desk.js?v=2"></script>
+<script src="/static/desk.js?v=3"></script>
 {% if md %}
 <script>
     // Ferramentas da MD no chamado: abas resposta/nota, "depois de enviar" e mudanças de dados (PATCH).

@@ -100,6 +100,22 @@
         </form>
 
         <aside class="lateral">
+            {% if contrato and not interno %}
+            <div class="card aviso-lateral prazo-contrato">
+                <h3><i class="fa-solid fa-stopwatch" aria-hidden="true"></i> {{ 'Pelo contrato desta empresa' if md else 'Pelo seu contrato' }}</h3>
+                <table>
+                    <thead><tr><th>Impacto</th><th>1ª resposta</th><th>Solução</th></tr></thead>
+                    <tbody>
+                    {% for k, i in impactos.items() %}
+                    {% set h = contrato.prazos[i.prioridade] %}
+                    <tr data-impacto="{{ k }}"><td>{{ i.rotulo }}</td><td>até {{ '%g' % h[0] }} h</td><td>até {{ '%g' % h[1] }} h</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                <p>{{ 'Horas úteis: segunda a sexta, das 8h às 18h, sem feriados nacionais.' if contrato.horario == 'comercial' else 'O prazo corre 24 horas, todos os dias.' }}
+                   Se a MD pedir uma informação, o prazo para até {{ 'o cliente responder' if md else 'você responder' }}.{% if md %} A prioridade que você escolher vale mais que o impacto.{% endif %}</p>
+            </div>
+            {% endif %}
             <div class="card aviso-lateral">
                 <h3><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Como funciona</h3>
                 <p>A MD recebe o chamado na hora, define a prioridade e responde por aqui. Você vê cada resposta nesta página.</p>
@@ -112,6 +128,15 @@
     </div>
     {% endif %}
 </main>
-<script src="/static/desk.js?v=2"></script>
+<script src="/static/desk.js?v=3"></script>
+<script>
+    // Destaca, na tabela do contrato, a linha do impacto escolhido.
+    (function () {
+        const linhas = document.querySelectorAll('.prazo-contrato tr[data-impacto]');
+        const marcar = () => { const v = (document.querySelector('input[name=impacto]:checked') || {}).value; linhas.forEach(l => l.classList.toggle('sel', l.dataset.impacto === v)); };
+        document.querySelectorAll('input[name=impacto]').forEach(i => i.addEventListener('change', marcar));
+        marcar();
+    })();
+</script>
 </body>
 </html>

@@ -7,6 +7,7 @@ import mapa_rede
 import nexoreport
 import nexoreport_pdf
 import nexodesk
+import sla
 import notifications
 import oui
 import diagnostico
@@ -1087,6 +1088,34 @@ def _loop_nexoreport():
 if GUARDIAO_LIGADO:
     threading.Thread(target=_loop_nexoreport, name="noc-nexoreport", daemon=True).start()
 
+DESK_PRAZOS_INTERVALO = int(os.environ.get('DESK_PRAZOS_INTERVALO_S', '300'))
+
+
+def verificar_prazos_desk(agora=None):
+    """Avisa no Telegram da MD os chamados perto de vencer e com prazo estourado (uma vez por marco)."""
+    conn = database.get_db()
+    try:
+        avisos = nexodesk.verificar_prazos(conn, agora)
+        for texto in avisos:
+            notifications.enqueue(texto, None, conn=conn)
+        conn.commit()
+        return avisos
+    finally:
+        conn.close()
+
+
+def _loop_desk_prazos():
+    while True:
+        time.sleep(DESK_PRAZOS_INTERVALO)
+        try:
+            verificar_prazos_desk()
+        except Exception as e:
+            print(f"⚠️ NexoDesk (prazos): {e}")
+
+
+if GUARDIAO_LIGADO:
+    threading.Thread(target=_loop_desk_prazos, name="noc-desk-prazos", daemon=True).start()
+
 # ==========================================
 # 🔐 SISTEMA DE LOGIN E SESSÃO
 # ==========================================
@@ -1406,9 +1435,11 @@ def desk_lista():
         if md:
             filtros = {'eu': autor['id'], 'empresa_id': request.args.get('empresa', type=int),
                        'responsavel': request.args.get('responsavel') or None, 'status': request.args.get('status') or 'abertos',
-                       'categoria': request.args.get('categoria') or None, 'busca': request.args.get('busca') or ''}
+                       'categoria': request.args.get('categoria') or None, 'busca': request.args.get('busca') or '',
+                       'prazo': request.args.get('prazo') or None}
             chamados, contadores = nexodesk.fila(conn, filtros)
             return render_template('desk/fila.html', chamados=chamados, contadores=contadores, filtros=filtros,
+                                   no_prazo=nexodesk.no_prazo_do_mes(conn),
                                    empresas=nexodesk.empresas_para_md(conn), equipe=nexodesk.equipe_md(conn),
                                    categorias=nexodesk.CATEGORIAS, status_rotulos=nexodesk.STATUS, eu=autor['id'])
         todos = request.args.get('ver') == 'todos'
@@ -1443,7 +1474,9 @@ def desk_novo():
                                categorias=nexodesk.CATEGORIAS, impactos=nexodesk.IMPACTOS, prioridades=nexodesk.PRIORIDADES,
                                canais={c: nexodesk.CANAIS[c] for c in nexodesk.CANAIS_DA_MD},
                                max_arquivos=nexodesk.MAX_ARQUIVOS, max_mb=nexodesk.MAX_ARQUIVO // (1024 * 1024),
-                               tipos=sorted(nexodesk.TIPOS_ANEXO), telefone_md=nexodesk.TELEFONE_MD)
+                               tipos=sorted(nexodesk.TIPOS_ANEXO), telefone_md=nexodesk.TELEFONE_MD,
+                               contrato=nexodesk.sla_da_empresa(conn, empresa_id) if empresa_id else None,
+                               horarios=sla.HORARIOS)
     finally:
         conn.close()
 
@@ -1483,6 +1516,7 @@ def desk_ver(numero):
         md = nexodesk.eh_md(autor)
         return render_template('desk/chamado.html', md=md, c=c, mensagens=nexodesk.mensagens(conn, numero, md),
                                equipe=nexodesk.equipe_md(conn) if md else [], eu=autor['id'],
+                               prazo_manual_local=datetime.fromtimestamp(c['prazo_manual'], hub.FUSO_BR).strftime('%Y-%m-%dT%H:%M') if c.get('prazo_manual') else None,
                                prioridades=nexodesk.PRIORIDADES, categorias=nexodesk.CATEGORIAS,
                                max_arquivos=nexodesk.MAX_ARQUIVOS, max_mb=nexodesk.MAX_ARQUIVO // (1024 * 1024),
                                tipos=sorted(nexodesk.TIPOS_ANEXO))
@@ -1523,7 +1557,7 @@ def desk_atualizar(numero):
     if session.get('role') not in acessos.ROLES_MASTER:
         return jsonify(error='Só a MD muda os dados do chamado.'), 403
     dados = request.get_json(silent=True) or {}
-    permitidos = {k: dados[k] for k in ('responsavel_id', 'prioridade', 'categoria', 'status') if k in dados}
+    permitidos = {k: dados[k] for k in ('responsavel_id', 'prioridade', 'categoria', 'status', 'prazo_manual') if k in dados}
     if not permitidos:
         return jsonify(error='Nada para mudar.'), 400
     conn = database.get_db()
@@ -1538,6 +1572,36 @@ def desk_atualizar(numero):
             return jsonify(error=r.mensagem), r.status
         conn.commit()
         return jsonify(status='OK', chamado={k: c[k] for k in ('status', 'prioridade', 'categoria', 'responsavel_id')})
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/desk/sla/<int:empresa_id>', methods=['GET', 'PUT'])
+def desk_sla(empresa_id):
+    """SLA do contrato da empresa: a MD consulta; só o Administrador Master altera (com auditoria)."""
+    if 'user_id' not in session or session.get('role') not in acessos.ROLES_MASTER:
+        return jsonify(error='Só a MD vê o SLA dos contratos.'), 403
+    conn = database.get_db()
+    try:
+        if not conn.execute("SELECT 1 FROM clientes WHERE id = ? AND role = 'Cliente'", (empresa_id,)).fetchone():
+            return jsonify(error='Empresa não encontrada.'), 404
+        atual = nexodesk.sla_da_empresa(conn, empresa_id)
+        if request.method == 'GET':
+            return jsonify(**atual, padrao=sla.PADRAO, horarios=sla.HORARIOS)
+        if session.get('role') != 'Administrador Master':
+            return jsonify(error='Só o Administrador Master altera o SLA.'), 403
+        dados = request.get_json(silent=True) or {}
+        try:
+            nexodesk.definir_sla(conn, empresa_id, None if dados.get('padrao') else dados)
+        except ValueError as erro:
+            return jsonify(error=str(erro)), 400
+        novo = nexodesk.sla_da_empresa(conn, empresa_id)
+        if (atual['horario'], atual['prazos'], atual['proprio']) != (novo['horario'], novo['prazos'], novo['proprio']):
+            _auditar(conn, 'sla_alterado', alvo=f'empresa #{empresa_id}', empresa_id=empresa_id,
+                     detalhes={'antes': {k: atual[k] for k in ('horario', 'prazos')} if atual['proprio'] else 'padrão',
+                               'depois': {k: novo[k] for k in ('horario', 'prazos')} if novo['proprio'] else 'padrão'})
+        conn.commit()
+        return jsonify(status='OK', **novo)
     finally:
         conn.close()
 
@@ -2505,7 +2569,7 @@ def gerenciar_usuarios():
         }
     finally:
         conn.close()
-    return render_template('usuarios.html', usuarios=usuarios, senha_minimo=seguranca.SENHA_MINIMO, role_atual=session['role'], telegram_tenant=locals().get('tenant_id', 0),
+    return render_template('usuarios.html', usuarios=usuarios, pode_editar_sla=session.get('role') == 'Administrador Master', senha_minimo=seguranca.SENHA_MINIMO, role_atual=session['role'], telegram_tenant=locals().get('tenant_id', 0),
                            clientes_pais=[dict(c) for c in clientes_pais], empresas=empresas, meu_acesso=meu_acesso,
                            aplicativos=acessos.APLICATIVOS, rotulos_nivel=acessos.ROTULOS_NIVEL,
                            perfis_prontos=acessos.PERFIS_PRONTOS, dados_acessos=dados_acessos, seguranca_acesso=seguranca_acesso)

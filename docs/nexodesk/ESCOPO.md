@@ -69,7 +69,7 @@ Definido para a v1 (05/11/2026):
 | Média | 4 h | 24 h | Problema com contorno |
 | Baixa | 8 h | 40 h | Dúvida, pedido, melhoria |
 
-  Horas contadas no horário do contrato (com o comercial, 8 h = 1 dia útil).
+  Horas contadas no horário do contrato (no comercial, um dia útil tem 10 h: das 8h às 18h).
 - **Primeira resposta** = a primeira resposta pública da MD (nota interna não conta). **Solução** = até "Resolvido".
 - O relógio pausa em "Aguardando cliente". Mudar a prioridade recalcula os prazos a partir da abertura.
 - **Situação do prazo:** no prazo · **perto de vencer** (80% consumido) · **estourado**. O SLA usado fica gravado
@@ -143,6 +143,13 @@ Definido para a v1 (05/11/2026):
   responsável, status e categoria; ordem por prioridade até o SLA chegar), assumir e trocar responsável, prioridade e
   categoria com histórico, "Pedir informação" e "Marcar como resolvido" junto da resposta ao cliente, cancelar e
   reabrir. O cliente vê uma faixa quando a MD espera a resposta dele ou marcou como resolvido.
+- **Entrega 3 no ar (05/11/2026):** SLA por contrato em `sla.py` (horário comercial com feriados nacionais, incluindo
+  a Sexta-feira Santa e o 20/11, ou 24x7; pausas enquanto o chamado espera o cliente ou a confirmação). O contrato
+  fica gravado no chamado na abertura; a primeira resposta pública da MD fecha o primeiro relógio. Tela de SLA no
+  cadastro da empresa (só Administrador Master altera, com auditoria), relógios no chamado para a MD e o cliente, a fila
+  ordenada pelo prazo que vence primeiro, contadores "perto de vencer", "estourado" e "% no prazo no mês", prazo manual
+  nos chamados internos e aviso no Telegram da MD a cada 5 minutos (uma vez por marco). Chamados abertos antes desta
+  entrega ficam sem prazo.
 
 ## 6. Testes e critérios de aceite
 - Usuário de uma empresa nunca vê, responde ou baixa anexo de chamado de outra; nota interna nunca chega ao cliente

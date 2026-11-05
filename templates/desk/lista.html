@@ -49,7 +49,9 @@
         <a class="linha-chamado" href="/desk/{{ c.numero }}">
             <span class="num">#{{ c.numero }}</span>
             <span class="titulo"><b>{% if c.interno %}<i class="fa-solid fa-lock muted" style="font-size:.75rem" aria-label="Interno"></i> {% endif %}{{ c.titulo }}</b>
-                <span>{% if md %}{{ c.empresa }}{% else %}{{ c.solicitante }}{% endif %}{% if c.local_nome %} · {{ c.local_nome }}{% endif %}{% if md and c.canal not in ('nexohub', 'interno') %} · via {{ c.canal_rotulo }}{% endif %}</span></span>
+                <span>{% if md %}{{ c.empresa }}{% else %}{{ c.solicitante }}{% endif %}{% if c.local_nome %} · {{ c.local_nome }}{% endif %}{% if md and c.canal not in ('nexohub', 'interno') %} · via {{ c.canal_rotulo }}{% endif %}
+                    {%- set pr = (c.prazo or {}).get('proximo') -%}
+                    {%- if pr and pr.vence_txt and pr.estado in ('ok', 'perto') %} · <span class="prazo-cli">{{ 'A MD responde até' if pr.qual == 'resposta' else 'Solução prevista até' }} {{ pr.vence_txt }}</span>{% endif %}</span></span>
             <span class="cat">{{ c.categoria_rotulo }}</span>
             <span class="prio-cel"><span class="prio {{ c.prioridade }}">{{ c.prioridade_rotulo }}</span></span>
             <span class="status-cel"><span class="status {{ c.status }}">{{ c.status_rotulo }}</span></span>
@@ -67,6 +69,6 @@
     </div>
     {% endif %}
 </main>
-<script src="/static/desk.js?v=2"></script>
+<script src="/static/desk.js?v=3"></script>
 </body>
 </html>
