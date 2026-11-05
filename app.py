@@ -1210,11 +1210,15 @@ CACHE_PDF_MAX = 12
 
 
 def _empresa_do_relatorio(conn, empresa_id):
-    """A empresa pedida, se quem está logado pode vê-la (MD: todas; cliente: só a própria). Senão None."""
-    if session.get('role') not in acessos.ROLES_MASTER and empresa_id != acessos.empresa_de(_autor(conn)):
+    """A empresa pedida, se quem está logado pode vê-la. Senão None.
+
+    MD (Master): qualquer empresa cliente, com ou sem o NexoReport no contrato (para conferir a prévia antes de
+    oferecer). Cliente: só a própria, e só com o NexoReport contratado."""
+    master = session.get('role') in acessos.ROLES_MASTER
+    if not master and empresa_id != acessos.empresa_de(_autor(conn)):
         return None
     row = conn.execute("SELECT id, nome, usuario FROM clientes WHERE id = ? AND role = 'Cliente'", (empresa_id,)).fetchone()
-    if not row or not acessos.contrato(conn, empresa_id).get('report'):
+    if not row or (not master and not acessos.contrato(conn, empresa_id).get('report')):
         return None
     return row
 
@@ -1239,9 +1243,12 @@ def report_pagina():
     try:
         master = session.get('role') in acessos.ROLES_MASTER
         if master:
-            empresas = [dict(conn.execute('SELECT id, nome, usuario FROM clientes WHERE id = ?', (e,)).fetchone())
-                        for e in nexoreport.empresas_com_report(conn)]
-            empresas.sort(key=lambda e: (e['nome'] or e['usuario']).lower())
+            # Todas as empresas clientes; as sem o NexoReport no contrato vêm marcadas e depois das contratadas.
+            empresas = [dict(r) for r in conn.execute(
+                "SELECT id, nome, usuario FROM clientes WHERE role = 'Cliente' AND COALESCE(ativo, 1) = 1").fetchall()]
+            for e in empresas:
+                e['contratado'] = bool(acessos.contrato(conn, e['id']).get('report'))
+            empresas.sort(key=lambda e: (not e['contratado'], (e['nome'] or e['usuario'] or '').lower()))
             escolhida = request.args.get('empresa', type=int) or (empresas[0]['id'] if empresas else None)
         else:
             escolhida = acessos.empresa_de(_autor(conn))
@@ -1256,7 +1263,9 @@ def report_pagina():
                               'pct': d['totais']['pct'], 'situacao': d['totais']['situacao'], 'quedas': d['totais']['quedas'],
                               'fora_s': d['totais']['fora_s'], 'meta': d['meta'], 'criado_em': r['criado_em'], 'criado_por': r['criado_por']})
         proximo = nexoreport.mes_a_fechar(time.time() + 40 * 86400)
+        contratado = bool(empresa) and bool(acessos.contrato(conn, empresa['id']).get('report'))
         return render_template('report/index.html', master=master, empresas=empresas, empresa=dict(empresa) if empresa else None,
+                               contratado=contratado,
                                meses=meses, pct=nexoreport_pdf.pct_txt, dur=nexoreport_pdf.dur_txt,
                                rotulo_situacao=nexoreport_pdf.ROTULO_SITUACAO, primeiro_mes=nexoreport.PRIMEIRO_MES,
                                proximo_rotulo=f'{hub.MESES[proximo[1] - 1]} de {proximo[0]}', meta=hub.meta_da_empresa(conn, empresa['id']) if empresa else None)
