@@ -90,6 +90,18 @@ class CampoViewModel(app: Application) : AndroidViewModel(app) {
     var visitas by mutableStateOf<List<Visitas.Resumo>>(emptyList()); private set
     var mensagem by mutableStateOf<String?>(null)
 
+    // Central (NexoHub)
+    private val central = CentralApi(app)
+    var contaCentral by mutableStateOf(central.nome?.takeIf { central.token != null }); private set
+    var precisaCodigo by mutableStateOf(false); private set
+    var entrando by mutableStateOf(false); private set
+    var empresas by mutableStateOf<List<CentralApi.Empresa>>(emptyList()); private set
+    var empresaEscolhida by mutableStateOf<Int?>(null)
+    var localEscolhido by mutableStateOf<String?>(null)
+    var chamadoEscolhido by mutableStateOf<Int?>(null)
+    var enviando by mutableStateOf(false); private set
+    var numeroNaCentral by mutableStateOf<Int?>(null); private set
+
     // Atualização do app
     var novaVersao by mutableStateOf<Atualizador.Versao?>(null); private set
     var baixandoAtualizacao by mutableStateOf(false); private set
@@ -100,6 +112,59 @@ class CampoViewModel(app: Application) : AndroidViewModel(app) {
     init {
         viewModelScope.launch { novaVersao = Atualizador.verificar(contexto) }
         recarregarVisitas()
+        if (contaCentral != null) carregarEmpresas()
+    }
+
+    // ------------------------------------------------------------------ Central
+    fun entrarNaCentral(usuario: String, senha: String, codigo: String?) {
+        if (entrando) return
+        entrando = true
+        viewModelScope.launch {
+            when (val r = central.entrar(usuario, senha, codigo)) {
+                is CentralApi.Entrada.Ok -> { contaCentral = r.nome; precisaCodigo = false; carregarEmpresas() }
+                is CentralApi.Entrada.PrecisaCodigo -> { precisaCodigo = true; mensagem = r.mensagem }
+                is CentralApi.Entrada.Erro -> mensagem = r.mensagem
+            }
+            entrando = false
+        }
+    }
+
+    fun sairDaCentral() {
+        viewModelScope.launch { central.sair(); contaCentral = null; empresas = emptyList(); empresaEscolhida = null }
+    }
+
+    fun carregarEmpresas() {
+        viewModelScope.launch {
+            try {
+                empresas = central.empresas()
+            } catch (e: CentralApi.Falha) {
+                if (e.sairDaConta) contaCentral = null
+                mensagem = e.message
+            }
+        }
+    }
+
+    fun escolherEmpresa(id: Int?) { empresaEscolhida = id; localEscolhido = null; chamadoEscolhido = null }
+
+    fun enviarParaCentral() {
+        val empresa = empresaEscolhida ?: run { mensagem = "Escolha a empresa da visita."; return }
+        if (enviando) return
+        enviando = true
+        viewModelScope.launch {
+            try {
+                val l = levantamento()
+                val pdf = withContext(Dispatchers.IO) { Visitas.salvar(contexto, l); Exportar.pdf(contexto, l) }
+                numeroNaCentral = central.enviar(l, pdf, empresa, localEscolhido, chamadoEscolhido)
+                mensagem = "Visita enviada para a Central (nº $numeroNaCentral)" + (chamadoEscolhido?.let { " e anexada ao chamado #$it" } ?: "") + "."
+            } catch (e: CentralApi.Falha) {
+                if (e.sairDaConta) contaCentral = null
+                mensagem = e.message
+            } catch (e: Exception) {
+                mensagem = "Não foi possível enviar: ${e.message}"
+            } finally {
+                enviando = false
+            }
+        }
     }
 
     /** O que está acontecendo agora, para o selo do topo. */
@@ -289,7 +354,7 @@ class CampoViewModel(app: Application) : AndroidViewModel(app) {
         wifi = emptyList(); wifiBuscado = false; ambientes = emptyList(); historicoSinal = emptyList()
         pings = emptyList(); dns = emptyList(); velocidade = null; pingContinuo = null
         dispositivos = emptyList(); varreduraFeita = false
-        local = ""; observacoes = ""; fotos = emptyList()
+        local = ""; observacoes = ""; fotos = emptyList(); numeroNaCentral = null
         atualizarRede()
         mensagem = "Visita nova começada. A anterior ficou salva."
     }
@@ -305,6 +370,7 @@ class CampoViewModel(app: Application) : AndroidViewModel(app) {
             rede = l.rede; wifi = l.wifi; wifiBuscado = l.wifi.isNotEmpty(); ambientes = l.ambientes
             pings = l.pings; dns = l.dns; velocidade = l.velocidade; pingContinuo = l.pingContinuo
             dispositivos = l.dispositivos; varreduraFeita = l.dispositivos.isNotEmpty(); fotos = l.fotos
+            numeroNaCentral = central.numeroEnviado(l.id)
             mensagem = "Visita aberta: ${l.local.ifBlank { "sem nome" }}. Para medir de novo, use as abas."
         }
     }

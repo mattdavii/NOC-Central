@@ -22,6 +22,7 @@
                 <a href="/pulse" class="{{ 'active' if _path == '/pulse' or _path.startswith('/sensor/') }}"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i><span>Operação</span></a>
                 {% if _role == 'Administrador Master' %}
                 <a href="/sensores" class="{{ 'active' if _path == '/sensores' }}"><i class="fa-solid fa-satellite-dish" aria-hidden="true"></i><span>Sensores</span></a>
+                <a href="/campo" class="{{ 'active' if _path == '/campo' }}"><i class="fa-solid fa-person-walking" aria-hidden="true"></i><span>Visitas de campo</span></a>
                 {% endif %}
                 <a href="/tv" class="{{ 'active' if _path == '/tv' }}"><i class="fa-solid fa-display" aria-hidden="true"></i><span>Sala de Operações</span></a>
             </div>

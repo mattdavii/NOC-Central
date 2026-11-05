@@ -9,6 +9,7 @@ import nexoreport
 import nexoreport_pdf
 import guias
 import app_campo
+import campo
 import nexodesk
 import sla
 import notifications
@@ -73,6 +74,8 @@ class _Requisicao(Flask.request_class):
     def max_content_length(self):
         if self.method == 'POST' and self.path.startswith('/api/v2/desk/'):
             return nexodesk.LIMITE_REQUISICAO
+        if self.method == 'POST' and self.path == '/api/v2/campo/visitas':
+            return campo.LIMITE_REQUISICAO
         return super().max_content_length
 
     @max_content_length.setter
@@ -836,6 +839,131 @@ def guia_pdf(sistema):
         return "Guia não encontrado.", 404
     return _pdf_resposta(guias.gerar_pdf(sistema, _url_central()), f'nexopulse-guia-instalacao-{sistema}.pdf',
                          request.args.get('baixar') == '1')
+
+
+# ------------------------------------------------------------------ NexoCampo: acesso do app e visitas de campo
+def _campo_autor(conn):
+    """Técnico da MD dono do token do app (Authorization: Bearer ...); None se o token não vale."""
+    cabecalho = request.headers.get('Authorization', '')
+    token = cabecalho[7:].strip() if cabecalho.lower().startswith('bearer ') else ''
+    return campo.usuario_do_token(conn, token)
+
+
+@app.route('/api/v2/campo/entrar', methods=['POST'])
+def campo_entrar():
+    dados = request.get_json(silent=True) or request.form
+    usuario_digitado = str(dados.get('usuario') or '').strip()
+    senha = str(dados.get('senha') or '').strip()
+    conn = database.get_db()
+    try:
+        ate = seguranca.bloqueado_ate(conn, usuario_digitado)
+        if ate:
+            return jsonify(error=_mensagem_bloqueio(ate)), 429
+        user = conn.execute('SELECT * FROM clientes WHERE usuario = ?', (usuario_digitado,)).fetchone()
+        guardada = str(user['senha']) if user else ''
+        ok = bool(user) and dict(user).get('ativo', 1) and guardada.startswith(('scrypt:', 'pbkdf2:')) and check_password_hash(guardada, senha)
+        if not ok:
+            return jsonify(error=_falha_login(conn, usuario_digitado, dict(user) if user else None, 'campo_login_falhou')
+                           or 'Usuário ou senha incorretos.'), 401
+        user = dict(user)
+        if not nexodesk.eh_md(user):
+            return jsonify(error='O NexoCampo é para a equipe da MD.'), 403
+        if user.get('totp_ativo'):
+            codigo = str(dados.get('codigo') or '').strip()
+            if not codigo:
+                return jsonify(error='Digite o código do aplicativo autenticador.', precisa_codigo=True), 401
+            segredo = seguranca.decifrar(user['totp_segredo'])
+            passo = seguranca.verificar_totp(segredo, codigo, user['totp_ultimo_passo']) if segredo else None
+            if passo is None:
+                return jsonify(error=_falha_login(conn, user['usuario'], user, 'campo_2fa_falhou') or 'Código incorreto.',
+                               precisa_codigo=True), 401
+            conn.execute('UPDATE clientes SET totp_ultimo_passo=? WHERE id=?', (passo, user['id']))
+        token = campo.criar_token(conn, user['id'], str(dados.get('aparelho') or ''))
+        seguranca.limpar_falhas(conn, user['usuario'])
+        _auditar(conn, 'campo_login', alvo=user['usuario'], autor=user, detalhes={'aparelho': str(dados.get('aparelho') or '')[:120]})
+        conn.commit()
+        return jsonify(token=token, nome=user.get('nome') or user['usuario'])
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/campo/sair', methods=['POST'])
+def campo_sair():
+    cabecalho = request.headers.get('Authorization', '')
+    conn = database.get_db()
+    try:
+        campo.revogar(conn, cabecalho[7:].strip())
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/campo/locais')
+def campo_locais():
+    conn = database.get_db()
+    try:
+        autor = _campo_autor(conn)
+        if not autor:
+            return jsonify(error='Entre de novo no app.'), 401
+        conn.commit()
+        return jsonify(empresas=campo.locais(conn))
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/campo/visitas', methods=['POST'])
+def campo_receber_visita():
+    conn = database.get_db()
+    try:
+        autor = _campo_autor(conn)
+        if not autor:
+            return jsonify(error='Entre de novo no app.'), 401
+        arquivo = request.files.get('pdf')
+        pdf = arquivo.read() if arquivo else None
+        try:
+            visita_id, novo, chamado = campo.receber(conn, autor, request.form, pdf)
+        except (campo.Recusa, nexodesk.Recusa) as r:
+            conn.rollback()
+            return jsonify(error=r.mensagem), r.status
+        _auditar(conn, 'campo_visita_recebida', alvo=f'visita {visita_id}', autor=autor,
+                 empresa_id=int(request.form.get('empresa_id') or 0) or None)
+        conn.commit()
+        return jsonify(status='OK', numero=visita_id, novo=novo, chamado=chamado), 201 if novo else 200
+    finally:
+        conn.close()
+
+
+@app.route('/campo')
+def pagina_campo():
+    if session.get('role') != 'Administrador Master':
+        return "Acesso Negado.", 403
+    conn = database.get_db()
+    try:
+        visitas = campo.listar(conn)
+    finally:
+        conn.close()
+    return render_template('campo.html', visitas=visitas, quando=lambda t: datetime.fromtimestamp(t, hub.FUSO_BR).strftime('%d/%m/%Y %H:%M') if t else '—')
+
+
+@app.route('/campo/<int:visita_id>.<formato>')
+def campo_arquivo(visita_id, formato):
+    if session.get('role') != 'Administrador Master':
+        return "Acesso Negado.", 403
+    conn = database.get_db()
+    try:
+        v = campo.visita(conn, visita_id)
+    finally:
+        conn.close()
+    if not v or formato not in ('pdf', 'json'):
+        return "Visita não encontrada.", 404
+    if formato == 'pdf':
+        if not v['pdf']:
+            return "Esta visita chegou sem PDF.", 404
+        return _pdf_resposta(bytes(v['pdf']), f'visita-campo-{visita_id}.pdf', request.args.get('baixar') == '1')
+    resposta = app.response_class(v['dados'], mimetype='application/json')
+    resposta.headers['Content-Disposition'] = f'attachment; filename="visita-campo-{visita_id}.json"'
+    return resposta
 
 
 # ------------------------------------------------------------------ NexoCampo (app Android de campo)

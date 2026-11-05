@@ -537,6 +537,7 @@ private fun TelaRelatorio(vm: CampoViewModel) {
                 Rotulo("O JSON TEM OS MESMOS DADOS EM FORMATO PARA IMPORTAR OU ENTREGAR A UMA IA.")
             }
         }
+        item { PainelCentral(vm) }
         item {
             Painel {
                 CabecaPainel("Visitas salvas", if (vm.visitas.isNotEmpty()) "${vm.visitas.size}" else null)
@@ -601,6 +602,73 @@ private fun AvisoAtualizacao(vm: CampoViewModel) {
                 BotaoPrincipal("Liberar instalação") { vm.liberarInstalacao() }
             }
             else -> BotaoPrincipal("Atualizar agora") { vm.atualizar() }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ Central (NexoHub)
+@Composable
+private fun PainelCentral(vm: CampoViewModel) {
+    var usuario by rememberSaveable { mutableStateOf("") }
+    var senha by remember { mutableStateOf("") }
+    var codigo by remember { mutableStateOf("") }
+    Painel {
+        CabecaPainel("Enviar para a Central", vm.numeroNaCentral?.let { "ENVIADA · Nº $it" })
+        if (vm.contaCentral == null) {
+            Text("Entre com o seu usuário do NexoHub (equipe da MD). A visita vai para Visitas de campo e, se quiser, para um chamado.",
+                color = Cor.suave, fontSize = 13.sp, lineHeight = 18.sp)
+            OutlinedTextField(usuario, { usuario = it }, label = { Text("Usuário") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                colors = campoCores(), shape = RoundedCornerShape(12.dp))
+            OutlinedTextField(senha, { senha = it }, label = { Text("Senha") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+                colors = campoCores(), shape = RoundedCornerShape(12.dp))
+            if (vm.precisaCodigo) {
+                OutlinedTextField(codigo, { codigo = it.filter(Char::isDigit).take(6) }, label = { Text("Código do autenticador") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth(), colors = campoCores(), shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+            }
+            BotaoPrincipal(if (vm.entrando) "Entrando…" else "Entrar", ativo = !vm.entrando && usuario.isNotBlank() && senha.isNotBlank()) {
+                vm.entrarNaCentral(usuario, senha, codigo.ifBlank { null })
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Rotulo("CONECTADO COMO")
+                    Text(vm.contaCentral ?: "", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                }
+                Text("Sair", color = Cor.suave, fontSize = 13.sp, modifier = Modifier.clickable { vm.sairDaCentral() }.padding(8.dp))
+            }
+            val empresa = vm.empresas.firstOrNull { it.id == vm.empresaEscolhida }
+            Seletor("Empresa", empresa?.nome, vm.empresas.map { it.id to it.nome }) { vm.escolherEmpresa(it) }
+            if (empresa != null) {
+                if (empresa.locais.isNotEmpty()) Seletor("Local monitorado (opcional)", empresa.locais.firstOrNull { it.first == vm.localEscolhido }?.second,
+                    listOf<Pair<String?, String>>(null to "Nenhum") + empresa.locais) { vm.localEscolhido = it }
+                if (empresa.chamados.isNotEmpty()) Seletor("Chamado aberto (opcional)", empresa.chamados.firstOrNull { it.first == vm.chamadoEscolhido }?.let { "#${it.first} · ${it.second}" },
+                    listOf<Pair<Int?, String>>(null to "Nenhum") + empresa.chamados.map { it.first to "#${it.first} · ${it.second}" }) { vm.chamadoEscolhido = it }
+            }
+            if (vm.empresas.isEmpty()) BotaoSecundario("Carregar empresas", Modifier.fillMaxWidth()) { vm.carregarEmpresas() }
+            BotaoPrincipal(if (vm.enviando) "Enviando…" else if (vm.numeroNaCentral != null) "Enviar de novo (atualiza)" else "Enviar para a Central",
+                ativo = !vm.enviando && empresa != null) { vm.enviarParaCentral() }
+            Rotulo("NO CHAMADO, A VISITA ENTRA COMO NOTA INTERNA DA MD, COM O PDF.")
+        }
+    }
+}
+
+/** Campo de escolha (abre a lista ao tocar). */
+@Composable
+private fun <T> Seletor(rotulo: String, valor: String?, opcoes: List<Pair<T, String>>, aoEscolher: (T) -> Unit) {
+    var aberto by remember { mutableStateOf(false) }
+    Box {
+        Column(Modifier.fillMaxWidth().background(Cor.cartao2, RoundedCornerShape(12.dp)).border(1.dp, Cor.borda, RoundedCornerShape(12.dp))
+            .clickable { aberto = true }.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Rotulo(rotulo.uppercase())
+            Text(valor ?: "Escolher…", color = if (valor == null) Cor.suave else Cor.texto, fontSize = 14.sp, modifier = Modifier.padding(top = 2.dp))
+        }
+        androidx.compose.material3.DropdownMenu(aberto, { aberto = false }, modifier = Modifier.background(Cor.cartao2)) {
+            opcoes.forEach { (chave, nome) ->
+                androidx.compose.material3.DropdownMenuItem(text = { Text(nome, fontSize = 14.sp) }, onClick = { aberto = false; aoEscolher(chave) })
+            }
         }
     }
 }
