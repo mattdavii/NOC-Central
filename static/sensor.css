@@ -116,7 +116,14 @@ button.action-btn:hover { filter: brightness(1.2); }
 .me-linha select, .me-linha input, .mapa-editor-novo select { width: 100%; padding: 7px 8px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-input); color: inherit; font: inherit; font-size: .86rem; box-sizing: border-box; }
 .me-remover { border: 1px solid var(--border); background: transparent; color: var(--status-crit, #F87171); border-radius: 7px; height: 34px; cursor: pointer; }
 .mapa-editor-erro { margin: 0; color: var(--status-crit, #F87171); min-height: 1.2em; font-size: .88rem; }
-.mapa-editor-acoes { display: flex; justify-content: flex-end; gap: 10px; }
+.mapa-editor-acoes { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.mapa-editor-historico { max-height: 34vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; }
+.me-versao { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); }
+.me-versao:first-of-type { border-top: 0; }
+.me-versao strong { display: block; font-size: .88rem; }
+.me-versao small { display: block; color: var(--text-muted); font-size: .78rem; margin-top: 2px; }
+.mapa-rede-svg { overflow-x: auto; background: #fff; border-radius: 10px; padding: 10px; border: 1px solid var(--border); }
+.mapa-rede-svg svg { display: block; min-width: 640px; width: 100%; height: auto; }
 @media (max-width: 760px) {
     .me-linha { grid-template-columns: 1fr 1fr; }
     .me-linha .me-nome-col { grid-column: 1 / -1; }

@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
-    <link rel="stylesheet" href="/static/sensor.css?v=sensor-4">
+    <link rel="stylesheet" href="/static/sensor.css?v=sensor-5">
 <link rel="stylesheet" href="/static/product.css?v=nexopulse-3">
 <script src="/static/brand.js?v=nexopulse-2"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -389,7 +389,9 @@
             </div>
             <div id="mapa-editor-lista" class="mapa-editor-lista"></div>
             <p class="mapa-editor-erro" id="mapa-editor-erro" role="alert"></p>
+            <div id="mapa-editor-historico" class="mapa-editor-historico" hidden></div>
             <div class="mapa-editor-acoes">
+                <button type="button" class="action-btn btn-secondary" id="mapa-editor-ver-historico" style="margin-right:auto"><i class="fa-solid fa-clock-rotate-left"></i> Versões anteriores</button>
                 <button type="button" class="action-btn btn-secondary" id="mapa-editor-cancelar">Cancelar</button>
                 <button type="button" class="action-btn btn-primary" id="mapa-editor-salvar">Salvar diagrama</button>
             </div>
@@ -1060,7 +1062,7 @@
         });
     </script>
 <script src="/static/location.js?v=2.3"></script>
-<script src="/static/mapa_rede.js?v=4"></script>
+<script src="/static/mapa_rede.js?v=5"></script>
 <script src="/static/acoes.js?v=2.2.0-rc1-auto"></script>
 <script src="/static/host.js?v=2.2.0-rc1"></script>
 <script src="/static/diagnostico.js?v=2.2.0-rc1"></script>

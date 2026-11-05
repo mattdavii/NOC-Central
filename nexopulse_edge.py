@@ -1342,7 +1342,9 @@ def loop_telemetria():
                 "scan_rede": rede.get("scan_rede", ""),
                 "scan_limitado": rede.get("scan_limitado", False),
                 # Versão do diagrama que o sensor já tem: a Central só manda o mapa quando mudou.
-                "mapa_rede_versao": (edge_local.ler_config('sensor_local.db', 'mapa_rede') or {}).get('versao')
+                "mapa_rede_versao": (edge_local.ler_config('sensor_local.db', 'mapa_rede') or {}).get('versao'),
+                # Edição do diagrama feita no painel local (sem internet, inclusive): sobe até a Central confirmar.
+                "mapa_rede_local": edge_local.mapa_local_pendente('sensor_local.db')
             }
             
             espera_remota = TELEMETRIA_INTERVALO
@@ -1352,6 +1354,11 @@ def loop_telemetria():
                     res_data = json.loads(response.read().decode('utf-8'))
                     _confirmar_atualizacao()
                     try:
+                        situacao = edge_local.confirmar_mapa_local('sensor_local.db', res_data.get("mapa_rede_local"))
+                        if situacao == 'aplicado':
+                            log_local_event("Diagrama", "Edição do diagrama feita no painel local enviada à Central.", "OK")
+                        elif situacao == 'substituido':
+                            log_local_event("Diagrama", "A Central tinha uma edição mais recente do diagrama; ela vale agora e a edição local ficou guardada no histórico da Central.", "Aviso")
                         if isinstance(res_data.get("mapa_rede"), dict):
                             edge_local.gravar_config('sensor_local.db', 'mapa_rede', res_data["mapa_rede"])
                     except Exception as e:

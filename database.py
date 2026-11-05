@@ -221,6 +221,9 @@ def init_db():
             'medicoes_rede': 'sensor_mac TEXT NOT NULL, coletado_em DOUBLE PRECISION NOT NULL, tipo TEXT, papel TEXT, alvo TEXT, latencia_ms DOUBLE PRECISION, jitter_ms DOUBLE PRECISION, perda_pct DOUBLE PRECISION, amostras INTEGER',
             'starlink_medicoes': 'sensor_mac TEXT NOT NULL, coletado_em DOUBLE PRECISION NOT NULL, dados TEXT',
             'rotas_rede': 'sensor_mac TEXT NOT NULL, coletado_em DOUBLE PRECISION NOT NULL, motivo TEXT, ferramenta TEXT, saltos TEXT, pior_salto TEXT',
+            # Versões substituídas do diagrama da rede (edição na Central, no painel local ou restauração).
+            'mapa_rede_historico': 'sensor_mac TEXT NOT NULL, mapa TEXT NOT NULL, em TEXT, por TEXT, origem TEXT, motivo TEXT, '
+                                   'guardado_em DOUBLE PRECISION NOT NULL',
             # NexoDesk: o número do chamado é o id. Horários em epoch (segundos, UTC).
             'chamados': "empresa_id INTEGER NOT NULL, interno INTEGER NOT NULL DEFAULT 0, solicitante_id INTEGER, solicitante TEXT, "
                         "aberto_por_id INTEGER, canal TEXT NOT NULL DEFAULT 'nexohub', categoria TEXT NOT NULL, sensor_mac TEXT, "

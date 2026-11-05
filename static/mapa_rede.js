@@ -9,6 +9,10 @@
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
     let estado = {mapa: {extras: [], nos: {}}, arvore: [], tipos: {}, meios: {}};
     let rascunho = null, seq = 0;
+    // Na Central, o desenho é o vis-network da tela do sensor. No painel local (sem internet, sem CDN),
+    // o desenho é o SVG que o próprio sensor gera; MAPA_REDE_URL e MAPA_REDE_SVG apontam para as rotas locais.
+    const urlMapa = () => window.MAPA_REDE_URL || `/api/v2/sensor/${encodeURIComponent(mac_id)}/mapa_rede`;
+    const comVis = () => typeof nodes !== 'undefined' && typeof edges !== 'undefined';
 
     function corDoNo(no) {
         if (no.tipo === 'internet') return {background: '#05A9DC', border: '#05A9DC'};
@@ -50,7 +54,28 @@
         }, 60);
     }
 
+    async function desenharSvg() {
+        const alvo = document.getElementById('mapa-rede-svg');
+        if (!alvo) return;
+        try {
+            const r = await fetch((window.MAPA_REDE_SVG || '/api/diagrama.svg') + '?t=' + Date.now());
+            alvo.innerHTML = r.ok ? await r.text() : '<p class="hist-empty">Não foi possível desenhar o diagrama.</p>';
+        } catch (e) { alvo.innerHTML = '<p class="hist-empty">Não foi possível desenhar o diagrama.</p>'; }
+    }
+
+    function escreverInfo() {
+        const info = document.getElementById('mapa-rede-info');
+        if (!info) return;
+        const informados = estado.arvore.filter(n => n.informado).length + (estado.mapa.extras || []).length;
+        let texto = informados
+            ? `Diagrama com ligações informadas pela equipe${estado.atualizado_por ? ` (última edição: ${estado.atualizado_por})` : ''}. Clique em "Editar diagrama" para ajustar.`
+            : 'Ligações observadas: todos aparecem no gateway. Use "Editar diagrama" para dizer o que passa por switch, conversor, rádio…';
+        if (estado.pendente) texto += ' A edição está salva no sensor e vai para a Central assim que houver conexão.';
+        info.textContent = texto;
+    }
+
     function desenhar() {
+        if (!comVis()) { desenharSvg(); escreverInfo(); return; }
         nodes.clear(); edges.clear();
         const status = {online: 'ON', sem_icmp: 'SEM ICMP', offline: 'OFF'};
         for (const no of estado.arvore) {
@@ -74,17 +99,11 @@
             }
         }
         enquadrar();
-        const info = document.getElementById('mapa-rede-info');
-        if (info) {
-            const informados = estado.arvore.filter(n => n.informado).length + (estado.mapa.extras || []).length;
-            info.textContent = informados
-                ? `Diagrama com ligações informadas pela equipe${estado.atualizado_por ? ` (última edição: ${estado.atualizado_por})` : ''}. Clique em "Editar diagrama" para ajustar.`
-                : 'Ligações observadas: todos aparecem no gateway. Use "Editar diagrama" para dizer o que passa por switch, conversor, rádio…';
-        }
+        escreverInfo();
     }
 
     async function carregar() {
-        const r = await fetch(`/api/v2/sensor/${encodeURIComponent(mac_id)}/mapa_rede`);
+        const r = await fetch(urlMapa());
         if (!r.ok) throw new Error('Falha ao carregar o diagrama');
         estado = await r.json();
         desenhar();
@@ -130,7 +149,7 @@
             <label><span>Tipo</span><select class="me-tipo" ${tipoFixo ? 'disabled' : ''}>${tipoFixo ? `<option>${esc(n.tipo_rotulo || 'Sensor NexoPulse')}</option>` : opcoes(estado.tipos, tipo)}</select></label>
             <label><span>Liga em</span><select class="me-pai">${n.id === 'gateway' ? `<option value="internet" ${pai === 'internet' ? 'selected' : ''}>Internet</option>` : ''}${destinos.map(o => `<option value="${esc(o.id)}" ${o.id === pai ? 'selected' : ''}>${esc(o.nome)}${o.sub && !o.adicionado ? ' (' + esc(o.sub) + ')' : ''}</option>`).join('')}</select></label>
             <label><span>Meio</span><select class="me-meio"><option value="">Não informado</option>${opcoes(estado.meios, cfg.meio || '')}</select></label>
-            ${n.adicionado ? '<button type="button" class="me-remover" title="Remover equipamento" aria-label="Remover equipamento"><i class="fa-solid fa-trash"></i></button>' : '<span></span>'}
+            ${n.adicionado ? '<button type="button" class="me-remover" title="Remover equipamento" aria-label="Remover equipamento">✕</button>' : '<span></span>'}
         </div>`;
     }
 
@@ -168,6 +187,8 @@
         const novoTipo = document.getElementById('mapa-editor-novo-tipo');
         if (!novoTipo.options.length) novoTipo.innerHTML = opcoes(estado.tipos, 'switch');
         document.getElementById('mapa-editor-erro').textContent = '';
+        const hist = document.getElementById('mapa-editor-historico');
+        if (hist) hist.hidden = true;
         document.getElementById('modalMapaRede').style.display = 'block';
         renderEditor(foco);
     }
@@ -192,7 +213,7 @@
         const botao = document.getElementById('mapa-editor-salvar');
         botao.disabled = true; erro.textContent = '';
         try {
-            const r = await fetch(`/api/v2/sensor/${encodeURIComponent(mac_id)}/mapa_rede`, {
+            const r = await fetch(urlMapa(), {
                 method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({mapa: {extras: rascunho.extras, nos}})});
             const dados = await r.json();
             if (!r.ok) throw new Error(dados.error || 'Não foi possível salvar o diagrama.');
@@ -200,9 +221,40 @@
         } catch (e) { erro.textContent = e.message; } finally { botao.disabled = false; }
     }
 
+    // ---------- Versões anteriores (só na Central) ----------
+    async function abrirHistorico() {
+        const caixa = document.getElementById('mapa-editor-historico');
+        if (!caixa) return;
+        caixa.hidden = false;
+        caixa.innerHTML = '<p class="hist-empty">Carregando…</p>';
+        try {
+            const r = await fetch(urlMapa() + '/historico');
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'Falha ao carregar as versões.');
+            const data = t => { const x = new Date(t); return isNaN(x) ? (t || '—') : x.toLocaleString('pt-BR', {dateStyle: 'short', timeStyle: 'short'}); };
+            caixa.innerHTML = d.versoes.length ? `<p class="mapa-editor-ajuda">Cada vez que o diagrama muda, a versão anterior fica guardada aqui (as 30 últimas), inclusive a edição do painel local que perdeu para uma mais recente.</p>` +
+                d.versoes.map(v => `<div class="me-versao"><div><strong>${esc(data(v.em))} · ${esc(v.por || 'sem autor')}</strong>
+                    <small>${esc(v.origem)} · ${esc(v.motivo || '')} · ${v.ligacoes} ligações, ${v.adicionados} adicionados</small></div>
+                    <button type="button" class="action-btn btn-secondary" data-restaurar="${v.id}">Restaurar</button></div>`).join('')
+                : '<p class="hist-empty">Nenhuma versão anterior guardada ainda.</p>';
+        } catch (e) { caixa.innerHTML = `<p class="mapa-editor-erro">${esc(e.message)}</p>`; }
+    }
+
+    async function restaurar(id) {
+        if (!confirm('Restaurar esta versão do diagrama? A versão atual fica guardada no histórico.')) return;
+        const r = await fetch(`${urlMapa()}/historico/${id}/restaurar`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { document.getElementById('mapa-editor-erro').textContent = d.error || 'Não foi possível restaurar.'; return; }
+        estado = d; desenhar(); fecharEditor();
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         const modal = document.getElementById('modalMapaRede');
         if (!modal) return;
+        const botaoHist = modal.querySelector('#mapa-editor-ver-historico');
+        if (botaoHist) botaoHist.onclick = abrirHistorico;
+        const caixaHist = modal.querySelector('#mapa-editor-historico');
+        if (caixaHist) caixaHist.addEventListener('click', ev => { const b = ev.target.closest('[data-restaurar]'); if (b) restaurar(b.dataset.restaurar); });
         modal.querySelector('#mapa-editor-fechar').onclick = fecharEditor;
         modal.querySelector('#mapa-editor-cancelar').onclick = fecharEditor;
         modal.querySelector('#mapa-editor-salvar').onclick = salvar;

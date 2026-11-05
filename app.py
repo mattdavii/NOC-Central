@@ -674,7 +674,7 @@ ARQUIVOS_AGENTE = ['nexopulse_edge.py', 'host_metrics.py', 'starlink.py', 'netdi
                    'descoberta.py', 'localizacao_sensor.py', 'cftv.py', 'comunicacao.py', 'oui.py', 'dados/oui.tsv.gz', 'levantamento.py', 'edge_local.py', 'mapa_rede.py',
                    'templates/edge/painel.html', 'templates/edge/relatorio.html', 'templates/edge/login.html',
                    'templates/edge/diagrama.html',
-                   'static/product.css', 'static/sensor.css', 'static/brand.js', 'static/host.js',
+                   'static/product.css', 'static/sensor.css', 'static/brand.js', 'static/host.js', 'static/mapa_rede.js',
                    'static/brand/nexopulse/favicon.svg', 'static/brand/nexopulse/favicon.ico',
                    'static/brand/nexopulse/logo-claro.svg', 'static/brand/nexopulse/logo-escuro.svg',
                    'requirements-starlink.txt', 'linux/install.sh', 'linux/nexopulse-admin', 'linux/nexopulse-guard.sh',
@@ -1879,6 +1879,12 @@ def report_data():
                 app.logger.exception('Falha ao processar métricas do host')
 
         comando = consumir_comando(conn, mac)
+        resultado_mapa_local = None
+        try:
+            resultado_mapa_local = _receber_mapa_local(conn, mac, data.get('mapa_rede_local'))
+            conn.commit()
+        except Exception:
+            app.logger.exception('Falha ao receber o diagrama editado no painel local')
         mapa_para_sensor = _mapa_para_o_sensor(conn, mac, data.get('mapa_rede_versao'))
         conn.close()
 
@@ -1886,6 +1892,8 @@ def report_data():
         resposta = {"status": "OK", "command": comando}
         if mapa_para_sensor:
             resposta["mapa_rede"] = mapa_para_sensor
+        if resultado_mapa_local:
+            resposta["mapa_rede_local"] = resultado_mapa_local
         if PAINEL_LOCAL:
             resposta["painel_local"] = PAINEL_LOCAL
         return jsonify(resposta)
@@ -2545,6 +2553,62 @@ def exportar_levantamento(mac_id, formato):
     resposta.headers['Cache-Control'] = 'no-store'
     return resposta
 
+MAPA_HISTORICO_MAX = 30
+ROTULO_ORIGEM_MAPA = {'central': 'Central', 'painel_local': 'Painel local do sensor', 'restauracao': 'Restauração'}
+
+
+def _quando_iso(texto):
+    try:
+        quando = datetime.fromisoformat(str(texto))
+    except (TypeError, ValueError):
+        return None
+    return quando if quando.tzinfo else quando.replace(tzinfo=timezone.utc)
+
+
+def _guardar_mapa_no_historico(conn, mac, mapa_json, em, por, origem, motivo):
+    """Guarda a versão que está saindo (as 30 últimas por sensor), para conferir ou restaurar."""
+    if not mapa_json:
+        return
+    conn.execute('INSERT INTO mapa_rede_historico (sensor_mac, mapa, em, por, origem, motivo, guardado_em) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                 (mac, mapa_json, em, por, origem, motivo, time.time()))
+    ids = [r['id'] for r in conn.execute('SELECT id FROM mapa_rede_historico WHERE sensor_mac = ? ORDER BY id DESC', (mac,)).fetchall()]
+    for velho in ids[MAPA_HISTORICO_MAX:]:
+        conn.execute('DELETE FROM mapa_rede_historico WHERE id = ?', (velho,))
+
+
+def _receber_mapa_local(conn, mac, dados):
+    """Edição do diagrama feita no painel local do sensor. Vale a mais recente: se a Central foi editada
+    depois, a do sensor vai para o histórico; senão, a da Central vai para o histórico e a do sensor vale."""
+    if not isinstance(dados, dict):
+        return None
+    em = str(dados.get('em') or '')[:40]
+    quando = _quando_iso(em)
+    if not quando:
+        return {'em': em, 'aplicado': False}
+    try:
+        mapa = mapa_rede.validar(dados.get('mapa'))
+    except ValueError:
+        return {'em': em, 'aplicado': False}
+    row = conn.execute('SELECT mapa_rede, mapa_rede_em, mapa_rede_por FROM sensores WHERE mac_id = ?', (mac,)).fetchone()
+    if not row:
+        return None
+    if row['mapa_rede_em'] == em:
+        return {'em': em, 'aplicado': True}   # a mesma edição chegou de novo
+    mapa_json = json.dumps(mapa, ensure_ascii=False)
+    central = _quando_iso(row['mapa_rede_em'])
+    if central is None or quando > central:
+        _guardar_mapa_no_historico(conn, mac, row['mapa_rede'], row['mapa_rede_em'], row['mapa_rede_por'], 'central',
+                                   'Substituída por uma edição mais recente feita no painel local do sensor')
+        conn.execute('UPDATE sensores SET mapa_rede=?, mapa_rede_em=?, mapa_rede_por=? WHERE mac_id=?',
+                     (mapa_json, em, 'painel local do sensor', mac))
+        return {'em': em, 'aplicado': True}
+    ja = conn.execute("SELECT 1 FROM mapa_rede_historico WHERE sensor_mac = ? AND origem = 'painel_local' AND em = ?", (mac, em)).fetchone()
+    if not ja:
+        _guardar_mapa_no_historico(conn, mac, mapa_json, em, 'painel local do sensor', 'painel_local',
+                                   'Não aplicada: a Central tinha uma edição mais recente')
+    return {'em': em, 'aplicado': False}
+
+
 def _mapa_para_o_sensor(conn, mac, versao_do_sensor):
     """Diagrama salvo na Central para o painel local desenhar sem internet: só vai quando mudou."""
     try:
@@ -2567,6 +2631,54 @@ def _arvore_do_sensor(conn, mac_id):
     dispositivos = db_execute(conn, "SELECT * FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
     mapa = mapa_rede.carregar(sensor['mapa_rede'])
     return sensor, mapa, mapa_rede.montar(sensor, dispositivos, mapa)
+
+
+@app.route('/api/v2/sensor/<mac_id>/mapa_rede/historico', methods=['GET'])
+def mapa_rede_historico(mac_id):
+    """Versões substituídas do diagrama, da mais recente para a mais antiga."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        rows = conn.execute('SELECT id, mapa, em, por, origem, motivo, guardado_em FROM mapa_rede_historico WHERE sensor_mac = ? ORDER BY id DESC',
+                            (mac_id,)).fetchall()
+    finally:
+        conn.close()
+    versoes = []
+    for r in rows:
+        mapa = mapa_rede.carregar(r['mapa'])
+        versoes.append({'id': r['id'], 'em': r['em'], 'por': r['por'], 'origem': ROTULO_ORIGEM_MAPA.get(r['origem'], r['origem']),
+                        'motivo': r['motivo'], 'guardado_em': r['guardado_em'],
+                        'ligacoes': sum(1 for c in mapa['nos'].values() if c.get('pai')), 'adicionados': len(mapa['extras'])})
+    return jsonify(versoes=versoes)
+
+
+@app.route('/api/v2/sensor/<mac_id>/mapa_rede/historico/<int:versao_id>/restaurar', methods=['POST'])
+def mapa_rede_restaurar(mac_id, versao_id):
+    """Volta uma versão guardada; a que estava em vigor vai para o histórico."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        alvo = conn.execute('SELECT mapa, em, por FROM mapa_rede_historico WHERE id = ? AND sensor_mac = ?', (versao_id, mac_id)).fetchone()
+        atual = conn.execute('SELECT mapa_rede, mapa_rede_em, mapa_rede_por FROM sensores WHERE mac_id = ?', (mac_id,)).fetchone()
+        if not alvo or not atual:
+            return jsonify(error='Versão não encontrada.'), 404
+        try:
+            mapa = mapa_rede.validar(json.loads(alvo['mapa']))
+        except (ValueError, TypeError):
+            return jsonify(error='Esta versão está danificada e não pode ser restaurada.'), 400
+        _guardar_mapa_no_historico(conn, mac_id, atual['mapa_rede'], atual['mapa_rede_em'], atual['mapa_rede_por'], 'restauracao',
+                                   f"Substituída ao restaurar uma versão anterior ({session.get('usuario')})")
+        conn.execute('UPDATE sensores SET mapa_rede=?, mapa_rede_em=?, mapa_rede_por=? WHERE mac_id=?',
+                     (json.dumps(mapa, ensure_ascii=False), datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                      f"{session.get('usuario')} (restaurou a versão de {alvo['por'] or 'antes'})", mac_id))
+        conn.commit()
+        sensor, mapa, arvore = _arvore_do_sensor(conn, mac_id)
+        return jsonify(mapa=mapa, arvore=arvore, tipos=mapa_rede.TIPOS, meios=mapa_rede.MEIOS,
+                       atualizado_em=sensor['mapa_rede_em'], atualizado_por=sensor['mapa_rede_por'])
+    finally:
+        conn.close()
 
 
 @app.route('/api/v2/sensor/<mac_id>/esquecer_dispositivo', methods=['POST'])
@@ -2604,6 +2716,10 @@ def mapa_rede_sensor(mac_id):
                 mapa = mapa_rede.validar((request.get_json(silent=True) or {}).get('mapa'))
             except ValueError as erro:
                 return jsonify(error=str(erro)), 400
+            anterior = conn.execute('SELECT mapa_rede, mapa_rede_em, mapa_rede_por FROM sensores WHERE mac_id=?', (mac_id,)).fetchone()
+            if anterior:
+                _guardar_mapa_no_historico(conn, mac_id, anterior['mapa_rede'], anterior['mapa_rede_em'], anterior['mapa_rede_por'],
+                                           'central', f"Substituída por uma edição na Central ({session.get('usuario')})")
             cur = conn.execute('UPDATE sensores SET mapa_rede=?, mapa_rede_em=?, mapa_rede_por=? WHERE mac_id=?',
                                (json.dumps(mapa, ensure_ascii=False), datetime.now(timezone.utc).isoformat(timespec='seconds'),
                                 session.get('usuario'), mac_id))
