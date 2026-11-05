@@ -37,8 +37,8 @@ class Varredura(private val contexto: Context) {
 
     companion object {
         val PORTAS = listOf(21, 22, 23, 53, 80, 81, 139, 443, 445, 502, 554, 631, 1883, 3389, 5000, 8000,
-            8008, 8009, 8080, 8291, 8443, 8728, 9100, 34567, 37777)
-        private val PORTAS_WEB = listOf(80, 8080, 81, 8000)
+            8008, 8009, 8080, 8291, 8443, 8728, 9100, 10000, 34567, 37777)
+        private val PORTAS_WEB = listOf(80, 8080, 81, 8000, 10000)   // 10000: painel local do sensor NexoPulse
         private const val TEMPO_PORTA_MS = 400
     }
 

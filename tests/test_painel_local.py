@@ -273,3 +273,22 @@ def test_central_manda_credencial_do_painel(client, monkeypatch):
     assert 'senha' not in json.dumps(r.json).replace('senha_hash', '')       # nunca a senha em texto
     monkeypatch.setattr(central, 'PAINEL_LOCAL', None)
     assert 'painel_local' not in client.post('/api/v2/report_data', json={'mac_id': MAC_EDGE, 'nome_local': 'Teste'}).json
+
+
+def test_painel_entrega_dados_para_o_app_de_campo(edge):
+    cli, _, _, _, ev = edge
+    ev.registrar('Queda de Alvo', 'Google DNS (8.8.8.8) parou!', 'Crítica')
+    ev.registrar('Alvo Restaurado', 'Google DNS (8.8.8.8) voltou.', 'OK')
+    ev.registrar('Conectividade Central', 'Não consegue mais reportar telemetria à central: timeout', 'Crítica')
+    ev.registrar('Speedtest', '187 Mbps', 'OK')                       # não é ocorrência de rede
+    r = cli.get('/api/campo')
+    assert r.status_code == 200
+    d = r.json
+    assert d['formato'] == 'nexopulse.edge-campo' and d['sensor']['mac_id'] == MAC_EDGE
+    camera = [x for x in d['dispositivos'] if x['ip'] == '192.168.0.64'][0]
+    assert camera['mac'] == HIK and camera['marca']['valor'] == 'Hikvision' and camera['modelo'] == 'DS-2CD2143G2-I'
+    assert [o['tipo'] for o in d['ocorrencias']] == ['Conectividade Central', 'Alvo Restaurado', 'Queda de Alvo']
+    assert d['quedas'] == 2
+    # sem sessão, o app recebe 401 em JSON (e entra pelo /login como o navegador)
+    anonimo = cli.application.test_client()
+    assert anonimo.get('/api/campo').status_code == 401

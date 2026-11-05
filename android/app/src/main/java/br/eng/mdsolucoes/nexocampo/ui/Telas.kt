@@ -190,6 +190,11 @@ private fun TelaRede(vm: CampoViewModel, permissoesOk: Boolean, pedirPermissoes:
                 BotaoSecundario("Dar permissão", Modifier.fillMaxWidth(), aoClicar = pedirPermissoes)
             }
         }
+        vm.sensorDados?.takeIf { it.quedas > 0 }?.let { sd ->
+            item {
+                Aviso("O sensor deste local registrou ${sd.quedas} queda(s) nos últimos ${sd.dias} dias. Detalhes na aba Varredura.", Cor.atencao)
+            }
+        }
         item {
             Painel {
                 MedidorSinal(if (r != null && r.tipo == "Wi-Fi") r.sinalDbm else null)
@@ -419,6 +424,7 @@ private fun TelaVarredura(vm: CampoViewModel) {
                     ativo = !vm.varrendo) { vm.rodarVarredura() }
             }
         }
+        item { PainelSensor(vm) }
         if (vm.dispositivos.isNotEmpty()) item {
             val porTipo = vm.dispositivos.groupingBy { it.tipo }.eachCount().entries.sortedByDescending { it.value }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -472,8 +478,13 @@ private fun ItemDispositivo(d: Dispositivo) {
                 if (detalhe.isNotBlank()) Text(detalhe, color = Cor.suave, fontSize = 12.sp)
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(".${d.ip.substringAfterLast('.')}", fontFamily = Mono, fontWeight = FontWeight.Bold, color = Cor.ciano, fontSize = 14.sp)
-                if (d.portas.isNotEmpty()) Rotulo(d.portas.take(3).joinToString(" "))
+                Text(".${d.ip.substringAfterLast('.')}", fontFamily = Mono, fontWeight = FontWeight.Bold,
+                    color = if (d.foraDaRede) Cor.apagado else Cor.ciano, fontSize = 14.sp)
+                when {
+                    d.foraDaRede -> Rotulo("FORA DA REDE", Cor.atencao)
+                    d.portas.isNotEmpty() -> Rotulo(d.portas.take(3).joinToString(" "))
+                    "sensor" in d.origens -> Rotulo("VIA SENSOR", Cor.ciano)
+                }
             }
         }
         if (aberto) {
@@ -668,6 +679,82 @@ private fun <T> Seletor(rotulo: String, valor: String?, opcoes: List<Pair<T, Str
         androidx.compose.material3.DropdownMenu(aberto, { aberto = false }, modifier = Modifier.background(Cor.cartao2)) {
             opcoes.forEach { (chave, nome) ->
                 androidx.compose.material3.DropdownMenuItem(text = { Text(nome, fontSize = 14.sp) }, onClick = { aberto = false; aoEscolher(chave) })
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ Sensor NexoPulse do local
+@Composable
+private fun PainelSensor(vm: CampoViewModel) {
+    val d = vm.sensorDados
+    val achado = vm.sensorAchado
+    var ip by rememberSaveable(achado) { mutableStateOf(achado ?: "") }
+    var usuario by rememberSaveable { mutableStateOf(vm.painelUsuarioSalvo) }
+    var senha by remember { mutableStateOf(vm.painelSenhaSalva) }
+    var lembrar by rememberSaveable { mutableStateOf(vm.painelSenhaSalva.isNotEmpty()) }
+    Painel {
+        CabecaPainel("Sensor do local", d?.let { "LIDO ${SimpleDateFormat("HH:mm", Locale("pt", "BR")).format(Date(it.lidoEm))}" })
+        if (d == null) {
+            Text(
+                when {
+                    achado != null -> "Sensor NexoPulse encontrado em $achado. Com o login do painel local, o app pega o MAC e a marca dos aparelhos, os que saíram da rede e as quedas dos últimos dias. Funciona sem internet."
+                    vm.varreduraFeita -> "Nenhum sensor apareceu nesta rede. Se houver um em outra faixa, digite o IP dele."
+                    else -> "Se o local tem um sensor NexoPulse, a varredura acha ele. Ou digite o IP do sensor."
+                }, color = Cor.suave, fontSize = 13.sp, lineHeight = 18.sp,
+            )
+            OutlinedTextField(ip, { ip = it.trim() }, label = { Text("IP do sensor") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                colors = campoCores(), shape = RoundedCornerShape(12.dp),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(usuario, { usuario = it }, label = { Text("Usuário do painel") }, singleLine = true, modifier = Modifier.weight(1f),
+                    colors = campoCores(), shape = RoundedCornerShape(12.dp))
+                OutlinedTextField(senha, { senha = it }, label = { Text("Senha") }, singleLine = true, modifier = Modifier.weight(1f),
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+                    colors = campoCores(), shape = RoundedCornerShape(12.dp))
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Lembrar neste celular", fontSize = 13.sp, color = Cor.suave, modifier = Modifier.weight(1f))
+                Switch(lembrar, { lembrar = it }, colors = SwitchDefaults.colors(checkedTrackColor = Cor.ciano, checkedThumbColor = Cor.fundo,
+                    uncheckedTrackColor = Cor.cartao2, uncheckedBorderColor = Cor.borda, uncheckedThumbColor = Cor.suave))
+            }
+            BotaoPrincipal(if (vm.conectandoSensor) "Lendo o sensor…" else "Usar dados do sensor",
+                ativo = !vm.conectandoSensor && ip.isNotBlank() && usuario.isNotBlank() && senha.isNotBlank()) {
+                vm.conectarSensor(ip, usuario, senha, lembrar)
+            }
+        } else {
+            val fora = d.aparelhos.count { it.status == "offline" }
+            GradeLeituras(listOf(
+                "SENSOR" to (d.nome ?: d.ip), "VERSÃO" to d.versao,
+                "APARELHOS" to "${d.aparelhos.size - fora} na rede · $fora fora", "QUEDAS ${d.dias} DIAS" to "${d.quedas}",
+            ))
+            if (d.ocorrencias.isEmpty()) {
+                Text("Nenhuma queda registrada nos últimos ${d.dias} dias.", color = Cor.ok, fontSize = 13.sp)
+            } else {
+                Rotulo("ÚLTIMAS OCORRÊNCIAS")
+                d.ocorrencias.take(8).forEach { e ->
+                    val cor = when { e.gravidade == "OK" -> Cor.ok; e.queda || e.gravidade == "Crítica" -> Cor.critico; else -> Cor.atencao }
+                    Row(Modifier.fillMaxWidth().background(Cor.cartao2, RoundedCornerShape(10.dp)).padding(10.dp), verticalAlignment = Alignment.Top) {
+                        Box(Modifier.padding(top = 5.dp).size(8.dp).background(cor, RoundedCornerShape(4.dp)))
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Row {
+                                Text(e.tipo, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                Rotulo(e.quando)
+                            }
+                            Text(e.detalhes, color = Cor.suave, fontSize = 12.sp, lineHeight = 16.sp)
+                        }
+                    }
+                }
+                if (d.ocorrencias.size > 8) Rotulo("+${d.ocorrencias.size - 8} NO RELATÓRIO")
+            }
+            Rotulo("OS APARELHOS ABAIXO JÁ VÊM COM MAC, MARCA E OS QUE SAÍRAM DA REDE (PELO SENSOR).")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BotaoSecundario(if (vm.conectandoSensor) "Lendo…" else "Ler de novo", Modifier.weight(1f), ativo = !vm.conectandoSensor) {
+                    vm.conectarSensor(d.ip, vm.painelUsuarioSalvo.ifBlank { usuario }, vm.painelSenhaSalva.ifBlank { senha }, vm.painelSenhaSalva.isNotEmpty())
+                }
+                BotaoSecundario("Desconectar", Modifier.weight(1f)) { vm.desconectarSensor() }
             }
         }
     }

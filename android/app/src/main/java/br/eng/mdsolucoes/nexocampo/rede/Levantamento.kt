@@ -25,10 +25,11 @@ data class Levantamento(
     val ambientes: List<Ambiente> = emptyList(),
     val pingContinuo: PingContinuo? = null,
     val fotos: List<Foto> = emptyList(),
+    val sensor: DadosSensor? = null,
 ) {
     val vazio: Boolean
         get() = local.isBlank() && observacoes.isBlank() && wifi.isEmpty() && pings.isEmpty() && velocidade == null &&
-            dispositivos.isEmpty() && ambientes.isEmpty() && pingContinuo == null && fotos.isEmpty()
+            dispositivos.isEmpty() && ambientes.isEmpty() && pingContinuo == null && fotos.isEmpty() && sensor == null
 }
 
 /** JSON do levantamento (formato próximo do levantamento do sensor), nos dois sentidos. */
@@ -88,7 +89,7 @@ object LevantamentoJson {
             JSONObject().apply {
                 put("ip", d.ip); put("tipo", d.tipo); put("nome", d.nome); put("fabricante", d.fabricante); put("modelo", d.modelo)
                 put("mac", d.mac); put("portas", JSONArray(d.portas)); put("servicos", JSONArray(d.servicos))
-                put("encontrado_por", JSONArray(d.origens)); put("este_celular", d.esteCelular)
+                put("encontrado_por", JSONArray(d.origens)); put("este_celular", d.esteCelular); put("fora_da_rede", d.foraDaRede)
             }
         }))
         o.put("ambientes", JSONArray(l.ambientes.map { a ->
@@ -101,6 +102,19 @@ object LevantamentoJson {
                 .put("tempos_ms", JSONArray(p.tempos.map { it ?: JSONObject.NULL })))
         }
         o.put("fotos", JSONArray(l.fotos.map { JSONObject().put("arquivo", it.arquivo).put("legenda", it.legenda) }))
+        l.sensor?.let { s ->
+            o.put("sensor_local", JSONObject().apply {
+                put("ip", s.ip); put("nome", s.nome); put("mac", s.mac); put("versao", s.versao); put("rede", s.rede); put("gateway", s.gateway)
+                put("dias", s.dias); put("quedas", s.quedas); put("lido_em_ms", s.lidoEm)
+                put("ocorrencias", JSONArray(s.ocorrencias.map { e ->
+                    JSONObject().put("tipo", e.tipo).put("detalhes", e.detalhes).put("gravidade", e.gravidade).put("data_hora", e.dataHora)
+                }))
+                put("aparelhos", JSONArray(s.aparelhos.map { a ->
+                    JSONObject().put("ip", a.ip).put("mac", a.mac).put("apelido", a.apelido).put("nome", a.nome).put("marca", a.marca)
+                        .put("tipo", a.tipo).put("modelo", a.modelo).put("status", a.status).put("cftv", a.cftv)
+                }))
+            })
+        }
         return o
     }
 
@@ -133,7 +147,7 @@ object LevantamentoJson {
             dispositivos = o.optJSONArray("dispositivos").objetos().map { d ->
                 Dispositivo(d.optString("ip"), d.optString("tipo"), d.str("nome"), d.str("fabricante"), d.str("modelo"),
                     d.optJSONArray("portas").inteiros(), d.optJSONArray("servicos").textos(), d.str("mac"),
-                    d.optJSONArray("encontrado_por").textos(), d.optBoolean("este_celular"))
+                    d.optJSONArray("encontrado_por").textos(), d.optBoolean("este_celular"), d.optBoolean("fora_da_rede"))
             },
             ambientes = o.optJSONArray("ambientes").objetos().map { a ->
                 Ambiente(a.optString("nome"), a.str("ssid"), a.str("bssid"), a.int("sinal_dbm"), a.int("canal"), a.optLong("quando_ms"))
@@ -144,6 +158,19 @@ object LevantamentoJson {
                     if (t == null) emptyList() else (0 until t.length()).map { if (t.isNull(it)) null else t.getDouble(it) })
             },
             fotos = o.optJSONArray("fotos").objetos().map { Foto(it.optString("arquivo"), it.optString("legenda")) },
+            sensor = o.optJSONObject("sensor_local")?.let { s ->
+                DadosSensor(
+                    s.optString("ip"), s.str("nome"), s.str("mac"), s.str("versao"), s.str("rede"), s.str("gateway"),
+                    s.optJSONArray("aparelhos").objetos().map { a ->
+                        AparelhoSensor(a.str("ip"), a.str("mac"), a.str("apelido"), a.str("nome"), a.str("marca"), a.str("tipo"),
+                            a.str("modelo"), a.str("status"), a.optBoolean("cftv"))
+                    },
+                    s.optJSONArray("ocorrencias").objetos().map { e ->
+                        Ocorrencia(e.optString("tipo"), e.optString("detalhes"), e.optString("gravidade"), e.optString("data_hora"))
+                    },
+                    s.optInt("quedas"), s.optInt("dias", 7), s.optLong("lido_em_ms"),
+                )
+            },
         )
     }
 }

@@ -203,13 +203,24 @@ object Exportar {
                 l.wifi.take(25).map { listOf((if (it.conectada) "● " else "") + it.ssid, "${it.sinalDbm} dBm", "${it.faixa} · ${it.canal}", it.seguranca) })
         }
 
+        l.sensor?.let { s ->
+            p.secao("Sensor NexoPulse do local")
+            p.par("Sensor", listOfNotNull(s.nome, s.ip).joinToString(" · "))
+            p.par("Versão / MAC", listOfNotNull(s.versao, s.mac).joinToString(" · ").ifBlank { null })
+            p.par("Aparelhos que ele conhece", "${s.aparelhos.size} (${s.aparelhos.count { it.status == "offline" }} fora da rede agora)")
+            p.par("Quedas em ${s.dias} dias", "${s.quedas}")
+            if (s.ocorrencias.isNotEmpty()) p.tabela(listOf("Quando", "Ocorrência", "Detalhe"), listOf(1.5f, 1.6f, 3.6f),
+                s.ocorrencias.take(25).map { listOf(it.quando, it.tipo, it.detalhes) })
+        }
+
         if (l.dispositivos.isNotEmpty()) {
             p.secao("Aparelhos na rede")
             val porTipo = l.dispositivos.groupingBy { it.tipo }.eachCount().entries.sortedByDescending { it.value }
             p.paragrafo("${l.dispositivos.size} aparelhos: " + porTipo.joinToString(", ") { "${it.value} ${it.key.lowercase()}" } + ".", p.suave)
-            p.tabela(listOf("IP", "Tipo", "Nome / marca", "Portas abertas"), listOf(1.3f, 1.8f, 2.6f, 1.6f),
+            p.tabela(listOf("IP", "Tipo", "Nome / marca / MAC", "Portas abertas"), listOf(1.3f, 1.8f, 2.8f, 1.4f),
                 l.dispositivos.map { d ->
-                    listOf(d.ip, d.tipo, listOfNotNull(d.nome, d.fabricante, d.modelo).distinct().joinToString(" · ").ifBlank { "—" },
+                    listOf(d.ip + if (d.foraDaRede) " (fora da rede)" else "", d.tipo,
+                        listOfNotNull(d.nome, d.fabricante, d.modelo, d.mac).distinct().joinToString(" · ").ifBlank { "—" },
                         d.portas.joinToString(", ").ifBlank { "—" })
                 })
         }
@@ -239,7 +250,8 @@ object Exportar {
 
         p.secao("Como foi medido")
         p.paragrafo("Medido pelo celular do técnico com o NexoCampo ${l.versaoApp}. O Android não deixa um app ler o MAC dos outros " +
-            "aparelhos, então marca e tipo são inferidos por portas abertas, ONVIF, UPnP, mDNS e pela página web de cada aparelho. " +
+            "aparelhos, então marca e tipo são inferidos por portas abertas, ONVIF, UPnP, mDNS e pela página web de cada aparelho" +
+            (if (l.sensor != null) "; MAC, marca e os aparelhos fora da rede vêm do sensor NexoPulse do local. " else ". ") +
             "É o retrato do momento da visita; o monitoramento contínuo é feito pelo sensor NexoPulse.", p.suave)
         p.fechar()
         val arquivo = File(pasta(contexto), nomeArquivo(l, "pdf"))
