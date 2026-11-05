@@ -263,3 +263,57 @@ def test_months_before_the_first_complete_one_are_not_closed_automatically(clien
     dezembro = datetime(2026, 12, 1, 0, 31, tzinfo=hub.FUSO_BR).timestamp()
     assert nexoreport.fechar_pendentes(conn, dezembro)[0] == [EMPRESA]        # novembro: sim
     conn.close()
+
+
+# ------------------------------------------------------------------ atendimento da MD (NexoDesk)
+def test_month_service_summary_from_the_desk(client):
+    import nexodesk
+    import nexoreport_pdf
+    conn = database.get_db()
+    for tabela in ('chamado_anexos', 'chamado_mensagens', 'chamados'):
+        conn.execute(f'DELETE FROM {tabela}')
+    _base(conn)
+    md = acessos._usuario(conn, 1)
+    cli = acessos._usuario(conn, EMPRESA)
+
+    def abrir(titulo, impacto, quando, **extra):
+        return nexodesk.chamado(conn, nexodesk.abrir(conn, cli, {'categoria': 'rede', 'impacto': impacto, 'titulo': titulo,
+                                                                 'descricao': '.', **extra}, agora=quando))
+
+    # parou tudo (crítica: 1 h para responder, 8 h úteis para resolver), resolvido em 2 h e avaliado com 5
+    a = abrir('Sem internet', 'parou', t(6, 9))
+    nexodesk.responder(conn, md, a, 'Vendo.', agora=t(6, 9, 20))
+    nexodesk.responder(conn, md, nexodesk.chamado(conn, a['numero']), 'Ok.', depois='resolvido', agora=t(6, 11))
+    nexodesk.confirmar(conn, cli, nexodesk.chamado(conn, a['numero']), nota=5, agora=t(6, 12))
+    # atrapalha (alta: 2 h / 16 h úteis): resposta atrasada e solução fora do prazo
+    b = abrir('Câmera sem imagem', 'atrapalha', t(13, 9))
+    nexodesk.responder(conn, md, b, 'Vendo.', agora=t(13, 14))
+    nexodesk.responder(conn, md, nexodesk.chamado(conn, b['numero']), 'Ok.', depois='resolvido', agora=t(16, 9))
+    # ainda em atendimento no fim do mês; um cancelado; um chamado interno da MD (não entra)
+    abrir('Wi-Fi fraco', 'duvida', t(28, 10))
+    nexodesk.cancelar_pelo_cliente(conn, cli, abrir('Engano', 'duvida', t(29, 10)), agora=t(29, 11))
+    conn.execute("INSERT INTO clientes (id, usuario, senha, role, ativo, empresa_master) VALUES (5, 'md', 'x', 'Cliente', 1, 1)")
+    nexodesk.abrir(conn, md, {'empresa_id': 5, 'categoria': 'sistemas', 'impacto': 'duvida', 'titulo': 'Interno', 'descricao': '.'}, agora=t(10, 10))
+    # de setembro e ainda aberto: aparece como pendente de meses anteriores
+    nexodesk.abrir(conn, cli, {'categoria': 'energia', 'impacto': 'duvida', 'titulo': 'Antigo', 'descricao': '.'},
+                   agora=datetime(2026, 9, 20, 10, tzinfo=hub.FUSO_BR).timestamp())
+    conn.commit()
+
+    a = nexoreport.consolidar(conn, EMPRESA, 2026, 10, FECHAMENTO)['atendimento']
+    assert (a['abertos'], a['resolvidos'], a['cancelados'], a['pendentes']) == (3, 2, 1, 2)
+    assert (a['resposta']['total'], a['resposta']['no_prazo']) == (2, 1)
+    assert (a['solucao']['total'], a['solucao']['no_prazo'], a['solucao']['pct']) == (2, 1, 50)
+    assert a['avaliacao'] == {'media': 5.0, 'total': 1, 'distribuicao': [0, 0, 0, 0, 1]}
+    assert [c['titulo'] for c in a['chamados']] == ['Sem internet', 'Câmera sem imagem', 'Wi-Fi fraco']
+    assert [c['titulo'] for c in a['pendentes_lista']] == ['Antigo']
+
+    ctx = nexoreport_pdf.contexto(json.loads(json.dumps(nexoreport.consolidar(conn, EMPRESA, 2026, 10, FECHAMENTO))))
+    assert ctx['atendimento']['solucao']['pct'] == '50%'
+    assert [c['prazo_rotulo'] for c in ctx['atendimento']['chamados']] == ['No prazo', 'Fora do prazo', 'Novo']
+    assert any(m['titulo'] == 'Atendimento' for m in ctx['metodo'])
+
+    # sem o NexoDesk no contrato, a seção não entra
+    acessos.definir_contrato(conn, EMPRESA, 'desk', False)
+    assert nexoreport.consolidar(conn, EMPRESA, 2026, 10, FECHAMENTO)['atendimento'] is None
+    assert nexoreport_pdf.contexto(nexoreport.consolidar(conn, EMPRESA, 2026, 10, FECHAMENTO))['atendimento'] is None
+    conn.close()

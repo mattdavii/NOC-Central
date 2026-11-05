@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 import acessos
 import hub
 import mapa_rede
+import nexodesk
 
 VERSAO_DADOS = 1
 FUSO_BR = hub.FUSO_BR
@@ -270,6 +271,9 @@ def consolidar(conn, empresa_id, ano, mes, agora=None, retencao_s=40 * 86400):
         'horarios': [horarios.get(b, 0) for b in range(6)],
         'provedor': [q for q in quedas if q['categoria'] == 'provedor' and q['confianca'] in ('alta', 'media')],
         'tendencia': tendencia(conn, empresa_id, ano, mes, totais['pct']),
+        # Atendimento da MD (NexoDesk), só para quem tem o Desk no contrato.
+        'atendimento': (nexodesk.atendimento_do_periodo(conn, empresa_id, inicio, fim, agora)
+                        if acessos.contrato(conn, empresa_id).get('desk') else None),
         'gerado_em': agora,
     }
 

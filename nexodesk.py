@@ -264,6 +264,73 @@ def no_prazo_do_mes(conn, agora=None):
                     'novembro', 'dezembro')[d.month - 1]}
 
 
+
+def atendimento_do_periodo(conn, empresa_id, inicio, fim, agora=None, limite_lista=15):
+    """O atendimento da MD a uma empresa num período, para o NexoReport (fica gravado no fechamento do mês).
+
+    Conta chamados do cliente (não os internos da MD). Os prazos são os do contrato gravado em cada chamado,
+    contados no horário dele e sem o tempo em que a MD esperava o cliente.
+    """
+    agora = min(agora or time.time(), fim)
+    rows = [_enfeitar(r) for r in conn.execute(
+        _CAMPOS + ' WHERE c.empresa_id = ? AND c.interno = 0 AND (c.criado_em < ?) AND '
+                  '(c.criado_em >= ? OR c.resolvido_em >= ? OR c.fechado_em >= ? OR c.status IN (?, ?, ?, ?)) ORDER BY c.id',
+        (empresa_id, fim, inicio, inicio, inicio, *ABERTOS)).fetchall()]
+    for c in rows:
+        c['prazo'] = prazos(c, agora)
+
+    def no_mes(ts):
+        return ts is not None and inicio <= ts < fim
+
+    abertos_mes = [c for c in rows if no_mes(c['criado_em'])]
+    cancelados = [c for c in abertos_mes if c['status'] == 'cancelado']
+    validos = [c for c in abertos_mes if c['status'] != 'cancelado']
+    resolvidos = [c for c in rows if c['status'] in ('resolvido', 'fechado') and no_mes(c.get('resolvido_em'))]
+    respondidos = [c for c in rows if no_mes(c.get('primeira_resposta_em')) and c['status'] != 'cancelado']
+
+    def relogios(lista, qual):
+        return [c['prazo'][qual] for c in lista
+                if c['prazo'] and not c['prazo'].get('manual') and c['prazo'].get(qual, {}).get('estado') in ('cumprido', 'estourou')]
+
+    def placar(rel):
+        if not rel:
+            return None
+        ok = sum(1 for r in rel if r['estado'] == 'cumprido')
+        return {'total': len(rel), 'no_prazo': ok, 'pct': round(100 * ok / len(rel)),
+                'media_s': int(sum(r['usado_s'] for r in rel) / len(rel))}
+
+    notas = [c['avaliacao'] for c in rows if c.get('avaliacao') and no_mes(c.get('fechado_em'))]
+    # Em aberto no fim do período: ainda sem solução naquele momento (o fechamento roda logo depois do fim do mês).
+    pendentes = [c for c in rows if c['status'] != 'cancelado'
+                 and not (c['status'] in ('resolvido', 'fechado') and c.get('resolvido_em') and c['resolvido_em'] < fim)]
+    por_categoria = {}
+    for c in validos:
+        item = por_categoria.setdefault(c['categoria'], {'rotulo': c['categoria_rotulo'], 'chamados': 0})
+        item['chamados'] += 1
+    por_prioridade = {k: sum(1 for c in validos if c['prioridade'] == k) for k in PRIORIDADES}
+
+    def linha(c):
+        sol = (c['prazo'] or {}).get('solucao') or {}
+        return {'numero': c['numero'], 'criado_em': c['criado_em'], 'titulo': c['titulo'], 'local': c.get('local_nome'),
+                'categoria': c['categoria_rotulo'], 'prioridade': c['prioridade'], 'prioridade_rotulo': c['prioridade_rotulo'],
+                'status': c['status'], 'status_rotulo': c['status_rotulo'], 'canal': c['canal'],
+                'prazo': sol.get('estado'), 'da_queda': bool(c.get('diagnostico_id')), 'avaliacao': c.get('avaliacao')}
+
+    return {
+        'abertos': len(validos), 'cancelados': len(cancelados), 'resolvidos': len(resolvidos),
+        'pendentes': len(pendentes),
+        'de_quedas': sum(1 for c in validos if c.get('diagnostico_id')),
+        'resposta': placar(relogios(respondidos, 'resposta')),
+        'solucao': placar(relogios(resolvidos, 'solucao')),
+        'avaliacao': {'media': round(sum(notas) / len(notas), 1), 'total': len(notas),
+                      'distribuicao': [notas.count(n) for n in range(1, 6)]} if notas else None,
+        'por_categoria': sorted(por_categoria.values(), key=lambda x: -x['chamados']),
+        'por_prioridade': por_prioridade,
+        'chamados': [linha(c) for c in validos[-limite_lista:]],
+        'chamados_omitidos': max(0, len(validos) - limite_lista),
+        'pendentes_lista': [linha(c) for c in pendentes if not no_mes(c['criado_em'])][:limite_lista],
+    }
+
 # ------------------------------------------------------------------ leitura
 _CAMPOS = ('SELECT c.*, e.nome AS empresa_nome, e.usuario AS empresa_usuario, s.nome_local AS local_nome, '
            'r.nome AS responsavel_nome, r.usuario AS responsavel_usuario FROM chamados c '
