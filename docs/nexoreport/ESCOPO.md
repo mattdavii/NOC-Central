@@ -1,6 +1,6 @@
 # NexoReport — escopo da versão 1
 
-Status: **proposta para aprovação** · 04/11/2026
+Status: **aprovado para desenvolvimento** · 04/11/2026 (rev. 2: meta por contrato e capa nova)
 
 Modelo visual: [`modelo/modelo-relatorio-mensal.pdf`](modelo/modelo-relatorio-mensal.pdf) (dados de demonstração;
 gerado por `python3 docs/nexoreport/modelo/gerar_modelo.py`).
@@ -55,11 +55,11 @@ emitido.
   relatório informa "monitorado desde dd/mm".
 
 ### 3.2 Conteúdo do relatório (o do modelo)
-1. **Capa com o resumo executivo:** disponibilidade, tempo sem conexão, quedas e causa mais frequente, cada um
-   comparado com o mês anterior; dois parágrafos "Em resumo" escritos por regras (sem IA); tendência dos
+1. **Capa com o resumo executivo:** medidor da disponibilidade contra a meta do contrato, tempo sem conexão,
+   quedas e causa mais frequente, cada um comparado com o mês anterior; dois parágrafos "Em resumo" escritos por regras (sem IA); tendência dos
    últimos 6 meses.
-2. **Disponibilidade por local:** tabela com provedor, %, tempo fora, quedas e situação (≥ 99,5% dentro do
-   esperado; 98–99,5% atenção; < 98% crítico, as mesmas faixas do NexoHub) e gráfico dia a dia.
+2. **Disponibilidade por local:** tabela com provedor, %, tempo fora, quedas e situação **contra a meta do
+   contrato da empresa** (ver 3.3) e gráfico dia a dia.
 3. **Quedas e causas:** tempo sem conexão por causa, quedas por faixa de horário e as 5 maiores quedas.
 4. **Qualidade:** resposta média, resposta nos piores momentos (p95), perda, oscilação e velocidade média por
    local; bloco da Starlink quando houver (obstrução média, quedas por obstrução, desvio de alinhamento).
@@ -72,6 +72,10 @@ emitido.
 - **Disponibilidade:** a mesma conta do NexoHub (arredonda para baixo; qualquer queda impede 100%; manutenção
   programada fora da conta). As funções de `hub.py` passam a aceitar um período fechado (`inicio`, `fim`), e o
   NexoHub e o NexoReport usam o mesmo código, para os números nunca divergirem.
+- **Meta por contrato:** cada empresa tem a sua meta de disponibilidade (ex.: 99,7%), definida pela MD no
+  cadastro da empresa, junto dos aplicativos contratados. Situação: **dentro da meta** a partir dela, **abaixo da
+  meta** até 1 ponto percentual abaixo, **crítico** mais que isso. Sem meta cadastrada, vale 99,5% (a faixa do
+  NexoHub). A meta usada fica gravada no relatório do mês: mudar o contrato não altera relatórios já emitidos.
 - **Causa de uma queda:** o diagnóstico do mesmo local que cobre a janela da queda, escolhendo a camada mais baixa
   (rede interna < antena < provedor < DNS), que é a mesma lógica do diagnóstico ao vivo. Sem diagnóstico que a
   explique, a causa é **"não determinada"**, e o relatório não chuta.
@@ -82,6 +86,7 @@ emitido.
 ### 3.4 No NexoHub
 - Atalho **NexoReport** ativo para quem tem o aplicativo; página `/report` com os meses disponíveis por empresa
   (o mais recente em destaque), botões **Ver** (abre o PDF no navegador) e **Baixar**.
+- Campo **Meta de disponibilidade** no cadastro da empresa (só Master edita; registrado na auditoria).
 - Nível **leitura** basta para ver e baixar. **Master** vê todas as empresas, pode **gerar de novo** um mês
   (vira uma nova versão; a anterior fica guardada) e pode gerar sob demanda o mês corrente, marcado como "parcial".
 - Cada visualização e download fica na auditoria de acessos.
@@ -102,7 +107,7 @@ emitido.
   e mostrar a partir do segundo mês).
 
 ## 5. Como vamos entregar (PRs pequenos, cada um com testes e CI)
-1. **Período fechado nas contas do Hub:** `_janelas_do_mes` e as funções de disponibilidade aceitam `inicio/fim`;
+1. **Período fechado nas contas do Hub e meta por empresa:** coluna da meta no cadastro da empresa; `_janelas_do_mes` e as funções de disponibilidade aceitam `inicio/fim`;
    testes provam que o mês corrente continua igual.
 2. **Fechamento do mês:** tabela `relatorios_mensais`, consolidação em JSON e tarefa do dia 1. **Precisa estar no ar
    antes de 01/12** para o relatório de novembro sair completo (hoje há medições desde 05/10).
@@ -127,9 +132,8 @@ emitido.
 - **Agente antigo sem medições:** o local entra com disponibilidade, mas sem a seção de qualidade, e o relatório
   diz isso em vez de mostrar zeros.
 
-## 8. Decisões que preciso de você
-- **D1. Faixas de situação:** manter 99,5% e 98% (as do NexoHub) ou usar metas por contrato de cada empresa?
-- **D2. Recomendações:** a lista de regras da seção 3.3 está boa para começar ou há outras situações que a MD
-  sempre recomenda?
-- **D3. Marca no relatório:** NexoReport na capa e a MD no rodapé (como no modelo), ou o logo do cliente na capa
-  quando houver?
+## 8. Decisões tomadas (04/11/2026)
+- **D1. Situação:** pela **meta do contrato de cada empresa** (seção 3.3).
+- **D2. Recomendações:** a lista de regras da seção 3.3 atende para começar; novas regras entram com o uso.
+- **D3. Marca:** NexoReport na capa e a MD no rodapé; capa com visual técnico (grade de prancheta, traço de sinal
+  nas cores da marca e medidor da meta), como no modelo.
