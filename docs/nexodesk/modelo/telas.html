@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NexoDesk — modelo das telas</title>
+<!-- Modelo estático, com dados de demonstração. Usa o mesmo CSS do NexoHub para ficar fiel ao produto. -->
+<link rel="stylesheet" href="../../../static/fontes/fontes.css?v=1">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="../../../static/product.css?v=nexopulse-3">
+<style>
+    body { margin: 0; font-family: 'Inter', sans-serif; background: #050f1c; color: var(--text-main); }
+    .tela { width: 1440px; margin: 0 auto 60px; background: var(--bg-base); border-radius: 0; overflow: hidden; }
+    .tela.celular { width: 390px; border-radius: 28px; }
+    .legenda { width: 1440px; margin: 40px auto 12px; color: #94A3B8; font-size: 14px; }
+    .legenda b { color: #E8F1FA; font-size: 16px; display: block; margin-bottom: 2px; }
+
+    /* ---------- comuns ---------- */
+    .cabeca { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+    .cabeca .marca { display: flex; align-items: center; gap: 14px; }
+    .cabeca .marca img { height: 34px; }
+    .cabeca h1 { margin: 0; font: 700 1.35rem/1.2 'Bricolage Grotesque', 'Inter', sans-serif; }
+    .cabeca p { margin: 4px 0 0; color: var(--text-muted); font-size: .9rem; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-main);
+           padding: 9px 14px; border-radius: 8px; font: inherit; font-weight: 600; font-size: .88rem; cursor: pointer; text-decoration: none; white-space: nowrap; }
+    .btn.primario { background: var(--blue); border-color: var(--blue); color: var(--bg-base); }
+    .btn.pequeno { padding: 6px 10px; font-size: .8rem; }
+    .campo { background: var(--bg-input); border: 1px solid var(--border); color: var(--text-main); padding: 9px 12px; border-radius: 8px; font: inherit; font-size: .88rem; }
+    .muted { color: var(--text-muted); }
+    .prio { display: inline-flex; align-items: center; gap: 6px; font-size: .78rem; font-weight: 700; }
+    .prio::before { content: ''; width: 8px; height: 8px; border-radius: 2px; background: currentColor; }
+    .prio.critica { color: #F87171; } .prio.alta { color: #FB923C; } .prio.media { color: #FBBF24; } .prio.baixa { color: #94A3B8; }
+    .status { display: inline-block; font-size: .74rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+    .status.novo { color: #7DD3FC; } .status.atend { color: var(--blue); } .status.aguard { color: #C4B5FD; }
+    .status.resolvido { color: var(--status-ok); } .status.fechado { color: var(--text-muted); }
+    .prazo { min-width: 150px; }
+    .prazo .txt { font-size: .82rem; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+    .prazo .sub { font-size: .74rem; color: var(--text-muted); margin-top: 2px; }
+    .barra { height: 5px; background: var(--bg-input); border-radius: 99px; margin-top: 6px; overflow: hidden; }
+    .barra i { display: block; height: 100%; border-radius: 99px; background: var(--status-ok); }
+    .prazo.perto .txt { color: var(--status-warn); } .prazo.perto .barra i { background: var(--status-warn); }
+    .prazo.estourado .txt { color: var(--status-crit); } .prazo.estourado .barra i { background: var(--status-crit); }
+    .prazo.pausado .txt { color: #C4B5FD; } .prazo.pausado .barra i { background: #C4B5FD; opacity: .6; }
+    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); }
+
+    /* ---------- 1. fila da MD ---------- */
+    .contadores { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 18px; }
+    .contador { padding: 14px 16px; display: flex; align-items: baseline; gap: 10px; }
+    .contador b { font: 800 1.8rem/1 'Inter', sans-serif; letter-spacing: -0.02em; }
+    .contador span { color: var(--text-muted); font-size: .86rem; }
+    .contador.perto b { color: var(--status-warn); } .contador.estourado b { color: var(--status-crit); }
+    .contador.estourado { border-color: color-mix(in srgb, var(--status-crit) 55%, var(--border)); }
+    .contador.aguard b { color: #C4B5FD; }
+    .filtros { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+    .filtros .busca { flex: 1; min-width: 240px; }
+    .tabela { width: 100%; border-collapse: collapse; }
+    .tabela th { text-align: left; font-size: .76rem; font-weight: 600; color: var(--text-muted); padding: 12px 14px; border-bottom: 1px solid var(--border); }
+    .tabela td { padding: 13px 14px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); vertical-align: middle; font-size: .88rem; }
+    .tabela tr:last-child td { border-bottom: 0; }
+    .tabela tr.atrasado td:first-child { box-shadow: inset 3px 0 0 var(--status-crit); }
+    .tabela .num { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .tabela .titulo b { display: block; font-weight: 600; margin-bottom: 3px; }
+    .tabela .titulo span { color: var(--text-muted); font-size: .8rem; }
+    .resp { display: flex; align-items: center; gap: 8px; font-size: .84rem; }
+    .av { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: .7rem; font-weight: 700; background: var(--surface-raised); border: 1px solid var(--border); flex: none; }
+    .av.md { background: color-mix(in srgb, var(--blue) 25%, var(--bg-card)); color: var(--blue); border-color: transparent; }
+    .novidade { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); display: inline-block; margin-left: 6px; vertical-align: middle; }
+    .canal { font-size: .74rem; color: var(--text-muted); }
+
+    /* ---------- 2. chamado ---------- */
+    .trilha { font-size: .84rem; color: var(--text-muted); margin-bottom: 10px; }
+    .trilha a { color: var(--link); text-decoration: none; }
+    .titulo-chamado { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    .titulo-chamado h1 { margin: 0 0 8px; font: 700 1.4rem/1.25 'Bricolage Grotesque', 'Inter', sans-serif; }
+    .chips { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: .84rem; color: var(--text-muted); }
+    .grade-chamado { display: grid; grid-template-columns: 1fr 360px; gap: 18px; align-items: start; }
+    .linha-tempo { padding: 6px 22px 22px; }
+    .msg { display: grid; grid-template-columns: 34px 1fr; gap: 12px; padding: 18px 0; border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
+    .msg .av { width: 34px; height: 34px; font-size: .78rem; }
+    .msg .quem { font-size: .86rem; margin-bottom: 6px; }
+    .msg .quem b { margin-right: 8px; }
+    .msg .quem .muted { font-size: .8rem; }
+    .msg .texto { font-size: .92rem; line-height: 1.6; }
+    .msg .texto p { margin: 0 0 8px; }
+    .msg.interna { background: color-mix(in srgb, var(--status-warn) 7%, transparent); border-radius: 10px; padding: 14px; margin: 10px -14px; border: 1px dashed color-mix(in srgb, var(--status-warn) 45%, var(--border)); }
+    .msg.interna .tag { color: var(--status-warn); font-size: .74rem; font-weight: 700; }
+    .evento { display: flex; align-items: center; gap: 10px; font-size: .8rem; color: var(--text-muted); padding: 10px 0 10px 46px; border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
+    .evento i { width: 14px; text-align: center; }
+    .anexos { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+    .anexo { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px 8px 8px; font-size: .8rem; background: var(--bg-input); }
+    .anexo .mini { width: 52px; height: 38px; border-radius: 6px; background: linear-gradient(160deg, #234a6d, #0f2a44); display: grid; place-items: center; color: #7DD3FC; }
+    .anexo b { display: block; font-weight: 600; }
+    .compor { margin-top: 16px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--bg-input); }
+    .abas { display: flex; border-bottom: 1px solid var(--border); }
+    .abas span { padding: 10px 16px; font-size: .84rem; font-weight: 600; color: var(--text-muted); }
+    .abas span.ativa { color: var(--text-main); box-shadow: inset 0 -2px 0 var(--blue); }
+    .abas span.nota i { color: var(--status-warn); }
+    .compor .area { padding: 14px 16px; min-height: 70px; color: var(--text-muted); font-size: .9rem; }
+    .compor .rodape { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--border); }
+    .compor .rodape .dir { display: flex; gap: 8px; align-items: center; font-size: .82rem; color: var(--text-muted); }
+    .lateral { display: grid; gap: 14px; }
+    .bloco { padding: 16px 18px; }
+    .bloco h3 { margin: 0 0 12px; font-size: .86rem; font-weight: 700; }
+    .relogio { padding: 12px 0; border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+    .relogio:first-of-type { border-top: 0; padding-top: 0; }
+    .relogio .rot { font-size: .8rem; color: var(--text-muted); display: flex; justify-content: space-between; }
+    .relogio .val { font-size: 1rem; font-weight: 700; margin-top: 4px; display: flex; align-items: center; gap: 8px; }
+    .relogio .val.ok { color: var(--status-ok); }
+    .relogio .barra { height: 7px; }
+    .relogio .sub { font-size: .76rem; color: var(--text-muted); margin-top: 6px; }
+    .dados { display: grid; grid-template-columns: 110px 1fr; gap: 10px 12px; font-size: .86rem; align-items: center; }
+    .dados dt { color: var(--text-muted); }
+    .dados dd { margin: 0; }
+    .dados a { color: var(--link); text-decoration: none; }
+    .dados .campo { width: 100%; padding: 6px 10px; }
+
+    /* ---------- 3. abrir chamado ---------- */
+    .grade-abrir { display: grid; grid-template-columns: 1fr 340px; gap: 18px; align-items: start; }
+    .form { padding: 22px 24px; display: grid; gap: 20px; }
+    .rotulo { font-size: .86rem; font-weight: 600; margin-bottom: 8px; display: block; }
+    .rotulo small { color: var(--text-muted); font-weight: 400; margin-left: 6px; }
+    .opcoes { display: flex; flex-wrap: wrap; gap: 8px; }
+    .opcao { display: inline-flex; align-items: center; gap: 8px; padding: 9px 13px; border: 1px solid var(--border); border-radius: 10px; font-size: .86rem; background: var(--bg-input); }
+    .opcao i { color: var(--text-muted); }
+    .opcao.sel { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 14%, var(--bg-input)); }
+    .opcao.sel i { color: var(--blue); }
+    .impactos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .impacto { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--bg-input); }
+    .impacto b { display: block; font-size: .9rem; margin-bottom: 4px; }
+    .impacto span { font-size: .8rem; color: var(--text-muted); line-height: 1.45; }
+    .impacto.sel { border-color: #FB923C; background: color-mix(in srgb, #FB923C 10%, var(--bg-input)); }
+    .form input.campo, .form select.campo, .form textarea.campo { width: 100%; box-sizing: border-box; }
+    .form textarea.campo { min-height: 110px; resize: vertical; line-height: 1.55; }
+    .soltar { border: 1.5px dashed var(--border); border-radius: 12px; padding: 16px; display: flex; align-items: center; gap: 14px; font-size: .86rem; color: var(--text-muted); }
+    .soltar i { font-size: 1.3rem; color: var(--blue); }
+    .soltar .anexo { margin-left: auto; }
+    .acoes-form { display: flex; justify-content: flex-end; gap: 10px; }
+    .prazo-contrato { padding: 18px 20px; border-color: color-mix(in srgb, var(--blue) 45%, var(--border)); }
+    .prazo-contrato h3 { margin: 0 0 8px; font-size: .92rem; display: flex; gap: 8px; align-items: center; }
+    .prazo-contrato h3 i { color: var(--blue); }
+    .prazo-contrato p { margin: 0 0 10px; font-size: .86rem; color: var(--text-muted); line-height: 1.55; }
+    .prazo-contrato .grande { font: 800 1.6rem/1.1 'Inter', sans-serif; color: var(--text-main); margin: 6px 0 4px; }
+    .dica { padding: 16px 18px; font-size: .84rem; color: var(--text-muted); line-height: 1.55; }
+    .dica b { color: var(--text-main); }
+
+    /* ---------- 4. celular ---------- */
+    .cel-topo { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border); background: var(--bg-card); }
+    .cel-topo img { height: 30px; }
+    .cel-topo .fa-bars { font-size: 1.1rem; color: var(--text-muted); }
+    .cel-corpo { padding: 16px; }
+    .cel-corpo h1 { margin: 0 0 4px; font: 700 1.25rem/1.2 'Bricolage Grotesque', 'Inter', sans-serif; }
+    .cel-corpo .btn.primario { width: 100%; justify-content: center; padding: 12px; margin: 14px 0; font-size: .95rem; }
+    .segmento { display: grid; grid-template-columns: 1fr 1fr; background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px; padding: 3px; margin-bottom: 14px; }
+    .segmento span { text-align: center; padding: 8px; font-size: .84rem; font-weight: 600; color: var(--text-muted); border-radius: 8px; }
+    .segmento span.ativa { background: var(--bg-card); color: var(--text-main); }
+    .cel-card { padding: 14px; margin-bottom: 10px; }
+    .cel-card .l1 { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: .78rem; color: var(--text-muted); }
+    .cel-card b { display: block; font-size: .95rem; margin-bottom: 8px; line-height: 1.35; }
+    .cel-card .l3 { display: flex; justify-content: space-between; align-items: center; font-size: .8rem; }
+    .cel-card .aviso-md { margin-top: 10px; padding: 8px 10px; border-radius: 8px; font-size: .8rem; background: color-mix(in srgb, var(--blue) 12%, transparent); color: var(--text-main); display: flex; gap: 8px; align-items: center; }
+    .cel-card .aviso-md i { color: var(--blue); }
+    .cel-card .aviso-md.acao { background: color-mix(in srgb, #C4B5FD 14%, transparent); }
+    .cel-card .aviso-md.acao i { color: #C4B5FD; }
+    .cel-card .confirma { display: flex; gap: 8px; margin-top: 10px; }
+    .cel-card .confirma { align-items: center; }
+    .cel-card .confirma .btn { flex: 1 1 0; justify-content: center; padding: 0 10px; height: 40px; min-height: 0; box-sizing: border-box; font-size: .84rem; }
+    .segmento span.ativa { box-shadow: inset 0 0 0 1px var(--blue); }
+
+    /* ---------- 5. SLA no cadastro ---------- */
+    .fundo-modal { padding: 40px 0 60px; background: color-mix(in srgb, #000 35%, var(--bg-base)); }
+    .modal { width: 760px; margin: 0 auto; padding: 24px 26px; }
+    .modal h2 { margin: 0 0 4px; font: 700 1.2rem/1.2 'Bricolage Grotesque', 'Inter', sans-serif; }
+    .modal .abas-cad { display: flex; gap: 4px; margin: 16px 0 20px; border-bottom: 1px solid var(--border); }
+    .modal .abas-cad span { padding: 9px 14px; font-size: .86rem; font-weight: 600; color: var(--text-muted); }
+    .modal .abas-cad span.ativa { color: var(--text-main); box-shadow: inset 0 -2px 0 var(--blue); }
+    .horario { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+    .horario .impacto.sel { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 12%, var(--bg-input)); }
+    .tab-sla { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+    .tab-sla th { text-align: left; font-size: .78rem; color: var(--text-muted); font-weight: 600; padding: 8px 10px; }
+    .tab-sla td { padding: 8px 10px; border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); font-size: .88rem; }
+    .tab-sla .h { display: inline-flex; align-items: center; gap: 6px; }
+    .tab-sla .h .campo { width: 70px; text-align: right; padding: 7px 10px; }
+    .tab-sla .ex { color: var(--text-muted); font-size: .8rem; }
+    .rodape-modal { display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+    .nota-modal { font-size: .82rem; color: var(--text-muted); line-height: 1.5; max-width: 52ch; }
+</style>
+</head>
+<body>
+
+<!-- ===================================================================== 1. FILA DA MD -->
+<div class="legenda"><b>1. Fila da MD</b>Todos os chamados abertos, de todas as empresas, ordenados pelo prazo que vence primeiro.</div>
+<section class="tela" data-tela="1-fila-md">
+    <header class="app-bar">
+        <a class="brand-lockup" href="#">
+            <img class="brand-logo brand-logo-dark" src="../../../static/brand/nexohub/logo-escuro.svg" alt="NexoHub" width="166" height="48">
+            <span class="brand-by">por MD Soluções<br>Tecnológicas</span>
+        </a>
+        <nav class="app-nav">
+            <a href="#"><i class="fa-solid fa-house"></i><span>Início</span></a>
+            <a href="#"><i class="fa-solid fa-wave-square"></i><span>NexoPulse</span></a>
+            <a href="#"><i class="fa-solid fa-file-lines"></i><span>NexoReport</span></a>
+            <a href="#" class="active"><i class="fa-solid fa-headset"></i><span>NexoDesk</span></a>
+            <a href="#"><i class="fa-solid fa-sliders"></i><span>Administração</span></a>
+        </nav>
+    </header>
+    <main class="page-main">
+        <div class="cabeca">
+            <div class="marca">
+                <img src="../../familia-nexo/logos/nexodesk-escuro.svg" alt="NexoDesk">
+                <div><h1>Fila de atendimento</h1><p>14 chamados abertos em 6 empresas</p></div>
+            </div>
+            <div style="display:flex; gap:10px">
+                <a class="btn" href="#"><i class="fa-solid fa-lock"></i> Chamado interno</a>
+                <a class="btn primario" href="#"><i class="fa-solid fa-plus"></i> Abrir em nome de um cliente</a>
+            </div>
+        </div>
+        <div class="contadores">
+            <div class="card contador"><b>3</b><span>novos, sem responsável</span></div>
+            <div class="card contador perto"><b>2</b><span>perto de vencer</span></div>
+            <div class="card contador estourado"><b>1</b><span>prazo estourado</span></div>
+            <div class="card contador aguard"><b>4</b><span>aguardando o cliente</span></div>
+            <div class="card contador"><b>92%</b><span>no prazo em novembro</span></div>
+        </div>
+        <div class="filtros">
+            <input class="campo busca" value="" placeholder="Buscar por número, título ou solicitante">
+            <select class="campo"><option>Todas as empresas</option></select>
+            <select class="campo"><option>Qualquer responsável</option></select>
+            <select class="campo"><option>Abertos</option></select>
+            <select class="campo"><option>Todas as categorias</option></select>
+        </div>
+        <div class="card" style="overflow:hidden">
+        <table class="tabela">
+            <thead><tr><th>Prazo</th><th>#</th><th>Chamado</th><th>Categoria</th><th>Prioridade</th><th>Status</th><th>Responsável</th><th>Atualizado</th></tr></thead>
+            <tbody>
+            <tr class="atrasado">
+                <td><div class="prazo estourado"><div class="txt"><i class="fa-solid fa-circle-exclamation"></i> Estourado há 25 min</div><div class="sub">Solução · meta 8 h</div><div class="barra"><i style="width:100%"></i></div></div></td>
+                <td class="num">#1047</td>
+                <td class="titulo"><b>Câmeras do pátio sem imagem<span class="novidade" title="Novidade do cliente"></span></b><span>Transportadora Serra Azul · Galpão 2</span></td>
+                <td>Segurança e câmeras</td><td><span class="prio critica">Crítica</span></td><td><span class="status atend">Em atendimento</span></td>
+                <td><div class="resp"><span class="av md">VV</span>Vicente</div></td><td class="muted">há 12 min</td>
+            </tr>
+            <tr>
+                <td><div class="prazo perto"><div class="txt"><i class="fa-solid fa-hourglass-half"></i> Vence em 38 min</div><div class="sub">1ª resposta · meta 1 h</div><div class="barra"><i style="width:84%"></i></div></div></td>
+                <td class="num">#1051</td>
+                <td class="titulo"><b>Sem internet na unidade inteira</b><span>Clínica Bem Viver · Matriz <span class="canal">· via WhatsApp</span></span></td>
+                <td>Internet e rede</td><td><span class="prio critica">Crítica</span></td><td><span class="status novo">Novo</span></td>
+                <td><div class="resp muted">Ninguém ainda</div></td><td class="muted">há 22 min</td>
+            </tr>
+            <tr>
+                <td><div class="prazo perto"><div class="txt"><i class="fa-solid fa-hourglass-half"></i> Vence em 3 h</div><div class="sub">Solução · meta 16 h</div><div class="barra"><i style="width:81%"></i></div></div></td>
+                <td class="num">#1042</td>
+                <td class="titulo"><b>Internet caindo no fim da tarde<span class="novidade"></span></b><span>UFV Alto Paraná · Usina</span></td>
+                <td>Internet e rede</td><td><span class="prio alta">Alta</span></td><td><span class="status atend">Em atendimento</span></td>
+                <td><div class="resp"><span class="av md">MD</span>Mateus</div></td><td class="muted">há 5 min</td>
+            </tr>
+            <tr>
+                <td><div class="prazo"><div class="txt">Vence em 3 h 20</div><div class="sub">1ª resposta · meta 4 h</div><div class="barra"><i style="width:17%"></i></div></div></td>
+                <td class="num">#1052</td>
+                <td class="titulo"><b>Inversor 3 sem comunicação no portal</b><span>UFV Alto Paraná · Usina</span></td>
+                <td>Energia, elétrica e solar</td><td><span class="prio media">Média</span></td><td><span class="status novo">Novo</span></td>
+                <td><div class="resp muted">Ninguém ainda</div></td><td class="muted">há 40 min</td>
+            </tr>
+            <tr>
+                <td><div class="prazo"><div class="txt">Vence amanhã 10:00</div><div class="sub">Solução · meta 24 h</div><div class="barra"><i style="width:46%"></i></div></div></td>
+                <td class="num">#1039</td>
+                <td class="titulo"><b>Criar acesso ao NexoHub para a nova gerente</b><span>Colégio Horizonte</span></td>
+                <td>Acesso ao NexoHub</td><td><span class="prio media">Média</span></td><td><span class="status atend">Em atendimento</span></td>
+                <td><div class="resp"><span class="av md">JL</span>João Lucas</div></td><td class="muted">ontem 16:12</td>
+            </tr>
+            <tr>
+                <td><div class="prazo pausado"><div class="txt"><i class="fa-solid fa-pause"></i> Pausado</div><div class="sub">Aguardando o cliente desde ontem</div><div class="barra"><i style="width:35%"></i></div></div></td>
+                <td class="num">#1036</td>
+                <td class="titulo"><b>Wi-Fi fraco na sala de reuniões</b><span>Contabilidade Ribeiro · Escritório</span></td>
+                <td>Internet e rede</td><td><span class="prio baixa">Baixa</span></td><td><span class="status aguard">Aguardando cliente</span></td>
+                <td><div class="resp"><span class="av md">JM</span>João Magro</div></td><td class="muted">ontem 11:40</td>
+            </tr>
+            <tr>
+                <td><div class="prazo"><div class="txt">Prazo manual: sex 18:00</div><div class="sub">Interno da MD</div><div class="barra"><i style="width:30%"></i></div></div></td>
+                <td class="num">#1044</td>
+                <td class="titulo"><b><i class="fa-solid fa-lock muted" style="font-size:.75rem"></i> Atualizar agente dos sensores para a v2.3</b><span>MD Soluções · interno</span></td>
+                <td>Sistemas e software</td><td><span class="prio media">Média</span></td><td><span class="status atend">Em atendimento</span></td>
+                <td><div class="resp"><span class="av md">MD</span>Mateus</div></td><td class="muted">seg 09:15</td>
+            </tr>
+            </tbody>
+        </table>
+        </div>
+    </main>
+</section>
+
+<!-- ===================================================================== 2. CHAMADO -->
+<div class="legenda"><b>2. Chamado, visto pela MD</b>Conversa com o cliente, notas internas e histórico na mesma linha do tempo; ao lado, os dois relógios do SLA.</div>
+<section class="tela" data-tela="2-chamado">
+    <header class="app-bar">
+        <a class="brand-lockup" href="#">
+            <img class="brand-logo brand-logo-dark" src="../../../static/brand/nexohub/logo-escuro.svg" alt="NexoHub" width="166" height="48">
+            <span class="brand-by">por MD Soluções<br>Tecnológicas</span>
+        </a>
+        <nav class="app-nav">
+            <a href="#"><i class="fa-solid fa-house"></i><span>Início</span></a>
+            <a href="#"><i class="fa-solid fa-wave-square"></i><span>NexoPulse</span></a>
+            <a href="#"><i class="fa-solid fa-file-lines"></i><span>NexoReport</span></a>
+            <a href="#" class="active"><i class="fa-solid fa-headset"></i><span>NexoDesk</span></a>
+            <a href="#"><i class="fa-solid fa-sliders"></i><span>Administração</span></a>
+        </nav>
+    </header>
+    <main class="page-main">
+        <div class="trilha"><a href="#">Fila de atendimento</a> / #1042</div>
+        <div class="titulo-chamado">
+            <div>
+                <h1>Internet caindo no fim da tarde</h1>
+                <div class="chips"><span class="status atend">Em atendimento</span><span class="prio alta">Alta</span><span>· Internet e rede</span><span>· Aberto por Carla Mendes, UFV Alto Paraná, ter 03/11 16:48</span></div>
+            </div>
+            <div style="display:flex; gap:10px">
+                <a class="btn" href="#"><i class="fa-solid fa-pause"></i> Pedir informação</a>
+                <a class="btn primario" href="#"><i class="fa-solid fa-check"></i> Marcar como resolvido</a>
+            </div>
+        </div>
+        <div class="grade-chamado">
+            <div>
+                <div class="card linha-tempo">
+                    <div class="msg">
+                        <span class="av">CM</span>
+                        <div>
+                            <div class="quem"><b>Carla Mendes</b><span class="muted">UFV Alto Paraná · ter 03/11 16:48</span></div>
+                            <div class="texto"><p>Boa tarde! Faz uns dias que a internet da usina cai sempre depois das 16h, por uns 20 a 30 minutos. O portal dos inversores fica sem dados nesse período. Segue a foto da antena.</p></div>
+                            <div class="anexos"><div class="anexo"><span class="mini"><i class="fa-solid fa-image"></i></span><div><b>antena-starlink.jpg</b><span class="muted">2,4 MB</span></div></div></div>
+                        </div>
+                    </div>
+                    <div class="evento"><i class="fa-solid fa-user-check"></i> Mateus assumiu o chamado e definiu a prioridade como <b class="prio alta" style="margin-left:2px">Alta</b> · ter 17:05</div>
+                    <div class="msg">
+                        <span class="av md">MD</span>
+                        <div>
+                            <div class="quem"><b>Mateus</b><span class="muted">MD Soluções · ter 17:30</span></div>
+                            <div class="texto"><p>Oi, Carla! Vimos no NexoPulse 3 quedas em outubro, todas entre 16h e 17h, e a Starlink acusa obstrução de 5% nesse horário. Vamos olhar o campo de visão da antena.</p><p>Consegue mandar uma foto do lado oeste da antena, de onde o sol se põe?</p></div>
+                        </div>
+                    </div>
+                    <div class="evento"><i class="fa-solid fa-pause"></i> Status: aguardando cliente, SLA pausado · ter 17:30</div>
+                    <div class="msg">
+                        <span class="av">CM</span>
+                        <div>
+                            <div class="quem"><b>Carla Mendes</b><span class="muted">UFV Alto Paraná · qua 08:12</span></div>
+                            <div class="texto"><p>Mandei as fotos. Tem uma árvore crescendo do lado da cerca.</p></div>
+                            <div class="anexos">
+                                <div class="anexo"><span class="mini"><i class="fa-solid fa-image"></i></span><div><b>lado-oeste-1.jpg</b><span class="muted">3,1 MB</span></div></div>
+                                <div class="anexo"><span class="mini"><i class="fa-solid fa-image"></i></span><div><b>lado-oeste-2.jpg</b><span class="muted">2,8 MB</span></div></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="evento"><i class="fa-solid fa-play"></i> Status: em atendimento, SLA retomado · qua 08:12</div>
+                    <div class="msg interna">
+                        <span class="av md">MD</span>
+                        <div>
+                            <div class="quem"><b>Mateus</b><span class="tag"><i class="fa-solid fa-lock"></i> Nota interna, o cliente não vê</span> <span class="muted">qua 08:40</span></div>
+                            <div class="texto"><p>Árvore confirmada. Vicente passa lá hoje à tarde para subir o mastro 1,5 m. Levar o suporte novo e a escada grande.</p></div>
+                        </div>
+                    </div>
+                    <div class="compor">
+                        <div class="abas"><span class="ativa"><i class="fa-solid fa-reply"></i> Responder ao cliente</span><span class="nota"><i class="fa-solid fa-lock"></i> Nota interna</span></div>
+                        <div class="area">Carla, o Vicente chega hoje às 14h para subir o mastro da antena…</div>
+                        <div class="rodape">
+                            <a class="btn pequeno" href="#"><i class="fa-solid fa-paperclip"></i> Anexar</a>
+                            <div class="dir">Depois de enviar: <select class="campo" style="padding:6px 10px"><option>Manter em atendimento</option></select><a class="btn primario" href="#"><i class="fa-solid fa-paper-plane"></i> Enviar</a></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <aside class="lateral">
+                <div class="card bloco">
+                    <h3>Prazo do contrato</h3>
+                    <div class="relogio">
+                        <div class="rot"><span>1ª resposta</span><span>meta 2 h</span></div>
+                        <div class="val ok"><i class="fa-solid fa-circle-check"></i> Cumprida em 42 min</div>
+                    </div>
+                    <div class="relogio prazo perto">
+                        <div class="rot"><span>Solução</span><span>meta 16 h</span></div>
+                        <div class="val txt"><i class="fa-solid fa-hourglass-half"></i> Restam 3 h úteis</div>
+                        <div class="barra"><i style="width:81%"></i></div>
+                        <div class="sub">Vence hoje às 13:30. O tempo aguardando o cliente não conta.</div>
+                    </div>
+                    <div class="sub muted" style="font-size:.76rem; margin-top:4px">Contrato UFV Alto Paraná · horário comercial</div>
+                </div>
+                <div class="card bloco">
+                    <h3>Dados do chamado</h3>
+                    <dl class="dados">
+                        <dt>Empresa</dt><dd>UFV Alto Paraná</dd>
+                        <dt>Solicitante</dt><dd>Carla Mendes</dd>
+                        <dt>Canal</dt><dd>NexoHub</dd>
+                        <dt>Local</dt><dd>Usina · <a href="#">abrir no NexoPulse <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:.7rem"></i></a></dd>
+                        <dt>Responsável</dt><dd><select class="campo"><option>Mateus</option></select></dd>
+                        <dt>Prioridade</dt><dd><select class="campo"><option>Alta</option></select></dd>
+                        <dt>Categoria</dt><dd><select class="campo"><option>Internet e rede</option></select></dd>
+                    </dl>
+                </div>
+            </aside>
+        </div>
+    </main>
+</section>
+
+<!-- ===================================================================== 3. ABRIR CHAMADO -->
+<div class="legenda"><b>3. Abrir chamado, visto pelo cliente</b>Formulário curto. O cliente diz o impacto; a MD confirma a prioridade. O prazo do contrato aparece antes de enviar.</div>
+<section class="tela" data-tela="3-abrir-chamado">
+    <header class="app-bar">
+        <a class="brand-lockup" href="#">
+            <img class="brand-logo brand-logo-dark" src="../../../static/brand/nexohub/logo-escuro.svg" alt="NexoHub" width="166" height="48">
+            <span class="brand-by">por MD Soluções<br>Tecnológicas</span>
+        </a>
+        <nav class="app-nav">
+            <a href="#"><i class="fa-solid fa-house"></i><span>Início</span></a>
+            <a href="#"><i class="fa-solid fa-wave-square"></i><span>NexoPulse</span></a>
+            <a href="#" class="active"><i class="fa-solid fa-headset"></i><span>NexoDesk</span></a>
+        </nav>
+    </header>
+    <main class="page-main">
+        <div class="trilha"><a href="#">Meus chamados</a> / Abrir chamado</div>
+        <div class="cabeca"><div><h1>Abrir chamado</h1><p>Conte o que está acontecendo. A equipe da MD responde por aqui e você acompanha tudo nesta página.</p></div></div>
+        <div class="grade-abrir">
+            <div class="card form">
+                <div>
+                    <span class="rotulo">Sobre o que é?</span>
+                    <div class="opcoes">
+                        <span class="opcao sel"><i class="fa-solid fa-wifi"></i> Internet e rede</span>
+                        <span class="opcao"><i class="fa-solid fa-video"></i> Segurança e câmeras</span>
+                        <span class="opcao"><i class="fa-solid fa-solar-panel"></i> Energia, elétrica e solar</span>
+                        <span class="opcao"><i class="fa-solid fa-code"></i> Sistemas e software</span>
+                        <span class="opcao"><i class="fa-solid fa-user-lock"></i> Acesso ao NexoHub</span>
+                        <span class="opcao"><i class="fa-solid fa-ellipsis"></i> Outros</span>
+                    </div>
+                </div>
+                <div>
+                    <span class="rotulo">Qual o impacto agora?</span>
+                    <div class="impactos">
+                        <div class="impacto"><b>Parou tudo</b><span>Ninguém consegue trabalhar ou um local inteiro está fora.</span></div>
+                        <div class="impacto sel"><b>Atrapalha o trabalho</b><span>Funciona com falhas, lentidão ou só em parte.</span></div>
+                        <div class="impacto"><b>Dúvida ou pedido</b><span>Uma orientação, um ajuste ou algo novo.</span></div>
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px">
+                    <div><label class="rotulo">Título</label><input class="campo" value="Internet caindo no fim da tarde"></div>
+                    <div><label class="rotulo">Local <small>opcional</small></label><select class="campo"><option>Usina</option></select></div>
+                </div>
+                <div>
+                    <label class="rotulo">O que está acontecendo?</label>
+                    <textarea class="campo">Faz uns dias que a internet da usina cai sempre depois das 16h, por uns 20 a 30 minutos. O portal dos inversores fica sem dados nesse período. Segue a foto da antena.</textarea>
+                </div>
+                <div>
+                    <span class="rotulo">Fotos e arquivos <small>até 5 arquivos de 10 MB</small></span>
+                    <div class="soltar"><i class="fa-solid fa-cloud-arrow-up"></i><span>Arraste aqui ou <a href="#" style="color:var(--link)">escolha os arquivos</a></span>
+                        <div class="anexo"><span class="mini"><i class="fa-solid fa-image"></i></span><div><b>antena-starlink.jpg</b><span class="muted">2,4 MB</span></div></div>
+                    </div>
+                </div>
+                <div class="acoes-form"><a class="btn" href="#">Cancelar</a><a class="btn primario" href="#"><i class="fa-solid fa-paper-plane"></i> Abrir chamado</a></div>
+            </div>
+            <aside class="lateral">
+                <div class="card prazo-contrato">
+                    <h3><i class="fa-solid fa-stopwatch"></i> Pelo seu contrato</h3>
+                    <p>Para um problema que atrapalha o trabalho, a MD responde em até</p>
+                    <div class="grande">2 horas úteis</div>
+                    <p>e resolve em até 16 horas úteis.</p>
+                    <p style="margin:0">Atendimento de segunda a sexta, das 8h às 18h. Se a MD pedir uma informação, o prazo para até você responder.</p>
+                </div>
+                <div class="card dica"><b>Parou tudo?</b> Abra o chamado como "Parou tudo" e, se quiser, ligue também para a MD: (83) 98127-0116. O atendimento começa na hora.</div>
+            </aside>
+        </div>
+    </main>
+</section>
+
+<!-- ===================================================================== 4. MEUS CHAMADOS (CELULAR) -->
+<div class="legenda" style="width:390px"><b>4. Meus chamados, no celular</b>O cliente vê o que mudou e o que depende dele.</div>
+<section class="tela celular" data-tela="4-meus-chamados-celular">
+    <div class="cel-topo"><img src="../../familia-nexo/logos/nexodesk-escuro.svg" alt="NexoDesk"><i class="fa-solid fa-bars"></i></div>
+    <div class="cel-corpo">
+        <h1>Meus chamados</h1>
+        <div class="muted" style="font-size:.86rem">UFV Alto Paraná</div>
+        <a class="btn primario" href="#"><i class="fa-solid fa-plus"></i> Abrir chamado</a>
+        <div class="segmento"><span class="ativa">Abertos (3)</span><span>Todos</span></div>
+        <div class="card cel-card">
+            <div class="l1"><span>#1042 · Internet e rede</span><span class="status atend">Em atendimento</span></div>
+            <b>Internet caindo no fim da tarde</b>
+            <div class="l3"><span class="muted">Responsável: Mateus</span><span class="muted">há 5 min</span></div>
+            <div class="aviso-md"><i class="fa-solid fa-comment-dots"></i> A MD respondeu: visita marcada para hoje às 14h</div>
+        </div>
+        <div class="card cel-card">
+            <div class="l1"><span>#1052 · Energia e solar</span><span class="status novo">Novo</span></div>
+            <b>Inversor 3 sem comunicação no portal</b>
+            <div class="l3"><span class="muted">A MD responde até 13:40</span><span class="muted">há 40 min</span></div>
+        </div>
+        <div class="card cel-card">
+            <div class="l1"><span>#1030 · Acesso ao NexoHub</span><span class="status resolvido">Resolvido</span></div>
+            <b>Liberar o relatório mensal para o diretor</b>
+            <div class="aviso-md acao"><i class="fa-solid fa-circle-question"></i> Resolveu para você?</div>
+            <div class="confirma"><a class="btn pequeno primario" href="#"><i class="fa-solid fa-check"></i> Sim, pode fechar</a><a class="btn pequeno" href="#">Ainda não</a></div>
+        </div>
+    </div>
+</section>
+
+<!-- ===================================================================== 5. SLA NO CADASTRO -->
+<div class="legenda"><b>5. SLA no cadastro da empresa</b>Em Acessos, editando a empresa. Só o Administrador Master altera; cada mudança vai para a auditoria e não afeta chamados já abertos.</div>
+<section class="tela" data-tela="5-sla-contrato">
+    <div class="fundo-modal">
+        <div class="card modal">
+            <h2>UFV Alto Paraná</h2>
+            <div class="muted" style="font-size:.88rem">Editar empresa</div>
+            <div class="abas-cad"><span>Dados</span><span>Aplicativos</span><span>NexoReport</span><span class="ativa">Atendimento e SLA</span></div>
+            <span class="rotulo">Horário de atendimento</span>
+            <div class="horario">
+                <div class="impacto sel"><b>Comercial</b><span>Segunda a sexta, 8h às 18h (Brasília). Fins de semana e feriados nacionais não contam.</span></div>
+                <div class="impacto"><b>24 horas, todos os dias</b><span>O prazo corre sem parar, inclusive à noite, fins de semana e feriados.</span></div>
+            </div>
+            <span class="rotulo">Prazos por prioridade <small>em horas de atendimento</small></span>
+            <table class="tab-sla">
+                <thead><tr><th>Prioridade</th><th>1ª resposta</th><th>Solução</th><th></th></tr></thead>
+                <tbody>
+                <tr><td><span class="prio critica">Crítica</span></td><td><span class="h"><input class="campo" value="1"> h</span></td><td><span class="h"><input class="campo" value="8"> h</span></td><td class="ex">8 h = 1 dia útil</td></tr>
+                <tr><td><span class="prio alta">Alta</span></td><td><span class="h"><input class="campo" value="2"> h</span></td><td><span class="h"><input class="campo" value="16"> h</span></td><td class="ex">2 dias úteis</td></tr>
+                <tr><td><span class="prio media">Média</span></td><td><span class="h"><input class="campo" value="4"> h</span></td><td><span class="h"><input class="campo" value="24"> h</span></td><td class="ex">3 dias úteis</td></tr>
+                <tr><td><span class="prio baixa">Baixa</span></td><td><span class="h"><input class="campo" value="8"> h</span></td><td><span class="h"><input class="campo" value="40"> h</span></td><td class="ex">5 dias úteis</td></tr>
+                </tbody>
+            </table>
+            <div class="rodape-modal">
+                <div class="nota-modal">Esta empresa usa a tabela padrão da MD. Alterar aqui vale só para os chamados abertos a partir de agora.</div>
+                <div style="display:flex; gap:10px"><a class="btn" href="#"><i class="fa-solid fa-rotate-left"></i> Usar o padrão</a><a class="btn primario" href="#">Salvar</a></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+</body>
+</html>
