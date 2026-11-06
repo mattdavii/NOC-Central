@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#082E56">
+    <link rel="icon" href="/static/brand/nexohub/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/brand/nexohub/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="apple-touch-icon" href="/static/brand/nexohub/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.json?v=nexopulse-2">
+    <title>NexoHub - Guias de instalação</title>
+    <link rel="stylesheet" href="/static/fontes/fontes.css?v=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: var(--bg-base); color: var(--text-main); }
+        .container { padding: 30px; max-width: 1200px; margin: 0 auto; }
+        .guias { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; }
+        .guia { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
+        .guia h2 { margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: 10px; }
+        .guia h2 i { color: var(--blue); }
+        .guia .sub { margin: 0; color: var(--text-muted); font-size: .9rem; line-height: 1.5; }
+        .guia ul { margin: 0; padding-left: 18px; color: var(--text-muted); font-size: .86rem; line-height: 1.55; }
+        .comando { position: relative; }
+        .comando pre { margin: 0; background: #071a31; color: #e6f1fa; border: 1px solid var(--border); border-radius: 8px; padding: 12px 44px 12px 12px;
+            font: .78rem/1.55 'JetBrains Mono', monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .comando button { position: absolute; top: 6px; right: 6px; background: transparent; border: 1px solid var(--border); color: var(--text-muted);
+            border-radius: 6px; padding: 5px 8px; cursor: pointer; }
+        .comando button:hover, .comando button:focus-visible { color: var(--text-main); border-color: var(--blue); }
+        .rotulo { font-size: .78rem; color: var(--text-muted); margin-bottom: 6px; }
+        .acoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+        .nota-rodape { margin-top: 22px; color: var(--text-muted); font-size: .86rem; line-height: 1.6; }
+        @media (max-width: 700px) { .container { padding: 16px; } .guias { grid-template-columns: 1fr; } }
+    </style>
+<link rel="stylesheet" href="/static/product.css?v=nexopulse-4">
+<script src="/static/brand.js?v=nexopulse-2"></script>
+</head>
+<body>
+<script src="/static/security.js?v=2.2.0-rc1"></script>
+{% include '_brand_bar.html' %}
+<main class="container">
+    <div class="page-head">
+        <div>
+            <h1><i class="fa-solid fa-book-open"></i> Guias de instalação</h1>
+            <p>O passo a passo para o técnico instalar o sensor NexoPulse Edge. Os PDFs saem com os comandos e o endereço desta Central.</p>
+        </div>
+    </div>
+
+    <div class="guias">
+        {% for g in guias %}
+        <section class="guia" aria-labelledby="guia-{{ g.sistema }}">
+            <h2 id="guia-{{ g.sistema }}"><i class="fa-brands {{ 'fa-linux' if g.sistema == 'linux' else 'fa-windows' }}" aria-hidden="true"></i> {{ g.titulo }}</h2>
+            <p class="sub">{{ g.subtitulo }}</p>
+            <ul>{% for r in g.requisitos[:3] %}<li>{{ r }}</li>{% endfor %}</ul>
+            <div>
+                <div class="rotulo">Comando de instalação {{ '(terminal, usuário comum)' if g.sistema == 'linux' else '(PowerShell como Administrador)' }}</div>
+                <div class="comando">
+                    <pre id="cmd-{{ g.sistema }}">{{ g.comando }}</pre>
+                    <button type="button" data-copiar="cmd-{{ g.sistema }}" aria-label="Copiar o comando de instalação para {{ g.sistema|capitalize }}"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
+                </div>
+            </div>
+            <div class="acoes">
+                <a class="action-btn btn-primary" href="/guias/{{ g.sistema }}.pdf" target="_blank" rel="noopener"><i class="fa-solid fa-file-pdf"></i> Abrir o guia</a>
+                <a class="action-btn btn-secondary" href="/guias/{{ g.sistema }}.pdf?baixar=1"><i class="fa-solid fa-download"></i> Baixar PDF</a>
+            </div>
+        </section>
+        {% endfor %}
+    </div>
+
+    <section class="guia" style="margin-top:20px" aria-labelledby="guia-campo">
+        <h2 id="guia-campo"><img src="/static/brand/nexocampo/simbolo-escuro.svg" alt="" width="28" height="28"> App de campo NexoCampo (Android)</h2>
+        <p class="sub">Para o técnico analisar a rede do local pelo celular: Wi-Fi e canais, ping e velocidade, aparelhos da rede e relatório em PDF.
+            Instale no celular do técnico; as versões novas aparecem no próprio app.</p>
+        {% if campo %}
+        <div class="acoes"><a class="action-btn btn-primary" href="/app/nexocampo.apk"><i class="fa-brands fa-android"></i> Baixar o app (versão {{ campo.versao }})</a></div>
+        {% else %}
+        <p class="sub">O download aparece aqui quando a Central estiver ligada às versões do app (variável GITHUB_TOKEN_APP).</p>
+        {% endif %}
+    </section>
+
+    <p class="nota-rodape">O sensor roda em Linux (direto) ou no Windows 11 (pelo WSL). macOS, Windows 10 e celulares não servem como sensor.
+        Depois de instalado, ele aparece em <a href="/sensores" style="color: var(--blue)">Sensores</a>, no grupo "Sem empresa".</p>
+</main>
+<script>
+document.querySelectorAll('[data-copiar]').forEach(botao => botao.addEventListener('click', async () => {
+    const texto = document.getElementById(botao.dataset.copiar).textContent;
+    const icone = botao.querySelector('i');
+    try { await navigator.clipboard.writeText(texto); icone.className = 'fa-solid fa-check'; }
+    catch (e) { icone.className = 'fa-solid fa-xmark'; }
+    setTimeout(() => { icone.className = 'fa-regular fa-copy'; }, 1800);
+}));
+</script>
+</body>
+</html>

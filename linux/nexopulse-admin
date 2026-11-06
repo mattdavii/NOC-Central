@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Ações administrativas permitidas ao agente NexoPulse Edge (executado via sudo -n).
+#
+# O instalador libera SOMENTE este arquivo no sudoers do usuário do agente.
+# Cada subcomando faz uma coisa fixa; nada do que vem da Central vira comando
+# de shell aqui. Instalado como root:root 0755 em /usr/local/sbin.
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export DEBIAN_FRONTEND=noninteractive
+
+uso() { echo "uso: nexopulse-admin {update-system|restart-agent|reboot|start-service <nome>}" >&2; exit 2; }
+
+case "${1:-}" in
+  update-system)
+    if command -v apt-get >/dev/null; then
+      apt-get update && apt-get -y -o Dpkg::Options::=--force-confold upgrade
+    elif command -v pacman >/dev/null; then
+      pacman -Syu --noconfirm
+    elif command -v dnf >/dev/null; then
+      dnf -y upgrade
+    elif command -v zypper >/dev/null; then
+      zypper --non-interactive update
+    else
+      echo "gerenciador de pacotes não reconhecido" >&2; exit 1
+    fi
+    ;;
+  restart-agent)
+    # Com atraso, para o agente conseguir enviar o resultado antes de reiniciar.
+    systemd-run --on-active=5 --unit "nexopulse-restart-$(date +%s)" systemctl restart nexopulse-edge.service
+    echo "reinício do agente agendado em 5 s"
+    ;;
+  reboot)
+    systemd-run --on-active=10 --unit "nexopulse-reboot-$(date +%s)" systemctl reboot
+    echo "reinício da máquina agendado em 10 s"
+    ;;
+  start-service)
+    nome="${2:-}"
+    [[ "$nome" =~ ^[A-Za-z0-9@._-]+$ ]] || { echo "nome de serviço inválido" >&2; exit 2; }
+    systemctl start "$nome"
+    ;;
+  *) uso ;;
+esac

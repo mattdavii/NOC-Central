@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Diagrama da rede - {{ sensor.nome_local }}</title>
+<style>
+    @font-face { font-family: 'Inter'; src: url('static/fontes/inter.woff2') format('woff2'); }
+    @font-face { font-family: 'IBM Plex Sans'; src: url('static/fontes/ibm-plex-sans.woff2') format('woff2'); }
+    @page { size: A4 landscape; margin: 12mm 14mm; @bottom-right { content: "página " counter(page) " de " counter(pages); font: 8pt 'Inter', sans-serif; color: #526077; } }
+    body { font-family: 'Inter', sans-serif; color: #1f2937; margin: 0; }
+    .cabeca { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 10px; margin-bottom: 14px; border-bottom: 2.5px solid #05A9DC; }
+    .cabeca img { height: 30px; }
+    h1 { font-size: 16pt; color: #082E56; margin: 0 0 3px; }
+    .sub { font-size: 8.5pt; color: #526077; }
+    .desenho svg { width: 100%; height: auto; max-height: 160mm; }
+    .legenda { font-size: 8pt; color: #526077; margin-top: 8px; }
+    .legenda span { margin-right: 14px; }
+    .legenda i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; }
+    .nota { font-size: 8pt; color: #526077; margin-top: 4px; line-height: 1.45; }
+</style>
+</head>
+<body>
+<div class="cabeca">
+    <div>
+        <h1>Diagrama da rede · {{ sensor.nome_local or sensor.mac_id }}</h1>
+        <div class="sub">{% if sensor.cliente_nome %}{{ sensor.cliente_nome }} · {% endif %}sensor {{ sensor.ip_sensor or '—' }} · gateway {{ sensor.ip_gateway or '—' }}{% if sensor.provedor %} · {{ sensor.provedor }}{% endif %} · emitido em {{ emitido }}</div>
+    </div>
+    <img src="static/brand/nexopulse-logo-light.png" alt="NexoPulse">
+</div>
+<div class="desenho">{{ svg | safe }}</div>
+<div class="legenda"><span><i style="background:#05A88C"></i>Online</span><span><i style="background:#E39B2D"></i>Sem resposta a ping</span><span><i style="background:#DC2626"></i>Fora da rede (visto antes)</span></div>
+<p class="nota">{% if informado %}Ligações informadas pela equipe{% if sensor.mapa_rede_por %} ({{ sensor.mapa_rede_por }}){% endif %}; o que não foi informado aparece ligado direto no gateway.{% else %}O diagrama ainda não foi editado: todos os equipamentos aparecem ligados direto no gateway, como o sensor os enxerga.{% endif %}
+{% if fora %} {{ fora }} equipamento{{ 's' if fora != 1 }} fora da rede aparece{{ 'm' if fora != 1 }} em vermelho, com a última posição conhecida.{% endif %}</p>
+</body>
+</html>

@@ -1,0 +1,61 @@
+{
+  "marca": "Nexo",
+  "logos": [
+    {
+      "slug": "nexopulse",
+      "nome": "NexoPulse",
+      "descricao": "Monitoramento e diagnóstico de redes"
+    },
+    {
+      "slug": "nexohub",
+      "nome": "NexoHub",
+      "descricao": "Portal único do cliente"
+    },
+    {
+      "slug": "nexoguard",
+      "nome": "NexoGuard",
+      "descricao": "Segurança da rede"
+    },
+    {
+      "slug": "nexoreport",
+      "nome": "NexoReport",
+      "descricao": "Relatórios inteligentes"
+    },
+    {
+      "slug": "nexoasset",
+      "nome": "NexoAsset",
+      "descricao": "Inventário de TI"
+    },
+    {
+      "slug": "nexoweb",
+      "nome": "NexoWeb",
+      "descricao": "Sites e sistemas online"
+    },
+    {
+      "slug": "nexodesk",
+      "nome": "NexoDesk",
+      "descricao": "Chamados e suporte"
+    },
+    {
+      "slug": "nexobackup",
+      "nome": "NexoBackup",
+      "descricao": "Backup gerenciado"
+    },
+    {
+      "slug": "nexopower",
+      "nome": "NexoPower",
+      "descricao": "Energia e nobreak"
+    }
+  ],
+  "versoes": [
+    "claro",
+    "escuro",
+    "app-icon"
+  ],
+  "resolucoes_png": [
+    192,
+    512,
+    1024,
+    2048
+  ]
+}

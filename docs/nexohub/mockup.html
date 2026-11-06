@@ -1,0 +1,247 @@
+<!doctype html>
+<!-- Simulação visual do NexoHub (não é código da Central). Telas: #cliente-v1, #cliente-futuro, #master.
+     Captura: google-chrome --headless=new --hide-scrollbars --force-device-scale-factor=1.5 --window-size=1440,900 \
+       --virtual-time-budget=8000 --screenshot=tela.png "file://$PWD/mockup.html#cliente-v1" -->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>NexoHub · simulação</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  :root { --bg:#0B1728; --card:#12263D; --raised:#17304B; --border:#29445F; --text:#E8F1FA; --muted:#94A3B8;
+          --cyan:#05A9DC; --green:#05A88C; --ok:#22C55E; --warn:#FBBF24; --crit:#F87171; --grad:linear-gradient(90deg,#05A9DC,#05A88C);
+          --md:linear-gradient(90deg,#670CB2,#2571AB,#00A9A7); }
+  * { box-sizing:border-box; margin:0; }
+  html,body { background:var(--bg); color:var(--text); font-family:'Inter',system-ui,sans-serif; width:1440px; height:900px; overflow:hidden; }
+  .tela { display:none; width:1440px; height:900px; position:relative; }
+  .tela.ativa { display:block; }
+  .tela::before { content:''; position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(circle at 95% 0%, rgba(5,169,220,.10), transparent 35%), radial-gradient(circle at 0% 100%, rgba(5,168,140,.08), transparent 40%); }
+  .tela > * { position:relative; }
+
+  /* barra */
+  .bar { height:64px; display:flex; align-items:center; gap:26px; padding:0 28px; background:rgba(5,18,34,.85); border-bottom:1px solid var(--border); }
+  .marca { display:flex; align-items:center; gap:10px; }
+  .marca img { height:34px; }
+  .marca .nome { font-size:23px; font-weight:800; letter-spacing:-.02em; }
+  .marca .nome span { color:#19C2D8; }
+  .marca .por { font-size:10.5px; color:var(--muted); font-weight:600; letter-spacing:.06em; text-transform:uppercase; line-height:1.15; border-left:1px solid var(--border); padding-left:10px; margin-left:4px; }
+  nav { display:flex; gap:4px; flex:1; }
+  nav a { display:inline-flex; align-items:center; gap:8px; padding:8px 13px; border-radius:8px; color:var(--muted); font-size:14px; font-weight:600; text-decoration:none; }
+  nav a.on { color:var(--text); background:rgba(5,169,220,.14); box-shadow:inset 0 -2px 0 var(--cyan); }
+  nav a .fa-chevron-down { font-size:10px; opacity:.6; }
+  nav .novo { font-size:9.5px; font-weight:800; letter-spacing:.06em; padding:2px 6px; border-radius:6px; background:var(--grad); color:#fff; }
+  .acoes { display:flex; align-items:center; gap:14px; font-size:14px; }
+  .acoes .ico { width:36px; height:36px; border:1px solid var(--border); border-radius:9px; display:flex; align-items:center; justify-content:center; color:var(--muted); }
+  .acoes .user { display:flex; align-items:center; gap:8px; font-weight:600; border-left:1px solid var(--border); padding-left:14px; }
+  .acoes .user small { display:block; color:var(--muted); font-size:11px; font-weight:500; }
+
+  .conteudo { padding:28px 36px; }
+  .topo { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
+  .ola { display:flex; align-items:center; gap:16px; }
+  .logo-cli { width:58px; height:58px; border-radius:14px; background:linear-gradient(135deg,#F59E0B,#EF4444); display:flex; align-items:center; justify-content:center; font-weight:900; font-size:22px; color:#fff; }
+  h1 { font-size:28px; font-weight:800; letter-spacing:-.02em; }
+  .sub { color:var(--muted); font-size:14.5px; margin-top:3px; }
+  .status-geral { display:flex; gap:10px; }
+  .pill { display:inline-flex; align-items:center; gap:7px; padding:7px 13px; border-radius:999px; border:1px solid currentColor; font-size:13px; font-weight:700; background:color-mix(in srgb,currentColor 10%,transparent); }
+  .pill::before { content:''; width:8px; height:8px; border-radius:50%; background:currentColor; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); } .crit { color:var(--crit); }
+
+  .grid { display:grid; gap:20px; }
+  .g3 { grid-template-columns:1.25fr 1fr 1fr; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:22px; box-shadow:0 18px 45px rgba(0,0,0,.22); }
+  .mod-h { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+  .mod-t { display:flex; align-items:center; gap:12px; }
+  .mod-ic { width:42px; height:42px; border-radius:11px; background:var(--grad); display:flex; align-items:center; justify-content:center; color:#fff; font-size:18px; }
+  .mod-t b { font-size:18px; } .mod-t small { display:block; color:var(--muted); font-size:12.5px; font-weight:500; }
+  .tag { font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; padding:4px 9px; border-radius:7px; }
+  .tag.ativo { color:var(--ok); background:rgba(34,197,94,.12); }
+  .tag.vitrine { color:#7DD3FC; background:rgba(125,211,252,.10); }
+  .kpis { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:14px; }
+  .kpi { background:var(--raised); border:1px solid var(--border); border-radius:12px; padding:12px 14px; }
+  .kpi b { font-size:26px; font-weight:800; display:block; } .kpi span { font-size:12px; color:var(--muted); }
+  .lista { display:flex; flex-direction:column; gap:8px; }
+  .item { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-radius:10px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.05); font-size:13.5px; }
+  .item .d { width:9px; height:9px; border-radius:50%; margin-right:10px; display:inline-block; }
+  .item small { color:var(--muted); font-size:12px; }
+  .alerta { border-left:3px solid var(--crit); background:rgba(248,113,113,.07); border-radius:10px; padding:11px 13px; font-size:13.5px; margin-top:12px; line-height:1.45; }
+  .alerta b { color:#FCA5A5; }
+  .btn { display:inline-flex; align-items:center; gap:8px; margin-top:16px; padding:10px 16px; border-radius:10px; font-weight:700; font-size:14px; }
+  .btn.p { background:rgba(5,169,220,.14); border:1px solid #1B6E8C; color:#7DD3FC; }
+  .btn.v { background:var(--grad); color:#fff; }
+  .vitrine-c { position:relative; overflow:hidden; }
+  .vitrine-c .desc { color:#B8C7D9; font-size:14px; line-height:1.55; }
+  .vitrine-c ul { list-style:none; padding:0; margin-top:14px; display:flex; flex-direction:column; gap:9px; font-size:13.5px; color:#C9D5E4; }
+  .vitrine-c li i { color:#19C2D8; width:20px; }
+  .fantasma { position:absolute; right:-30px; bottom:-30px; font-size:150px; color:rgba(255,255,255,.03); }
+  .spark { height:54px; margin-top:6px; }
+  .nota { display:flex; align-items:center; gap:18px; }
+  .gauge { width:108px; height:108px; border-radius:50%; background:conic-gradient(var(--ok) 0 82%, #22374F 82% 100%); display:flex; align-items:center; justify-content:center; }
+  .gauge div { width:84px; height:84px; border-radius:50%; background:var(--card); display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .gauge b { font-size:30px; font-weight:900; } .gauge span { font-size:11px; color:var(--muted); }
+  .doc { display:flex; align-items:center; gap:14px; padding:14px; border-radius:12px; background:var(--raised); border:1px solid var(--border); }
+  .doc i { font-size:30px; color:#F87171; }
+  .rodape-md { position:absolute; left:36px; right:36px; bottom:18px; display:flex; justify-content:space-between; font-size:12px; color:var(--muted); }
+  .rodape-md .mdbar { height:3px; width:120px; background:var(--md); border-radius:3px; align-self:center; }
+
+  /* master */
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th { text-align:left; color:var(--muted); font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:12px 14px; border-bottom:1px solid var(--border); }
+  td { padding:13px 14px; border-bottom:1px solid rgba(41,68,95,.6); }
+  .mods span { display:inline-block; font-size:11.5px; font-weight:700; padding:3px 8px; border-radius:6px; margin-right:5px; }
+  .m-on { background:rgba(5,169,220,.14); color:#7DD3FC; } .m-off { background:rgba(255,255,255,.05); color:#5E6B80; }
+  .cli { display:flex; align-items:center; gap:12px; font-weight:700; }
+  .cli i { width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-style:normal; font-size:13px; font-weight:900; color:#fff; }
+  .ver { color:#7DD3FC; font-weight:700; font-size:13px; }
+  .totais { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:22px; }
+  .totais .kpi b { font-size:30px; }
+  .busca { display:flex; gap:10px; }
+  .busca div { border:1px solid var(--border); background:var(--raised); border-radius:10px; padding:9px 14px; color:var(--muted); font-size:13.5px; }
+</style>
+</head>
+<body>
+
+<!-- ============ CLIENTE · V1 ============ -->
+<section class="tela" id="cliente-v1">
+  <div class="bar">
+    <div class="marca"><img src="../../static/brand/nexopulse-symbol.png" alt=""><div class="nome">Nexo<span>Hub</span></div><div class="por">por MD<br>Soluções Tecnológicas</div></div>
+    <nav>
+      <a class="on"><i class="fa-solid fa-house"></i>Início</a>
+      <a><i class="fa-solid fa-wave-square"></i>NexoPulse <i class="fa-solid fa-chevron-down"></i></a>
+      <a><i class="fa-solid fa-shield-halved"></i>NexoGuard <span class="novo">NOVO</span></a>
+      <a><i class="fa-solid fa-file-lines"></i>NexoReport <span class="novo">NOVO</span></a>
+      <a><i class="fa-solid fa-gear"></i>Administração <i class="fa-solid fa-chevron-down"></i></a>
+    </nav>
+    <div class="acoes"><span class="ico"><i class="fa-solid fa-sun"></i></span><span class="user"><i class="fa-solid fa-circle-user" style="font-size:22px; color:var(--muted)"></i><span>joana.lima<small>Grupo Varejo Sul</small></span></span><span class="ico"><i class="fa-solid fa-right-from-bracket"></i></span></div>
+  </div>
+  <div class="conteudo">
+    <div class="topo">
+      <div class="ola"><div class="logo-cli">GV</div><div><h1>Olá, Grupo Varejo Sul</h1><p class="sub">Seus serviços com a MD Soluções Tecnológicas</p></div></div>
+      <div class="status-geral"><span class="pill ok">3 sites estáveis</span><span class="pill crit">1 site fora do ar</span></div>
+    </div>
+    <div class="grid g3">
+      <div class="card">
+        <div class="mod-h"><div class="mod-t"><div class="mod-ic"><i class="fa-solid fa-wave-square"></i></div><div><b>NexoPulse</b><small>Monitoramento de rede 24/7</small></div></div><span class="tag ativo">Ativo</span></div>
+        <div class="kpis"><div class="kpi"><b class="ok">3</b><span>online</span></div><div class="kpi"><b class="crit">1</b><span>fora do ar</span></div><div class="kpi"><b>99,2%</b><span>disponível no mês</span></div></div>
+        <div class="lista">
+          <div class="item"><span><i class="d" style="background:var(--crit)"></i>Filial Litoral</span><small>sem comunicação há 12 min</small></div>
+          <div class="item"><span><i class="d" style="background:var(--ok)"></i>Loja Centro</span><small>16 ms · normal</small></div>
+          <div class="item"><span><i class="d" style="background:var(--ok)"></i>Escritório Matriz</span><small>9 ms · normal</small></div>
+          <div class="item"><span><i class="d" style="background:var(--ok)"></i>Armazém Norte</span><small>22 ms · normal</small></div>
+        </div>
+        <div class="alerta"><b>Site sem comunicação</b> — Filial Litoral parou de responder às 09h48. Nossa equipe já está verificando energia e link no local.</div>
+        <span class="btn p"><i class="fa-solid fa-arrow-right"></i>Abrir NexoPulse</span>
+      </div>
+      <div class="card vitrine-c">
+        <i class="fa-solid fa-shield-halved fantasma"></i>
+        <div class="mod-h"><div class="mod-t"><div class="mod-ic"><i class="fa-solid fa-shield-halved"></i></div><div><b>NexoGuard</b><small>Segurança da sua rede</small></div></div><span class="tag vitrine">Conheça</span></div>
+        <p class="desc">Descubra os riscos de segurança da sua rede antes que alguém os encontre.</p>
+        <ul><li><i class="fa-solid fa-gauge-high"></i>Nota de segurança de 0 a 100</li><li><i class="fa-solid fa-door-open"></i>Portas e serviços expostos</li><li><i class="fa-solid fa-rotate"></i>Atualizações pendentes</li><li><i class="fa-solid fa-bell"></i>Alerta quando surge um risco novo</li></ul>
+        <span class="btn v"><i class="fa-solid fa-comments"></i>Falar com a MD</span>
+      </div>
+      <div class="card vitrine-c">
+        <i class="fa-solid fa-file-lines fantasma"></i>
+        <div class="mod-h"><div class="mod-t"><div class="mod-ic"><i class="fa-solid fa-file-lines"></i></div><div><b>NexoReport</b><small>Relatórios inteligentes</small></div></div><span class="tag vitrine">Conheça</span></div>
+        <p class="desc">Um relatório mensal da sua TI, pronto para a diretoria — escrito com inteligência artificial.</p>
+        <ul><li><i class="fa-solid fa-chart-line"></i>Disponibilidade de cada site</li><li><i class="fa-solid fa-magnifying-glass"></i>Quedas e suas causas</li><li><i class="fa-solid fa-lightbulb"></i>Recomendações práticas</li><li><i class="fa-solid fa-file-pdf"></i>PDF todo mês, no seu e-mail</li></ul>
+        <span class="btn v"><i class="fa-solid fa-comments"></i>Falar com a MD</span>
+      </div>
+    </div>
+  </div>
+  <div class="rodape-md"><span>NexoHub · tecnologia própria MD Soluções Tecnológicas</span><span class="mdbar"></span></div>
+</section>
+
+<!-- ============ CLIENTE · FUTURO ============ -->
+<section class="tela" id="cliente-futuro">
+  <div class="bar">
+    <div class="marca"><img src="../../static/brand/nexopulse-symbol.png" alt=""><div class="nome">Nexo<span>Hub</span></div><div class="por">por MD<br>Soluções Tecnológicas</div></div>
+    <nav>
+      <a class="on"><i class="fa-solid fa-house"></i>Início</a>
+      <a><i class="fa-solid fa-wave-square"></i>NexoPulse <i class="fa-solid fa-chevron-down"></i></a>
+      <a><i class="fa-solid fa-shield-halved"></i>NexoGuard <i class="fa-solid fa-chevron-down"></i></a>
+      <a><i class="fa-solid fa-file-lines"></i>NexoReport <i class="fa-solid fa-chevron-down"></i></a>
+      <a><i class="fa-solid fa-gear"></i>Administração <i class="fa-solid fa-chevron-down"></i></a>
+    </nav>
+    <div class="acoes"><span class="ico"><i class="fa-solid fa-sun"></i></span><span class="user"><i class="fa-solid fa-circle-user" style="font-size:22px; color:var(--muted)"></i><span>joana.lima<small>Grupo Varejo Sul</small></span></span><span class="ico"><i class="fa-solid fa-right-from-bracket"></i></span></div>
+  </div>
+  <div class="conteudo">
+    <div class="topo">
+      <div class="ola"><div class="logo-cli">GV</div><div><h1>Olá, Grupo Varejo Sul</h1><p class="sub">Seus serviços com a MD Soluções Tecnológicas</p></div></div>
+      <div class="status-geral"><span class="pill ok">Tudo operando</span><span class="pill warn">2 recomendações de segurança</span></div>
+    </div>
+    <div class="grid g3">
+      <div class="card">
+        <div class="mod-h"><div class="mod-t"><div class="mod-ic"><i class="fa-solid fa-wave-square"></i></div><div><b>NexoPulse</b><small>Monitoramento de rede 24/7</small></div></div><span class="tag ativo">Ativo</span></div>
+        <div class="kpis"><div class="kpi"><b class="ok">4</b><span>online</span></div><div class="kpi"><b>0</b><span>fora do ar</span></div><div class="kpi"><b>99,8%</b><span>disponível no mês</span></div></div>
+        <svg class="spark" viewBox="0 0 400 54" preserveAspectRatio="none" width="100%"><defs><linearGradient id="lg" x1="0" x2="1"><stop offset="0" stop-color="#05A9DC"/><stop offset="1" stop-color="#05A88C"/></linearGradient></defs><polyline fill="none" stroke="url(#lg)" stroke-width="3" points="0,34 25,30 50,32 75,28 100,31 125,29 150,22 175,12 200,24 225,30 250,29 275,31 300,27 325,30 350,28 375,30 400,29"/></svg>
+        <p class="sub" style="font-size:12.5px">Latência média dos seus sites nas últimas 24 h</p>
+        <div class="lista" style="margin-top:12px">
+          <div class="item"><span><i class="d" style="background:var(--ok)"></i>Último incidente</span><small>Filial Litoral · ontem · 14 min · energia no local</small></div>
+        </div>
+        <span class="btn p"><i class="fa-solid fa-arrow-right"></i>Abrir NexoPulse</span>
+      </div>
+      <div class="card">
+        <div class="mod-h"><div class="mod-t"><div class="mod-ic"><i class="fa-solid fa-shield-halved"></i></div><div><b>NexoGuard</b><small>Segurança da sua rede</small></div></div><span class="tag ativo">Ativo</span></div>
+        <div class="nota"><div class="gauge"><div><b>82</b><span>de 100</span></div></div><div><b style="font-size:17px">Boa</b><p class="sub" style="font-size:13px">+9 pontos desde o mês passado</p></div></div>
+        <div class="lista" style="margin-top:16px">
+          <div class="item"><span><i class="fa-solid fa-triangle-exclamation warn" style="margin-right:8px"></i>Área de trabalho remota exposta</span><small>Loja Centro</small></div>
+          <div class="item"><span><i class="fa-solid fa-triangle-exclamation warn" style="margin-right:8px"></i>Atualizações pendentes</span><small>Escritório Matriz</small></div>
+        </div>
+        <span class="btn p"><i class="fa-solid fa-arrow-right"></i>Ver recomendações</span>
+      </div>
+      <div class="card">
+        <div class="mod-h"><div class="mod-t"><div class="mod-ic"><i class="fa-solid fa-file-lines"></i></div><div><b>NexoReport</b><small>Relatórios inteligentes</small></div></div><span class="tag ativo">Ativo</span></div>
+        <div class="doc"><i class="fa-solid fa-file-pdf"></i><div><b>Relatório de setembro</b><p class="sub" style="font-size:12.5px">gerado em 01/10 · 6 páginas</p></div></div>
+        <p class="sub" style="margin-top:16px; font-size:13.5px; line-height:1.55; color:#C9D5E4">“Setembro teve 99,8% de disponibilidade. A única queda foi falta de energia na Filial Litoral. Recomendamos um nobreak no local e fechar o acesso remoto da Loja Centro.”</p>
+        <p class="sub" style="font-size:11.5px; margin-top:8px"><i class="fa-solid fa-wand-magic-sparkles"></i> Resumo escrito por IA</p>
+        <span class="btn p"><i class="fa-solid fa-download"></i>Baixar relatório</span>
+      </div>
+    </div>
+  </div>
+  <div class="rodape-md"><span>NexoHub · tecnologia própria MD Soluções Tecnológicas · simulação da visão futura</span><span class="mdbar"></span></div>
+</section>
+
+<!-- ============ MASTER ============ -->
+<section class="tela" id="master">
+  <div class="bar">
+    <div class="marca"><img src="../../static/brand/nexopulse-symbol.png" alt=""><div class="nome">Nexo<span>Hub</span></div><div class="por">por MD<br>Soluções Tecnológicas</div></div>
+    <nav>
+      <a class="on"><i class="fa-solid fa-house"></i>Início</a>
+      <a><i class="fa-solid fa-wave-square"></i>NexoPulse <i class="fa-solid fa-chevron-down"></i></a>
+      <a><i class="fa-solid fa-shield-halved"></i>NexoGuard <i class="fa-solid fa-chevron-down"></i></a>
+      <a><i class="fa-solid fa-file-lines"></i>NexoReport <i class="fa-solid fa-chevron-down"></i></a>
+      <a><i class="fa-solid fa-gear"></i>Administração <i class="fa-solid fa-chevron-down"></i></a>
+    </nav>
+    <div class="acoes"><span class="ico"><i class="fa-solid fa-sun"></i></span><span class="user"><i class="fa-solid fa-circle-user" style="font-size:22px; color:var(--muted)"></i><span>admin<small>MD · Administrador Master</small></span></span><span class="ico"><i class="fa-solid fa-right-from-bracket"></i></span></div>
+  </div>
+  <div class="conteudo">
+    <div class="topo">
+      <div><h1>Clientes MD</h1><p class="sub">Visão geral de todos os clientes e serviços contratados</p></div>
+      <div class="busca"><div><i class="fa-solid fa-magnifying-glass"></i>&nbsp; Buscar cliente…</div><div><i class="fa-solid fa-filter"></i>&nbsp; Com alerta</div></div>
+    </div>
+    <div class="totais">
+      <div class="kpi card"><b>4</b><span>clientes</span></div>
+      <div class="kpi card"><b class="ok">6</b><span>sites online</span></div>
+      <div class="kpi card"><b class="crit">1</b><span>site fora do ar</span></div>
+      <div class="kpi card"><b class="warn">3</b><span>diagnósticos ativos</span></div>
+    </div>
+    <div class="card" style="padding:8px 8px 4px">
+      <table>
+        <tr><th>Cliente</th><th>Módulos</th><th>Sites</th><th>Situação</th><th></th></tr>
+        <tr><td><div class="cli"><i style="background:linear-gradient(135deg,#F59E0B,#EF4444)">GV</i>Grupo Varejo Sul</div></td><td class="mods"><span class="m-on">Pulse</span><span class="m-off">Guard</span><span class="m-off">Report</span></td><td>3 / 4 online</td><td><span class="pill crit">Filial Litoral fora do ar</span></td><td class="ver">Ver como cliente →</td></tr>
+        <tr><td><div class="cli"><i style="background:linear-gradient(135deg,#16A34A,#065F46)">AB</i>AgroBoa</div></td><td class="mods"><span class="m-on">Pulse</span><span class="m-on">Guard</span><span class="m-off">Report</span></td><td>1 / 1 online</td><td><span class="pill warn">Starlink obstruída</span></td><td class="ver">Ver como cliente →</td></tr>
+        <tr><td><div class="cli"><i style="background:linear-gradient(135deg,#0EA5E9,#1D4ED8)">RP</i>Rede Postos Rota</div></td><td class="mods"><span class="m-on">Pulse</span><span class="m-off">Guard</span><span class="m-on">Report</span></td><td>1 / 1 online</td><td><span class="pill warn">Provedor instável</span></td><td class="ver">Ver como cliente →</td></tr>
+        <tr><td><div class="cli"><i style="background:linear-gradient(135deg,#EC4899,#9D174D)">SM</i>Saúde Mais</div></td><td class="mods"><span class="m-on">Pulse</span><span class="m-on">Guard</span><span class="m-on">Report</span></td><td>1 / 1 online</td><td><span class="pill warn">Falha de DNS</span></td><td class="ver">Ver como cliente →</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="rodape-md"><span>NexoHub · visão interna da MD Soluções Tecnológicas</span><span class="mdbar"></span></div>
+</section>
+
+<script>
+  const id = (location.hash || '#cliente-v1').slice(1);
+  (document.getElementById(id) || document.querySelector('.tela')).classList.add('ativa');
+</script>
+</body>
+</html>

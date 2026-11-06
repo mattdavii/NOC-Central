@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Família Nexo — prévia do kit</title>
+<!-- Painel de aprovação visual. Abra a partir da raiz do repositório (ou por um servidor local) para as imagens carregarem. -->
+<style>
+    :root { --navy: #0B1B32; --cyan: #08ABD0; --green: #04B89C; --pale: #F3F7FB; --muted: #566982; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 40px 32px 56px; background: var(--pale); color: var(--navy); font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+    h1 { margin: 0 0 6px; font-size: 30px; }
+    .sub { margin: 0 0 28px; color: var(--muted); }
+    .marca { display: grid; grid-template-columns: 1fr 1fr auto; gap: 14px; align-items: stretch; margin-bottom: 14px; }
+    .tile { border-radius: 16px; padding: 22px 26px; display: flex; align-items: center; min-height: 128px; }
+    .tile.claro { background: #FFFFFF; border: 1px solid #DCE6F0; }
+    .tile.escuro { background: var(--navy); }
+    .tile img.horizontal { width: 100%; max-width: 420px; height: auto; }
+    .extras { display: flex; gap: 12px; align-items: center; padding: 14px 18px; border-radius: 16px; background: #FFFFFF; border: 1px solid #DCE6F0; }
+    .extras figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+    .simb { width: 64px; height: 64px; }
+    .simb-escuro { background: var(--navy); border-radius: 12px; padding: 6px; }
+    .icone-192 { width: 96px; height: 96px; }
+    .icone-48 { width: 48px; height: 48px; }
+    .icone-16 { width: 16px; height: 16px; image-rendering: auto; }
+    .rodape { margin-top: 28px; color: var(--muted); font-size: 14px; }
+    .cores { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    .cor { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: #FFFFFF; border: 1px solid #DCE6F0; font-family: ui-monospace, monospace; font-size: 13px; }
+    .cor span { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #DCE6F0; }
+    @media (max-width: 900px) { .marca { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>Família Nexo — prévia do kit</h1>
+<p class="sub">9 marcas · horizontal claro e escuro (SVG em contornos) · símbolos · ícones de aplicativo em 192, 48 e 16 px (teste de favicon)</p>
+<main id="marcas"></main>
+<div class="rodape">
+    Paleta oficial
+    <div class="cores">
+        <div class="cor"><span style="background:#0B1B32"></span>#0B1B32 azul-marinho</div>
+        <div class="cor"><span style="background:#08ABD0"></span>#08ABD0 ciano</div>
+        <div class="cor"><span style="background:#04B89C"></span>#04B89C verde</div>
+        <div class="cor"><span style="background:#F3F7FB"></span>#F3F7FB neutro</div>
+    </div>
+</div>
+<script>
+    const MARCAS = ['nexopulse', 'nexohub', 'nexoguard', 'nexoreport', 'nexoasset', 'nexoweb', 'nexodesk', 'nexobackup', 'nexopower'];
+    const base = slug => '../logos/' + slug + '/';
+    const img = (src, classe, alt) => Object.assign(document.createElement('img'), { src, className: classe, alt });
+    const figura = (elemento, legenda) => {
+        const f = document.createElement('figure');
+        const c = document.createElement('figcaption');
+        c.textContent = legenda;
+        f.append(elemento, c);
+        return f;
+    };
+    for (const slug of MARCAS) {
+        const linha = document.createElement('section');
+        linha.className = 'marca';
+        linha.dataset.slug = slug;
+        const claro = document.createElement('div'); claro.className = 'tile claro';
+        claro.append(img(base(slug) + 'horizontal-claro.svg', 'horizontal', slug + ' claro'));
+        const escuro = document.createElement('div'); escuro.className = 'tile escuro';
+        escuro.append(img(base(slug) + 'horizontal-escuro.svg', 'horizontal', slug + ' escuro'));
+        const extras = document.createElement('div'); extras.className = 'extras';
+        extras.append(
+            figura(img(base(slug) + 'simbolo-claro.svg', 'simb', ''), 'símbolo'),
+            figura(img(base(slug) + 'simbolo-escuro.svg', 'simb simb-escuro', ''), 'escuro'),
+            figura(img(base(slug) + 'app-icon-192.png', 'icone-192', ''), 'ícone'),
+            figura(img(base(slug) + 'app-icon-192.png', 'icone-48', ''), '48 px'),
+            figura(img(base(slug) + 'app-icon-192.png', 'icone-16', ''), '16 px'),
+        );
+        linha.append(claro, escuro, extras);
+        document.getElementById('marcas').append(linha);
+    }
+</script>
+</body>
+</html>

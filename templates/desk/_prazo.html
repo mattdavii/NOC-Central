@@ -1,0 +1,35 @@
+{# Prazo do contrato: célula da lista e bloco do chamado. Recebe o dicionário de nexodesk.prazos(). #}
+{% macro celula(p, cliente=false) -%}
+{%- set r = p.proximo if p else none -%}
+{%- if not r -%}<span class="prazo vazio-prazo muted">{{ '—' if not p else 'Encerrado' }}</span>
+{%- else -%}
+<span class="prazo {{ r.estado }}">
+    <span class="txt">{% if r.estado == 'estourado' %}<i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Estourado há {{ r.falta_txt }}
+        {%- elif r.estado == 'pausado' %}<i class="fa-solid fa-pause" aria-hidden="true"></i> {{ 'Esperando você' if cliente else 'Pausado' }}
+        {%- elif r.estado == 'perto' %}<i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> Vence {{ r.vence_txt }}
+        {%- else %}Vence {{ r.vence_txt }}{% endif %}</span>
+    <span class="sub">{% if p.manual %}Prazo manual{% else %}{{ '1ª resposta' if r.qual == 'resposta' else 'Solução' }} · meta {{ r.meta_txt }}{% endif %}</span>
+    <span class="barra" aria-hidden="true"><i style="width:{{ r.pct }}%"></i></span>
+</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro relogio(r, rotulo, cliente=false) -%}
+<div class="relogio prazo {{ r.estado }}">
+    <div class="rot"><span>{{ rotulo }}</span>{% if r.meta_txt %}<span>meta {{ r.meta_txt }}</span>{% endif %}</div>
+    {% if r.estado == 'cumprido' %}
+        <div class="val ok"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> No prazo</div>
+        {% if r.fim_txt %}<div class="sub">{{ 'Concluída' if r.manual else 'Feita' }} {{ r.fim_txt }}{% if r.em_txt and r.usado_s >= 60 %}, com {{ r.em_txt }} de atendimento{% endif %}</div>{% endif %}
+    {% elif r.estado == 'estourou' %}
+        <div class="val txt"><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Fora do prazo</div>
+        {% if r.fim_txt %}<div class="sub">Feita {{ r.fim_txt }}{% if r.em_txt %}, com {{ r.em_txt }} de atendimento{% endif %}</div>{% endif %}
+    {% else %}
+        <div class="val txt">
+        {%- if r.estado == 'estourado' %}<i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Estourado há {{ r.falta_txt }}
+        {%- elif r.estado == 'pausado' %}<i class="fa-solid fa-pause" aria-hidden="true"></i> Pausado: {{ 'esperando a sua resposta' if cliente else 'esperando o cliente' }}
+        {%- else %}<i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> Restam {{ r.falta_txt }}{% endif %}</div>
+        <div class="barra" aria-hidden="true"><i style="width:{{ r.pct }}%"></i></div>
+        {% if r.vence_txt and r.estado != 'estourado' %}<div class="sub">Vence {{ r.vence_txt }}</div>{% endif %}
+    {% endif %}
+</div>
+{%- endmacro %}

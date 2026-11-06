@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#082E56">
+    <meta name="referrer" content="same-origin">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.ico" sizes="16x16 32x32 48x48">
+    <title>NexoPulse Edge · {{ sensor.nome_local }}</title>
+    {# Fontes e ícones vêm da internet; sem ela a tela continua legível (fontes do sistema, ícones somem). #}
+    <link rel="stylesheet" href="/static/fontes/fontes.css?v=1">
+    <link rel="stylesheet" href="/static/vendor/fontawesome/css/all.min.css?v=6.4.0">
+    <link rel="stylesheet" href="/static/sensor.css?v=sensor-6">
+    <link rel="stylesheet" href="/static/product.css?v=nexopulse-4">
+    <script src="/static/brand.js?v=nexopulse-2"></script>
+    <style>
+        /* Só o que é próprio do painel local; o resto vem de sensor.css e product.css, como na Central. */
+        .edge-badge { display:inline-flex; align-items:center; gap:6px; font-size:.75rem; font-weight:600; color:var(--brand-cyan); border:1px solid color-mix(in srgb,var(--brand-cyan) 50%,transparent); border-radius:999px; padding:3px 10px; }
+        .navbar-meta { display:flex; gap:14px; flex-wrap:wrap; align-items:center; font-size:.85rem; color:var(--text-muted); }
+        .navbar-meta strong { color:var(--text-main); font-family:'JetBrains Mono',monospace; }
+        .barra-ferramentas { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:4px 0 12px; }
+         [hidden] { display:none !important; }
+        .barra-ferramentas input:not([type=checkbox]), .barra-ferramentas select { width:auto; min-width:140px; padding:8px 10px; background:var(--bg-input); border:1px solid var(--border); color:var(--text-main); border-radius:6px; }
+        .barra-ferramentas .cresce { flex:1; min-width:180px; }
+        .chk { display:inline-flex; align-items:center; gap:6px; font-size:.85rem; color:var(--text-muted); }
+        .chk input { width:auto; }
+        .tabela-wrap { overflow:auto; max-height:520px; border:1px solid var(--border); border-radius:8px; background:var(--bg-input); }
+        table.disp { width:100%; border-collapse:collapse; font-size:.83rem; }
+        table.disp th { position:sticky; top:0; background:var(--bg-card); text-align:left; font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); padding:9px 8px; border-bottom:1px solid var(--border); white-space:nowrap; }
+        table.disp td { padding:8px; border-top:1px solid color-mix(in srgb,var(--border) 60%,transparent); vertical-align:top; }
+        table.disp td.mono, .mono { font-family:'JetBrains Mono',monospace; }
+        table.disp tr.cftv td:first-child { box-shadow:inset 3px 0 0 var(--purple); }
+        .acoes-linha { display:flex; gap:4px; }
+        .acoes-linha button { background:none; border:1px solid var(--border); color:var(--text-muted); border-radius:6px; padding:3px 8px; cursor:pointer; font-size:.75rem; white-space:nowrap; }
+        .acoes-linha button:hover { color:var(--blue); border-color:var(--blue); }
+        .tag { display:inline-block; font-size:.7rem; padding:1px 7px; border-radius:999px; border:1px solid var(--border); color:var(--text-muted); white-space:nowrap; }
+        .tag.cam { color:var(--purple); border-color:var(--purple); }
+        .tag.grav { color:var(--yellow); border-color:var(--yellow); }
+        .tag.com { color:var(--brand-green); border-color:var(--brand-green); }
+        .redes-extras { border:1px solid var(--border); border-radius:8px; padding:8px 12px; background:var(--bg-input); }
+        .redes-extras summary { cursor:pointer; font-size:.85rem; font-weight:600; }
+        table.disp tr.com td:first-child { box-shadow:inset 3px 0 0 var(--brand-green); }
+        /* Listas de CFTV e comunicação: uma linha por equipamento, detalhes ao clicar, grupos recolhíveis. */
+        table.ident tr.item { cursor:pointer; }
+        table.ident tr.item:hover td { background:color-mix(in srgb,var(--blue) 6%,transparent); }
+        table.ident tr.item td:first-child { box-shadow:inset 3px 0 0 var(--purple); }
+        table.ident.com tr.item td:first-child { box-shadow:inset 3px 0 0 var(--brand-green); }
+        table.ident tr.item.fora td:first-child { box-shadow:inset 3px 0 0 var(--status-crit); }
+        table.ident tr.item .seta { display:inline-block; width:12px; color:var(--text-muted); transition:transform .15s; }
+        table.ident tr.item.aberto .seta { transform:rotate(90deg); }
+        table.ident tr.detalhe td { background:var(--bg-card); font-size:.78rem; color:var(--text-muted); padding:8px 12px 10px 30px; }
+        table.ident tr.detalhe b { color:var(--text-main); font-weight:600; }
+        table.ident tr.grupo td { position:sticky; top:33px; z-index:1; background:color-mix(in srgb,var(--bg-card) 92%,var(--blue)); font-size:.72rem;
+            text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); cursor:pointer; padding:7px 8px; }
+        table.ident tr.grupo .alerta { color:var(--status-crit); text-transform:none; letter-spacing:0; }
+        .risco-tag { color:var(--status-warn); border-color:var(--status-warn); }
+        .chips { display:flex; flex-wrap:wrap; gap:6px; }
+        .chips button { background:var(--bg-input); border:1px solid var(--border); color:var(--text-muted); border-radius:999px; padding:4px 10px; font-size:.75rem; cursor:pointer; }
+        .chips button.ativo { color:var(--text-main); border-color:var(--blue); background:color-mix(in srgb,var(--blue) 14%,transparent); }
+        .chips button b { color:var(--text-main); }
+        .sub { display:block; font-size:.72rem; color:var(--text-muted); }
+        .kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:14px; }
+        .kpi { background:var(--bg-input); border:1px solid var(--border); border-radius:8px; padding:12px; text-align:center; }
+        .kpi strong { display:block; font-size:1.6rem; font-family:'JetBrains Mono',monospace; }
+        .kpi span { font-size:.75rem; color:var(--text-muted); }
+        .ev-lista { display:flex; flex-direction:column; max-height:520px; overflow:auto; border:1px solid var(--border); border-radius:8px; background:var(--bg-input); }
+        .ev-item { display:grid; grid-template-columns:150px 84px 1fr; gap:10px; padding:8px 12px; border-bottom:1px solid color-mix(in srgb,var(--border) 60%,transparent); font-size:.83rem; }
+        .ev-item .quando { font-family:'JetBrains Mono',monospace; font-size:.75rem; color:var(--text-muted); }
+        .ev-item b { display:block; }
+        .grav-Crítica { color:var(--status-crit); } .grav-Alerta, .grav-Aviso { color:var(--status-warn); } .grav-OK { color:var(--status-ok); }
+        .wd-item { display:flex; justify-content:space-between; align-items:center; gap:8px; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:8px 10px; font-size:.83rem; }
+        .wd-item button { background:none; border:0; color:var(--red); cursor:pointer; }
+        .spark { width:100%; height:180px; margin-top:12px; background:var(--bg-input); border:1px solid var(--border); border-radius:8px; }
+        .rel-opcoes { display:flex; flex-direction:column; gap:10px; }
+        .rel-opcoes label { display:flex; align-items:center; gap:8px; font-size:.88rem; }
+        .rel-opcoes input[type=radio] { width:auto; }
+        .rel-campos { display:flex; gap:8px; flex-wrap:wrap; padding-left:26px; }
+        .rel-campos input { width:auto; }
+        .aviso-central { margin:0 0 18px; padding:10px 14px; border-radius:8px; border:1px solid var(--status-warn); color:var(--status-warn); background:color-mix(in srgb,var(--status-warn) 8%,transparent); font-size:.88rem; }
+        .aviso-central[hidden] { display:none; }
+        @media (max-width: 1100px) { .painel-grid { grid-template-columns:1fr 1fr !important; } }
+        @media (max-width: 720px) {
+            .painel-grid { grid-template-columns:1fr !important; } .container { padding:16px; }
+            .kpis { grid-template-columns:1fr 1fr; } .ev-item { grid-template-columns:1fr; gap:2px; }
+            .global-grid { grid-template-columns:1fr 1fr; } .navbar { flex-direction:column; align-items:flex-start; gap:8px; padding:12px 16px; }
+        }
+    </style>
+</head>
+<body>
+    <header class="app-bar">
+        <span class="brand-lockup" aria-label="NexoPulse">
+            <img class="brand-logo brand-logo-dark" src="/static/brand/nexopulse/logo-escuro.svg" alt="NexoPulse" width="166" height="48">
+            <img class="brand-logo brand-logo-light" src="/static/brand/nexopulse/logo-claro.svg" alt="NexoPulse" width="166" height="48">
+            <span class="brand-by" aria-hidden="true">por MD Soluções<br>Tecnológicas</span>
+        </span>
+        <span class="edge-badge"><i class="fa-solid fa-house-signal"></i> Edge · acesso local</span>
+        <div class="app-bar-actions">
+            <span class="product-version">{{ sensor.agent_version }}</span>
+            <button type="button" class="theme-toggle" onclick="NexoPulseTheme.toggle()" aria-label="Alternar tema"><i class="fa-solid fa-sun"></i> Tema</button>
+            <form method="post" action="/sair" style="margin:0"><button type="submit" class="theme-toggle" title="Sair do painel local">Sair</button></form>
+        </div>
+    </header>
+
+    <nav class="navbar">
+        <div style="font-size: 1.3em; font-weight: bold; color: var(--blue); display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <span><i class="fa-solid fa-server" style="margin-right: 8px;"></i>{{ sensor.nome_local }}</span>
+            <span style="font-size: 0.55em; color: var(--text-muted); font-weight: normal; font-family: 'JetBrains Mono', monospace; border-left: 1px solid var(--border); padding-left: 12px;">MAC: {{ sensor.mac_id }}</span>
+        </div>
+        <div class="navbar-meta">
+            <span><i class="fa-solid fa-wifi"></i> <strong id="access-ip">{{ sensor.ip_sensor or '--' }}</strong>:10000</span>
+            <span><i class="fa-solid fa-clock"></i> Atualizado <strong id="hora-atual">--</strong></span>
+        </div>
+    </nav>
+
+    <div class="container" data-host-mac="{{ sensor.mac_id }}">
+        <nav class="section-nav" aria-label="Seções do painel local"><a href="#host">Host</a><a href="#rede-local">Rede local</a><a href="#wan">WAN</a><a href="#dispositivos">Dispositivos</a><a href="#diagrama">Diagrama</a><a href="#cftv">CFTV</a><a href="#comunicacao">Comunicação</a><a href="#watchdog">Watchdog</a><a href="#eventos">Eventos</a><a href="#relatorio">Relatório</a></nav>
+        <p class="aviso-central" id="aviso-rede" hidden role="alert"></p>
+        <p class="help-text">Painel servido pelo próprio sensor: continua funcionando sem internet. O registro de eventos guarda {{ retencao_dias }} dias.</p>
+
+        <div class="painel-grid">
+            <div class="card card-hw card-stack" id="host">
+                <h3><span><i class="fa-solid fa-microchip"></i> Host</span><span id="badge-status" class="status-pill pill-unknown">AGUARDANDO</span></h3>
+                <div class="host-chips">
+                    <span title="Tempo desde o último boot"><i class="fa-solid fa-clock"></i> <strong id="host-uptime">--</strong></span>
+                    <span title="Carga média em 1, 5 e 15 minutos"><i class="fa-solid fa-gauge"></i> <strong id="host-load">--</strong></span>
+                    <span><i class="fa-solid fa-temperature-half"></i> CPU <strong id="temp-text">-- °C</strong></span>
+                    <span><i class="fa-solid fa-fire-flame-curved"></i> GPU <strong id="gpu-text">-- °C</strong></span>
+                </div>
+                <p class="host-boot" id="host-boot"></p>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-microchip"></i> CPU <small id="host-nucleos"></small></span><strong id="cpu-text">--</strong></div>
+                    <div class="progress-bg"><div id="cpu-fill" class="progress-fill"></div></div>
+                    <div class="cores" id="host-cores"></div>
+                </div>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-memory"></i> RAM</span><strong id="ram-text">--</strong></div>
+                    <div class="progress-bg"><div id="ram-fill" class="progress-fill"></div></div>
+                </div>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-right-left"></i> Swap</span><strong id="swap-text">--</strong></div>
+                    <div class="progress-bg"><div id="swap-fill" class="progress-fill" style="background: var(--purple);"></div></div>
+                </div>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-hard-drive"></i> Discos</span><strong id="disk-text">--</strong></div>
+                    <div id="disk-fill" hidden></div>
+                    <div class="discos" id="host-discos"></div>
+                </div>
+            </div>
+
+            <div class="card card-net" id="rede-local">
+                <h3><span><i class="fa-solid fa-shield-heart"></i> Rede Local</span></h3>
+                <div class="data-row"><span><i class="fa-solid fa-network-wired" style="color:var(--green); width: 20px;"></i> Rede Local:</span><span id="status-local" class="status-pill pill-unknown">AGUARDANDO</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-ethernet" style="color:var(--blue); width: 20px;"></i> Interface:</span><span id="rede-interface" class="mono" style="font-size:0.78em;">--</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-diagram-project" style="color:var(--purple); width: 20px;"></i> Rede / CIDR:</span><span id="rede-cidr" class="mono" style="font-size:0.78em;">--</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-route" style="color:var(--yellow); width: 20px;"></i> Gateway:</span><span id="rede-gateway" class="mono" style="font-size:0.78em;">--</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-globe" style="color:var(--blue); width: 20px;"></i> Internet (WAN):</span><span id="status-wan" class="status-pill pill-unknown">AGUARDANDO</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-arrow-right-arrow-left" style="color:var(--yellow); width: 20px;"></i> Tráfego do Sensor:</span>
+                    <span class="mono" style="font-size: 0.85em;"><i class="fa-solid fa-arrow-down" style="color:var(--brand-green)"></i> <span id="net-down-live">0.0</span> Mb &nbsp;<i class="fa-solid fa-arrow-up" style="color:var(--brand-cyan)"></i> <span id="net-up-live">0.0</span> Mb</span></div>
+                <div class="data-row"><span><i class="fa-solid fa-door-open" style="color:var(--purple); width: 20px;"></i> Portas do Sensor:</span><span id="portas-abertas" class="mono" style="font-size: 0.75em; color: var(--blue);">Analisando...</span></div>
+                <div style="margin-top: auto; background: var(--bg-input); padding: 18px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Latência Sensor ➔ Gateway</div>
+                    <div id="ping-local" class="highlight" style="color: var(--status-unknown); margin-top: 5px;">--</div>
+                </div>
+            </div>
+
+            <div class="card card-stack" id="saude" style="border-top: 4px solid var(--status-ok);">
+                <h3><span><i class="fa-solid fa-heart-pulse"></i> Saúde do sistema</span></h3>
+                <ul class="saude-lista" id="saude-lista"><li class="hist-empty">Aguardando a primeira coleta do sensor…</li></ul>
+            </div>
+        </div>
+
+        <div class="painel-grid" style="grid-template-columns: 2fr 1fr;">
+            <div class="card card-global" id="wan">
+                <h3><span><i class="fa-solid fa-earth-americas"></i> WAN · conectividade externa</span><span class="iface-tag">últimos minutos</span></h3>
+                <div class="global-grid">
+                    <div id="card-google" class="g-card"><i class="fa-brands fa-google"></i> Google <div id="pg-google" class="ms">--</div></div>
+                    <div id="card-cf" class="g-card"><i class="fa-solid fa-cloud"></i> Cloudflare <div id="pg-cf" class="ms">--</div></div>
+                    <div id="card-aws" class="g-card"><i class="fa-brands fa-aws"></i> AWS Amazon <div id="pg-aws" class="ms">--</div></div>
+                    <div id="card-quad9" class="g-card"><i class="fa-solid fa-shield-halved"></i> DNS Quad9 <div id="pg-quad9" class="ms">--</div></div>
+                </div>
+                <svg class="spark" id="spark-wan" viewBox="0 0 600 180" preserveAspectRatio="none" role="img" aria-label="Latência WAN e do gateway nos últimos minutos"></svg>
+                <p class="help-text" id="spark-legenda" style="margin:6px 0 0;"></p>
+            </div>
+            <div class="card card-stack" style="border-top: 4px solid var(--purple);">
+                <h3><span><i class="fa-solid fa-list-ol"></i> Processos</span>
+                    <span class="seg" id="procs-modo"><button class="ativo" data-modo="cpu">CPU</button><button data-modo="memoria">Memória</button></span></h3>
+                <table class="procs"><thead><tr><th>Processo</th><th>PID</th><th>CPU</th><th>Mem.</th></tr></thead><tbody id="host-procs"><tr><td colspan="4" class="hist-empty">Aguardando…</td></tr></tbody></table>
+                <h3 style="margin-top:10px;"><span><i class="fa-solid fa-network-wired"></i> Interfaces de rede</span></h3>
+                <div class="ifaces" id="host-ifaces"><div class="hist-empty">Aguardando a primeira coleta…</div></div>
+            </div>
+        </div>
+
+        <div class="painel-grid" style="grid-template-columns: 1fr;">
+            <div class="card card-radar card-full card-stack" id="dispositivos">
+                <h3><span><i class="fa-solid fa-project-diagram"></i> Dispositivos · levantamento da rede</span>
+                    <span style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="action-btn btn-secondary" onclick="baixar('/api/levantamento.csv')"><i class="fa-solid fa-file-csv"></i> CSV</button>
+                        {% if xlsx %}<button class="action-btn btn-secondary" onclick="baixar('/api/levantamento.xlsx')"><i class="fa-solid fa-file-excel"></i> XLSX</button>{% endif %}
+                        <button class="action-btn btn-secondary" onclick="baixar('/api/levantamento.json')" title="Formato para IA e integrações"><i class="fa-solid fa-file-code"></i> JSON</button>
+                        <button class="action-btn btn-secondary" onclick="baixar('/api/diagrama.svg?baixar=1')" title="Diagrama da rede em imagem vetorial"><i class="fa-solid fa-diagram-project"></i> Diagrama (SVG)</button>
+                        <button class="action-btn btn-secondary" onclick="window.open('/diagrama', '_blank', 'noopener')" title="Abre o diagrama para imprimir ou salvar em PDF"><i class="fa-solid fa-print"></i> Diagrama (PDF)</button>
+                    </span>
+                </h3>
+                <div class="kpis" id="disp-kpis"></div>
+                <p class="help-text" id="disp-escopo" style="margin:0;"></p>
+                <details class="redes-extras">
+                    <summary>Redes adicionais (outras VLANs)</summary>
+                    <p class="help-text">O sensor enxerga sozinho só a rede dele. Câmeras, switches ou inversores em outra VLAN entram aqui, uma faixa por linha (ex.: 192.168.10.0/24). Só aparecem os que respondem a ping, e sem MAC nem marca, porque a rede é roteada. Faixas privadas de /20 a /32, até 8.</p>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start;">
+                        <label class="sr-only" for="redes-extras">Redes adicionais</label>
+                        <textarea id="redes-extras" rows="3" placeholder="192.168.10.0/24" style="flex:1; min-width:220px; padding:8px 10px; background:var(--bg-input); border:1px solid var(--border); color:var(--text-main); border-radius:6px; font-family:'JetBrains Mono',monospace;"></textarea>
+                        <button class="action-btn btn-primary" onclick="salvarRedesExtras()">Salvar</button>
+                    </div>
+                    <p class="help-text" id="redes-extras-status" role="status" style="margin:6px 0 0;"></p>
+                </details>
+                <div class="barra-ferramentas">
+                    <label class="sr-only" for="disp-busca">Buscar dispositivo</label>
+                    <input type="search" id="disp-busca" class="cresce" placeholder="Buscar por IP, MAC, nome, marca ou modelo">
+                    <label class="sr-only" for="disp-status">Status</label>
+                    <select id="disp-status"><option value="">Todos os status</option><option value="online">Online</option><option value="sem_icmp">Sem ICMP</option><option value="desconhecido">Desconhecido</option><option value="offline">Fora da rede</option></select>
+                    <label class="sr-only" for="disp-categoria">Categoria</label>
+                    <select id="disp-categoria"><option value="">Todas as categorias</option><option value="cftv">Só CFTV</option><option value="comunicacao">Só comunicação</option><option value="outros">Outros</option></select>
+                    <label class="chk"><input type="checkbox" id="disp-ocultar"> Ocultar nomes na exportação</label>
+                </div>
+                <div class="tabela-wrap">
+                    <table class="disp">
+                        <thead><tr><th>IP</th><th>MAC</th><th>Nome</th><th>Marca</th><th>Tipo / modelo</th><th>Status</th><th>Latência</th><th></th></tr></thead>
+                        <tbody id="disp-corpo"><tr><td colspan="8" class="hist-empty">Aguardando a primeira varredura…</td></tr></tbody>
+                    </table>
+                </div>
+                <p class="help-text" style="margin:0;">Marca pelo prefixo do MAC (registro IEEE). Modelo e firmware quando o equipamento anuncia (ONVIF, UPnP, MikroTik MNDP, Ubiquiti). Fora da rede do sensor, só aparecem as redes adicionais cadastradas acima.</p>
+            </div>
+
+            <div class="card card-full card-stack" id="diagrama">
+                <h3><span><i class="fa-solid fa-diagram-project"></i> Diagrama da rede</span>
+                    <span style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="action-btn btn-primary" onclick="MapaRede.abrirEditor()"><i class="fa-solid fa-pen-to-square"></i> Editar diagrama</button>
+                        <button class="action-btn btn-secondary" onclick="baixar('/api/diagrama.svg?baixar=1')"><i class="fa-solid fa-diagram-project"></i> SVG</button>
+                        <button class="action-btn btn-secondary" onclick="window.open('/diagrama', '_blank', 'noopener')" title="Abre o diagrama para imprimir ou salvar em PDF"><i class="fa-solid fa-print"></i> PDF</button>
+                    </span>
+                </h3>
+                <p class="help-text" id="mapa-rede-info" style="margin:0;" role="status"></p>
+                <div class="mapa-rede-svg" id="mapa-rede-svg" aria-label="Diagrama da rede"><p class="hist-empty">Carregando o diagrama…</p></div>
+                <p class="help-text" style="margin:0;">Funciona sem internet: a edição fica salva no sensor e vai para a Central no próximo contato. Se o diagrama também for editado na Central nesse meio-tempo, vale a edição mais recente e a outra fica guardada no histórico da Central.</p>
+            </div>
+        </div>
+
+        <div class="painel-grid" style="grid-template-columns: 1fr;">
+            <div class="card card-full card-stack" id="cftv" style="border-top: 4px solid var(--purple);">
+                <h3><span><i class="fa-solid fa-video"></i> CFTV · câmeras e gravadores</span><span class="iface-tag" id="cftv-resumo">--</span></h3>
+                <div class="barra-ferramentas" style="margin:0;">
+                    <label class="sr-only" for="cftv-busca">Buscar</label><input type="search" id="cftv-busca" class="cresce" placeholder="Buscar câmera ou gravador por modelo, IP, nome ou fabricante">
+                    <label class="chk"><input type="checkbox" id="cftv-problema"> Só com problema</label>
+                </div>
+                <div class="chips" id="cftv-chips"></div>
+                <div class="tabela-wrap" style="max-height:440px;">
+                    <table class="disp ident">
+                        <thead><tr><th>Equipamento</th><th>IP</th><th>Fabricante</th><th>Nome</th><th>Status</th><th>Confiança</th></tr></thead>
+                        <tbody id="cftv-corpo"><tr><td colspan="6" class="hist-empty">Nenhum equipamento identificado até agora. A identificação roda em segundo plano e pode levar alguns minutos após a instalação.</td></tr></tbody>
+                    </table>
+                </div>
+                <p class="help-text" style="margin:0;">Identificação por ONVIF, portas típicas (RTSP 554, Hikvision 8000, Dahua 37777, XMeye/iCSee 34567) e marca. Quando uma câmera ou gravador para de responder por 3 minutos, o evento entra no registro e vai para a Central.</p>
+            </div>
+        </div>
+
+        <div class="painel-grid" style="grid-template-columns: 1fr;">
+            <div class="card card-full card-stack" id="comunicacao" style="border-top: 4px solid var(--brand-green);">
+                <h3><span><i class="fa-solid fa-tower-broadcast"></i> Comunicação · roteadores, switches, rádios e ONUs</span><span class="iface-tag" id="com-resumo">--</span></h3>
+                <div class="barra-ferramentas" style="margin:0;">
+                    <label class="sr-only" for="com-busca">Buscar</label><input type="search" id="com-busca" class="cresce" placeholder="Buscar por modelo, IP, nome, fabricante ou firmware">
+                    <label class="chk"><input type="checkbox" id="com-problema"> Só com problema</label>
+                </div>
+                <div class="chips" id="com-chips"></div>
+                <div class="tabela-wrap" style="max-height:440px;">
+                    <table class="disp ident com">
+                        <thead><tr><th>Equipamento</th><th>IP</th><th>Fabricante</th><th>Firmware</th><th>Status</th><th>Confiança</th></tr></thead>
+                        <tbody id="com-corpo"><tr><td colspan="6" class="hist-empty">Nenhum equipamento identificado até agora. A identificação roda em segundo plano e pode levar alguns minutos após a instalação.</td></tr></tbody>
+                    </table>
+                </div>
+                <p class="help-text" style="margin:0;">Identificação pelo que o equipamento anuncia (MikroTik MNDP, descoberta da Ubiquiti, UPnP), por portas de gerência (Winbox, API MikroTik, TR-069, SSH/Telnet), pela marca e pelo papel de gateway. Portas industriais (Modbus, S7, DNP3, IEC 104) nunca são testadas. Switches não gerenciáveis não aparecem porque não têm IP. Quedas viram evento após 3 minutos (o gateway já é coberto pelo alerta de rede local).</p>
+            </div>
+        </div>
+
+        <div class="painel-grid" id="watchdog">
+            <div class="card card-custom">
+                <h3 style="margin-bottom: 15px;"><span><i class="fa-solid fa-crosshairs"></i> Radar de Pings (local)</span></h3>
+                <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+                    <input type="text" id="new-ip" placeholder="IP Alvo"><input type="text" id="new-desc" placeholder="Ex: Câmera">
+                    <button class="action-btn" onclick="addAlvo('/api/alvos','new-ip','new-desc')" style="background: var(--blue); color: var(--bg-base);" aria-label="Adicionar">+</button>
+                </div>
+                <div id="lista-custom-ips" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
+            </div>
+            <div class="card card-energia">
+                <h3 style="margin-bottom: 15px; color: var(--yellow);"><span><i class="fa-solid fa-plug-circle-bolt"></i> Watchdog de Energia</span></h3>
+                <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+                    <input type="text" id="new-ip-energia" placeholder="IP fora do Nobreak"><input type="text" id="new-desc-energia" placeholder="Roteador">
+                    <button class="action-btn" onclick="addAlvo('/api/energia','new-ip-energia','new-desc-energia')" style="background: var(--yellow); color: var(--bg-base);" aria-label="Adicionar">+</button>
+                </div>
+                <div id="lista-energia-ips" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
+            </div>
+            <div class="card card-speed">
+                <h3 style="margin-bottom: 15px; color: var(--purple);"><span><i class="fa-solid fa-cogs"></i> Serviços do SO (Auto-Cura)</span></h3>
+                <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+                    <input type="text" id="new-srv-nome" placeholder="Nome exato do serviço"><input type="text" id="new-srv-desc" placeholder="Apelido">
+                    <button class="action-btn" onclick="addServico()" style="background: var(--purple); color: var(--bg-base);" aria-label="Adicionar">+</button>
+                </div>
+                <div id="lista-servicos-os" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
+            </div>
+        </div>
+        <p class="help-text" style="margin-top:-12px;">Alvos cadastrados aqui ficam só neste sensor; os cadastrados na Central também são vigiados e aparecem lá.</p>
+
+        <div class="painel-grid" style="grid-template-columns: 2fr 1fr;">
+            <div class="card card-hist card-stack" id="eventos">
+                <h3><span><i class="fa-solid fa-clock-rotate-left"></i> Registro de eventos</span><span class="iface-tag" id="ev-total">--</span></h3>
+                <div class="barra-ferramentas">
+                    <label class="sr-only" for="ev-de">De</label><input type="date" id="ev-de" title="De">
+                    <label class="sr-only" for="ev-ate">Até</label><input type="date" id="ev-ate" title="Até">
+                    <label class="sr-only" for="ev-grav">Gravidade</label>
+                    <select id="ev-grav"><option value="">Todas as gravidades</option><option>Crítica</option><option>Alerta</option><option>Aviso</option><option>OK</option></select>
+                    <label class="sr-only" for="ev-busca">Buscar</label><input type="search" id="ev-busca" class="cresce" placeholder="Buscar no evento ou nos detalhes">
+                    <button class="action-btn btn-secondary" onclick="limparFiltrosEventos()">Limpar</button>
+                    <button class="action-btn btn-secondary" onclick="baixarEventosCsv()"><i class="fa-solid fa-file-csv"></i> CSV</button>
+                </div>
+                <div class="ev-lista" id="ev-lista"><div class="hist-empty">Carregando…</div></div>
+                <button class="action-btn btn-secondary" id="ev-mais" onclick="carregarEventos(true)" hidden>Carregar mais</button>
+            </div>
+
+            <div class="card card-trace card-stack" id="relatorio">
+                <h3><span><i class="fa-solid fa-file-pdf"></i> Relatório</span></h3>
+                <p class="help-text" style="margin:0;">Abre o relatório em uma nova aba, pronto para imprimir ou salvar em PDF. Inclui eventos do período, estado atual, CFTV, equipamentos de comunicação e inventário da rede.</p>
+                <div class="rel-opcoes">
+                    <label><input type="radio" name="rel-periodo" value="ultimos" checked> Últimos
+                        <select id="rel-dias" style="width:auto; padding:4px 8px; background:var(--bg-input); color:var(--text-main); border:1px solid var(--border); border-radius:6px;">
+                            <option value="1">24 horas</option><option value="7" selected>7 dias</option><option value="30">30 dias</option><option value="{{ retencao_dias }}">{{ retencao_dias }} dias</option>
+                        </select></label>
+                    <label><input type="radio" name="rel-periodo" value="dia"> Um dia específico</label>
+                    <div class="rel-campos"><input type="date" id="rel-data" aria-label="Dia do relatório"></div>
+                    <label><input type="radio" name="rel-periodo" value="periodo"> Período customizado</label>
+                    <div class="rel-campos"><input type="date" id="rel-de" aria-label="Início"><input type="date" id="rel-ate" aria-label="Fim"></div>
+                </div>
+                <button class="action-btn btn-primary" onclick="abrirRelatorio()" style="margin-top:auto;"><i class="fa-solid fa-file-lines"></i> Gerar relatório</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // Sessão por cookie (login em /login). Sessão vencida: volta para a tela de login.
+    const _fetch = window.fetch.bind(window);
+    window.fetch = (url, opcoes = {}) => _fetch(url, {credentials: 'same-origin', ...opcoes}).then(r => {
+        if (r.status === 401 && String(url).startsWith('/')) location.href = '/login?proximo=' + encodeURIComponent(location.pathname);
+        return r;
+    });
+    const $ = id => document.getElementById(id);
+    const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+    const json = (url, metodo = 'GET', corpo) => fetch(url, {method: metodo, headers: {'Content-Type': 'application/json'}, body: corpo ? JSON.stringify(corpo) : undefined});
+
+    async function baixar(url) {
+        const sep = url.includes('?') ? '&' : '?';
+        const alvo = $('disp-ocultar') && $('disp-ocultar').checked && url.includes('levantamento') ? url + sep + 'ocultar_nomes=1' : url;
+        const r = await fetch(alvo);
+        if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.erro || 'Não foi possível exportar.'); return; }
+        const nome = ((r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/) || [])[1] || 'exportacao';
+        const a = Object.assign(document.createElement('a'), {href: URL.createObjectURL(await r.blob()), download: nome});
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    }
+
+    // ---------- estado ao vivo (a cada 3 s)
+    const historico = [];
+    const pill = (el, ok, txtOk, txtFalha, desconhecido) => {
+        el.className = 'status-pill ' + (desconhecido ? 'pill-unknown' : ok ? 'pill-ok' : 'pill-fail');
+        el.textContent = desconhecido ? 'AGUARDANDO' : ok ? txtOk : txtFalha;
+    };
+    const ms = v => v > 0 ? `${Math.round(v)} ms` : 'falha';
+    function barra(idTexto, idFill, valor) {
+        $(idTexto).textContent = valor != null ? `${valor}%` : '--';
+        $(idFill).style.width = Math.min(valor || 0, 100) + '%';
+        $(idFill).className = 'progress-fill nivel-' + (valor >= 90 ? 'crit' : valor >= 75 ? 'warn' : 'ok');
+    }
+
+    function desenharSpark() {
+        const svg = $('spark-wan'), W = 600, H = 180, P = 8;
+        if (historico.length < 2) { svg.innerHTML = ''; return; }
+        const series = [['gw', 'var(--brand-green)', 'Gateway'], ['Google', 'var(--blue)', 'Google'], ['Cloudflare', 'var(--purple)', 'Cloudflare']];
+        const max = Math.max(20, ...historico.flatMap(h => series.map(([k]) => h[k] || 0)));
+        const x = i => P + i * (W - 2 * P) / (historico.length - 1), y = v => H - P - (v / max) * (H - 2 * P);
+        let out = `<line x1="0" y1="${y(max / 2)}" x2="${W}" y2="${y(max / 2)}" stroke="var(--border)" stroke-dasharray="4 4"/>`;
+        for (const [k, cor] of series) {
+            const pts = historico.map((h, i) => `${x(i).toFixed(1)},${y(h[k] || 0).toFixed(1)}`).join(' ');
+            out += `<polyline points="${pts}" fill="none" stroke="${cor}" stroke-width="2" vector-effect="non-scaling-stroke"/>`;
+            historico.forEach((h, i) => { if (!(h[k] > 0)) out += `<circle cx="${x(i)}" cy="${H - P}" r="3" fill="var(--status-crit)"/>`; });
+        }
+        svg.innerHTML = out;
+        const ult = historico[historico.length - 1];
+        $('spark-legenda').innerHTML = series.map(([k, cor, n]) => `<span style="color:${cor}">■</span> ${n} ${ms(ult[k])}`).join(' &nbsp; ') +
+            ` &nbsp; · escala até ${Math.round(max)} ms · pontos vermelhos = sem resposta`;
+    }
+
+    function listaWatchdog(id, itens, rotaDel, rotulo) {
+        $(id).innerHTML = itens.length ? itens.map(i => `<div class="wd-item"><span><b>${esc(i.descricao)}</b><span class="sub mono">${esc(i.ip || i.nome_servico)}</span></span>
+            <span style="display:flex;align-items:center;gap:8px;"><span class="${rotulo(i).cls}">${esc(rotulo(i).txt)}</span>
+            <button onclick="removerAlvo('${rotaDel}/${Number(i.id)}')" aria-label="Remover">Remover</button></span></div>`).join('')
+            : '<div class="hist-empty" style="padding:10px;">Nada cadastrado neste sensor.</div>';
+    }
+
+    async function atualizarLocal() {
+        try {
+            const r = await fetch('/api/local_data');
+            if (!r.ok) return;
+            const d = await r.json();
+            $('hora-atual').textContent = d.hora;
+            $('access-ip').textContent = d.meu_ip || '--';
+            barra('cpu-text', 'cpu-fill', d.cpu); barra('ram-text', 'ram-fill', d.ram);
+            $('temp-text').textContent = d.temp ? `${d.temp} °C` : '-- °C';
+            $('gpu-text').textContent = d.gpu_temp ? `${d.gpu_temp} °C` : '-- °C';
+            const p = d.pings || {}, wanOk = p.Google > 0 || p.Cloudflare > 0;
+            pill($('badge-status'), true, 'ONLINE', '', false);
+            pill($('status-local'), d.ping_gateway > 0, 'OK', 'SEM GATEWAY', d.gateway_ip === 'Detectando...');
+            pill($('status-wan'), wanOk, 'ONLINE', 'SEM INTERNET', false);
+            $('rede-interface').textContent = d.interface || '--';
+            $('rede-cidr').textContent = d.rede_cidr || '--';
+            $('rede-gateway').textContent = d.gateway_ip || '--';
+            $('net-down-live').textContent = Number(d.net_down || 0).toFixed(1);
+            $('net-up-live').textContent = Number(d.net_up || 0).toFixed(1);
+            $('portas-abertas').textContent = d.portas || '--';
+            $('aviso-rede').hidden = !d.aviso_rede; $('aviso-rede').textContent = d.aviso_rede || '';
+            const v = d.varredura;
+            if (v && v.rede) {
+                const voltas = n => n > 1 ? `, ${n} ciclos de 1 min para cobrir tudo` : '';
+                $('disp-escopo').textContent = `Varrendo ${v.rede} (${v.hosts || '…'} endereços${voltas(v.ciclos)})` +
+                    (v.limitada ? ` · a rede ${d.rede_cidr} é maior que o limite, só esse bloco é varrido` : '') +
+                    (v.extras && v.extras.length ? ` · outras VLANs: ${v.extras.map(e => e.rede).join(', ')}` : '');
+            }
+            $('ping-local').textContent = d.ping_gateway > 0 ? `${d.ping_gateway} ms` : 'FALHA';
+            $('ping-local').style.color = d.ping_gateway > 0 ? (d.ping_gateway > 50 ? 'var(--status-warn)' : 'var(--status-ok)') : 'var(--status-crit)';
+            for (const [nome, id, card] of [['Google', 'pg-google', 'card-google'], ['Cloudflare', 'pg-cf', 'card-cf'], ['AWS', 'pg-aws', 'card-aws'], ['Quad9', 'pg-quad9', 'card-quad9']]) {
+                $(id).textContent = p[nome] > 0 ? `${p[nome]} ms` : 'falha';
+                $(card).classList.toggle('fail', !(p[nome] > 0));
+            }
+            historico.push({gw: d.ping_gateway, Google: p.Google, Cloudflare: p.Cloudflare});
+            if (historico.length > 120) historico.shift();
+            desenharSpark();
+            listaWatchdog('lista-custom-ips', d.custom_ips || [], '/api/alvos', i => i.latencia > 0 ? {cls: 'grav-OK', txt: `${i.latencia} ms`} : {cls: 'grav-Crítica', txt: 'sem resposta'});
+            listaWatchdog('lista-energia-ips', d.energia_ips || [], '/api/energia', i => i.latencia > 0 ? {cls: 'grav-OK', txt: 'com energia'} : {cls: 'grav-Crítica', txt: 'sem energia'});
+            listaWatchdog('lista-servicos-os', d.servicos_os || [], '/api/servicos_os', i => ({cls: String(i.status).startsWith('ONLINE') ? 'grav-OK' : 'grav-Crítica', txt: i.status}));
+        } catch (e) { $('badge-status').className = 'status-pill pill-fail'; $('badge-status').textContent = 'SEM CONTATO'; }
+    }
+
+    // ---------- dispositivos, CFTV e comunicação (a cada 20 s)
+    let dispositivos = [];
+    const rotuloStatus = {online: ['pill-ok', 'Online'], sem_icmp: ['pill-warn', 'Sem ICMP'], desconhecido: ['pill-unknown', 'Desconhecido'], offline: ['pill-fail', 'Fora da rede']};
+    const ident = d => d.cftv || d.comunicacao || null;
+    const presente = d => d.status === 'online' || d.status === 'sem_icmp';   // sem ICMP = está na rede, só não responde a ping
+    const categoria = d => d.cftv ? 'cftv' : d.comunicacao ? 'comunicacao' : 'outros';
+    function nomeDe(d) { return d.apelido || d.nome.valor || (ident(d) && ident(d).nome) || ''; }
+    function classeTag(d) { return d.tipo === 'NVR/DVR' ? 'grav' : d.cftv ? 'cam' : d.comunicacao ? 'com' : ''; }
+
+    function desenharDispositivos() {
+        const busca = $('disp-busca').value.trim().toLowerCase(), st = $('disp-status').value, cat = $('disp-categoria').value;
+        const lista = dispositivos.filter(d => (!st || d.status === st) && (!cat || categoria(d) === cat) &&
+            (!busca || [d.ip, d.mac, nomeDe(d), d.marca.valor, d.modelo, d.tipo, d.firmware].join(' ').toLowerCase().includes(busca)));
+        $('disp-corpo').innerHTML = lista.length ? lista.map(d => {
+            const [cls, txt] = rotuloStatus[d.status] || rotuloStatus.desconhecido;
+            const tipo = d.tipo ? `<span class="tag ${classeTag(d)}">${esc(d.tipo)}</span>` : '';
+            const papel = d.papel ? `<span class="tag">${d.papel === 'gateway' ? 'Gateway' : 'Sensor'}</span>` : d.rede_origem ? `<span class="tag" title="Rede roteada ${esc(d.rede_origem)}">Outra VLAN</span>` : '';
+            return `<tr class="${d.cftv ? 'cftv' : d.comunicacao ? 'com' : ''}"><td class="mono">${esc(d.ip)} ${papel}</td><td class="mono" style="font-size:.75rem">${esc(d.mac || '')}</td>
+                <td>${esc(nomeDe(d)) || '<span class="txt-muted">—</span>'}${d.nome.fonte && !d.apelido ? `<span class="sub">${esc(d.nome.fonte)}</span>` : ''}</td>
+                <td>${esc(d.marca.valor || (d.mac_privado ? 'MAC privado' : '—'))}</td>
+                <td>${tipo} ${esc(d.modelo || '')}${d.firmware ? `<span class="sub">${esc(d.firmware)}</span>` : ''}</td><td><span class="status-pill ${cls}">${txt}</span></td>
+                <td class="mono">${d.latencia_ms ? d.latencia_ms + ' ms' : d.status === 'offline' && d.visto_em ? `<span class="sub" title="Visto pela última vez">visto ${esc(vistoEm(d.visto_em))}</span>` : '—'}</td>
+                <td><span class="acoes-linha">${d.papel === 'sensor' ? '' : `${d.mac ? `<button title="Renomear" data-acao="renomear" data-mac="${esc(d.mac)}" data-nome="${esc(nomeDe(d))}">Renomear</button>` : ''}
+                    <button title="Vigiar no Radar de Pings" data-acao="vigiar" data-ip="${esc(d.ip)}" data-nome="${esc(nomeDe(d) || d.modelo || d.ip)}">Vigiar</button>
+                    ${d.status === 'offline' ? `<button title="Tirar do inventário (volta se aparecer de novo na rede)" data-acao="esquecer" data-chave="${esc(d.mac || 'ip:' + d.ip)}" data-nome="${esc(nomeDe(d) || d.ip)}">Esquecer</button>` : ''}`}</span></td></tr>`;
+        }).join('') : '<tr><td colspan="8" class="hist-empty">Nenhum dispositivo com esses filtros.</td></tr>';
+    }
+
+    // Listas de CFTV e comunicação. Problemas primeiro (sem resposta, depois com risco), e o que está
+    // aberto ou recolhido continua assim entre as atualizações automáticas.
+    const abertos = new Set(), recolhidos = new Set(), filtroTipo = {cftv: '', com: ''};
+    let ultimoResumo = {};
+    const ORDEM_COM = ['Starlink', 'ONU/ONT', 'Roteador 4G/LTE', 'Roteador/Firewall', 'Switch', 'Access Point/Rádio', 'Gateway industrial', 'Equipamento de comunicação'];
+    const ORDEM_CFTV = ['NVR/DVR', 'Câmera IP', 'Equipamento de CFTV'];
+    const problema = d => (!presente(d) && d.papel !== 'gateway') || (ident(d).riscos || []).length > 0;
+    const peso = d => (!presente(d) && d.papel !== 'gateway') ? 0 : (ident(d).riscos || []).length ? 1 : 2;
+    const ipNum = ip => String(ip).split('.').reduce((n, p) => n * 256 + (+p || 0), 0);
+
+    function linhas(d, pre) {
+        const chave = d.mac || 'ip:' + d.ip;   // equipamento de outra VLAN não tem MAC
+        const id = ident(d), [cls, txt] = rotuloStatus[d.status] || rotuloStatus.desconhecido, aberto = abertos.has(chave);
+        const riscos = id.riscos || [];
+        const coluna5 = pre === 'com' ? esc(d.firmware || '—') : esc(nomeDe(d) || '—');
+        let html = `<tr class="item ${presente(d) || d.papel === 'gateway' ? '' : 'fora'} ${aberto ? 'aberto' : ''}" data-mac="${esc(chave)}">
+            <td><span class="seta">›</span> <b>${esc(d.modelo || id.nome || d.tipo)}</b>${d.papel === 'gateway' ? ' <span class="tag">Gateway</span>' : ''}${riscos.length ? ` <span class="tag risco-tag" title="${esc(riscos.join(' · '))}">⚠ risco</span>` : ''}</td>
+            <td class="mono">${esc(d.ip)}</td>
+            <td>${esc(id.fabricante || d.marca.valor || '—')}</td><td>${coluna5}</td>
+            <td><span class="status-pill ${cls}">${txt}</span></td><td>${esc(id.confianca)}</td></tr>`;
+        if (aberto) html += `<tr class="detalhe"><td colspan="6"><b>MAC</b> <span class="mono">${esc(d.mac || (d.rede_origem ? 'não visível (outra VLAN ' + d.rede_origem + ')' : ''))}</span>${nomeDe(d) ? ` · <b>Nome</b> ${esc(nomeDe(d))}` : ''}${d.firmware ? ` · <b>Firmware</b> ${esc(d.firmware)}` : ''}${d.latencia_ms ? ` · <b>Latência</b> ${d.latencia_ms} ms` : ''}<br>
+            <b>Evidências:</b> ${esc((id.evidencias || []).join(' · '))}${id.portas && id.portas.length ? `<br><b>Portas:</b> ${esc(id.portas.join(', '))}` : ''}
+            ${riscos.map(r => `<br><b style="color:var(--status-warn)">⚠ ${esc(r)}</b>`).join('')}</td></tr>`;
+        return html;
+    }
+
+    function desenharLista(pre, lista, ordem) {
+        const busca = $(pre + '-busca').value.trim().toLowerCase(), soProblema = $(pre + '-problema').checked;
+        const porTipo = {};
+        lista.forEach(d => (porTipo[d.tipo] = porTipo[d.tipo] || []).push(d));
+        const tipos = Object.keys(porTipo).sort((a, b) => ordem.indexOf(a) - ordem.indexOf(b));
+        $(pre + '-chips').innerHTML = lista.length ? [['', 'Todos', lista.length]].concat(tipos.map(t => [t, t, porTipo[t].length]))
+            .map(([v, rot, n]) => `<button type="button" data-tipo="${esc(v)}" class="${filtroTipo[pre] === v ? 'ativo' : ''}">${esc(rot)} <b>${n}</b></button>`).join('') : '';
+        const visiveis = d => (!filtroTipo[pre] || d.tipo === filtroTipo[pre]) && (!soProblema || problema(d)) &&
+            (!busca || [d.ip, d.mac, nomeDe(d), d.modelo, d.tipo, d.firmware, ident(d).fabricante, d.marca.valor].join(' ').toLowerCase().includes(busca));
+        let html = '';
+        for (const t of tipos) {
+            const itens = porTipo[t].filter(visiveis).sort((a, b) => peso(a) - peso(b) || ipNum(a.ip) - ipNum(b.ip));
+            if (!itens.length) continue;
+            const fora = porTipo[t].filter(d => !presente(d) && d.papel !== 'gateway').length;
+            const chave = pre + ':' + t, recolhido = recolhidos.has(chave);
+            html += `<tr class="grupo" data-grupo="${esc(chave)}"><td colspan="6">${recolhido ? '▸' : '▾'} ${esc(t)} · ${porTipo[t].length}${fora ? ` <span class="alerta">· ${fora} sem resposta</span>` : ''}</td></tr>`;
+            if (!recolhido) html += itens.map(d => linhas(d, pre)).join('');
+        }
+        $(pre + '-corpo').innerHTML = html || `<tr><td colspan="6" class="hist-empty">${lista.length ? 'Nenhum equipamento com esses filtros.' : 'Nenhum equipamento identificado até agora. A identificação roda em segundo plano e pode levar alguns minutos após a instalação.'}</td></tr>`;
+    }
+
+    function desenharIdentificados(resumo) {
+        const cftv = dispositivos.filter(d => d.cftv), com = dispositivos.filter(d => d.comunicacao);
+        const cams = cftv.filter(d => d.tipo === 'Câmera IP').length, grav = cftv.filter(d => d.tipo === 'NVR/DVR').length;
+        const foraC = cftv.filter(d => !presente(d)).length, foraM = com.filter(d => !presente(d) && d.papel !== 'gateway').length;
+        const riscos = com.filter(d => (d.comunicacao.riscos || []).length).length;
+        $('cftv-resumo').textContent = cftv.length ? `${cams} câmeras · ${grav} gravadores${foraC ? ` · ${foraC} sem resposta` : ''}` : 'nenhum identificado';
+        $('com-resumo').textContent = com.length ? `${com.length} equipamentos${foraM ? ` · ${foraM} sem resposta` : ''}${riscos ? ` · ${riscos} com risco` : ''}` : 'nenhum identificado';
+        $('disp-kpis').innerHTML = [[resumo.total || 0, 'Dispositivos'], [resumo.com_modelo || 0, 'Com modelo'], [cftv.length, 'CFTV'],
+            [com.length, riscos ? `Comunicação · ${riscos} com risco` : 'Comunicação'], [foraC + foraM, 'CFTV/comunicação sem resposta']]
+            .map(([n, t], i) => `<div class="kpi"><strong style="${i === 4 && n ? 'color:var(--status-crit)' : ''}">${n}</strong><span>${t}</span></div>`).join('');
+        desenharLista('cftv', cftv, ORDEM_CFTV);
+        desenharLista('com', com, ORDEM_COM);
+    }
+
+    for (const pre of ['cftv', 'com']) {
+        $(pre + '-corpo').addEventListener('click', ev => {
+            const grupo = ev.target.closest('tr.grupo'), item = ev.target.closest('tr.item');
+            if (grupo) { const k = grupo.dataset.grupo; recolhidos.has(k) ? recolhidos.delete(k) : recolhidos.add(k); }
+            else if (item) { const m = item.dataset.mac; abertos.has(m) ? abertos.delete(m) : abertos.add(m); }
+            else return;
+            desenharIdentificados(ultimoResumo);
+        });
+        $(pre + '-chips').addEventListener('click', ev => {
+            const b = ev.target.closest('button[data-tipo]');
+            if (b) { filtroTipo[pre] = b.dataset.tipo; desenharIdentificados(ultimoResumo); }
+        });
+        $(pre + '-busca').addEventListener('input', () => desenharIdentificados(ultimoResumo));
+        $(pre + '-problema').addEventListener('change', () => desenharIdentificados(ultimoResumo));
+    }
+    async function carregarDispositivos() {
+        try {
+            const r = await fetch('/api/dispositivos');
+            if (!r.ok) return;
+            const d = await r.json();
+            dispositivos = d.dispositivos || [];
+            ultimoResumo = d.resumo || {};
+            desenharDispositivos(); desenharIdentificados(ultimoResumo);
+        } catch (e) { /* tenta de novo */ }
+    }
+    ['disp-busca', 'disp-status', 'disp-categoria'].forEach(id => $(id).addEventListener('input', desenharDispositivos));
+    $('disp-corpo').addEventListener('click', ev => {
+        const b = ev.target.closest('button[data-acao]');
+        if (!b) return;
+        if (b.dataset.acao === 'renomear') renomear(b.dataset.mac, b.dataset.nome);
+        else if (b.dataset.acao === 'esquecer') esquecer(b.dataset.chave, b.dataset.nome);
+        else vigiar(b.dataset.ip, b.dataset.nome);
+    });
+    function vistoEm(iso) {
+        const d = new Date(iso);
+        return isNaN(d) ? iso : d.toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'});
+    }
+    async function esquecer(chave, nome) {
+        if (!confirm(`Tirar "${nome}" do inventário? Ele sai da lista e do diagrama, e volta sozinho se aparecer de novo na rede.`)) return;
+        const r = await fetch('/api/inventario/esquecer', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({chave})});
+        if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.erro || 'Não foi possível esquecer.'); return; }
+        carregarDispositivos();
+    }
+
+    async function carregarRedesExtras() {
+        try {
+            const r = await fetch('/api/config/redes_extras');
+            if (r.ok) $('redes-extras').value = ((await r.json()).redes || []).join('\n');
+        } catch (e) { /* segue sem */ }
+    }
+    async function salvarRedesExtras() {
+        const r = await json('/api/config/redes_extras', 'POST', {redes: $('redes-extras').value});
+        const d = await r.json().catch(() => ({}));
+        $('redes-extras-status').textContent = r.ok ? `Salvo. ${d.redes.length ? 'Entram na próxima varredura (até 1 min).' : 'Nenhuma rede adicional.'}` : (d.erro || 'Não foi possível salvar.');
+        $('redes-extras-status').style.color = r.ok ? 'var(--status-ok)' : 'var(--status-crit)';
+        if (r.ok) $('redes-extras').value = d.redes.join('\n');
+    }
+
+    async function renomear(mac, atual) {
+        const nome = prompt('Nome para este dispositivo:', atual || '');
+        if (nome) { await json('/api/topologia/nome', 'POST', {mac, nome}); carregarDispositivos(); }
+    }
+    async function vigiar(ip, descricao) {
+        if (confirm(`Adicionar ${ip} ao Radar de Pings deste sensor?`)) { await json('/api/alvos', 'POST', {ip, descricao}); atualizarLocal(); }
+    }
+    async function addAlvo(rota, idIp, idDesc) {
+        const ip = $(idIp).value.trim(), descricao = $(idDesc).value.trim() || ip;
+        if (!ip) return;
+        await json(rota, 'POST', {ip, descricao}); $(idIp).value = ''; $(idDesc).value = ''; atualizarLocal();
+    }
+    async function addServico() {
+        const nome_servico = $('new-srv-nome').value.trim(), descricao = $('new-srv-desc').value.trim() || nome_servico;
+        if (!nome_servico) return;
+        await json('/api/servicos_os', 'POST', {nome_servico, descricao}); $('new-srv-nome').value = ''; $('new-srv-desc').value = ''; atualizarLocal();
+    }
+    async function removerAlvo(rota) { if (confirm('Remover este item?')) { await fetch(rota, {method: 'DELETE'}); atualizarLocal(); } }
+
+    // ---------- registro de eventos
+    let evDeslocamento = 0;
+    function filtrosEventos() {
+        return new URLSearchParams(Object.entries({de: $('ev-de').value, ate: $('ev-ate').value, gravidade: $('ev-grav').value, busca: $('ev-busca').value.trim()}).filter(([, v]) => v));
+    }
+    async function carregarEventos(mais = false) {
+        evDeslocamento = mais ? evDeslocamento + 100 : 0;
+        const q = filtrosEventos(); q.set('limite', 100); q.set('deslocamento', evDeslocamento);
+        try {
+            const r = await fetch('/api/eventos?' + q);
+            if (!r.ok) return;
+            const d = await r.json();
+            const html = d.eventos.map(e => `<div class="ev-item"><span class="quando">${esc(e.data_hora)}</span><span class="grav-${esc(e.gravidade)}" style="font-weight:600">${esc(e.gravidade)}</span>
+                <span><b>${esc(e.tipo)}</b>${esc(e.detalhes)}</span></div>`).join('');
+            if (mais) $('ev-lista').insertAdjacentHTML('beforeend', html);
+            else $('ev-lista').innerHTML = html || '<div class="hist-empty" style="padding:20px;">Nenhum evento com esses filtros.</div>';
+            $('ev-total').textContent = `${d.total} evento${d.total === 1 ? '' : 's'}`;
+            $('ev-mais').hidden = evDeslocamento + d.eventos.length >= d.total;
+        } catch (e) { /* tenta de novo */ }
+    }
+    let evTimer;
+    ['ev-de', 'ev-ate', 'ev-grav'].forEach(id => $(id).addEventListener('change', () => carregarEventos()));
+    $('ev-busca').addEventListener('input', () => { clearTimeout(evTimer); evTimer = setTimeout(() => carregarEventos(), 300); });
+    function limparFiltrosEventos() { ['ev-de', 'ev-ate', 'ev-grav', 'ev-busca'].forEach(id => $(id).value = ''); carregarEventos(); }
+    function baixarEventosCsv() {
+        const q = filtrosEventos();
+        q.set('periodo', 'periodo');
+        if (!q.get('de') && !q.get('ate')) { q.set('periodo', 'ultimos'); q.set('dias', {{ retencao_dias }}); }
+        baixar('/api/eventos.csv?' + q);
+    }
+
+    // ---------- relatório
+    function abrirRelatorio() {
+        const tipo = document.querySelector('input[name=rel-periodo]:checked').value;
+        const q = new URLSearchParams({periodo: tipo});
+        if (tipo === 'ultimos') q.set('dias', $('rel-dias').value);
+        if (tipo === 'dia') { if (!$('rel-data').value) return alert('Escolha o dia.'); q.set('data', $('rel-data').value); }
+        if (tipo === 'periodo') {
+            if (!$('rel-de').value && !$('rel-ate').value) return alert('Escolha o início e/ou o fim do período.');
+            q.set('de', $('rel-de').value); q.set('ate', $('rel-ate').value);
+        }
+        window.open('/relatorio?' + q, '_blank', 'noopener');
+    }
+
+    atualizarLocal(); carregarDispositivos(); carregarEventos(); carregarRedesExtras();
+    setInterval(atualizarLocal, 3000);
+    setInterval(carregarDispositivos, 20000);
+    setInterval(() => { if (evDeslocamento === 0 && !document.hidden) carregarEventos(); }, 15000);
+    </script>
+    <script src="/static/host.js?v=edge-1"></script>
+    <div id="modalMapaRede" class="modal" role="dialog" aria-modal="true" aria-labelledby="mapa-editor-titulo">
+        <div class="modal-content mapa-editor">
+            <div class="modal-header">
+                <h2 id="mapa-editor-titulo" style="margin: 0;"><i class="fa-solid fa-diagram-project"></i> Editar diagrama da rede</h2>
+                <span class="close-modal" id="mapa-editor-fechar" role="button" aria-label="Fechar">&times;</span>
+            </div>
+            <p class="mapa-editor-ajuda">O sensor vê todos os equipamentos como se estivessem direto no gateway. Diga em que cada um liga e acrescente o que ele não enxerga (switch não gerenciável, conversor de mídia, rádio). A edição fica salva neste sensor e vai para a Central quando houver conexão.</p>
+            <div class="mapa-editor-novo">
+                <label for="mapa-editor-novo-tipo">Adicionar equipamento</label>
+                <select id="mapa-editor-novo-tipo"></select>
+                <button type="button" class="action-btn btn-secondary" id="mapa-editor-adicionar"><i class="fa-solid fa-plus"></i> Adicionar</button>
+            </div>
+            <div id="mapa-editor-lista" class="mapa-editor-lista"></div>
+            <p class="mapa-editor-erro" id="mapa-editor-erro" role="alert"></p>
+            <div class="mapa-editor-acoes">
+                <button type="button" class="action-btn btn-secondary" id="mapa-editor-cancelar">Cancelar</button>
+                <button type="button" class="action-btn btn-primary" id="mapa-editor-salvar">Salvar diagrama</button>
+            </div>
+        </div>
+    </div>
+<script>window.MAPA_REDE_URL = '/api/mapa_rede'; window.MAPA_REDE_SVG = '/api/diagrama.svg';</script>
+<script src="/static/mapa_rede.js?v=5"></script>
+<script>
+    // Diagrama: carrega ao abrir e a cada minuto (sem atrapalhar quem está editando).
+    document.addEventListener('DOMContentLoaded', () => {
+        const recarregar = () => { if (document.getElementById('modalMapaRede').style.display !== 'block') MapaRede.carregar().catch(() => {}); };
+        recarregar();
+        setInterval(recarregar, 60000);
+    });
+</script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#082E56">
+    <link rel="icon" href="/static/brand/nexohub/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/brand/nexohub/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="apple-touch-icon" href="/static/brand/nexohub/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.json?v=nexopulse-2">
+    <title>NexoHub - Visitas de campo</title>
+    <link rel="stylesheet" href="/static/fontes/fontes.css?v=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: var(--bg-base); color: var(--text-main); }
+        .container { padding: 30px; max-width: 1200px; margin: 0 auto; }
+        .lista { display: flex; flex-direction: column; gap: 10px; }
+        .visita { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px;
+            display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; align-items: center; }
+        .visita h2 { margin: 0; font-size: 1.02rem; }
+        .visita .meta { color: var(--text-muted); font-size: .86rem; }
+        .visita .resumo { font-family: 'JetBrains Mono', monospace; font-size: .8rem; color: var(--text-muted); grid-column: 1; }
+        .visita .acoes { grid-row: 1 / span 3; grid-column: 2; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        .vazio { background: var(--bg-card); border: 1px dashed var(--border); border-radius: 12px; padding: 28px; color: var(--text-muted); line-height: 1.6; }
+        @media (max-width: 700px) { .container { padding: 16px; } .visita { grid-template-columns: 1fr; } .visita .acoes { grid-row: auto; grid-column: 1; justify-content: flex-start; } }
+    </style>
+<link rel="stylesheet" href="/static/product.css?v=nexopulse-4">
+<script src="/static/brand.js?v=nexopulse-2"></script>
+</head>
+<body>
+<script src="/static/security.js?v=2.2.0-rc1"></script>
+{% include '_brand_bar.html' %}
+<main class="container">
+    <div class="page-head">
+        <div>
+            <h1><i class="fa-solid fa-person-walking"></i> Visitas de campo</h1>
+            <p>Levantamentos que os técnicos enviaram pelo app NexoCampo: rede, Wi-Fi, testes, aparelhos e fotos.</p>
+        </div>
+        <div class="page-actions"><a class="action-btn btn-secondary" href="/guias"><i class="fa-brands fa-android"></i> Baixar o app</a></div>
+    </div>
+    {% if visitas %}
+    <div class="lista">
+        {% for v in visitas %}
+        <section class="visita">
+            <h2>{{ v.local or 'Local sem nome' }}</h2>
+            <div class="meta">{{ v.empresa or v.empresa_usuario or ('Empresa #' ~ v.empresa_id) }}{% if v.nome_local %} · {{ v.nome_local }}{% endif %}
+                · {{ quando(v.quando) }}{% if v.tecnico %} · {{ v.tecnico }}{% endif %}
+                {% if v.chamado_id %} · <a href="/desk/{{ v.chamado_id }}" style="color: var(--blue)">chamado #{{ v.chamado_id }}</a>{% endif %}</div>
+            <div class="resumo">{{ v.resumo }}</div>
+            <div class="acoes">
+                {% if v.tem_pdf %}<a class="action-btn btn-primary" href="/campo/{{ v.id }}.pdf" target="_blank" rel="noopener"><i class="fa-solid fa-file-pdf"></i> Abrir PDF</a>{% endif %}
+                <a class="action-btn btn-secondary" href="/campo/{{ v.id }}.json"><i class="fa-solid fa-download"></i> JSON</a>
+            </div>
+        </section>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="vazio">Nenhuma visita enviada ainda. No app NexoCampo, entre com o seu usuário do NexoHub (aba Relatório)
+        e use "Enviar para a Central" ao fim da visita.</div>
+    {% endif %}
+</main>
+</body>
+</html>

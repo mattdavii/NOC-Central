@@ -1,0 +1,39 @@
+{#- Abertura do NexoHub: saudação, relógio e um atalho grande para cada lugar do Hub.
+    Recebe `atalhos`: lista de dicts {rotulo, href (None = indisponível), marca (pulse/guard/report) ou icone (fa-…), nota}. -#}
+<section class="lancador" aria-labelledby="saudacao">
+    <div class="lancador-avatar" aria-hidden="true">{{ (pessoa or 'N')[:1]|upper }}</div>
+    <h1 id="saudacao"><span data-saudacao>Olá</span>, {{ pessoa }}</h1>
+    <p class="relogio" aria-live="off"><span data-hora>--:--</span><small data-segundos>--</small></p>
+    <p class="hoje-data" data-data>&nbsp;</p>
+    {% if lancador_nota %}<p class="lancador-nota">{{ lancador_nota }}</p>{% endif %}
+    <nav class="atalhos" aria-label="Atalhos do NexoHub">
+        {% for a in atalhos %}
+        {% if a.href %}<a class="atalho" href="{{ a.href }}">{% else %}<span class="atalho indisponivel" aria-disabled="true">{% endif %}
+            <span class="atalho-icone" aria-hidden="true">
+                {% if a.marca %}
+                <img class="sym-dark" src="/static/brand/nexo{{ a.marca }}/simbolo-escuro.svg" alt="">
+                <img class="sym-light" src="/static/brand/nexo{{ a.marca }}/simbolo-claro.svg" alt="">
+                {% else %}<i class="fa-solid {{ a.icone }}"></i>{% endif %}
+            </span>
+            <span class="atalho-rotulo">{{ a.rotulo }}</span>
+            {% if a.nota %}<span class="atalho-nota">{{ a.nota }}</span>{% endif %}
+        {% if a.href %}</a>{% else %}</span>{% endif %}
+        {% endfor %}
+    </nav>
+</section>
+<script>
+    (() => {
+        const hora = document.querySelector('[data-hora]'), seg = document.querySelector('[data-segundos]');
+        const data = document.querySelector('[data-data]'), saud = document.querySelector('[data-saudacao]');
+        function tique() {
+            const agora = new Date(), h = agora.getHours();
+            hora.textContent = agora.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'});
+            seg.textContent = String(agora.getSeconds()).padStart(2, '0');
+            saud.textContent = h >= 5 && h < 12 ? 'Bom dia' : (h >= 12 && h < 18 ? 'Boa tarde' : 'Boa noite');
+            const texto = agora.toLocaleDateString('pt-BR', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'});
+            data.textContent = texto.charAt(0).toUpperCase() + texto.slice(1);
+        }
+        tique();
+        setInterval(tique, 1000);
+    })();
+</script>

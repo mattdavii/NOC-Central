@@ -58,9 +58,21 @@
         }
     };
 
+    // No celular, tabelas .cards-mobile viram cartões; cada célula mostra o
+    // título da sua coluna (via data-label, lido pelo CSS).
+    function labelTables() {
+        document.querySelectorAll('table.cards-mobile').forEach(table => {
+            const titulos = [...table.querySelectorAll('thead th')].map(th => th.textContent.trim());
+            table.querySelectorAll('tbody tr').forEach(tr => {
+                [...tr.children].forEach((td, i) => { if (!td.hasAttribute('data-label')) td.dataset.label = titulos[i] || ''; });
+            });
+        });
+    }
+
     apply(preferredTheme());
     document.addEventListener('DOMContentLoaded', () => {
         apply(root.dataset.theme || preferredTheme());
         registerApp();
+        labelTables();
     });
 }());
