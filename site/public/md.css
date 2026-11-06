@@ -374,3 +374,62 @@ h1, h2, h3 { font-family: var(--display); margin: 0; letter-spacing: -0.02em; }
 @media (prefers-reduced-motion: reduce) { .diag ol::after { display: none; } }
 /* Ícones à frente do trilho (o trilho é posicionado e pintaria por cima). */
 .linha .estacao, .diag .no { position: relative; z-index: 1; }
+
+/* =========================================================================
+   Página do NexoReport: o próprio relatório é a peça da abertura.
+   ========================================================================= */
+.abertura.report .miolo { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 40px 56px; align-items: center;
+  padding-bottom: clamp(64px, 8vw, 112px); }
+.abertura.report h1 { max-width: 13ch; }
+.abertura.report .logo-produto { height: 44px; }
+/* duas folhas empilhadas: a capa na frente, uma página interna atrás */
+.pilha { position: relative; margin: 0; justify-self: center; width: min(430px, 100%); padding: 0 0 0 48px; }
+.pilha .folha { display: block; width: 100%; height: auto; border-radius: 6px; }
+.pilha .frente { position: relative; transform: rotate(-2.5deg); border: 1px solid rgba(169,190,211,.35);
+  box-shadow: 0 50px 90px -30px rgba(0,0,0,.75), 0 0 0 10px rgba(18,181,229,.05); }
+.pilha .atras { position: absolute; top: 34px; left: 0; width: calc(100% - 48px); transform: rotate(4deg); opacity: .9;
+  box-shadow: 0 30px 60px -20px rgba(0,0,0,.6); }
+.pilha figcaption { margin-top: 64px; color: var(--nevoa); font-size: .86rem; text-align: center; }
+
+/* perguntas que o relatório responde */
+.perguntas { margin: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 0 28px; }
+.perguntas div { padding-top: 22px; border-top: 2px solid var(--linha); display: grid; align-content: start; gap: 10px; }
+.perguntas div:first-child { border-top-color: var(--ciano); }
+.perguntas dt { color: var(--azul); font: 700 1.2rem/1.2 var(--display); letter-spacing: -0.01em; }
+.perguntas dd { margin: 0; color: var(--tinta-suave); font-size: .97rem; }
+
+/* sumário: as seções na ordem do PDF (numeradas porque são a ordem real) */
+.dentro .grade { display: grid; grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); gap: 56px; align-items: start; }
+.sumario { list-style: none; margin: 0; padding: 0; counter-reset: secao; }
+.sumario li { counter-increment: secao; display: grid; grid-template-columns: 40px 1fr; gap: 2px 14px; padding: 16px 0; border-top: 1px solid var(--linha-noite); }
+.sumario li:last-child { border-bottom: 1px solid var(--linha-noite); }
+.sumario li::before { content: counter(secao); grid-row: span 2; font: 700 1.05rem/1.5 var(--display); color: var(--ciano); }
+.sumario b { font: 700 1.08rem/1.35 var(--display); letter-spacing: -0.01em; }
+.sumario span { color: var(--nevoa); font-size: .95rem; }
+.paginas { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; position: sticky; top: 100px; }
+.paginas figure { margin: 0; }
+.paginas img { width: 100%; height: auto; border-radius: 6px; background: #fff; box-shadow: 0 30px 60px -25px rgba(0,0,0,.7); }
+.paginas figcaption { margin-top: 10px; color: var(--nevoa); font-size: .86rem; }
+.paginas figure:nth-child(2) { margin-top: 48px; }
+.dentro .legenda { margin-top: 28px; color: var(--nevoa); font-size: .88rem; }
+
+@media (max-width: 1080px) {
+  .perguntas { grid-template-columns: repeat(3, 1fr); row-gap: 32px; }
+}
+@media (max-width: 900px) {
+  .abertura.report .miolo { grid-template-columns: 1fr; }
+  .pilha { width: min(360px, 86%); }
+  .dentro .grade { grid-template-columns: 1fr; }
+  .paginas { position: static; }
+}
+@media (max-width: 560px) {
+  .perguntas { grid-template-columns: 1fr; row-gap: 26px; }
+  .pilha { padding-left: 32px; }
+  .pilha .atras { width: calc(100% - 32px); top: 24px; }
+  .pilha figcaption { margin-top: 48px; }
+  .paginas figure:nth-child(2) { margin-top: 28px; }
+}
+/* destaque na página inicial: as páginas lado a lado, sem fixar na rolagem */
+.destaque-report .paginas { position: static; max-width: 560px; justify-self: end; }
+.destaque-report .paginas img { box-shadow: 0 30px 60px -28px rgba(7,26,49,.55), 0 0 0 1px rgba(7,26,49,.08); }
+@media (max-width: 1080px) { .destaque-report .paginas { justify-self: start; } }
