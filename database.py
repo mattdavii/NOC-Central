@@ -241,6 +241,11 @@ def init_db():
             'visitas_campo': f"uuid TEXT NOT NULL, empresa_id INTEGER NOT NULL, sensor_mac TEXT, chamado_id INTEGER, usuario_id INTEGER, "
                              f"local TEXT, tecnico TEXT, quando DOUBLE PRECISION, recebida_em DOUBLE PRECISION NOT NULL, resumo TEXT, "
                              f"dados TEXT NOT NULL, pdf {'BYTEA' if DATABASE_URL else 'BLOB'}",
+            # NexoGuard: um achado por (local, equipamento, regra); título e recomendação vêm da regra (nexoguard.py).
+            'guard_achados': "sensor_mac TEXT NOT NULL, dispositivo TEXT NOT NULL, ip TEXT, nome TEXT, tipo TEXT, regra TEXT NOT NULL, "
+                             "gravidade TEXT NOT NULL, evidencia TEXT, estado TEXT NOT NULL DEFAULT 'aberto', "
+                             "primeiro_em DOUBLE PRECISION NOT NULL, visto_em DOUBLE PRECISION NOT NULL, resolvido_em DOUBLE PRECISION, "
+                             "aceito_por TEXT, aceito_em DOUBLE PRECISION, motivo TEXT, notificado INTEGER DEFAULT 0",
             'diagnosticos': "sensor_mac TEXT, provedor TEXT, chave TEXT NOT NULL, camada TEXT, causa TEXT, gravidade TEXT, confianca TEXT, inicio DOUBLE PRECISION NOT NULL, fim DOUBLE PRECISION, atualizado_em DOUBLE PRECISION, evidencias TEXT, acao TEXT, detalhe TEXT, mensagem TEXT, estado TEXT DEFAULT 'ativo', janelas INTEGER DEFAULT 1, janelas_ok INTEGER DEFAULT 0, notificado INTEGER DEFAULT 0, grupo_id INTEGER",
         }
         for table, definition in tables.items():
@@ -249,7 +254,8 @@ def init_db():
                                               'fabricante_registro TEXT', 'fabricante_fonte TEXT', 'hostname TEXT',
                                               'hostname_fonte TEXT', 'visto_em TEXT',
                                               'modelo TEXT', 'tipo_equipamento TEXT', 'cftv TEXT',
-                                              'comunicacao TEXT', 'firmware TEXT', 'rede_origem TEXT'])
+                                              'comunicacao TEXT', 'firmware TEXT', 'rede_origem TEXT',
+                                              'portas_abertas TEXT', 'upnp_igd INTEGER'])
         # NexoDesk/SLA: o contrato usado fica gravado no chamado; pausas = [[início, fim], ...] enquanto espera o cliente.
         ensure_columns(conn, 'chamados', ['sla TEXT', 'primeira_resposta_em DOUBLE PRECISION', 'pausas TEXT',
                                           'pausado_desde DOUBLE PRECISION', 'sla_avisos TEXT', 'prazo_manual DOUBLE PRECISION',
@@ -259,6 +265,8 @@ def init_db():
         conn.execute('CREATE INDEX IF NOT EXISTS idx_chamado_anexos ON chamado_anexos (chamado_id)')
         conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_campo_tokens ON campo_tokens (token_hash)')
         conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_visitas_campo ON visitas_campo (uuid)')
+        conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_guard_achados ON guard_achados (sensor_mac, dispositivo, regra)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_guard_achados_estado ON guard_achados (estado, gravidade)')
         conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_relatorios_mensais ON relatorios_mensais (empresa_id, ano_mes, versao)')
         conn.execute('CREATE TABLE IF NOT EXISTS nomes_conhecidos (mac TEXT PRIMARY KEY, nome TEXT)')
         # Alertas que o sensor guardou com a Central fora: id de origem (sem duplicar no reenvio)

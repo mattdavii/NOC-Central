@@ -11,6 +11,7 @@ import guias
 import app_campo
 import campo
 import nexodesk
+import nexoguard
 import sla
 import notifications
 import oui
@@ -966,6 +967,66 @@ def campo_arquivo(visita_id, formato):
     return resposta
 
 
+# ------------------------------------------------------------------ NexoGuard (fase 1: só a MD vê)
+def _guard_negado():
+    if session.get('role') not in acessos.ROLES_MASTER:
+        return "Acesso Negado.", 403
+    return None
+
+
+@app.route('/guard')
+def pagina_guard():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    negado = _guard_negado()
+    if negado:
+        return negado
+    estado = request.args.get('estado') if request.args.get('estado') in nexoguard.ESTADOS else 'aberto'
+    empresa_id = request.args.get('empresa', type=int)
+    conn = database.get_db()
+    try:
+        achados = nexoguard.listar(conn, estado, empresa_id)
+        resumo = nexoguard.resumo(conn, empresa_id)
+        empresas = [dict(r) for r in conn.execute(
+            "SELECT DISTINCT c.id, c.nome, c.usuario FROM guard_achados g JOIN sensores s ON s.mac_id = g.sensor_mac "
+            "JOIN clientes c ON c.id = s.cliente_id").fetchall()]
+        empresas.sort(key=lambda e: (e['nome'] or e['usuario'] or '').lower())
+    finally:
+        conn.close()
+    return render_template('guard.html', achados=achados, resumo=resumo, estado=estado, empresa_id=empresa_id,
+                           empresas=empresas, gravidades=nexoguard.GRAVIDADES, rotulo_gravidade=nexoguard.ROTULO_GRAVIDADE,
+                           rotulo_estado=nexoguard.ROTULO_ESTADO,
+                           quando=lambda t: datetime.fromtimestamp(t, hub.FUSO_BR).strftime('%d/%m/%Y %H:%M') if t else '—')
+
+
+@app.route('/api/v2/guard/<int:achado_id>/<acao>', methods=['POST'])
+def guard_acao(achado_id, acao):
+    if 'user_id' not in session:
+        return jsonify(error='Faça login.'), 401
+    if session.get('role') not in acessos.ROLES_MASTER:
+        return jsonify(error='Somente a MD altera achados do NexoGuard nesta fase.'), 403
+    if acao not in ('aceitar', 'reabrir'):
+        return jsonify(error='Ação desconhecida.'), 404
+    conn = database.get_db()
+    try:
+        autor = _autor(conn)
+        try:
+            if acao == 'aceitar':
+                motivo = (request.get_json(silent=True) or {}).get('motivo')
+                a = nexoguard.aceitar(conn, achado_id, autor['usuario'], motivo if isinstance(motivo, str) else None)
+                detalhes = f"{a['titulo']} em {a['ip']}: {motivo.strip()}"
+            else:
+                a = nexoguard.reabrir(conn, achado_id)
+                detalhes = f"{a['titulo']} em {a['ip']}"
+        except nexoguard.Recusa as r:
+            return jsonify(error=r.mensagem), r.status
+        _auditar(conn, f'guard_{acao}', alvo=f'achado {achado_id}', detalhes=detalhes, empresa_id=a.get('empresa_id'), autor=autor)
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
 # ------------------------------------------------------------------ NexoCampo (app Android de campo)
 @app.route('/app/nexocampo/versao')
 def nexocampo_versao():
@@ -1442,7 +1503,7 @@ def hub_inicio():
                                    eventos=hub.eventos_recentes(conn),
                                    sem_empresa=hub.sem_empresa(conn), aplicativos=acessos.APLICATIVOS,
                                    disponibilidade=hub.disponibilidade_mes(conn),
-                                   desk=nexodesk.contar_abertos(conn, _autor(conn)))
+                                   desk=nexodesk.contar_abertos(conn, _autor(conn)), guard=nexoguard.resumo(conn))
         if ver_como:
             # "Ver como cliente": a MD enxerga o Hub da conta principal da empresa, só para consulta.
             empresa = _empresa_ou_404(conn, ver_como)
@@ -2414,6 +2475,9 @@ def atualizar_dispositivos():
                 'comunicacao': _comunicacao_da_rede(item.get('comunicacao')),
                 'firmware': _texto_da_rede(item.get('firmware'), 120),
                 'rede_origem': rede_origem,
+                # NexoGuard: portas que responderam e UPnP de roteador. Sensor antigo não manda: fica o que já havia.
+                'portas_abertas': nexoguard.portas_da_rede(item.get('portas_abertas')),
+                'upnp_igd': int(item['upnp_igd']) if isinstance(item.get('upnp_igd'), bool) else None,
             })
     except ValueError as error:
         return jsonify(error=str(error)), 400
@@ -2444,18 +2508,25 @@ def atualizar_dispositivos():
     for chave, disp in atuais.items():
         # nome_custom é só o apelido dado pelo usuário (ou o gateway); a tela cai para hostname e marca.
         nome = nomes_salvos.get(disp['mac']) or ("Gateway / Roteador" if disp['ip'] == ip_gw else None)
-        valores = {**{k: disp.get(k) for k in campos}, 'nome_custom': nome, 'visto_em': visto_em}
+        campos_disp = campos + (('portas_abertas', 'upnp_igd') if disp.get('portas_abertas') is not None else ())
+        valores = {**{k: disp.get(k) for k in campos_disp}, 'nome_custom': nome, 'visto_em': visto_em}
         if chave in existentes:
-            db_execute(conn, f"UPDATE dispositivos SET {', '.join(k + ' = ?' for k in campos)} WHERE id = ?",
-                       (*[valores[k] for k in campos], existentes[chave]))
+            db_execute(conn, f"UPDATE dispositivos SET {', '.join(k + ' = ?' for k in campos_disp)} WHERE id = ?",
+                       (*[valores[k] for k in campos_disp], existentes[chave]))
         else:
-            db_execute(conn, f"INSERT INTO dispositivos (sensor_mac, {', '.join(campos)}) VALUES ({', '.join('?' for _ in range(len(campos) + 1))})",
-                       (sensor_mac, *[valores[k] for k in campos]))
+            db_execute(conn, f"INSERT INTO dispositivos (sensor_mac, {', '.join(campos_disp)}) VALUES ({', '.join('?' for _ in range(len(campos_disp) + 1))})",
+                       (sensor_mac, *[valores[k] for k in campos_disp]))
     fora = [i for chave, i in existentes.items() if chave not in atuais]
     if fora:
         db_execute(conn, f"UPDATE dispositivos SET status = 'offline', latencia = NULL, neighbor_state = NULL "
                          f"WHERE id IN ({', '.join('?' for _ in fora)})", fora)
     conn.commit()
+    try:
+        nexoguard.sincronizar(conn, sensor_mac)
+        conn.commit()
+    except Exception:   # o inventário já foi salvo; um erro nas regras não pode derrubar a recepção
+        conn.rollback()
+        app.logger.exception('NexoGuard: falha ao sincronizar os achados de %s', sensor_mac)
     conn.close()
     return jsonify({"status": "OK"})
 
