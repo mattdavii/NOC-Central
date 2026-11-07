@@ -6,7 +6,8 @@ seja sondado uma vez só:
   - UPnP/SSDP (multicast UDP 1900) + descrição XML: roteadores, ONUs, APs, NVRs;
   - MikroTik MNDP (broadcast UDP 5678): placa, versão do RouterOS e identidade;
   - Ubiquiti Discovery (broadcast UDP 10001): modelo, firmware e nome;
-  - portas TCP típicas, testadas só com o aperto de mão TCP (nada é enviado).
+  - portas TCP típicas e as de serviços que o NexoGuard aponta (FTP, SMB, RDP, VNC), testadas só com
+    o aperto de mão TCP (nada é enviado).
 
 Nunca toca em portas industriais (Modbus 502, S7 102, DNP3 20000, IEC 104 2404...): em rede de
 usina elas são do SCADA e ficam de fora de propósito. NOC_CFTV=0 desliga a descoberta inteira
@@ -46,7 +47,9 @@ TIMEOUT_SONDA_S = 2.5
 QUEDA_APOS_S = 180             # equipamento conhecido sem responder por 3 min = fora do ar
 MAX_XML = 64 * 1024
 
-PORTAS = {**cftv.PORTAS, **comunicacao.PORTAS}
+# NexoGuard: serviços que, abertos, são achado de segurança (só o aperto de mão TCP, como as demais)
+PORTAS_GUARD = {21: 'FTP', 445: 'SMB', 3389: 'RDP', 5900: 'VNC'}
+PORTAS = {**cftv.PORTAS, **comunicacao.PORTAS, **PORTAS_GUARD}
 assert not set(PORTAS) & {102, 502, 2404, 20000, 44818, 47808}, 'portas industriais não podem ser sondadas'
 
 _cache = {}                    # mac -> (evidencias, consultado_em)
@@ -211,10 +214,12 @@ def _avaliar(mac, ip, ip_local):
         _sondas.update(onvif=descobrir_onvif(ip_local), ssdp=descobrir_ssdp(ip_local),
                        mndp=descobrir_mndp(ip_local), ubnt=descobrir_ubnt(ip_local), em=agora)
     privado = bool(oui and oui.mac_privado(mac))
+    testar = TESTAR_PORTAS and not privado
     return {
         'marca': _marca(mac),
         # celular e notebook (MAC privado) não são infraestrutura e não precisam ser incomodados
-        'portas': portas_abertas(ip) if TESTAR_PORTAS and not privado else [],
+        'portas': portas_abertas(ip) if testar else [],
+        'portas_testadas': testar,
         'onvif': _sondas['onvif'].get(ip), 'upnp': _sondas['ssdp'].get(ip),
         'mndp': _sondas['mndp'].get(ip), 'ubnt': _sondas['ubnt'].get(ip),
     }
@@ -307,6 +312,10 @@ def anotar(dispositivos, ip_local=None, gateway_ip=None):
                         d['firmware'] = achado['firmware']
                 elif (evidencias.get('upnp') or {}).get('modelo'):
                     d['modelo'] = evidencias['upnp']['modelo']
+                # NexoGuard: a Central aplica as regras; sem teste de portas não manda nada (não é "tudo fechado")
+                if evidencias.get('portas_testadas'):
+                    d['portas_abertas'] = list(evidencias.get('portas') or [])
+                    d['upnp_igd'] = ((evidencias.get('upnp') or {}).get('tipo_upnp') or '').lower() == 'internetgatewaydevice'
             if agora - consultado > VALIDADE_S and mac not in _pendentes:
                 _pendentes.add(mac)
                 _fila.put((mac, ip, ip_local))

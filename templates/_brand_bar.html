@@ -28,6 +28,9 @@
             </div>
         </div>
         {% endif %}
+        {% if _role in ('Administrador Master', 'Operador Master') %}
+        <a href="/guard" class="{{ 'active' if _path.startswith('/guard') }}"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><span>NexoGuard</span></a>
+        {% endif %}
         {% if 'desk' in _menu.acesso %}
         <a href="/desk" class="{{ 'active' if _path.startswith('/desk') }}"><i class="fa-solid fa-headset" aria-hidden="true"></i><span>NexoDesk</span></a>
         {% endif %}
