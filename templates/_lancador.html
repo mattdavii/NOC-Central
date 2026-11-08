@@ -1,0 +1,71 @@
+{#- Abertura do NexoHub: a faixa de comando (saudação, hora e o estado da rede agora) e os atalhos dos aplicativos.
+    Recebe `atalhos`: lista de dicts {rotulo, href (None = indisponível), marca (pulse/guard/report/desk) ou icone (fa-…), nota}
+    e `estado_rede`: lista de dicts {rotulo, valor, classe ('ok'/'atencao'/'critico'/None), destaque (bool)}; pode ser vazia. -#}
+<section class="faixa" aria-labelledby="saudacao">
+    <svg class="faixa-malha" viewBox="0 0 1300 220" preserveAspectRatio="xMaxYMid slice" aria-hidden="true" focusable="false">
+        <g class="malha-linhas">
+            <path d="M560 190L640 120L760 150L860 70L980 130L1110 60L1260 110"/>
+            <path d="M640 120L690 40L860 70L930 200L1110 180L1260 110"/>
+            <path d="M760 150L810 210L930 200L980 130M690 40L790 20L860 70M980 130L1040 25L1110 60"/>
+            <path d="M560 190L600 70L640 120M600 70L690 40M1110 180L1200 210M1260 110L1290 30"/>
+        </g>
+        <g class="malha-nos">
+            <circle cx="560" cy="190" r="3"/><circle cx="600" cy="70" r="3"/><circle cx="690" cy="40" r="3"/>
+            <circle cx="760" cy="150" r="3.5"/><circle cx="790" cy="20" r="2.5"/><circle cx="810" cy="210" r="2.5"/>
+            <circle cx="860" cy="70" r="4"/><circle cx="930" cy="200" r="3"/><circle cx="980" cy="130" r="3.5"/>
+            <circle cx="1040" cy="25" r="3"/><circle cx="1110" cy="60" r="3"/><circle cx="1110" cy="180" r="3"/>
+            <circle cx="1260" cy="110" r="3"/><circle cx="1200" cy="210" r="2.5"/><circle cx="1290" cy="30" r="2.5"/>
+        </g>
+        <circle class="no-central" cx="640" cy="120" r="6"/>
+        <circle class="no-pulso" cx="640" cy="120" r="6"/>
+    </svg>
+    <div class="faixa-conteudo">
+        <div class="faixa-ola">
+            <h1 id="saudacao"><span data-saudacao>Olá</span>, {{ pessoa }}</h1>
+            <p class="faixa-data"><span class="faixa-hora" aria-live="off"><span data-hora>--:--</span><span class="faixa-seg" data-segundos>:--</span></span>
+                <span data-data>&nbsp;</span></p>
+            {% if lancador_nota %}<p class="faixa-nota">{{ lancador_nota }}</p>{% endif %}
+        </div>
+        {% if estado_rede %}
+        <dl class="faixa-status" aria-label="Estado da rede agora">
+            {% for s in estado_rede %}
+            <div class="{{ 'destaque' if s.destaque }} {{ s.classe or '' }}"><dt>{{ s.rotulo }}</dt><dd>{{ s.valor }}</dd></div>
+            {% endfor %}
+        </dl>
+        {% endif %}
+    </div>
+</section>
+
+<nav class="atalhos" aria-label="Aplicativos do NexoHub">
+    {% for a in atalhos %}
+    {% if a.href %}<a class="atalho" href="{{ a.href }}">{% else %}<span class="atalho indisponivel" aria-disabled="true">{% endif %}
+        <span class="atalho-icone" aria-hidden="true">
+            {% if a.marca %}
+            <img class="sym-dark" src="/static/brand/nexo{{ a.marca }}/simbolo-escuro.svg" alt="">
+            <img class="sym-light" src="/static/brand/nexo{{ a.marca }}/simbolo-claro.svg" alt="">
+            {% else %}<i class="fa-solid {{ a.icone }}"></i>{% endif %}
+        </span>
+        <span class="atalho-texto">
+            <span class="atalho-rotulo">{{ a.rotulo }}</span>
+            {% if a.nota %}<span class="atalho-nota">{{ a.nota }}</span>{% endif %}
+        </span>
+        {% if a.href %}<i class="fa-solid fa-chevron-right atalho-seta" aria-hidden="true"></i>{% endif %}
+    {% if a.href %}</a>{% else %}</span>{% endif %}
+    {% endfor %}
+</nav>
+<script>
+    (() => {
+        const hora = document.querySelector('[data-hora]'), seg = document.querySelector('[data-segundos]');
+        const data = document.querySelector('[data-data]'), saud = document.querySelector('[data-saudacao]');
+        function tique() {
+            const agora = new Date(), h = agora.getHours();
+            hora.textContent = agora.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'});
+            seg.textContent = ':' + String(agora.getSeconds()).padStart(2, '0');
+            saud.textContent = h >= 5 && h < 12 ? 'Bom dia' : (h >= 12 && h < 18 ? 'Boa tarde' : 'Boa noite');
+            const texto = agora.toLocaleDateString('pt-BR', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'});
+            data.textContent = texto.charAt(0).toUpperCase() + texto.slice(1);
+        }
+        tique();
+        setInterval(tique, 1000);
+    })();
+</script>

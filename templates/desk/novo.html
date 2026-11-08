@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+{% include 'desk/_head.html' %}
+    <title>NexoHub - Abrir chamado</title>
+</head>
+<body>
+<script src="/static/security.js?v=2.2.0-rc1"></script>
+{% include '_brand_bar.html' %}
+{% set escolhida = (empresas | selectattr('id', 'equalto', empresa_id) | first) if md and empresa_id else none %}
+{% set interno = escolhida and escolhida.master %}
+<main class="page-main">
+    <div class="trilha"><a href="/desk">{{ 'Chamados' if md else 'Meus chamados' }}</a> / Abrir chamado</div>
+    <div class="cabeca faixa-pagina"><div>
+        <h1>{% if interno %}Chamado interno da MD{% elif md %}Abrir chamado em nome de um cliente{% else %}Abrir chamado{% endif %}</h1>
+        <p>{% if md %}Para registrar um pedido que chegou por WhatsApp, telefone ou visita, ou uma tarefa interna da MD.
+           {% else %}Conte o que está acontecendo. A equipe da MD responde por aqui, e você acompanha tudo nesta página.{% endif %}</p>
+    </div></div>
+
+    {% if md and not empresa_id %}
+    <form class="card form" method="get" style="max-width:560px">
+        <div>
+            <label class="rotulo" for="empresa">Para qual empresa?</label>
+            <select class="campo" id="empresa" name="empresa" required>
+                <option value="">Escolha a empresa</option>
+                {% for e in empresas %}<option value="{{ e.id }}">{{ e.nome }}{% if e.master %} (chamado interno da MD){% endif %}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="acoes-form"><button class="btn primario" type="submit">Continuar</button></div>
+    </form>
+    {% else %}
+    {% if ja_aberto %}
+    <div class="faixa aguardando" role="status" style="margin-bottom:16px"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+        <div><strong>Esta queda já tem o <a href="/desk/{{ ja_aberto.numero }}" style="color:var(--link)">chamado #{{ ja_aberto.numero }}</a> ({{ ja_aberto.status_rotulo | lower }}).</strong> Abra outro só se for um problema diferente.</div></div>
+    {% elif previa %}
+    <div class="faixa" role="status" style="margin-bottom:16px"><i class="fa-solid fa-wave-square" aria-hidden="true" style="color:var(--blue); margin-top:3px"></i>
+        <div><strong>Preenchido com o que o NexoPulse detectou.</strong> Revise o texto e o impacto antes de abrir; o chamado fica ligado a esta ocorrência.</div></div>
+    {% endif %}
+    <div class="grade-abrir">
+        <form class="card form" action="/api/v2/desk/chamados" data-desk data-destino="/desk/{numero}" data-ok="Chamado aberto." novalidate>
+            {% if previa.diagnostico_id %}<input type="hidden" name="diagnostico_id" value="{{ previa.diagnostico_id }}">{% endif %}
+            {% if md %}
+            <fieldset class="so-md">
+                <legend>Só a MD vê esta parte</legend>
+                <input type="hidden" name="empresa_id" value="{{ empresa_id }}">
+                <div class="dois">
+                    <div><span class="rotulo">Empresa</span><div>{{ escolhida.nome }} · <a href="/desk/novo" style="color:var(--link)">trocar</a></div></div>
+                    {% if not interno %}
+                    <div><label class="rotulo" for="canal">Por onde o pedido chegou?</label>
+                        <select class="campo" id="canal" name="canal">{% for k, v in canais.items() %}<option value="{{ k }}" {% if k == previa.canal %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+                    {% endif %}
+                </div>
+                <div class="dois">
+                    <div><label class="rotulo" for="solicitante">{% if interno %}Quem pediu <small>opcional</small>{% else %}Quem pediu no cliente{% endif %}</label>
+                        <input class="campo" id="solicitante" name="solicitante" maxlength="120" value="{{ previa.solicitante or '' }}" placeholder="{{ 'Você, se ficar em branco' if interno else 'Nome da pessoa' }}"></div>
+                    <div><label class="rotulo" for="prioridade">Prioridade <small>se não escolher, vem do impacto</small></label>
+                        <select class="campo" id="prioridade" name="prioridade"><option value="">Pelo impacto</option>{% for k, v in prioridades.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+                </div>
+            </fieldset>
+            {% endif %}
+
+            <fieldset>
+                <legend class="rotulo">Sobre o que é?</legend>
+                <div class="opcoes">
+                    {% for k, (rotulo, icone) in categorias.items() %}
+                    <label class="opcao"><input type="radio" name="categoria" value="{{ k }}" {% if k == (previa.categoria or 'rede') %}checked{% endif %}><i class="fa-solid {{ icone }}" aria-hidden="true"></i> {{ rotulo }}</label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend class="rotulo">Qual o impacto agora?</legend>
+                <div class="impactos">
+                    {% for k, i in impactos.items() %}
+                    <label class="impacto {{ k }}"><input type="radio" name="impacto" value="{{ k }}" {% if k == (previa.impacto or 'atrapalha') %}checked{% endif %}><b>{{ i.rotulo }}</b><span>{{ i.descricao }}</span></label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+
+            <div class="dois">
+                <div><label class="rotulo" for="titulo">Título</label>
+                    <input class="campo" id="titulo" name="titulo" maxlength="140" required value="{{ previa.titulo or '' }}" placeholder="Ex.: Internet caindo no fim da tarde"></div>
+                <div><label class="rotulo" for="local">Local <small>opcional</small></label>
+                    <select class="campo" id="local" name="sensor_mac" {% if not locais %}disabled{% endif %}>
+                        <option value="">{{ 'Não se aplica' if locais else 'Nenhum local monitorado' }}</option>
+                        {% for l in locais %}<option value="{{ l.mac_id }}" {% if l.mac_id == previa.sensor_mac %}selected{% endif %}>{{ l.nome_local or l.mac_id }}</option>{% endfor %}
+                    </select></div>
+            </div>
+
+            <div><label class="rotulo" for="descricao">O que está acontecendo?</label>
+                <textarea class="campo" id="descricao" name="descricao" required maxlength="20000"{% if previa %} rows="9"{% endif %}
+                          placeholder="Desde quando, em que horário, o que você já tentou e quem está sendo afetado.">{{ previa.descricao or '' }}</textarea></div>
+
+            <div>
+                <span class="rotulo" id="r-arquivos">Fotos e arquivos <small>até {{ max_arquivos }} arquivos de {{ max_mb }} MB</small></span>
+                <div class="soltar" data-max="{{ max_arquivos }}" data-max-mb="{{ max_mb }}">
+                    <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
+                    <span>Arraste aqui ou <label for="arquivos">escolha os arquivos</label></span>
+                    <input type="file" id="arquivos" name="arquivos" multiple aria-labelledby="r-arquivos" accept="{% for t in tipos %}.{{ t }}{{ ',' if not loop.last }}{% endfor %}">
+                    <div class="escolhidos"></div>
+                </div>
+            </div>
+
+            <div>
+                <div class="acoes-form"><a class="btn" href="/desk">Cancelar</a><button class="btn primario" type="submit"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Abrir chamado</button></div>
+                <p class="msg-form" role="status"></p>
+            </div>
+        </form>
+
+        <aside class="lateral">
+            {% if contrato and not interno %}
+            <div class="card aviso-lateral prazo-contrato">
+                <h3><i class="fa-solid fa-stopwatch" aria-hidden="true"></i> {{ 'Pelo contrato desta empresa' if md else 'Pelo seu contrato' }}</h3>
+                <table>
+                    <thead><tr><th>Impacto</th><th>1ª resposta</th><th>Solução</th></tr></thead>
+                    <tbody>
+                    {% for k, i in impactos.items() %}
+                    {% set h = contrato.prazos[i.prioridade] %}
+                    <tr data-impacto="{{ k }}"><td>{{ i.rotulo }}</td><td>até {{ '%g' % h[0] }} h</td><td>até {{ '%g' % h[1] }} h</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                <p>{{ 'Horas úteis: segunda a sexta, das 8h às 18h, sem feriados nacionais.' if contrato.horario == 'comercial' else 'O prazo corre 24 horas, todos os dias.' }}
+                   Se a MD pedir uma informação, o prazo para até {{ 'o cliente responder' if md else 'você responder' }}.{% if md %} A prioridade que você escolher vale mais que o impacto.{% endif %}</p>
+            </div>
+            {% endif %}
+            <div class="card aviso-lateral">
+                <h3><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Como funciona</h3>
+                <p>A MD recebe o chamado na hora, define a prioridade e responde por aqui. Você vê cada resposta nesta página.</p>
+                <p>Se a MD pedir uma informação, é só responder no próprio chamado.</p>
+            </div>
+            {% if not md %}
+            <div class="card aviso-lateral"><b>Parou tudo?</b> Abra o chamado como "Parou tudo" e, se quiser, ligue também para a MD: {{ telefone_md }}.</div>
+            {% endif %}
+        </aside>
+    </div>
+    {% endif %}
+</main>
+<script src="/static/desk.js?v=3"></script>
+<script>
+    // Destaca, na tabela do contrato, a linha do impacto escolhido.
+    (function () {
+        const linhas = document.querySelectorAll('.prazo-contrato tr[data-impacto]');
+        const marcar = () => { const v = (document.querySelector('input[name=impacto]:checked') || {}).value; linhas.forEach(l => l.classList.toggle('sel', l.dataset.impacto === v)); };
+        document.querySelectorAll('input[name=impacto]').forEach(i => i.addEventListener('change', marcar));
+        marcar();
+    })();
+</script>
+</body>
+</html>

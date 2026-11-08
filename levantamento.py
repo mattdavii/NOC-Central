@@ -1,0 +1,308 @@
+"""Levantamento de rede: o que um sensor enxerga, exportado em JSON (para IA e integrações) e XLSX.
+
+O JSON é pensado para ser entregue a uma IA: cada informação inferida diz de onde veio e com que
+confiança, e o próprio arquivo explica os campos ("sobre", "glossario", "limitacoes").
+"""
+import csv
+import io
+import json
+import unicodedata
+from collections import Counter
+from datetime import datetime, timezone
+
+import oui
+
+FORMATO = 'nexopulse.levantamento-rede'
+VERSAO_FORMATO = 1
+
+FONTES_NOME = {'dns': 'DNS reverso', 'netbios': 'NetBIOS', 'mdns': 'mDNS'}
+FONTES_MARCA = {'ieee': 'Registro IEEE (prefixo do MAC)', 'sensor': 'Informado pelo sensor', 'mac_privado': 'MAC privado'}
+CONFIANCA_MARCA = {'ieee': 'alta', 'sensor': 'media', 'mac_privado': 'nenhuma'}
+STATUS = {'online': 'Responde a ping', 'sem_icmp': 'Presente na rede, não responde a ping',
+          'desconhecido': 'Visto recentemente, sem confirmação', 'offline': 'Fora do ar'}
+
+SOBRE = ('Levantamento dos equipamentos que o sensor NexoPulse enxerga na rede local dele (camada 2), '
+         'gerado pela plataforma NexoPulse da MD Soluções. Cada dispositivo traz IP, MAC, a marca inferida '
+         'pelo prefixo do MAC (registro público do IEEE) e o nome anunciado na rede, sempre com a fonte. '
+         'Campos com valor null não foram identificados; não os trate como ausência do equipamento.')
+LIMITACOES = [
+    'Equipamentos de outras VLANs só aparecem se a rede foi cadastrada como adicional no sensor, e '
+    'apenas os que respondem a ping; deles não se vê o MAC (rede roteada) e, portanto, nem a marca.',
+    'A marca vem do prefixo do MAC: indica quem fabricou a placa de rede, que pode ser um fornecedor '
+    'de módulos (ex.: Foxconn, AzureWave, Espressif) e não a marca do produto final.',
+    'Celulares e notebooks atuais usam MAC privado (aleatório) por rede; nesses casos a marca não pode '
+    'ser inferida pelo MAC.',
+    'O nome vem do que o próprio equipamento ou o roteador anunciam (DNS reverso, NetBIOS, mDNS) e pode '
+    'ter sido definido pelo usuário do equipamento.',
+    'Equipamentos desligados ou que não falaram na rede durante a varredura não aparecem.',
+    'Modelo, firmware e tipo vêm do que o equipamento anuncia (ONVIF, UPnP, MikroTik MNDP, descoberta '
+    'da Ubiquiti); quem não anuncia fica sem modelo. O tipo também usa portas típicas, a marca e o papel '
+    'de gateway, por isso traz o nível de confiança e as evidências usadas.',
+    'Switches não gerenciáveis e equipamentos sem IP na rede do sensor não aparecem: não falam IP.',
+]
+GLOSSARIO = {
+    'status': STATUS,
+    'mac_privado': 'MAC com o bit "administrado localmente" ligado: gerado pelo sistema, não de fábrica.',
+    'papel': {'gateway': 'Gateway padrão da rede do sensor', 'sensor': 'O próprio sensor NexoPulse'},
+    'estado_vizinho': 'Estado da entrada na tabela de vizinhos do sensor (REACHABLE, STALE, DELAY...).',
+    'tipo': 'Classe do equipamento quando identificada: CFTV (Câmera IP, NVR/DVR, Equipamento de CFTV) ou '
+            'comunicação (Roteador/Firewall, Switch, Access Point/Rádio, ONU/ONT, Starlink, Roteador 4G/LTE, '
+            'Gateway industrial, Equipamento de comunicação).',
+    'cftv': 'Detalhes da identificação de CFTV: confiança (alta, media, baixa), evidências e portas abertas.',
+    'comunicacao': 'Detalhes da identificação de equipamento de comunicação: confiança, evidências, portas, '
+                   'firmware e riscos observados (ex.: Telnet aberto).',
+}
+
+
+def _cftv(valor):
+    """Na Central o campo chega do banco como texto JSON; no Edge, como dicionário."""
+    if isinstance(valor, str):
+        try:
+            valor = json.loads(valor)
+        except ValueError:
+            return None
+    return valor if isinstance(valor, dict) else None
+
+
+def _agora():
+    return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def _chave_ip(ip):
+    try:
+        return (0, tuple(int(p) for p in str(ip).split('.')))
+    except ValueError:
+        return (1, str(ip))
+
+
+def montar(sensor, dispositivos, versao_central='', ocultar_nomes=False, gerado_por=None):
+    """Dicionário do levantamento a partir da linha do sensor e das linhas de dispositivos.
+
+    Usado pela Central (dados do banco) e pelo painel local do Edge (dados da última varredura);
+    gerado_por diz qual dos dois montou o arquivo.
+    """
+    sensor = dict(sensor)
+    ip_gw, ip_sensor = sensor.get('ip_gateway'), sensor.get('ip_sensor')
+    itens = []
+    vistos = set()
+    for linha in sorted((dict(d) for d in dispositivos), key=lambda d: _chave_ip(d.get('ip'))):
+        fonte_marca = linha.get('fabricante_fonte')
+        apelido = linha.get('nome_custom')
+        if apelido in ('Desconhecido', 'Gateway / Roteador'):
+            apelido = None
+        hostname = linha.get('hostname')
+        papel = 'gateway' if linha.get('ip') == ip_gw else ('sensor' if linha.get('ip') == ip_sensor else None)
+        vistos.add(linha.get('ip'))
+        cftv = _cftv(linha.get('cftv'))
+        com = _cftv(linha.get('comunicacao'))
+        ident = cftv or com or {}
+        itens.append({
+            'ip': linha.get('ip'),
+            'mac': linha.get('mac'),
+            'apelido': None if ocultar_nomes else apelido,
+            'nome': {'valor': None if ocultar_nomes else hostname,
+                     'fonte': FONTES_NOME.get(linha.get('hostname_fonte')) if hostname and not ocultar_nomes else None},
+            'marca': {'valor': linha.get('fabricante') if fonte_marca in ('ieee', 'sensor') else None,
+                      'razao_social': linha.get('fabricante_registro'),
+                      'fonte': FONTES_MARCA.get(fonte_marca),
+                      'confianca': CONFIANCA_MARCA.get(fonte_marca)},
+            'mac_privado': fonte_marca == 'mac_privado',
+            'papel': papel,
+            'status': linha.get('status'),
+            'latencia_ms': linha.get('latencia') if (linha.get('latencia') or 0) > 0 else None,
+            'estado_vizinho': linha.get('neighbor_state') or None,
+            'visto_em': linha.get('visto_em'),
+            'tipo': linha.get('tipo_equipamento') or ident.get('tipo'),
+            'modelo': linha.get('modelo') or ident.get('modelo'),
+            'firmware': linha.get('firmware') or ident.get('firmware'),
+            'cftv': cftv,
+            'comunicacao': com,
+            # Equipamento de outra VLAN, alcançado por roteamento: sem MAC visível.
+            'rede_origem': linha.get('rede_origem'),
+        })
+    if ip_sensor and ip_sensor not in vistos:
+        # O sensor não aparece na própria tabela ARP; entra para o inventário ficar completo.
+        mac = oui.normalizar(sensor.get('interface_mac'))
+        registro, fonte = oui.fabricante(mac) if mac else (None, None)
+        itens.append({
+            'ip': ip_sensor, 'mac': mac,
+            'apelido': None if ocultar_nomes else sensor.get('nome_local'),
+            'nome': {'valor': None, 'fonte': None},
+            'marca': {'valor': oui.marca(registro) if fonte == 'ieee' else None,
+                      'razao_social': registro if fonte == 'ieee' else None,
+                      'fonte': FONTES_MARCA.get(fonte), 'confianca': CONFIANCA_MARCA.get(fonte)},
+            'mac_privado': fonte == 'mac_privado', 'papel': 'sensor', 'status': 'online',
+            'latencia_ms': None, 'estado_vizinho': None, 'visto_em': None,
+            'tipo': 'Sensor NexoPulse', 'modelo': None, 'firmware': None, 'cftv': None, 'comunicacao': None,
+            'rede_origem': None,
+        })
+        itens.sort(key=lambda d: _chave_ip(d['ip']))
+
+    marcas = Counter(d['marca']['valor'] or ('MAC privado' if d['mac_privado'] else 'Não identificada') for d in itens)
+    return {
+        'formato': FORMATO,
+        'versao_formato': VERSAO_FORMATO,
+        'gerado_em': _agora(),
+        'gerado_por': gerado_por or f'NexoPulse Central {versao_central}'.strip(),
+        'sobre': SOBRE,
+        'nomes_ocultos': bool(ocultar_nomes),
+        'sensor': {
+            'nome': sensor.get('nome_local'),
+            'id': sensor.get('mac_id'),
+            'cliente': sensor.get('cliente_nome'),
+            'ip': ip_sensor,
+            'gateway': ip_gw,
+            'interface': sensor.get('interface_nome'),
+            'provedor': sensor.get('provedor'),
+            'versao_agente': sensor.get('agent_version'),
+            'ultimo_contato': str(sensor['last_seen']) if sensor.get('last_seen') else None,
+        },
+        'escopo': {
+            'rede': sensor.get('rede_cidr'),
+            'redes_adicionais': sorted({d['rede_origem'] for d in itens if d.get('rede_origem')}),
+            'faixa_varrida': sensor.get('scan_rede') or sensor.get('rede_cidr'),
+            'varredura_limitada': bool(sensor.get('scan_limitado')),
+            'metodo': ['Tabela de vizinhos (ARP) do sensor após varredura por ping',
+                       'Marca pelo prefixo do MAC (registro IEEE MA-L, MA-M e MA-S)',
+                       'Nome por DNS reverso, NetBIOS e mDNS'],
+            'limitacoes': LIMITACOES,
+        },
+        'resumo': {
+            'total': len(itens),
+            'por_status': dict(Counter(d['status'] or 'desconhecido' for d in itens)),
+            'por_marca': dict(marcas.most_common()),
+            'com_nome': sum(1 for d in itens if d['nome']['valor'] or d['apelido']),
+            'mac_privado': sum(1 for d in itens if d['mac_privado']),
+            'cftv': sum(1 for d in itens if d['cftv']),
+            'comunicacao': sum(1 for d in itens if d['comunicacao']),
+            'por_tipo': dict(Counter(d['tipo'] for d in itens if d['tipo']).most_common()),
+            'com_modelo': sum(1 for d in itens if d['modelo']),
+        },
+        'dispositivos': itens,
+        'glossario': GLOSSARIO,
+    }
+
+
+# ---------------------------------------------------------------- XLSX
+COLUNAS = (('IP', 16), ('MAC', 19), ('Apelido', 24), ('Nome na rede', 28), ('Fonte do nome', 14),
+           ('Marca', 20), ('Fabricante (registro IEEE)', 38), ('MAC privado', 12), ('Papel', 10),
+           ('Status', 34), ('Latência (ms)', 13), ('Estado L2', 12), ('Visto em (UTC)', 21),
+           ('Categoria', 14), ('Tipo', 22), ('Modelo', 26), ('Firmware', 24), ('Confiança', 11),
+           ('Evidências', 60), ('Portas', 30), ('Riscos', 40), ('Rede de origem', 18))
+
+
+def _linha_planilha(d):
+    return [d['ip'], d['mac'], d['apelido'], d['nome']['valor'], d['nome']['fonte'], d['marca']['valor'],
+            d['marca']['razao_social'], 'Sim' if d['mac_privado'] else 'Não',
+            {'gateway': 'Gateway', 'sensor': 'Sensor'}.get(d['papel'], ''), STATUS.get(d['status'], d['status']),
+            d['latencia_ms'], d['estado_vizinho'], d['visto_em'],
+            'CFTV' if d['cftv'] else 'Comunicação' if d.get('comunicacao') else None, d['tipo'], d['modelo'],
+            d.get('firmware'), ident(d).get('confianca'), '; '.join(ident(d).get('evidencias') or []) or None,
+            ', '.join(ident(d).get('portas') or []) or None, '; '.join(ident(d).get('riscos') or []) or None,
+            d.get('rede_origem') or 'Rede do sensor']
+
+
+def ident(d):
+    """A identificação do dispositivo, seja de CFTV ou de comunicação ({} se nenhuma)."""
+    return d.get('cftv') or d.get('comunicacao') or {}
+
+
+def _texto(celula, valor):
+    """Grava texto sempre como texto: um nome de equipamento "=..." não pode virar fórmula."""
+    celula.value = valor
+    if isinstance(valor, str):
+        celula.data_type = 's'
+
+
+def para_xlsx(dados):
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    cabecalho = Font(bold=True, color='FFFFFF')
+    fundo = PatternFill('solid', fgColor='0B1B32')
+    livro = Workbook()
+
+    aba = livro.active
+    aba.title = 'Dispositivos'
+    for col, (titulo, largura) in enumerate(COLUNAS, start=1):
+        celula = aba.cell(row=1, column=col)
+        _texto(celula, titulo)
+        celula.font, celula.fill = cabecalho, fundo
+        aba.column_dimensions[get_column_letter(col)].width = largura
+    for lin, d in enumerate(dados['dispositivos'], start=2):
+        for col, valor in enumerate(_linha_planilha(d), start=1):
+            _texto(aba.cell(row=lin, column=col), valor)
+    aba.freeze_panes = 'A2'
+    aba.auto_filter.ref = f'A1:{get_column_letter(len(COLUNAS))}{max(1, len(dados["dispositivos"]) + 1)}'
+
+    resumo = livro.create_sheet('Resumo')
+    s, e, r = dados['sensor'], dados['escopo'], dados['resumo']
+    linhas = [('Levantamento de rede', None), ('Gerado em (UTC)', dados['gerado_em']), ('Sensor', s['nome']),
+              ('Cliente', s['cliente']), ('IP do sensor', s['ip']), ('Gateway', s['gateway']), ('Rede', e['rede']),
+              ('Faixa varrida', e['faixa_varrida']), ('Provedor', s['provedor']), ('Total de dispositivos', r['total']),
+              ('Com nome identificado', r['com_nome']), ('Com modelo identificado', r['com_modelo']),
+              ('Equipamentos de CFTV', r['cftv']), ('Equipamentos de comunicação', r['comunicacao']),
+              ('Com MAC privado', r['mac_privado']), (None, None),
+              ('Status', 'Quantidade')]
+    linhas += [(STATUS.get(k, k), v) for k, v in r['por_status'].items()]
+    if r['por_tipo']:
+        linhas += [(None, None), ('Tipo', 'Quantidade')] + list(r['por_tipo'].items())
+    linhas += [(None, None), ('Marca', 'Quantidade')] + list(r['por_marca'].items())
+    for lin, (rotulo, valor) in enumerate(linhas, start=1):
+        _texto(resumo.cell(row=lin, column=1), rotulo)
+        _texto(resumo.cell(row=lin, column=2), valor)
+        if rotulo in ('Levantamento de rede', 'Status', 'Tipo', 'Marca'):
+            for col in (1, 2):
+                resumo.cell(row=lin, column=col).font = cabecalho
+                resumo.cell(row=lin, column=col).fill = fundo
+    resumo.column_dimensions['A'].width, resumo.column_dimensions['B'].width = 32, 40
+
+    if dados.get('diagrama'):
+        diag = livro.create_sheet('Diagrama')
+        titulos = (('Equipamento', 34), ('Endereço', 18), ('Tipo', 22), ('Liga em', 34), ('Meio', 16), ('Origem', 12))
+        for col, (titulo, largura) in enumerate(titulos, start=1):
+            celula = diag.cell(row=1, column=col)
+            _texto(celula, titulo)
+            celula.font, celula.fill = cabecalho, fundo
+            diag.column_dimensions[get_column_letter(col)].width = largura
+        for lin, item in enumerate(dados['diagrama'], start=2):
+            valores = ('    ' * max(0, item['nivel'] - 1) + item['equipamento'], item['endereco'], item['tipo'],
+                       item['liga_em'], item['meio'], item['origem'])
+            for col, valor in enumerate(valores, start=1):
+                _texto(diag.cell(row=lin, column=col), valor)
+        diag.freeze_panes = 'A2'
+
+    sobre = livro.create_sheet('Sobre')
+    textos = [dados['sobre'], ''] + ['Limitações:'] + [f'• {t}' for t in e['limitacoes']]
+    for lin, texto in enumerate(textos, start=1):
+        celula = sobre.cell(row=lin, column=1)
+        _texto(celula, texto)
+        celula.alignment = Alignment(wrap_text=True, vertical='top')
+    sobre.column_dimensions['A'].width = 110
+
+    saida = io.BytesIO()
+    livro.save(saida)
+    return saida.getvalue()
+
+
+def para_csv(dados):
+    """Planilha simples (separador ';', UTF-8 com BOM) que o Excel em português abre direto."""
+    saida = io.StringIO()
+    escritor = csv.writer(saida, delimiter=';', lineterminator='\r\n')
+    escritor.writerow([titulo for titulo, _ in COLUNAS])
+    for d in dados['dispositivos']:
+        linha = []
+        for valor in _linha_planilha(d):
+            texto = '' if valor is None else str(valor)
+            # Mesmo cuidado do XLSX: texto que começa com =, +, - ou @ não vira fórmula.
+            linha.append("'" + texto if texto[:1] in ('=', '+', '-', '@') else texto)
+        escritor.writerow(linha)
+    return ('\ufeff' + saida.getvalue()).encode('utf-8')
+
+
+def nome_arquivo(dados, extensao):
+    # Só ASCII no cabeçalho HTTP: acentos viram a letra sem acento, o resto vira hífen.
+    nome = unicodedata.normalize('NFKD', dados['sensor']['nome'] or 'sensor').encode('ascii', 'ignore').decode()
+    base = ''.join(c if c.isalnum() or c in '-_' else '-' for c in nome)
+    return f'levantamento-{base.strip("-")[:40] or "sensor"}-{dados["gerado_em"][:10]}.{extensao}'

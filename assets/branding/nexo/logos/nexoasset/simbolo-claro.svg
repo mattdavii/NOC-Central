@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="160" height="160" viewBox="0 0 160 160" role="img" aria-label="Símbolo nexoasset">
+<title>Símbolo nexoasset</title>
+<defs><linearGradient id="nexoGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#08ABD0"/><stop offset="56%" stop-color="#05B7BE"/><stop offset="100%" stop-color="#04B89C"/></linearGradient><linearGradient id="nexoGradText" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#08ABD0"/><stop offset="100%" stop-color="#04B89C"/></linearGradient></defs>
+<path d="M80 12 L138 46 L138 114 L80 148 L22 114 L22 46 Z" fill="none" stroke="url(#nexoGrad)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<g stroke="url(#nexoGrad)" stroke-width="5.7" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M80 46 L109 62 V96 L80 114 L51 96 V62 Z M51 62 L80 79 L109 62 M80 79 V114"/></g>
+<circle cx="80" cy="12" r="9.1" fill="#08ABD0"/>
+<circle cx="138" cy="46" r="9.1" fill="#0B1B32"/>
+<circle cx="138" cy="114" r="9.1" fill="#04B89C"/>
+<circle cx="80" cy="148" r="9.1" fill="#04B89C"/>
+<circle cx="22" cy="114" r="9.1" fill="#0B1B32"/>
+<circle cx="22" cy="46" r="9.1" fill="#0B1B32"/>
+</svg>

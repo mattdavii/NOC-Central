@@ -1,0 +1,23 @@
+# Banco da plataforma NexoPulse: PostgreSQL 16 + TimescaleDB.
+# A porta fica presa ao 127.0.0.1: nada fora desta máquina alcança o banco.
+services:
+  db:
+    image: timescale/timescaledb:2.21.3-pg16
+    container_name: nexopulse-db
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: America/Sao_Paulo
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - nexopulse-pgdata:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  nexopulse-pgdata:

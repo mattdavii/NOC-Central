@@ -5,114 +5,17 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#082E56">
-    <link rel="icon" href="/static/favicon.png" type="image/png">
-    <title>NexoPulse Central - {{ sensor.nome_local }}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="apple-touch-icon" href="/static/brand/nexopulse/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.json?v=nexopulse-2">
+    <title>NexoPulse - {{ sensor.nome_local }}</title>
+    <link rel="stylesheet" href="/static/fontes/fontes.css?v=1">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
-    <style>
-
-        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: var(--bg-base); color: var(--text-main); }
-        .navbar { background: var(--overlay); backdrop-filter: blur(10px); padding: 15px 30px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100;}
-
-        .container { padding: 30px; max-width: 1600px; margin: 0 auto; display: block !important; }
-
-        .painel-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; margin-bottom: 25px; }
-        .painel-grid-duo { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; margin-bottom: 25px; }
-
-        .card { background: linear-gradient(145deg, var(--bg-card) 0%, var(--bg-base) 100%); border: 1px solid var(--border); border-radius: 12px; padding: 22px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin: 0; justify-content: space-between; }
-        .card h3 { margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 15px; display: flex; align-items: center; justify-content: space-between; font-size: 1.15em;}
-
-        .card-full { grid-column: 1 / -1; }
-        .card-half { grid-column: span 2; }
-
-        .card-hw { border-top: 4px solid var(--blue); }
-        .card-net { border-top: 4px solid var(--brand-green); }
-        .card-speed { border-top: 4px solid var(--purple); }
-        .card-hist-grafico { border-top: 4px solid var(--blue); padding-bottom: 10px;}
-        .card-radar { border-top: 4px solid var(--blue); }
-        .card-global { border-top: 4px solid var(--brand-cyan); }
-        .card-custom { border-top: 4px solid var(--purple); justify-content: flex-start; }
-        .card-energia { border-top: 4px solid var(--yellow); justify-content: flex-start; }
-        .card-hist { border-top: 4px solid var(--text-muted); }
-        .card-calib { border-top: 4px solid var(--yellow); }
-        .card-trace { border-top: 4px solid var(--purple); }
-
-        .data-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px dashed var(--bg-input); padding-bottom: 8px;}
-        .highlight { font-family: 'JetBrains Mono', monospace; font-size: 2.2em; font-weight: bold; }
-
-        .status-pill { padding: 5px 12px; border-radius: 6px; font-weight: bold; font-size: 0.75em; letter-spacing: 0.5px; }
-        .pill-ok { background: color-mix(in srgb, var(--status-ok) 10%, transparent); color: var(--status-ok); border: 1px solid var(--status-ok); }
-        .pill-warn { background: color-mix(in srgb, var(--status-warn) 10%, transparent); color: var(--status-warn); border: 1px solid var(--status-warn); }
-        .pill-unknown { background: transparent; color: var(--status-unknown); border: 1px dashed var(--status-unknown); }
-        .pill-fail { background: color-mix(in srgb, var(--status-crit) 10%, transparent); color: var(--status-crit); border: 1px solid var(--status-crit); animation: blink 1s infinite; }
-        @keyframes blink { 50% { opacity: 0.5; } }
-
-        .progress-bg { background: var(--bg-input); border: 1px solid var(--bg-input); border-radius: 10px; height: 12px; width: 100%; margin-top: 6px; overflow: hidden;}
-        .progress-fill { background: var(--blue); height: 100%; width: 0%; transition: 0.5s; }
-
-        .speed-box { text-align: center; background: var(--bg-input); padding: 18px; border-radius: 8px; width: 45%; border: 1px solid var(--bg-input); box-shadow: inset 0 0 10px rgba(0,0,0,0.5);}
-        .speed-val { font-family: 'JetBrains Mono', monospace; font-size: 2.5em; font-weight: bold; margin-top: 8px; }
-
-        .botoes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-top: 15px; }
-        .btn-acao { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 15px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; font-size: 0.9em; text-transform: uppercase; border: none; outline: none; }
-        .btn-acao:hover { box-shadow: 0 0 15px inset; filter: brightness(1.2); }
-
-        .global-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-top: 10px;}
-        .g-card { background: var(--bg-input); border: 1px solid var(--bg-input); border-radius: 8px; padding: 15px; text-align: center; transition: 0.3s;}
-        .g-card.fail { border-color: var(--status-crit); }
-        .g-card.unknown { border-style: dashed; border-color: var(--status-unknown); }
-        .g-card i { font-size: 1.5em; color: var(--text-muted); margin-bottom: 10px; display: block;}
-        .g-card .ms { font-family: 'JetBrains Mono', monospace; font-size: 1.4em; font-weight: bold; margin-top: 5px;}
-
-        .topology-box { display: flex; flex-direction: column; align-items: center; justify-content: center; flex-grow: 1; background: var(--bg-input); padding: 30px; border-radius: 8px; border: 1px solid var(--bg-input); overflow-x: auto; min-height: 300px;}
-        .t-card { background: var(--bg-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border); width: 170px; text-align: center; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.4); transition: 0.2s;}
-        .t-card:hover { transform: translateY(-3px); border-color: var(--blue); }
-        .t-card.offline { border-color: var(--status-crit); opacity: 0.8; }
-        .t-ip { font-family: 'JetBrains Mono', monospace; color: var(--green); font-weight: bold; font-size: 1.05em; }
-        .t-mac { font-family: 'JetBrains Mono', monospace; font-size: 0.7em; color: var(--text-muted); margin: 5px 0;}
-        .t-name { font-size: 0.85em; color: var(--blue); font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 6px;}
-        .t-name button { background:none; border:none; color: var(--yellow); cursor:pointer; font-size: 1.1em; padding: 0; transition: 0.2s;}
-
-        .t-gateway { border-top: 4px solid var(--brand-green); }
-        .t-sensor { border-top: 4px solid var(--purple); }
-        .t-device { border-top: 4px solid var(--blue); }
-        .t-line-v { width: 3px; height: 25px; background: var(--border); }
-        .t-line-h { height: 3px; background: var(--border); position: relative;}
-
-        @keyframes pulseWAN { 0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px var(--blue)); } 50% { transform: scale(1.05); filter: drop-shadow(0 0 20px var(--blue)); } }
-        @keyframes pulseWANError { 0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px var(--status-crit)); } 50% { transform: scale(1.15); filter: drop-shadow(0 0 30px var(--status-crit)); } }
-        .wan-online { color: var(--blue); animation: pulseWAN 3s infinite; }
-        .wan-offline { color: var(--status-crit); animation: pulseWANError 0.7s infinite; }
-
-        input { width: 100%; padding: 10px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-main); border-radius: 6px; box-sizing: border-box; outline: none; transition: 0.2s;}
-        input:focus { border-color: var(--blue); }
-        button.action-btn { cursor: pointer; padding: 10px 15px; border: none; border-radius: 6px; font-weight: bold; color: var(--bg-base); transition: 0.2s;}
-        button.action-btn:hover { filter: brightness(1.2); }
-
-        #network-topology { width: 100%; height: 350px; background: radial-gradient(circle, var(--bg-card) 0%, var(--bg-base) 100%); border-radius: 8px; border: 1px solid var(--bg-input); margin-top: 10px; outline: none;}
-        .vis-network:focus { outline: none; }
-        .sla-box { display: flex; align-items: center; justify-content: space-between; background: color-mix(in srgb, var(--status-ok) 5%, transparent); border: 1px solid var(--green); padding: 15px 25px; border-radius: 8px; margin-top: 15px;}
-        .sla-text { font-size: 0.9em; color: var(--text-muted); }
-        .sla-val { font-family: 'JetBrains Mono'; font-size: 2em; color: var(--green); font-weight: bold;}
-
-        /* ⚡ MODAL GERAL (POP-UP) */
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.85); backdrop-filter: blur(8px); }
-        .modal-content { background-color: var(--bg-card); margin: 2% auto; padding: 20px; border: 1px solid var(--border); width: 95%; height: 90vh; border-radius: 12px; display: flex; flex-direction: column; box-shadow: 0 0 30px rgba(0,0,0,0.8);}
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px;}
-        .close-modal { color: var(--red); font-size: 28px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        .close-modal:hover { transform: scale(1.2); }
-        #network-modal-canvas { flex-grow: 1; width: 100%; min-height: 70vh; background: radial-gradient(circle, var(--bg-card) 0%, var(--bg-base) 100%); border-radius: 8px; border: 1px solid var(--bg-input); outline: none; }
-
-        /* ⚡ MENU FLUTUANTE DE AÇÕES DO NÓ */
-        #node-menu { display: none; position: fixed; background: var(--bg-card); border: 1px solid var(--blue); padding: 15px; border-radius: 8px; box-shadow: 0 5px 30px rgba(0,0,0,0.9); z-index: 9999; min-width: 200px;}
-        #node-menu h4 { margin: 0 0 10px 0; color: var(--text-main); font-size: 1em; border-bottom: 1px dashed var(--border); padding-bottom: 5px; }
-        .node-btn { display: block; width: 100%; text-align: left; background: var(--bg-input); border: none; color: var(--text-main); padding: 8px 12px; margin-bottom: 5px; border-radius: 4px; cursor: pointer; transition: 0.2s; font-size: 0.85em;}
-        .node-btn:hover { background: var(--blue); color: var(--bg-base); font-weight: bold; }
-        .node-btn.btn-red:hover { background: var(--red); }
-    </style>
-<link rel="stylesheet" href="/static/product.css?v=nexopulse-2">
+    <link rel="stylesheet" href="/static/sensor.css?v=sensor-6">
+<link rel="stylesheet" href="/static/product.css?v=nexopulse-6">
 <script src="/static/brand.js?v=nexopulse-2"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -120,24 +23,24 @@
 <body>
 {% include '_brand_bar.html' %}
 
-    <nav class="navbar">
+    <nav class="navbar faixa-pagina">
         <div style="display: flex; align-items: center; gap: 15px;">
-            <button onclick="window.history.back()" class="action-btn" style="background: var(--border); color: var(--text-main); font-size: 0.9em; padding: 8px 12px;"><i class="fa-solid fa-arrow-left"></i> Voltar</button>
+            <a href="/pulse" class="back-link" title="Voltar à Operação"><i class="fa-solid fa-arrow-left"></i> Operação</a>
             <div style="font-size: 1.3em; font-weight: bold; color: var(--blue); display: flex; align-items: center;">
                 <i class="fa-solid fa-server" style="margin-right: 10px;"></i> {{ sensor.nome_local }}
                 <span style="font-size: 0.6em; color: var(--text-muted); margin-left: 12px; font-weight: normal; font-family: 'JetBrains Mono', monospace; border-left: 1px solid var(--border); padding-left: 12px;">MAC: {{ sensor.mac_id }}</span>
                 <span id="sensor-os" style="font-size: 0.6em; color: var(--text-muted); margin-left: 12px; font-weight: normal; font-family: 'JetBrains Mono', monospace; border-left: 1px solid var(--border); padding-left: 12px;" title="Arquitetura: {{ sensor.so_arquitetura or 'Não informada' }}">SO: {{ sensor.so_nome or 'Não informado' }}{% if sensor.so_versao %} {{ sensor.so_versao }}{% endif %}</span>
             </div>
         </div>
-        <div style="font-size: 0.9em; color: var(--text-muted);"><i class="fa-solid fa-wifi"></i> Acesso Local: <strong style="color: var(--blue);" id="access-ip">--</strong>:10000</div>
+        <div style="font-size: 0.9em; color: var(--text-muted);" title="Abre só de dentro da rede do site; entre com o usuário e a senha do painel local"><i class="fa-solid fa-wifi"></i> Acesso Local: <a id="access-link" href="#" target="_blank" rel="noopener noreferrer" style="color: var(--blue); font-weight: bold; text-decoration: none;"><span id="access-ip">--</span>:10000</a></div>
     </nav>
 
     <div class="container">
-        <nav class="section-nav" aria-label="Seções do sensor"><a href="#host">Host</a><a href="#rede-local">Rede Local</a><a href="#wan">WAN</a><a href="#dispositivos">Dispositivos</a><a href="#incidentes">Incidentes</a><a href="#diagnosticos">Diagnósticos</a><a href="#location-editor">Configurações</a></nav>
+        <nav class="section-nav" aria-label="Seções do sensor"><a href="#host">Host</a><a href="#saude">Saúde</a><a href="#rede-local">Rede Local</a><a href="#wan">WAN</a><a href="#dispositivos">Dispositivos</a><a href="#incidentes">Incidentes</a><a href="#diagnosticos">Diagnósticos</a><a href="#location-editor">Configurações</a></nav>
         <p class="help-text">NexoPulse Edge <span id="agent-version">{{ sensor.agent_version or 'Legado · versão não informada' }}</span> · RX/TX representam somente a interface do sensor.</p>
 
         <div class="painel-grid">
-            <div class="card card-hw" id="host">
+            <div class="card card-hw card-stack" id="host">
                 <h3>
                     <span><i class="fa-solid fa-microchip"></i> Host</span>
                     <div style="display: flex; gap: 10px; align-items: center;">
@@ -147,32 +50,32 @@
                         <span id="badge-status" class="status-pill">--</span>
                     </div>
                 </h3>
-                <div class="data-row" style="margin-top:10px;">
-                    <div style="display: flex; gap: 15px; width: 100%;">
-                        <span style="flex: 1;"><i class="fa-solid fa-temperature-half" style="color:var(--yellow);"></i> CPU: <strong id="temp-text">-- °C</strong></span>
-                        <span style="flex: 1;"><i class="fa-solid fa-fire-flame-curved" style="color:var(--yellow);"></i> GPU: <strong id="gpu-text">-- °C</strong></span>
-                    </div>
+                <div class="host-chips">
+                    <span title="Tempo desde o último boot"><i class="fa-solid fa-clock"></i> <strong id="host-uptime">--</strong></span>
+                    <span title="Carga média em 1, 5 e 15 minutos"><i class="fa-solid fa-gauge"></i> <strong id="host-load">--</strong></span>
+                    <span><i class="fa-solid fa-temperature-half"></i> CPU <strong id="temp-text">-- °C</strong></span>
+                    <span><i class="fa-solid fa-fire-flame-curved"></i> GPU <strong id="gpu-text">-- °C</strong></span>
                 </div>
-                <div style="margin-bottom: 15px;">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--text-muted);">
-                        <span><i class="fa-solid fa-microchip" style="width: 20px;"></i> CPU</span> <strong id="cpu-text" style="color: var(--text-main);">0%</strong>
-                    </div>
+                <p class="host-boot" id="host-boot"></p>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-microchip"></i> CPU <small id="host-nucleos"></small></span><strong id="cpu-text">--</strong></div>
                     <div class="progress-bg"><div id="cpu-fill" class="progress-fill"></div></div>
+                    <div class="cores" id="host-cores"></div>
                 </div>
-                <div style="margin-bottom: auto;">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--text-muted);">
-                        <span><i class="fa-solid fa-memory" style="width: 20px;"></i> RAM</span> <strong id="ram-text" style="color: var(--text-main);">0%</strong>
-                    </div>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-memory"></i> RAM</span><strong id="ram-text">--</strong></div>
                     <div class="progress-bg"><div id="ram-fill" class="progress-fill"></div></div>
                 </div>
-                <div style="margin-bottom: auto; margin-top: 15px;">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: var(--text-muted);">
-                        <span><i class="fa-solid fa-hard-drive" style="width: 20px;"></i> Disco</span> <strong id="disk-text" style="color: var(--text-main);">0%</strong>
-                    </div>
-                    <div class="progress-bg"><div id="disk-fill" class="progress-fill" style="background: var(--purple);"></div></div>
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-right-left"></i> Swap</span><strong id="swap-text">--</strong></div>
+                    <div class="progress-bg"><div id="swap-fill" class="progress-fill" style="background: var(--purple);"></div></div>
                 </div>
-
-                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <div class="metric">
+                    <div class="metric-head"><span><i class="fa-solid fa-hard-drive"></i> Discos</span><strong id="disk-text">--</strong></div>
+                    <div id="disk-fill" hidden></div>
+                    <div class="discos" id="host-discos"></div>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: auto;">
                     <button class="action-btn" onclick="enviarComandoEnergia('reboot')" style="background: color-mix(in srgb, var(--yellow) 20%, transparent); color: var(--yellow); flex: 1; border: 1px solid var(--yellow);"><i class="fa-solid fa-arrows-rotate"></i> Reiniciar Local</button>
                     <button class="action-btn" onclick="enviarComandoEnergia('shutdown')" style="background: color-mix(in srgb, var(--red) 20%, transparent); color: var(--red); flex: 1; border: 1px solid var(--red);"><i class="fa-solid fa-power-off"></i> Desligar</button>
                 </div>
@@ -237,6 +140,43 @@
             </div>
         </div>
 
+        <div class="painel-grid">
+            <div class="card card-stack" id="saude" style="border-top: 4px solid var(--status-ok);">
+                <h3><span><i class="fa-solid fa-heart-pulse"></i> Saúde do sistema</span></h3>
+                <ul class="saude-lista" id="saude-lista"><li class="hist-empty">Aguardando a primeira coleta do sensor…</li></ul>
+            </div>
+            <div class="card card-stack" style="border-top: 4px solid var(--blue);">
+                <h3><span><i class="fa-solid fa-network-wired"></i> Interfaces de rede</span></h3>
+                <div class="ifaces" id="host-ifaces"><div class="hist-empty">Aguardando a primeira coleta…</div></div>
+            </div>
+            <div class="card card-stack" style="border-top: 4px solid var(--purple);">
+                <h3><span><i class="fa-solid fa-list-ol"></i> Processos</span>
+                    <span class="seg" id="procs-modo"><button class="ativo" data-modo="cpu">CPU</button><button data-modo="memoria">Memória</button></span></h3>
+                <table class="procs"><thead><tr><th>Processo</th><th>PID</th><th>CPU</th><th>Mem.</th></tr></thead><tbody id="host-procs"><tr><td colspan="4" class="hist-empty">Aguardando…</td></tr></tbody></table>
+            </div>
+        </div>
+
+        <div class="painel-grid" id="diag-rede" data-mac="{{ sensor.mac_id }}" data-desk="{{ 1 if 'desk' in menu_nexo().acesso else 0 }}">
+            <div class="card card-stack" style="border-top: 4px solid var(--blue);">
+                <h3><span><i class="fa-solid fa-layer-group"></i> Diagnóstico de rede</span><span class="iface-tag" id="diag-atualizado">--</span></h3>
+                <ul class="saude-lista" id="diag-camadas"><li class="hist-empty">Aguardando a primeira janela de medições do sensor…</li></ul>
+                <div id="diag-ativos"></div>
+                <div class="diag-rodape">
+                    <span><i class="fa-solid fa-building"></i> Provedor: <strong id="diag-provedor">--</strong> <span class="txt-muted" id="diag-provedor-origem"></span>
+                        <button class="edit-btn" id="diag-provedor-editar" title="Definir o provedor deste site"><i class="fa-solid fa-pen-to-square"></i></button></span>
+                    <span class="diag-rota" id="diag-rota"></span>
+                </div>
+            </div>
+            <div class="card card-stack" id="card-starlink" style="border-top: 4px solid var(--purple);">
+                <h3><span><i class="fa-solid fa-satellite-dish"></i> Starlink</span><span class="iface-tag" id="sl-firmware"></span></h3>
+                <div id="sl-corpo"><div class="hist-empty">Aguardando leitura da antena…</div></div>
+            </div>
+            <div class="card card-stack" style="border-top: 4px solid var(--yellow);">
+                <h3><span><i class="fa-solid fa-timeline"></i> Linha do tempo</span></h3>
+                <ol class="timeline" id="diag-timeline"><li class="hist-empty">Carregando…</li></ol>
+            </div>
+        </div>
+
         <div class="painel-grid" style="grid-template-columns: 1fr;">
             <div class="card card-full" style="border-top: 4px solid var(--purple);">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
@@ -281,20 +221,24 @@
         <div class="painel-grid" style="grid-template-columns: 1fr;">
             <div class="card card-radar card-full" id="dispositivos" style="position: relative;">
                 <h3>
-                    <span><i class="fa-solid fa-project-diagram"></i> Dispositivos · topologia observada</span>
+                    <span><i class="fa-solid fa-project-diagram"></i> Dispositivos · diagrama da rede</span>
                     <div>
+                        <button class="btn-acao" onclick="MapaRede.abrirEditor()" style="background: var(--brand-cyan, var(--blue)); color: var(--bg-base); font-size:0.8em; padding: 6px 12px; border: none; display: inline-flex; margin-right: 10px;"><i class="fa-solid fa-pen-to-square"></i> Editar diagrama</button>
                         <button class="btn-acao" onclick="abrirModalTopologia()" style="background: var(--purple); color: white; font-size:0.8em; padding: 6px 12px; border: none; display: inline-flex; margin-right: 10px;"><i class="fa-solid fa-expand"></i> Expandir Tela Cheia</button>
-                        <button class="btn-acao" onclick="carregarRadar(this)" style="background: var(--blue); color: var(--bg-base); font-size:0.8em; padding: 6px 12px; border: none; display: inline-flex;"><i class="fa-solid fa-rotate"></i> Scan Rápido</button>
+                        <button class="btn-acao" onclick="abrirModalLevantamento()" style="background: var(--green); color: var(--bg-base); font-size:0.8em; padding: 6px 12px; border: none; display: inline-flex; margin-right: 10px;"><i class="fa-solid fa-file-export"></i> Exportar levantamento</button>
+                        <button class="btn-acao" onclick="carregarRadar(this)" style="background: var(--blue); color: var(--bg-base); font-size:0.8em; padding: 6px 12px; border: none; display: inline-flex;"><i class="fa-solid fa-rotate"></i> Atualizar</button>
                     </div>
                 </h3>
                 <div id="network-topology" style="height: 450px;"></div>
-                <div style="text-align: right; padding: 5px; font-size: 0.75em; color: var(--text-muted);">* Arraste os ícones. Clique em um dispositivo para exibir opções de Edição e WoL.</div>
+                <div class="mapa-rodape"><span id="mapa-rede-dica" class="mapa-dica" hidden><i class="fa-solid fa-hand-pointer"></i> Arraste o desenho para o lado para ver o resto da rede, ou use "Expandir Tela Cheia".</span><span id="mapa-rede-info"></span><span>Clique num equipamento para editar a ligação, renomear ou enviar WoL.</span></div>
 
                 <div id="node-menu">
                     <h4 id="menu-node-title">Dispositivo</h4>
+                    <button class="node-btn" id="btn-menu-ligacao"><i class="fa-solid fa-diagram-project"></i> Editar ligação e tipo</button>
                     <button class="node-btn" id="btn-menu-rename"><i class="fa-solid fa-pen"></i> Renomear</button>
                     <button class="node-btn" id="btn-menu-watchdog"><i class="fa-solid fa-eye"></i> Adicionar ao Watchdog</button>
                     <button class="node-btn btn-red" id="btn-menu-wol"><i class="fa-solid fa-bolt"></i> Enviar Wake-on-LAN</button>
+                    <button class="node-btn" id="btn-menu-esquecer" title="Tira do inventário um equipamento que saiu da rede; ele volta sozinho se aparecer de novo"><i class="fa-solid fa-eraser"></i> Esquecer (fora da rede)</button>
                     <button class="node-btn" onclick="document.getElementById('node-menu').style.display='none'" style="text-align: center; color: var(--text-muted); background: transparent; margin-top: 10px;">Fechar</button>
                 </div>
             </div>
@@ -348,27 +292,64 @@
         </div>
 
         <div class="painel-grid">
-            <div class="card card-hist card-half">
+            <div class="card card-hist card-half card-stack">
                 <h3 id="incidentes"><span><i class="fa-solid fa-clock-rotate-left"></i> Incidentes e auditoria</span></h3>
-                <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                    <input type="date" id="filtro-data" onchange="carregarHistorico()" style="max-width: 160px;">
-                    <button class="action-btn" onclick="document.getElementById('filtro-data').value=''; carregarHistorico();" style="background: var(--bg-input); color: var(--text-muted); font-size:0.8em;">Limpar Filtro</button>
+                <div class="hist-filter">
+                    <label for="filtro-data" class="sr-only">Filtrar por data</label>
+                    <input type="date" id="filtro-data" onchange="carregarHistorico()">
+                    <button class="action-btn btn-secondary" onclick="document.getElementById('filtro-data').value=''; carregarHistorico();">Limpar filtro</button>
                 </div>
-                <div id="lista-historico" style="background: var(--bg-input); padding: 12px; border-radius: 8px; max-height: 200px; overflow-y: auto; border: 1px solid var(--bg-input);"></div>
+                <div id="lista-historico" class="hist-list"></div>
             </div>
 
-            <div class="card card-calib" id="location-editor" data-mac="{{ sensor.mac_id }}" data-source="{{ sensor.location_source or '' }}" data-accuracy="{{ sensor.accuracy_m if sensor.accuracy_m is not none else '' }}">
-                <h3>Configurações · localização</h3>
-                <label for="edit-nome">Nome do sensor</label><input type="text" id="edit-nome" maxlength="160" value="{{ sensor.nome_local }}">
-                <p class="help-text">Capture no local de instalação, com o celular ou computador do instalador. A posição pertence ao navegador e pode ser aproximada; confira a precisão antes de salvar.</p>
-                <div class="location-actions"><button class="action-btn" id="capture-location">Capturar neste dispositivo</button><button class="action-btn" id="clear-location">Remover localização</button></div>
-                <div class="location-map" id="location-map" aria-label="Clique no mapa para ajustar a localização"></div>
-                <div class="location-fields"><label for="edit-lat">Latitude<input type="number" id="edit-lat" step="any" min="-90" max="90" value="{{ sensor.lat if sensor.lat is not none else '' }}"></label><label for="edit-lon">Longitude<input type="number" id="edit-lon" step="any" min="-180" max="180" value="{{ sensor.lon if sensor.lon is not none else '' }}"></label></div>
-                <div class="location-status" id="location-status" role="status">Fonte: {{ sensor.location_source or 'não informada' }}{% if sensor.accuracy_m is not none %} · precisão estimada: {{ sensor.accuracy_m }} m{% endif %} · atualização: {{ sensor.location_updated_at or 'não registrada' }}</div>
-                <button class="action-btn" id="save-location" onclick="salvarConfig()">Salvar informações</button>
-                <p class="help-text">Linux: atualize pelo serviço systemd. Windows: a atualização automática mantém o último executável validado.</p>
+            <div class="card card-calib card-stack" id="location-editor" data-mac="{{ sensor.mac_id }}" data-source="{{ sensor.location_source or '' }}" data-accuracy="{{ sensor.accuracy_m if sensor.accuracy_m is not none else '' }}" data-updated="{{ sensor.location_updated_at or '' }}">
+                <h3>Configurações do sensor</h3>
+                <section class="config-section">
+                    <h4>Identificação</h4>
+                    <label for="edit-nome">Nome do sensor</label>
+                    <input type="text" id="edit-nome" maxlength="160" value="{{ sensor.nome_local }}">
+                </section>
+                <section class="config-section">
+                    <h4>Localização</h4>
+                    <p class="help-text">Capture pela máquina do sensor, pelo celular ou computador no local, ou clique no mapa. A posição do navegador pode ser aproximada.</p>
+                    <div class="location-map" id="location-map" aria-label="Clique no mapa para ajustar a localização"></div>
+                    <div class="location-fields"><label for="edit-lat">Latitude<input type="number" id="edit-lat" step="any" min="-90" max="90" value="{{ sensor.lat if sensor.lat is not none else '' }}"></label><label for="edit-lon">Longitude<input type="number" id="edit-lon" step="any" min="-180" max="180" value="{{ sensor.lon if sensor.lon is not none else '' }}"></label></div>
+                    <div class="location-actions"><button class="action-btn btn-secondary" id="capture-sensor" title="Pede a posição à própria máquina do sensor: GPS da Starlink, localização do Windows ou, por último, aproximada pela internet"><i class="fa-solid fa-satellite-dish"></i> Capturar no sensor</button><button class="action-btn btn-secondary" id="capture-location"><i class="fa-solid fa-location-crosshairs"></i> Capturar neste aparelho</button><button class="action-btn btn-danger" id="clear-location"><i class="fa-solid fa-xmark"></i> Remover</button></div>
+                    <p class="location-meta" id="location-status" role="status">Fonte: {{ sensor.location_source or 'não informada' }}{% if sensor.accuracy_m is not none %} · precisão estimada: {{ sensor.accuracy_m }} m{% endif %}</p>
+                </section>
+                <button class="action-btn btn-primary" id="save-location" onclick="salvarConfig()">Salvar alterações</button>
             </div>
         </div>
+
+        {% if session.get('role') == 'Administrador Master' %}
+        <div class="painel-grid" style="grid-template-columns: 1fr;">
+            <div class="card card-stack card-full" id="acoes-remotas" data-mac="{{ sensor.mac_id }}">
+                <h3><span><i class="fa-solid fa-screwdriver-wrench"></i> Ações remotas</span>
+                    <label class="switch-label"><input type="checkbox" id="acoes-permitir"> <span id="acoes-permitir-texto">Desligadas</span></label>
+                </h3>
+                <p class="help-text">Comandos pré-definidos executados pelo agente nesta máquina. Cada uso pede sua senha, fica registrado em Incidentes e avisa o grupo NexoPulse no Telegram.</p>
+                <div class="auto-update">
+                    <label class="switch-label"><input type="checkbox" id="auto-atualizar"> <span>Atualização automática</span></label>
+                    <p class="help-text" id="versao-info"></p>
+                </div>
+                <div class="acoes-botoes" id="acoes-botoes"></div>
+                <div class="acoes-historico" id="acoes-historico"><div class="hist-empty">Nenhuma ação executada.</div></div>
+            </div>
+        </div>
+        <div class="modal-senha" id="modal-senha" hidden>
+            <form class="modal-senha-box" id="modal-senha-form">
+                <h4 id="modal-senha-titulo">Confirmar ação</h4>
+                <p class="help-text" id="modal-senha-texto"></p>
+                <label for="modal-senha-input">Sua senha</label>
+                <input type="password" id="modal-senha-input" autocomplete="current-password" required>
+                <p class="modal-senha-erro" id="modal-senha-erro" role="alert"></p>
+                <div class="modal-senha-acoes">
+                    <button type="button" class="action-btn btn-secondary" id="modal-senha-cancelar">Cancelar</button>
+                    <button type="submit" class="action-btn btn-primary" id="modal-senha-ok">Confirmar</button>
+                </div>
+            </form>
+        </div>
+        {% endif %}
 
         <div class="painel-grid" style="grid-template-columns: 1fr;">
             <div class="card card-trace card-full">
@@ -391,6 +372,62 @@
                 <span class="close-modal" onclick="fecharModalTopologia()">&times;</span>
             </div>
             <div id="network-modal-canvas"></div>
+        </div>
+    </div>
+
+    <div id="modalMapaRede" class="modal" role="dialog" aria-modal="true" aria-labelledby="mapa-editor-titulo">
+        <div class="modal-content mapa-editor">
+            <div class="modal-header">
+                <h2 id="mapa-editor-titulo" style="margin: 0;"><i class="fa-solid fa-diagram-project"></i> Editar diagrama da rede</h2>
+                <span class="close-modal" id="mapa-editor-fechar" role="button" aria-label="Fechar">&times;</span>
+            </div>
+            <p class="mapa-editor-ajuda">O sensor vê todos os equipamentos como se estivessem direto no gateway. Diga em que cada um liga e acrescente o que ele não enxerga (switch não gerenciável, conversor de mídia, rádio). O diagrama sai assim no relatório.</p>
+            <div class="mapa-editor-novo">
+                <label for="mapa-editor-novo-tipo">Adicionar equipamento</label>
+                <select id="mapa-editor-novo-tipo"></select>
+                <button type="button" class="action-btn btn-secondary" id="mapa-editor-adicionar"><i class="fa-solid fa-plus"></i> Adicionar</button>
+            </div>
+            <div id="mapa-editor-lista" class="mapa-editor-lista"></div>
+            <p class="mapa-editor-erro" id="mapa-editor-erro" role="alert"></p>
+            <div id="mapa-editor-historico" class="mapa-editor-historico" hidden></div>
+            <div class="mapa-editor-acoes">
+                <button type="button" class="action-btn btn-secondary" id="mapa-editor-ver-historico" style="margin-right:auto"><i class="fa-solid fa-clock-rotate-left"></i> Versões anteriores</button>
+                <button type="button" class="action-btn btn-secondary" id="mapa-editor-cancelar">Cancelar</button>
+                <button type="button" class="action-btn btn-primary" id="mapa-editor-salvar">Salvar diagrama</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalLevantamento" class="modal">
+        <div class="modal-content" style="width: 450px; height: auto; padding: 30px;">
+            <div class="modal-header">
+                <h2 style="margin: 0; color: var(--green);"><i class="fa-solid fa-file-export"></i> Levantamento de rede</h2>
+                <span class="close-modal" onclick="fecharModalLevantamento()">&times;</span>
+            </div>
+            <div style="margin-top: 15px;">
+                <p style="margin: 0 0 15px; font-size: 0.9em; color: var(--text-muted);">Equipamentos que o sensor enxerga na rede dele: IP, MAC, marca e nome. A planilha é para leitura; o JSON leva a fonte e a confiança de cada dado, pronto para enviar a uma IA.</p>
+                <label style="display: block; margin-bottom: 20px; cursor: pointer;">
+                    <input type="checkbox" id="lev_ocultar_nomes"> Ocultar nomes dos equipamentos (podem conter nomes de pessoas)
+                </label>
+                <button onclick="baixarLevantamento('xlsx')" style="width: 100%; padding: 12px; margin-bottom: 10px; background: var(--green); color: var(--bg-base); border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
+                    <i class="fa-solid fa-file-excel"></i> Planilha (.xlsx)
+                </button>
+                <button onclick="baixarLevantamento('csv')" style="width: 100%; padding: 12px; margin-bottom: 10px; background: var(--bg-input); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; font-weight: bold; cursor: pointer;">
+                    <i class="fa-solid fa-file-csv"></i> Lista em CSV
+                </button>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <a href="/api/v2/sensor/{{ sensor.mac_id|urlencode }}/diagrama.pdf" style="display:block; text-align:center; box-sizing:border-box; padding: 12px; background: var(--purple); color: #fff; border-radius: 8px; font-weight: bold; text-decoration:none;">
+                        <i class="fa-solid fa-file-pdf"></i> Diagrama (PDF)
+                    </a>
+                    <a href="/api/v2/sensor/{{ sensor.mac_id|urlencode }}/diagrama.svg" style="display:block; text-align:center; box-sizing:border-box; padding: 12px; background: var(--purple); color: #fff; border-radius: 8px; font-weight: bold; text-decoration:none;">
+                        <i class="fa-solid fa-diagram-project"></i> Diagrama (SVG)
+                    </a>
+                </div>
+                <p style="margin: 0 0 12px; font-size: 0.8em; color: var(--text-muted);">A lista e o diagrama trazem também os equipamentos que já saíram da rede, marcados como fora da rede, com a última vez em que foram vistos.</p>
+                <button onclick="baixarLevantamento('json')" style="width: 100%; padding: 12px; background: var(--blue); color: var(--bg-base); border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
+                    <i class="fa-solid fa-code"></i> JSON para IA
+                </button>
+            </div>
         </div>
     </div>
 
@@ -650,16 +687,19 @@
                     soEl.title = 'Arquitetura: ' + (data.so_arquitetura || 'Não informada');
                 }
 
-                document.getElementById('cpu-text').innerText = data.cpu_usage + '%';
-                document.getElementById('cpu-fill').style.width = data.cpu_usage + '%';
-                document.getElementById('ram-text').innerText = data.ram_usage + '%';
-                document.getElementById('ram-fill').style.width = data.ram_usage + '%';
+                // Sem medição ainda, o sensor manda null: mostra "--" em vez de "null%".
+                const pct = v => (v === null || v === undefined || v === '') ? '--' : v + '%';
+                document.getElementById('cpu-text').innerText = pct(data.cpu_usage);
+                document.getElementById('cpu-fill').style.width = (Number(data.cpu_usage) || 0) + '%';
+                document.getElementById('ram-text').innerText = pct(data.ram_usage);
+                document.getElementById('ram-fill').style.width = (Number(data.ram_usage) || 0) + '%';
 
                 document.getElementById('temp-text').innerText = (data.temp > 0 ? data.temp : '--') + ' °C';
                 if(document.getElementById('gpu-text')) document.getElementById('gpu-text').innerText = (data.gpu_temp != null ? data.gpu_temp : '--') + ' °C';
 
-                document.getElementById('disk-text').innerText = (data.disco || 0) + '%';
-                document.getElementById('disk-fill').style.width = (data.disco || 0) + '%';
+                if (!data.host_info) {  // com host_info, o host.js mostra todos os discos
+                    document.getElementById('disk-text').innerText = (data.disco || 0) + '%';
+                }
 
                 if(document.getElementById('net-down-live')) document.getElementById('net-down-live').innerText = (data.net_down || 0).toFixed(1);
                 if(document.getElementById('net-up-live')) document.getElementById('net-up-live').innerText = (data.net_up || 0).toFixed(1);
@@ -685,7 +725,7 @@
                     linkEl.innerText = (speed > 0 ? speed + ' Mbps' : 'Velocidade não informada') + ' • ' + estado;
                 }
 
-                if(data.ip_sensor) { document.getElementById('access-ip').innerText = data.ip_sensor; globalSensorIP = data.ip_sensor; }
+                if(data.ip_sensor) { document.getElementById('access-ip').innerText = data.ip_sensor; document.getElementById('access-link').href = `http://${data.ip_sensor}:10000/`; globalSensorIP = data.ip_sensor; }
                 if(data.ip_gateway) globalGatewayIP = data.ip_gateway;
 
                 // null/undefined = ainda sem medição; 0 = medido sem resposta ICMP.
@@ -773,13 +813,16 @@
                     let clickedNodeId = params.nodes[0];
                     let node = nodes.get(clickedNodeId);
 
-                    if (clickedNodeId !== 'internet' && clickedNodeId !== globalGatewayIP && clickedNodeId !== globalSensorIP) {
-
-                        document.getElementById('menu-node-title').innerText = node.rawName || node.label.split('\n')[0].replace('💻 ', '');
-
+                    if (clickedNodeId !== 'internet') {
+                        const descoberto = !!node.mac && clickedNodeId !== 'gateway' && clickedNodeId !== 'sensor';
+                        document.getElementById('menu-node-title').innerText = node.rawName || 'Equipamento';
+                        document.getElementById('btn-menu-ligacao').onclick = () => { menu.style.display = 'none'; MapaRede.abrirEditor(clickedNodeId); };
+                        for (const id of ['btn-menu-rename', 'btn-menu-watchdog', 'btn-menu-wol']) document.getElementById(id).style.display = descoberto ? '' : 'none';
                         document.getElementById('btn-menu-rename').onclick = () => { renomearDisp(node.mac, node.rawName); menu.style.display = 'none'; };
-                        document.getElementById('btn-menu-watchdog').onclick = () => { monitorarIP(node.id, node.rawName); menu.style.display = 'none'; };
+                        document.getElementById('btn-menu-watchdog').onclick = () => { monitorarIP(node.ip, node.rawName); menu.style.display = 'none'; };
                         document.getElementById('btn-menu-wol').onclick = () => { dispararWoL(node.mac, node.rawName); menu.style.display = 'none'; };
+                        document.getElementById('btn-menu-esquecer').style.display = descoberto && node.status === 'offline' ? '' : 'none';
+                        document.getElementById('btn-menu-esquecer').onclick = () => { menu.style.display = 'none'; esquecerDisp(node.mac || 'ip:' + node.ip, node.rawName); };
 
                         menu.style.left = (params.event.srcEvent.clientX + 15) + 'px';
                         menu.style.top = (params.event.srcEvent.clientY) + 'px';
@@ -797,8 +840,9 @@
             var data = { nodes: nodes, edges: edges };
             var options = {
                 nodes: { shape: 'box', font: { color: '#0B1728', face: 'JetBrains Mono', bold: true }, borderWidth: 2, shadow: { enabled: true, color: 'rgba(0,0,0,0.5)', size: 10 } },
-                edges: { width: 2, color: { color: cssVar('--border'), highlight: cssVar('--brand-cyan') }, smooth: { type: 'continuous' } },
-                physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -100, centralGravity: 0.01, springLength: 100, springConstant: 0.08 }, stabilization: { iterations: 150 } },
+                edges: { width: 2, color: { color: cssVar('--border'), highlight: cssVar('--brand-cyan') }, smooth: { type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.5 } },
+                layout: { hierarchical: { direction: 'LR', sortMethod: 'directed', levelSeparation: 250, nodeSpacing: 52, treeSpacing: 70, shakeTowards: 'roots' } },
+                physics: false,
                 interaction: { hover: true }
             };
             network = new vis.Network(document.getElementById('network-topology'), data, options);
@@ -812,13 +856,14 @@
                 var data = { nodes: nodes, edges: edges };
                 var options = {
                     nodes: { shape: 'box', font: { color: '#0B1728', face: 'JetBrains Mono', bold: true }, borderWidth: 2, shadow: { enabled: true, color: 'rgba(0,0,0,0.5)', size: 10 } },
-                    edges: { width: 2, color: { color: cssVar('--border'), highlight: cssVar('--brand-cyan') }, smooth: { type: 'continuous' } },
-                    physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -100, centralGravity: 0.01, springLength: 100, springConstant: 0.08 }, stabilization: { iterations: 150 } },
+                    edges: { width: 2, color: { color: cssVar('--border'), highlight: cssVar('--brand-cyan') }, smooth: { type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.5 } },
+                    layout: { hierarchical: { direction: 'LR', sortMethod: 'directed', levelSeparation: 250, nodeSpacing: 52, treeSpacing: 70, shakeTowards: 'roots' } },
+                physics: false,
                     interaction: { hover: true }
                 };
                 networkModal = new vis.Network(document.getElementById('network-modal-canvas'), data, options);
                 configurarEventosGrafo(networkModal, true);
-                networkModal.fit();
+                MapaRede.enquadrar();
             }, 200);
         }
 
@@ -828,61 +873,20 @@
 
         async function carregarRadar(btn) {
             if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-            try {
-                const sensorRes = await fetch('/api/v2/sensor_data/' + mac_id);
-                const sensorInfo = await sensorRes.json();
-                globalGatewayIP = sensorInfo.ip_gateway;
-                globalSensorIP = sensorInfo.ip_sensor;
-
-                let gatewayOnline = (sensorInfo.ping_gateway > 0 && sensorInfo.ping_gateway < 1000);
-                let gatewayCor = gatewayOnline ? STATUS_CANVAS.ok : STATUS_CANVAS.crit;
-                let gatewayStatus = gatewayOnline ? '[ON]' : '[OFF]';
-
-                const res = await fetch('/api/v2/dispositivos/' + mac_id);
-                const dispositivos = await res.json();
-
-                nodes.clear(); edges.clear();
-
-                nodes.add({ id: 'internet', label: '☁️ INTERNET', shape: 'box', color: { background: '#05A9DC', border: '#05A9DC' }, font: {color: '#0B1728', face: 'Inter', size: 16, bold: true} });
-
-                if(globalGatewayIP) {
-                    nodes.add({ id: globalGatewayIP, label: `🖧 Gateway ${gatewayStatus}\n${globalGatewayIP}`, shape: 'box', color: { background: gatewayCor, border: gatewayCor }, font: {color: '#0B1728', face: 'JetBrains Mono', bold: true} });
-                    edges.add({ from: 'internet', to: globalGatewayIP, color: { color: gatewayCor }, width: 3});
-                }
-
-                if(globalSensorIP && globalGatewayIP) {
-                    nodes.add({ id: globalSensorIP, label: '🛡️ NexoPulse Edge\n'+globalSensorIP, shape: 'box', color: { background: '#05A88C', border: '#05A88C' }, font: {color: '#0B1728', face: 'JetBrains Mono', bold: true} });
-                    edges.add({ from: globalGatewayIP, to: globalSensorIP, color: { color: '#05A88C' }, width: 2});
-                }
-
-                dispositivos.forEach(d => {
-                    if(d.ip === globalGatewayIP || d.ip === globalSensorIP) return;
-
-                    let nome = d.nome_custom || d.fabricante;
-                    let cor_fundo = STATUS_CANVAS.crit;
-                    let status_txt = 'OFF';
-                    if (d.status === 'online') { cor_fundo = STATUS_CANVAS.ok; status_txt = 'ON'; }
-                    else if (d.status === 'sem_icmp') { cor_fundo = STATUS_CANVAS.warn; status_txt = 'SEM ICMP'; }
-                    else if (d.status === 'desconhecido') { cor_fundo = STATUS_CANVAS.unknown; status_txt = '?'; }
-
-                    nodes.add({
-                        id: d.ip,
-                        rawName: nome,
-                        label: `💻 ${nome} [${status_txt}]\n${d.ip}`,
-                        title: `MAC: ${d.mac}\nLatência ICMP: ${d.latencia || 0} ms\nVizinho: ${d.neighbor_state || 'N/D'}\nClique para ver Opções`,
-                        mac: d.mac,
-                        shape: 'box',
-                        color: { background: cor_fundo, border: cor_fundo },
-                        font: {color: '#0B1728', face: 'JetBrains Mono'}
-                    });
-                    edges.add({ from: globalGatewayIP, to: d.ip, color: {color: cssVar('--border')} });
-                });
-
-            } catch(e) { console.error("Erro no Radar:", e); }
-            if(btn) setTimeout(() => btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Scan Rápido', 1000);
+            try { await MapaRede.carregar(); }
+            catch(e) { console.error("Erro no diagrama:", e); }
+            if(btn) setTimeout(() => btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Atualizar', 1000);
         }
 
         // ----- FUNÇÕES DO RELATÓRIO PDF -----
+        function abrirModalLevantamento() { document.getElementById('modalLevantamento').style.display = 'block'; }
+        function fecharModalLevantamento() { document.getElementById('modalLevantamento').style.display = 'none'; }
+        function baixarLevantamento(formato) {
+            let url = `/api/v2/levantamento/${encodeURIComponent(mac_id)}/${formato}`;
+            if (document.getElementById('lev_ocultar_nomes').checked) url += '?ocultar_nomes=1';
+            window.location.href = url;
+        }
+
         function abrirModalRelatorio() { document.getElementById('modalRelatorio').style.display = 'block'; }
         function fecharModalRelatorio() { document.getElementById('modalRelatorio').style.display = 'none'; }
 
@@ -937,6 +941,12 @@
             } catch (error) { alert("Erro ao comunicar com a Central."); }
         }
 
+        async function esquecerDisp(chave, nome) {
+            if (!confirm(`Tirar "${nome}" do inventário? Ele sai da lista e do diagrama, e volta sozinho se aparecer de novo na rede.`)) return;
+            const r = await fetch(`/api/v2/sensor/${encodeURIComponent(mac_id)}/esquecer_dispositivo`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({chave})});
+            if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.error || 'Não foi possível esquecer o equipamento.'); return; }
+            carregarRadar();
+        }
         async function renomearDisp(mac, atual) { let n = prompt("Nome para este dispositivo:", atual); if(n) { await fetch('/api/v2/renomear_dispositivo', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mac, nome:n, sensor_mac:mac_id}) }); carregarRadar(); } }
 
         async function carregarCustomIPs() {
@@ -1013,7 +1023,7 @@
             const res = await fetch(`/api/v2/historico/${mac_id}${d ? '?data='+d : ''}`);
             const logs = await res.json(); let html = '';
             logs.forEach(l => { let cor = l.gravidade === 'Crítica' ? 'var(--status-crit)' : 'var(--status-warn)'; html += `<div style="padding: 8px; border-bottom: 1px dashed var(--border); font-size:0.85em;"><span style="color:var(--text-muted)">[${escapeHtml(l.data_hora)}]</span> <b style="color:${cor}">${escapeHtml(l.tipo_evento)}</b>: ${escapeHtml(l.detalhes)}</div>`; });
-            document.getElementById('lista-historico').innerHTML = html || '<div style="text-align:center; padding:10px; color:var(--text-muted);">Sem logs no período.</div>';
+            document.getElementById('lista-historico').innerHTML = html || '<div class="hist-empty"><i class="fa-regular fa-circle-check"></i> Sem incidentes no período.</div>';
         }
 
 
@@ -1051,6 +1061,10 @@
             }
         });
     </script>
-<script src="/static/location.js?v=2.2.0-rc1"></script>
+<script src="/static/location.js?v=2.3"></script>
+<script src="/static/mapa_rede.js?v=5"></script>
+<script src="/static/acoes.js?v=2.2.0-rc1-auto"></script>
+<script src="/static/host.js?v=2.2.0-rc1"></script>
+<script src="/static/diagnostico.js?v=3"></script>
 </body>
 </html>

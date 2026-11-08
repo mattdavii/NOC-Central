@@ -1,0 +1,350 @@
+<!doctype html>
+<!-- Para gerar o PDF (nesta pasta):
+     google-chrome --headless=new --no-pdf-header-footer --virtual-time-budget=15000 \
+       --print-to-pdf=NexoPulse-Edge-Guia-de-Instalacao.pdf "file://$PWD/guia.html" -->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>NexoPulse Edge · Guia de instalação</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --nexo:#082E56; --cyan:#05A9DC; --green:#05A88C;
+    --grad:linear-gradient(90deg,var(--cyan),var(--green));
+    --bg-dark:#0B1728; --card-dark:#12263D; --border-dark:#29445F;
+    --text:#082E56; --muted:#526077; --border:#C7D8E8; --soft:#F3F8FC; --soft2:#E8F1FA;
+    --ok:#166534; --warn:#92400E; --crit:#B91C1C;
+  }
+  @page { size:A4; margin:0; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; padding:0; }
+  body { font-family:'Inter',system-ui,sans-serif; color:var(--text); font-size:10.2pt; line-height:1.5;
+         -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .page { width:210mm; height:297mm; position:relative; overflow:hidden; page-break-after:always; background:#fff; }
+  .page:last-child { page-break-after:auto; }
+
+  /* ---------- capa ---------- */
+  .cover { background:var(--bg-dark); color:#E8F1FA; }
+  .cover::before { content:''; position:absolute; inset:0;
+    background:radial-gradient(circle at 85% 12%, rgba(5,169,220,.22), transparent 45%),
+               radial-gradient(circle at 10% 95%, rgba(5,168,140,.20), transparent 50%); }
+  .cover .inner { position:relative; padding:26mm 22mm 0; height:100%; display:flex; flex-direction:column; }
+  .cover .logo { width:78mm; }
+  .cover .kicker { margin-top:46mm; font-size:10pt; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--cyan); }
+  .cover h1 { font-size:34pt; line-height:1.08; margin:4mm 0 0; font-weight:800; letter-spacing:-.02em; }
+  .cover h1 span { background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .cover .lead { margin-top:7mm; font-size:12.5pt; color:#B8C7D9; max-width:150mm; }
+  .cover .bar { height:3px; width:46mm; background:var(--grad); border-radius:3px; margin-top:10mm; }
+  .cover .chips { display:flex; gap:3mm; margin-top:9mm; flex-wrap:wrap; }
+  .chip { border:1px solid var(--border-dark); background:var(--card-dark); border-radius:999px; padding:1.6mm 4mm; font-size:9.5pt; font-weight:600; color:#E8F1FA; }
+  .chip b { color:var(--cyan); font-weight:700; }
+  .feats { display:grid; grid-template-columns:repeat(3,1fr); gap:4mm; margin-top:22mm; }
+  .feat { background:var(--card-dark); border:1px solid var(--border-dark); border-radius:3mm; padding:4.5mm; }
+  .feat .n { width:8mm; height:8mm; border-radius:2mm; background:var(--grad); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:10pt; margin-bottom:3mm; }
+  .feat b { display:block; font-size:10.5pt; color:#E8F1FA; margin-bottom:1mm; }
+  .feat span { font-size:8.8pt; color:#94A3B8; line-height:1.45; }
+  .cover .bottom { margin-top:auto; padding:9mm 0 16mm; border-top:1px solid var(--border-dark); display:flex; justify-content:space-between; font-size:9pt; color:#94A3B8; }
+  .cover .bottom strong { color:#E8F1FA; font-weight:600; }
+
+  /* ---------- páginas internas ---------- */
+  .head { display:flex; align-items:center; justify-content:space-between; padding:11mm 18mm 0; }
+  .head img { height:9mm; }
+  .head .doc { font-size:8.5pt; color:var(--muted); font-weight:600; letter-spacing:.04em; }
+  .head-line { margin:4mm 18mm 0; height:2px; background:var(--grad); border-radius:2px; }
+  .body { padding:8mm 18mm 0; }
+  .foot { position:absolute; bottom:9mm; left:18mm; right:18mm; display:flex; justify-content:space-between;
+          font-size:8pt; color:var(--muted); border-top:1px solid var(--border); padding-top:3mm; }
+  .foot .num { font-weight:700; color:var(--nexo); }
+
+  .section-tag { display:inline-flex; align-items:center; gap:2mm; font-size:8.5pt; font-weight:700; letter-spacing:.14em;
+                 text-transform:uppercase; color:#0E7490; }
+  .section-tag i { width:7mm; height:7mm; border-radius:2mm; background:var(--grad); display:inline-flex; align-items:center; justify-content:center; font-style:normal; color:#fff; font-size:9pt; letter-spacing:0; }
+  h2 { font-size:21pt; margin:2.5mm 0 1.5mm; letter-spacing:-.015em; line-height:1.15; }
+  h3 { font-size:12pt; margin:6mm 0 2mm; }
+  p { margin:0 0 2.6mm; }
+  .muted { color:var(--muted); }
+  .intro { font-size:10.8pt; color:var(--muted); margin-bottom:5mm; max-width:165mm; }
+
+  /* passos */
+  .steps { counter-reset:passo; margin:0; padding:0; list-style:none; }
+  .steps > li { position:relative; padding:0 0 4.2mm 13mm; }
+  .steps > li::before { counter-increment:passo; content:counter(passo); position:absolute; left:0; top:-.4mm;
+     width:8.5mm; height:8.5mm; border-radius:50%; background:var(--nexo); color:#fff; font-weight:700; font-size:10pt;
+     display:flex; align-items:center; justify-content:center; }
+  .steps > li::after { content:''; position:absolute; left:4.1mm; top:9.5mm; bottom:1mm; width:1px; background:var(--border); }
+  .steps > li:last-child::after { display:none; }
+  .steps > li > strong:first-child { display:block; font-size:10.8pt; margin-bottom:1mm; }
+
+  /* código */
+  .code { background:var(--bg-dark); border-radius:3mm; padding:3.2mm 4mm; margin:2mm 0 2.4mm; position:relative;
+          font-family:'JetBrains Mono',monospace; font-size:8.6pt; line-height:1.55; color:#E8F1FA; white-space:pre; }
+  .code .lbl { position:absolute; top:-2.4mm; right:4mm; background:var(--grad); color:#fff; font-family:'Inter',sans-serif;
+               font-size:7pt; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:.6mm 2.4mm; border-radius:999px; }
+  .code .p { color:var(--cyan); user-select:none; }
+  .code .c { color:#7E93AD; }
+  code { font-family:'JetBrains Mono',monospace; font-size:8.8pt; background:var(--soft2); border:1px solid var(--border); padding:.2mm 1.3mm; border-radius:1.2mm; color:var(--nexo); white-space:nowrap; }
+
+  /* caixas */
+  .box { border:1px solid var(--border); border-left:4px solid var(--cyan); background:var(--soft); border-radius:2.5mm; padding:3.2mm 4.2mm; margin:3mm 0; font-size:9.6pt; }
+  .box b.t { display:block; font-size:9.8pt; margin-bottom:.8mm; }
+  .box.ok { border-left-color:var(--green); }
+  .box.warn { border-left-color:#D97706; background:#FFFBF2; }
+  .box.crit { border-left-color:var(--crit); background:#FEF6F6; }
+  .box p:last-child { margin-bottom:0; }
+  .term { font-family:'JetBrains Mono',monospace; font-size:8.6pt; color:var(--ok); font-weight:600; }
+
+  /* grade de cards */
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:4mm; margin:3mm 0; }
+  .card { border:1px solid var(--border); border-radius:3mm; padding:4mm; background:#fff; }
+  .card h4 { margin:0 0 1.5mm; font-size:10.6pt; display:flex; align-items:center; gap:2mm; }
+  .card h4 .dot { width:2.4mm; height:2.4mm; border-radius:50%; background:var(--grad); }
+  .card ul { margin:0; padding-left:4.5mm; }
+  .card li { margin-bottom:.8mm; }
+
+  table { width:100%; border-collapse:separate; border-spacing:0; margin:3mm 0; font-size:9.3pt; border:1px solid var(--border); border-radius:2.5mm; overflow:hidden; }
+  th { background:var(--nexo); color:#fff; text-align:left; font-weight:600; padding:2.4mm 3.2mm; font-size:9pt; }
+  td { padding:2.4mm 3.2mm; border-top:1px solid var(--border); vertical-align:top; }
+  tr:nth-child(even) td { background:var(--soft); }
+  .yes { color:var(--ok); font-weight:700; } .no { color:var(--crit); font-weight:700; }
+  ul.clean { margin:0 0 2.6mm; padding-left:4.5mm; } ul.clean li { margin-bottom:1mm; }
+</style>
+</head>
+<body>
+
+<!-- ================= CAPA ================= -->
+<section class="page cover">
+  <div class="inner">
+    <img class="logo" src="../../static/brand/nexopulse-logo-dark.png" alt="NexoPulse">
+    <div class="kicker">NexoPulse Edge</div>
+    <h1>Guia de instalação<br>do <span>sensor</span></h1>
+    <p class="lead">Passo a passo para colocar um sensor no ar em máquinas Linux e Windows, do comando de instalação até o sensor aparecendo na Central.</p>
+    <div class="bar"></div>
+    <div class="chips">
+      <span class="chip"><b>Linux</b> · Debian, Ubuntu, Mint, Arch, Fedora, openSUSE</span>
+      <span class="chip"><b>Windows 11</b> · via WSL</span>
+      <span class="chip"><b>1 comando</b> · direto no terminal</span>
+    </div>
+    <div class="feats">
+      <div class="feat"><div class="n">1</div><b>Sobe sozinho</b><span>Liga junto com a máquina, sem ninguém logado.</span></div>
+      <div class="feat"><div class="n">2</div><b>Volta sozinho</b><span>Se o serviço cair, reinicia em 5 segundos.</span></div>
+      <div class="feat"><div class="n">3</div><b>Atualiza sozinho</b><span>De madrugada, com volta automática se a versão nova falhar.</span></div>
+    </div>
+    <div class="bottom">
+      <span>Central: <strong>nexopulse.up.railway.app</strong></span>
+      <span>Versão <strong>2.2</strong> · outubro de 2026</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 2. ANTES DE COMEÇAR ================= -->
+<section class="page">
+  <div class="head"><img src="../../static/brand/nexopulse-logo-light.png" alt="NexoPulse"><span class="doc">GUIA DE INSTALAÇÃO · NEXOPULSE EDGE</span></div>
+  <div class="head-line"></div>
+  <div class="body">
+    <span class="section-tag"><i>1</i> Antes de começar</span>
+    <h2>Como o sensor funciona</h2>
+    <p class="intro">O NexoPulse Edge é um serviço que roda na rede do cliente, mede a conexão e manda tudo para a Central. Ele <b>sobe sozinho quando a máquina liga</b>, <b>volta sozinho se cair</b> e <b>se atualiza sozinho</b> quando sai uma versão nova.</p>
+
+    <div class="grid2">
+      <div class="card">
+        <h4><span class="dot"></span>Máquina Linux</h4>
+        <ul>
+          <li>Debian / Ubuntu / Linux Mint, Arch / CachyOS, Fedora ou openSUSE</li>
+          <li>Acesso à internet</li>
+          <li>Um usuário comum com permissão de <code>sudo</code></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4><span class="dot"></span>Máquina Windows</h4>
+        <ul>
+          <li>Windows 11 versão 22H2 ou mais nova</li>
+          <li>Acesso à internet</li>
+          <li>Conta com permissão de Administrador</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>O que o instalador faz sozinho</h3>
+    <ul class="clean">
+      <li>Baixa o sensor direto da Central — não é preciso copiar nada para a máquina antes.</li>
+      <li>Instala o que falta (Python e ferramentas de rede) e cria o serviço <code>nexopulse-edge</code>.</li>
+      <li>Deixa o serviço ligado no boot, com reinício automático e proteção de atualização.</li>
+      <li>Registra o sensor na Central no primeiro contato e avisa o grupo <b>NexoPulse · Alertas</b> no Telegram.</li>
+    </ul>
+
+    <h3>Duas escolhas antes de rodar o comando</h3>
+    <table>
+      <tr><th style="width:22%">Opção</th><th>Para que serve</th><th style="width:34%">Como usar</th></tr>
+      <tr><td><b>Nome do sensor</b></td><td>Nome que aparece na Central. Se não informar, usa o nome da máquina. Pode ser trocado depois na Central.</td><td>Linux: <code>NOC_SENSOR_NOME="…"</code><br>Windows: <code>-NomeSensor "…"</code></td></tr>
+      <tr><td><b>Ações de root</b><br><span class="muted">(opcional)</span></td><td>Libera <b>Atualizar sistema operacional</b> e <b>Reiniciar a máquina</b> pela Central. Sem ela, todo o resto funciona normalmente.</td><td>Linux: <code>NEXOPULSE_ROOT=1</code><br>Windows: <code>-Root</code></td></tr>
+    </table>
+
+    <div class="box warn">
+      <b class="t">Libere o root só onde fizer sentido</b>
+      <p>Com as ações de root, a Central passa a poder atualizar e reiniciar a máquina. Por isso a instalação padrão vem <b>sem root</b>. Mesmo liberadas, cada uso exige ligar as ações remotas do sensor e confirmar com a senha do Administrador Master. Dá para liberar ou desfazer depois (veja a página 5).</p>
+    </div>
+  </div>
+  <div class="foot"><span>NexoPulse Edge · Guia de instalação</span><span class="num">2</span></div>
+</section>
+
+<!-- ================= 3. LINUX ================= -->
+<section class="page">
+  <div class="head"><img src="../../static/brand/nexopulse-logo-light.png" alt="NexoPulse"><span class="doc">GUIA DE INSTALAÇÃO · NEXOPULSE EDGE</span></div>
+  <div class="head-line"></div>
+  <div class="body">
+    <span class="section-tag"><i>2</i> Linux</span>
+    <h2>Instalação em máquina Linux</h2>
+    <p class="intro">Tudo pelo terminal, com um único comando. Leva de 2 a 5 minutos, dependendo da internet.</p>
+
+    <ol class="steps">
+      <li><strong>Abra um terminal como usuário normal</strong>
+        <p>Não use <code>root</code> nem <code>sudo su</code>: o instalador pede o <code>sudo</code> sozinho quando precisa.</p></li>
+
+      <li><strong>Rode o comando de instalação</strong>
+        <p>Troque <code>Loja Centro</code> pelo nome do local:</p>
+        <div class="code"><span class="lbl">Terminal</span>curl -fsSL https://nexopulse.up.railway.app/instalar.sh |
+  NOC_SENSOR_NOME="Loja Centro" bash</div>
+        <p class="muted">Pode colar as duas linhas como estão. Para liberar também as ações de root, acrescente <code>NEXOPULSE_ROOT=1</code>:</p>
+        <div class="code"><span class="lbl">Com root</span>curl -fsSL https://nexopulse.up.railway.app/instalar.sh |
+  NOC_SENSOR_NOME="Loja Centro" NEXOPULSE_ROOT=1 bash</div></li>
+
+      <li><strong>Digite a senha do sudo quando pedir</strong>
+        <p>É a senha do seu usuário nessa máquina. Ela não aparece enquanto você digita — é normal.</p></li>
+
+      <li><strong>Espere a mensagem de conclusão</strong>
+        <div class="box ok"><span class="term">✅ NexoPulse Edge instalado, iniciado e configurado para subir com a máquina.</span>
+          <p class="muted" style="margin-top:1.2mm">Logo abaixo ele mostra se as ações de root ficaram liberadas e onde está a configuração.</p></div></li>
+
+      <li><strong>Confira na Central</strong>
+        <p>Em até 1 minuto o sensor aparece na lista de sensores e o grupo <b>NexoPulse · Alertas</b> recebe <b>“SENSOR VINCULADO”</b>.</p></li>
+    </ol>
+
+    <h3>Conferir pela máquina (opcional)</h3>
+    <div class="code"><span class="lbl">Terminal</span>sudo systemctl status nexopulse-edge --no-pager</div>
+    <p>Deve mostrar <code>active (running)</code> e <code>enabled</code>.</p>
+  </div>
+  <div class="foot"><span>NexoPulse Edge · Guia de instalação</span><span class="num">3</span></div>
+</section>
+
+<!-- ================= 4. WINDOWS ================= -->
+<section class="page">
+  <div class="head"><img src="../../static/brand/nexopulse-logo-light.png" alt="NexoPulse"><span class="doc">GUIA DE INSTALAÇÃO · NEXOPULSE EDGE</span></div>
+  <div class="head-line"></div>
+  <div class="body">
+    <span class="section-tag"><i>3</i> Windows</span>
+    <h2>Instalação em máquina Windows</h2>
+    <p class="intro">No Windows o sensor roda dentro do WSL (um Linux integrado ao Windows), enxergando a rede real da máquina. O instalador cuida de tudo.</p>
+
+    <ol class="steps">
+      <li><strong>Abra o PowerShell como Administrador</strong>
+        <p>Clique com o botão direito no menu Iniciar → <b>Terminal (Admin)</b>.</p></li>
+
+      <li><strong>Rode o comando de instalação</strong>
+        <p>Troque <code>Loja Centro</code> pelo nome do local:</p>
+        <div class="code"><span class="lbl">PowerShell</span>irm https://nexopulse.up.railway.app/instalar-windows.ps1 `
+    -OutFile $env:TEMP\nexopulse.ps1
+powershell -ExecutionPolicy Bypass -File $env:TEMP\nexopulse.ps1 `
+    -NomeSensor "Loja Centro"</div>
+        <p class="muted">Para liberar também as ações de root, acrescente <code>-Root</code> depois de <code>"Loja Centro"</code>. Pode colar as linhas como estão: o PowerShell junta as que terminam em crase.</p></li>
+
+      <li><strong>Só na primeira vez: crie o usuário do Linux</strong>
+        <p>Se o Ubuntu ainda não existia, o instalador o instala e para. Abra o <b>Ubuntu</b> pelo menu Iniciar, crie um usuário e uma senha, feche a janela e <b>rode o passo 2 de novo</b>. Se o Windows pedir, reinicie antes.</p></li>
+
+      <li><strong>Digite a senha do Linux quando pedir</strong>
+        <p>Ele instala o sensor dentro do Ubuntu e cria a tarefa <b>“NexoPulse Edge (WSL)”</b>, que liga o sensor sempre que o Windows inicia.</p></li>
+
+      <li><strong>Confira na Central</strong>
+        <p>O sensor aparece em até 1 minuto, e o grupo <b>NexoPulse · Alertas</b> recebe <b>“SENSOR VINCULADO”</b>.</p></li>
+    </ol>
+
+    <h3>Conferir pelo Windows (opcional)</h3>
+    <div class="code"><span class="lbl">PowerShell</span>wsl -d Ubuntu -- systemctl status nexopulse-edge --no-pager</div>
+
+    <div class="box">
+      <b class="t">Bom saber</b>
+      <p>O computador precisa ficar ligado para o sensor medir. No WSL não há leitura de temperatura da CPU; o resto das medições é igual ao Linux.</p>
+    </div>
+  </div>
+  <div class="foot"><span>NexoPulse Edge · Guia de instalação</span><span class="num">4</span></div>
+</section>
+
+<!-- ================= 5. DEPOIS DE INSTALAR ================= -->
+<section class="page">
+  <div class="head"><img src="../../static/brand/nexopulse-logo-light.png" alt="NexoPulse"><span class="doc">GUIA DE INSTALAÇÃO · NEXOPULSE EDGE</span></div>
+  <div class="head-line"></div>
+  <div class="body">
+    <span class="section-tag"><i>4</i> Depois de instalar</span>
+    <h2>Ajustes na Central</h2>
+    <p class="intro" style="margin-bottom:3mm">Com o sensor no ar, o resto é feito pela plataforma.</p>
+
+    <div class="grid2">
+      <div class="card"><h4><span class="dot"></span>Nome</h4><p style="margin:0">Troque quando quiser na tela do sensor; a Central nunca o sobrescreve.</p></div>
+      <div class="card"><h4><span class="dot"></span>Cliente</h4><p style="margin:0">Vincule na tela <b>Sensores</b>: com Chat ID, o grupo do cliente recebe os alertas.</p></div>
+    </div>
+
+    <h3>Atualização automática</h3>
+    <p>Sempre que o código do sensor muda na Central, ele se atualiza sozinho <b>de madrugada (04h)</b>, cada sensor num minuto diferente. Antes de trocar, guarda a versão atual: se a nova não conseguir falar com a Central, <b>ele volta sozinho para a anterior</b> e o Telegram avisa. Dá para desligar por sensor no card <b>Ações remotas</b> → <b>Atualização automática</b>.</p>
+
+    <h3>Ações remotas</h3>
+    <table>
+      <tr><th style="width:44%">Ação</th><th style="width:17%">Root?</th><th>Observação</th></tr>
+      <tr><td>Coletar diagnóstico</td><td class="yes">Não</td><td>Sistema, disco, memória, rede e serviço</td></tr>
+      <tr><td>Atualizar agente NexoPulse / Reiniciar serviço do agente</td><td class="yes">Não</td><td>Mesma atualização da madrugada, na hora</td></tr>
+      <tr><td>Atualizar sistema operacional</td><td class="no">Sim</td><td>Atualiza os pacotes do Linux</td></tr>
+      <tr><td>Reiniciar a máquina</td><td class="no">Sim</td><td>Reinicia em 10 segundos</td></tr>
+    </table>
+    <p class="muted" style="margin-bottom:0">Ligue o interruptor no card <b>Ações remotas</b> da tela do sensor (só Administrador Master). Cada ação pede a sua senha, fica registrada e avisa o grupo NexoPulse.</p>
+
+    <h3>Liberar ou desfazer o root depois</h3>
+    <p>É feito <b>na máquina</b> (no local, por SSH ou área de trabalho remota): de propósito, a Central não libera root sozinha. No Windows, dentro do Ubuntu (WSL).</p>
+    <div class="code"><span class="lbl">Linux / WSL</span><span class="c"># liberar</span>
+bash ~/nexopulse-edge/linux/liberar-root.sh
+<span class="c"># desfazer</span>
+bash ~/nexopulse-edge/linux/liberar-root.sh --desfazer</div>
+  </div>
+  <div class="foot"><span>NexoPulse Edge · Guia de instalação</span><span class="num">5</span></div>
+</section>
+
+<!-- ================= 6. PROBLEMAS ================= -->
+<section class="page">
+  <div class="head"><img src="../../static/brand/nexopulse-logo-light.png" alt="NexoPulse"><span class="doc">GUIA DE INSTALAÇÃO · NEXOPULSE EDGE</span></div>
+  <div class="head-line"></div>
+  <div class="body">
+    <span class="section-tag"><i>5</i> Se algo der errado</span>
+    <h2>Solução de problemas</h2>
+    <p class="intro">Os casos mais comuns e o que fazer em cada um.</p>
+
+    <table>
+      <tr><th style="width:34%">Sintoma</th><th>O que fazer</th></tr>
+      <tr><td><b>Sensor não aparece na Central</b></td><td>Veja o erro no log:<br><code>journalctl -u nexopulse-edge -n 50 --no-pager</code><br>Confira também se a máquina tem internet.</td></tr>
+      <tr><td><b>“401 Sensor não autenticado”</b> no log</td><td>A chave do sensor mudou. Na Central, <b>Sensores → excluir</b> o sensor e reinicie o serviço: ele se vincula de novo.</td></tr>
+      <tr><td><b>Windows: não volta depois de reiniciar o PC</b></td><td>Confira se a tarefa <b>“NexoPulse Edge (WSL)”</b> existe no Agendador de Tarefas. Se não, rode o instalador de novo.</td></tr>
+      <tr><td><b>“Atualizar sistema operacional” ou “Reiniciar a máquina” falham</b></td><td>As ações de root não foram liberadas nessa máquina. Na máquina, rode:<br><code>bash ~/nexopulse-edge/linux/liberar-root.sh</code></td></tr>
+      <tr><td><b>Atualização desfeita</b> (aviso no Telegram)</td><td>A versão nova não conseguiu falar com a Central e o sensor voltou para a anterior sozinho. Nada a fazer na máquina: ele tenta de novo quando sair a próxima versão.</td></tr>
+      <tr><td><b>Precisa reinstalar</b></td><td>Rode o mesmo comando de instalação. Nome, identidade e chave do sensor são preservados.</td></tr>
+    </table>
+
+    <h3>Comandos úteis na máquina</h3>
+    <div class="code"><span class="lbl">Linux / WSL</span><span class="c"># situação do serviço</span>
+sudo systemctl status nexopulse-edge --no-pager
+<span class="c"># acompanhar o log ao vivo (Ctrl+C para sair)</span>
+journalctl -u nexopulse-edge -f
+<span class="c"># reiniciar o sensor</span>
+sudo systemctl restart nexopulse-edge
+<span class="c"># configuração (nome, URL da Central, intervalos)</span>
+sudoedit /etc/default/nexopulse-edge</div>
+
+    <div class="box ok" style="margin-top:6mm">
+      <b class="t">Onde fica cada coisa</b>
+      <div class="grid2" style="margin:1mm 0 0; gap:1.5mm 4mm">
+        <span>Sensor: <code>~/nexopulse-edge</code></span><span>Serviço: <code>nexopulse-edge</code></span>
+        <span>Configuração: <code>/etc/default/nexopulse-edge</code></span><span>Painel local: porta <code>10000</code></span>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>NexoPulse Edge · Guia de instalação</span><span class="num">6</span></div>
+</section>
+
+</body>
+</html>

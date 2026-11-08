@@ -23,9 +23,9 @@ def test_legacy_report_and_migration(client, login):
         assert client.get(route).status_code == 200,route
     database.init_db();database.init_db()
     assert client.get('/api/v2/sensor_data/AA:01').json['cpu_usage']==15
-    assert client.get('/api/v2/agent_versao').json['versao']=='2.1.0'
-    assert client.get('/api/v2/agent_versao').json['update_available'] is False
-    assert client.get('/api/v2/agent_versao').json['url_download']==''
+    info = client.get('/api/v2/agent_versao').json
+    assert info['versao'] == central.CENTRAL_VERSION and info['platform'] == 'linux'
+    assert 'url_download' not in info
     assert client.get('/healthz').json['central_version']=='2.2.0-rc1'
 
 
@@ -62,26 +62,29 @@ def test_dashboard_uses_real_online_sensor_measurements(client, login):
     assert connectivity['Quad9']['latency_ms'] == 50.0
 
 
-def test_login_version_is_beside_credentials(client):
+def test_login_does_not_show_version_to_clients(client):
     page = client.get('/login').get_data(as_text=True)
     assert '<div class="login-header">' in page
-    assert '<span class="version-badge">v2.2.0-rc1</span>' in page
+    # A versão (ex.: rc) não aparece para quem ainda não entrou; ela fica no /healthz e na barra interna.
+    assert 'version-badge' not in page and '2.2.0-rc1' not in page
+    assert 'href="https://www.mdsolucoes.eng.br"' in page and 'Ex: admin' not in page
     assert 'class="product-bar"' not in page
 
 
 def test_nexopulse_brand_is_local_and_consistent(client, login):
     login_page = client.get('/login').get_data(as_text=True)
-    assert '<title>NexoPulse Central - Acesso</title>' in login_page
-    assert 'NETWORK INTELLIGENCE &amp; MONITORING' in login_page
-    assert '/static/brand/nexopulse-logo-dark.png' in login_page
+    assert '<title>NexoHub - Acesso</title>' in login_page
+    assert 'PORTAL DO CLIENTE' in login_page and 'MD Soluções Tecnológicas' in login_page
+    assert '/static/brand/nexohub/logo-escuro.svg' in login_page
+    assert '/static/brand/nexohub/favicon.svg' in login_page
 
     manifest = client.get('/static/manifest.json').json
-    assert manifest['name'] == 'NexoPulse Central'
-    assert manifest['short_name'] == 'NexoPulse'
+    assert manifest['name'] == 'NexoHub'
+    assert manifest['short_name'] == 'NexoHub'
     assert manifest['id'] == '/'
     assert manifest['scope'] == '/'
     assert manifest['start_url'] == '/'
-    assert all(icon['src'].startswith('/static/icons/nexopulse-') for icon in manifest['icons'])
+    assert all(icon['src'].startswith('/static/brand/nexohub/') for icon in manifest['icons'])
     assert {'any', 'maskable'} == {icon['purpose'] for icon in manifest['icons']}
 
     root_manifest = client.get('/manifest.json')
@@ -118,19 +121,18 @@ def test_nexopulse_brand_is_local_and_consistent(client, login):
     assert "updateViaCache: 'none'" in brand_js
     assert 'existing.unregister()' in brand_js
 
-    agent_spec = (root / 'agente_v2.spec').read_text(encoding='utf-8')
-    assert "icon='packaging/nexopulse-edge.ico'" in agent_spec
-    assert "version='packaging/nexopulse_edge_version.txt'" in agent_spec
+    # O agente é só Linux: não há mais executável Windows empacotado.
+    assert not (root / 'agente_v2.spec').exists()
 
     for relative in (
-        'static/brand/nexopulse-logo-dark.png',
-        'static/brand/nexopulse-logo-light.png',
-        'static/brand/nexopulse-symbol.png',
-        'static/icons/nexopulse-192.png',
-        'static/icons/nexopulse-512.png',
-        'static/icons/nexopulse-maskable-192.png',
-        'static/icons/nexopulse-maskable-512.png',
-        'static/favicon.png',
+        'static/brand/nexopulse/logo-escuro.svg',
+        'static/brand/nexopulse/logo-claro.svg',
+        'static/brand/nexopulse/simbolo-escuro.svg',
+        'static/brand/nexopulse/icon-192.png',
+        'static/brand/nexopulse/icon-512.png',
+        'static/brand/nexopulse/maskable-192.png',
+        'static/brand/nexopulse/maskable-512.png',
+        'static/brand/nexopulse/apple-touch-icon.png',
     ):
         assert (root / relative).stat().st_size > 1000
 
@@ -160,7 +162,7 @@ def test_tenant_access(client,login):
     client.post('/api/v2/report_data',json={'mac_id':'foreign'})
     conn=database.get_db();conn.execute("UPDATE sensores SET cliente_id=3 WHERE mac_id='foreign'");conn.commit();conn.close()
     login(2,'Cliente')
-    for route in ('/sensor/foreign','/api/v2/sensor_data/foreign','/api/v2/gerar_token_local/foreign','/api/v2/dispositivos/foreign'):
+    for route in ('/sensor/foreign','/api/v2/sensor_data/foreign','/api/v2/dispositivos/foreign'):
         assert client.get(route).status_code==403
     assert client.post('/api/v2/configurar_sensor',json={'mac_id':'foreign','nome':'hack','lat':1,'lon':1}).status_code==403
     assert client.put('/api/v2/usuarios/3/info',json={}).status_code==403
@@ -288,7 +290,7 @@ def test_csrf_required_for_browser_mutations(monkeypatch):
 def test_duplicate_username_is_rejected(client, login):
     login()
     response = client.post('/api/v2/usuarios', json={
-        'nome': 'Duplicado', 'usuario': 'user2', 'senha': 'test-only', 'role': 'Cliente',
+        'nome': 'Duplicado', 'usuario': 'user2', 'senha': 'teste-forte-42', 'role': 'Cliente',
     })
     assert response.status_code == 409
 
@@ -358,7 +360,7 @@ def test_cross_origin(client,login):
 
 def test_user_insert_after_fixture_sequence(client,login):
     login()
-    response=client.post('/api/v2/usuarios',json={'nome':'New client','usuario':'new-client','senha':'test-only','role':'Cliente'})
+    response=client.post('/api/v2/usuarios',json={'nome':'New client','usuario':'new-client','senha':'teste-forte-42','role':'Cliente'})
     assert response.status_code==200 and response.json['status']=='OK'
 
 
@@ -465,9 +467,8 @@ def test_login_and_base_layout_accessibility(client):
     for template in (root / 'templates').glob('*.html'):
         source = template.read_text(encoding='utf-8')
         assert 'nexopulse-1' not in source, template.name
-        if 'fonts.googleapis.com' in source:
-            assert 'family=Inter:wght@400;600;700' in source, template.name
-            assert 'family=JetBrains+Mono:wght@400;700' in source, template.name
+        # Fontes servidas pela própria Central: nenhuma página chama o Google Fonts.
+        assert 'fonts.googleapis.com' not in source, template.name
 
 
 def test_unverified_sensor_state_is_never_shown_as_healthy(client, login):

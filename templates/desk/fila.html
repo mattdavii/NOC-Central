@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+{% include 'desk/_head.html' %}
+    <title>NexoHub - Fila de atendimento</title>
+</head>
+<body>
+<script src="/static/security.js?v=2.2.0-rc1"></script>
+{% include '_brand_bar.html' %}
+{% set da_md = empresas | selectattr('master') | first %}
+{% import 'desk/_prazo.html' as prazo %}
+{% macro iniciais(nome) -%}{%- set partes = (nome or '?').split() -%}{{ (partes[0][:1] ~ (partes[1][:1] if partes|length > 1 else partes[0][1:2])) | upper }}{%- endmacro %}
+<main class="page-main">
+    <div class="cabeca faixa-pagina">
+        <div class="marca">
+            {% include 'desk/_marca.html' %}
+            <div>
+                <h1>Fila de atendimento</h1>
+                <p>{{ contadores.abertos }} chamado{{ 's' if contadores.abertos != 1 }} aberto{{ 's' if contadores.abertos != 1 }}{% if contadores.empresas %} em {{ contadores.empresas }} empresa{{ 's' if contadores.empresas != 1 }}{% endif %}</p>
+            </div>
+        </div>
+        <div class="faixa-lado">
+        <dl class="faixa-status" aria-label="Fila agora">
+            <div class="destaque"><dt>Abertos</dt><dd>{{ contadores.abertos }}</dd></div>
+            <div class="{{ 'atencao' if contadores.novos }}"><dt>Sem responsável</dt><dd>{{ contadores.novos }}</dd></div>
+            <div class="{{ 'critico' if contadores.estourados }}"><dt>Prazo estourado</dt><dd>{{ contadores.estourados }}</dd></div>
+        </dl>
+        <div class="acoes-topo">
+            {% if da_md %}<a class="btn" href="/desk/novo?empresa={{ da_md.id }}"><i class="fa-solid fa-lock" aria-hidden="true"></i> Chamado interno</a>{% endif %}
+            <a class="btn primario" href="/desk/novo"><i class="fa-solid fa-plus" aria-hidden="true"></i> Abrir em nome de um cliente</a>
+        </div>
+        </div>
+    </div>
+
+    <div class="contadores" role="group" aria-label="Resumo da fila">
+        <a class="contador {{ 'ativo' if filtros.status == 'novo' and filtros.responsavel == 'ninguem' }} {{ 'destaque' if contadores.novos }}" href="/desk?status=novo&responsavel=ninguem"><b>{{ contadores.novos }}</b><span>novo{{ 's' if contadores.novos != 1 }}, sem responsável</span></a>
+        <a class="contador perto {{ 'ativo' if filtros.prazo == 'perto' }}" href="/desk?prazo=perto"><b>{{ contadores.perto }}</b><span>perto de vencer</span></a>
+        <a class="contador estourado {{ 'tem' if contadores.estourados }} {{ 'ativo' if filtros.prazo == 'estourado' }}" href="/desk?prazo=estourado"><b>{{ contadores.estourados }}</b><span>prazo estourado</span></a>
+        <a class="contador aguard {{ 'ativo' if filtros.status == 'aguardando' }}" href="/desk?status=aguardando"><b>{{ contadores.aguardando }}</b><span>aguardando o cliente</span></a>
+        <a class="contador {{ 'ativo' if filtros.responsavel == eu|string }}" href="/desk?responsavel={{ eu }}"><b>{{ contadores.meus }}</b><span>com você</span></a>
+        <div class="contador resolv" title="Chamados resolvidos neste mês dentro do prazo de solução do contrato"><b>{{ (no_prazo.pct ~ '%') if no_prazo else '—' }}</b><span>{% if no_prazo %}no prazo em {{ no_prazo.mes }} ({{ no_prazo.total }} resolvido{{ 's' if no_prazo.total != 1 }}){% else %}no prazo este mês (nenhum resolvido ainda){% endif %}</span></div>
+    </div>
+
+    <form class="filtros-fila" method="get" role="search">
+        <label for="f-busca" class="sr-only">Buscar</label>
+        <input class="campo busca" id="f-busca" name="busca" value="{{ filtros.busca }}" placeholder="Buscar por número, título, empresa ou solicitante">
+        <label for="f-empresa" class="sr-only">Empresa</label>
+        <select class="campo" id="f-empresa" name="empresa" onchange="this.form.submit()">
+            <option value="">Todas as empresas</option>
+            {% for e in empresas %}<option value="{{ e.id }}" {% if e.id == filtros.empresa_id %}selected{% endif %}>{{ e.nome }}{% if e.master %} (internos){% endif %}</option>{% endfor %}
+        </select>
+        <label for="f-resp" class="sr-only">Responsável</label>
+        <select class="campo" id="f-resp" name="responsavel" onchange="this.form.submit()">
+            <option value="">Qualquer responsável</option>
+            <option value="ninguem" {% if filtros.responsavel == 'ninguem' %}selected{% endif %}>Sem responsável</option>
+            {% for u in equipe %}<option value="{{ u.id }}" {% if filtros.responsavel == u.id|string %}selected{% endif %}>{{ u.nome }}{% if u.id == eu %} (você){% endif %}</option>{% endfor %}
+        </select>
+        <label for="f-status" class="sr-only">Status</label>
+        <select class="campo" id="f-status" name="status" onchange="this.form.submit()">
+            <option value="abertos" {% if filtros.status == 'abertos' %}selected{% endif %}>Abertos</option>
+            {% for k, v in status_rotulos.items() %}<option value="{{ k }}" {% if filtros.status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+            <option value="todos" {% if filtros.status == 'todos' %}selected{% endif %}>Todos</option>
+        </select>
+        <label for="f-cat" class="sr-only">Categoria</label>
+        <select class="campo" id="f-cat" name="categoria" onchange="this.form.submit()">
+            <option value="">Todas as categorias</option>
+            {% for k, (rotulo, _i) in categorias.items() %}<option value="{{ k }}" {% if filtros.categoria == k %}selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+        </select>
+        {% if filtros.busca or filtros.empresa_id or filtros.responsavel or filtros.categoria or filtros.prazo or filtros.status != 'abertos' %}
+        <a class="btn pequeno" href="/desk"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Limpar</a>
+        {% endif %}
+    </form>
+
+    {% if chamados %}
+    <section class="card lista com-prazo" aria-label="Chamados">
+        <div class="linha-chamado cabecalho" aria-hidden="true">
+            <span>Prazo</span><span>#</span><span>Chamado</span><span>Categoria</span><span>Prioridade</span><span>Status</span><span>Responsável</span><span>Atualizado</span>
+        </div>
+        {% for c in chamados %}
+        {% set pr = (c.prazo or {}).get('proximo') %}
+        <a class="linha-chamado {{ 'sem-dono' if c.status == 'novo' and not c.responsavel_id }} {{ 'atrasado' if pr and pr.estado == 'estourado' }}" href="/desk/{{ c.numero }}">
+            <span class="prazo-cel">{{ prazo.celula(c.prazo) }}</span>
+            <span class="num">#{{ c.numero }}</span>
+            <span class="titulo"><b>{% if c.interno %}<i class="fa-solid fa-lock muted" style="font-size:.75rem" aria-label="Interno"></i> {% endif %}{{ c.titulo }}</b>
+                <span>{{ c.empresa }}{% if c.local_nome %} · {{ c.local_nome }}{% endif %}{% if c.canal not in ('nexohub', 'interno') %} · via {{ c.canal_rotulo }}{% endif %} · aberto <span data-ts="{{ c.criado_em }}"></span></span></span>
+            <span class="cat">{{ c.categoria_rotulo }}</span>
+            <span class="prio-cel"><span class="prio {{ c.prioridade }}">{{ c.prioridade_rotulo }}</span></span>
+            <span class="status-cel"><span class="status {{ c.status }}">{{ c.status_rotulo }}</span></span>
+            <span class="resp">{% if c.responsavel %}<span class="av md" aria-hidden="true">{{ iniciais(c.responsavel) }}</span><span>{{ c.responsavel }}</span>{% else %}<span class="muted">Ninguém ainda</span>{% endif %}</span>
+            <span class="quando" data-ts="{{ c.atualizado_em }}"></span>
+        </a>
+        {% endfor %}
+    </section>
+    {% else %}
+    <div class="vazio">
+        {% if filtros.busca or filtros.empresa_id or filtros.responsavel or filtros.categoria or filtros.prazo or filtros.status != 'abertos' %}
+        <strong>Nenhum chamado com esses filtros.</strong> <a href="/desk" style="color:var(--link)">Ver todos os abertos</a>.
+        {% else %}
+        <strong>Fila vazia.</strong> Quando um cliente pedir suporte pelo NexoHub, o chamado aparece aqui, e a MD recebe o aviso no Telegram.
+        {% endif %}
+    </div>
+    {% endif %}
+</main>
+<script src="/static/desk.js?v=3"></script>
+</body>
+</html>

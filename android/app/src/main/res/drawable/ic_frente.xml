@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:translateX="22.0" android:translateY="22.0" android:scaleX="0.4" android:scaleY="0.4">
+        <path android:pathData="M80 12 L138 46 L138 114 L80 148 L22 114 L22 46 Z" android:strokeWidth="7" android:strokeLineCap="round" android:strokeLineJoin="round"><aapt:attr name="android:strokeColor"><gradient android:type="linear" android:startX="22" android:startY="12" android:endX="138" android:endY="148"><item android:offset="0" android:color="#FF08ABD0"/><item android:offset="0.56" android:color="#FF05B7BE"/><item android:offset="1" android:color="#FF04B89C"/></gradient></aapt:attr></path>
+        <path android:pathData="M80 119 C71 107 55 94 55 71 A25 25 0 0 1 105 71 C105 94 89 107 80 119 Z" android:strokeColor="#4DE6D9" android:strokeWidth="5.7" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+        <path android:pathData="M67.98 66.98 A17 17 0 0 1 92.02 66.98 M72.93 71.93 A10 10 0 0 1 87.07 71.93" android:strokeColor="#4DE6D9" android:strokeWidth="5.7" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+        <path android:pathData="M76.4,79 a3.6,3.6 0 1,0 7.2,0 a3.6,3.6 0 1,0 -7.2,0" android:fillColor="#4DE6D9"/>
+        <path android:pathData="M70.9,12 a9.1,9.1 0 1,0 18.2,0 a9.1,9.1 0 1,0 -18.2,0" android:fillColor="#06D2C9"/>
+        <path android:pathData="M128.9,46 a9.1,9.1 0 1,0 18.2,0 a9.1,9.1 0 1,0 -18.2,0" android:fillColor="#9CEDE5"/>
+        <path android:pathData="M128.9,114 a9.1,9.1 0 1,0 18.2,0 a9.1,9.1 0 1,0 -18.2,0" android:fillColor="#67E9D7"/>
+        <path android:pathData="M70.9,148 a9.1,9.1 0 1,0 18.2,0 a9.1,9.1 0 1,0 -18.2,0" android:fillColor="#04B89C"/>
+        <path android:pathData="M12.9,114 a9.1,9.1 0 1,0 18.2,0 a9.1,9.1 0 1,0 -18.2,0" android:fillColor="#B1E8FF"/>
+        <path android:pathData="M12.9,46 a9.1,9.1 0 1,0 18.2,0 a9.1,9.1 0 1,0 -18.2,0" android:fillColor="#08ABD0"/>
+    </group>
+</vector>

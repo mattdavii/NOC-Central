@@ -1,14 +1,31 @@
-from flask import Flask, jsonify, request, render_template, session, redirect, url_for, flash, send_from_directory
+from flask import Flask, jsonify, request, render_template, session, redirect, url_for, flash, send_from_directory, send_file, g
 from werkzeug.security import check_password_hash, generate_password_hash
 from flask_socketio import SocketIO
 import database
+import edge_local
+import levantamento
+import mapa_rede
+import nexoreport
+import nexoreport_pdf
+import guias
+import app_campo
+import campo
+import nexodesk
+import nexoguard
+import confiaveis
+import sla
 import notifications
+import oui
+import diagnostico
+import saude
+import acessos
+import hub
+import seguranca
 from location import parse_location, save_location
-from version import CENTRAL_VERSION, WINDOWS_BINARY_VERSION
+from version import CENTRAL_VERSION
 from urllib.parse import urlsplit
 import urllib.request, json
 import os
-import jwt
 import html
 import hmac
 import math
@@ -17,11 +34,23 @@ import threading
 import time
 import urllib.error
 import re
+import unicodedata
 import hashlib
+import gzip
 from datetime import datetime, timedelta, timezone
 
-# Chave privada RSA usada para assinar os tokens de acesso local do agente (agente_v2.py guarda só a pública)
-JWT_PRIVATE_KEY = os.environ.get('JWT_PRIVATE_KEY', '')
+# Chave privada RSA usada para assinar os tokens de acesso local do agente (nexopulse_edge.py guarda só a pública)
+# Painel local dos sensores (http://<ip>:10000): o mesmo usuário e senha em todos. Só o hash vai
+# para os sensores, a cada contato; trocar a variável troca em todos em segundos.
+EDGE_USUARIO = (os.environ.get('EDGE_USUARIO') or 'nexopulse').strip()[:64]
+_EDGE_SENHA = os.environ.get('EDGE_SENHA', '')
+PAINEL_LOCAL = ({'usuario': EDGE_USUARIO, 'senha_hash': generate_password_hash(_EDGE_SENHA, method='pbkdf2:sha256')}
+                if len(_EDGE_SENHA) >= 8 else None)
+if _EDGE_SENHA and not PAINEL_LOCAL:
+    print('⚠️ EDGE_SENHA com menos de 8 caracteres: ignorada; o painel local dos sensores fica sem credencial nova.')
+elif not _EDGE_SENHA:
+    print('⚠️ EDGE_SENHA ausente: os sensores não recebem usuário/senha do painel local.')
+del _EDGE_SENHA
 
 app = Flask(__name__)
 
@@ -40,6 +69,24 @@ app.config.update(
     CSRF_PROTECT=os.environ.get('CSRF_PROTECT', '1') != '0',
     PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
 )
+
+class _Requisicao(Flask.request_class):
+    """O corpo da requisição fica em 1 MB, menos nas rotas do NexoDesk que recebem arquivos."""
+
+    @property
+    def max_content_length(self):
+        if self.method == 'POST' and self.path.startswith('/api/v2/desk/'):
+            return nexodesk.LIMITE_REQUISICAO
+        if self.method == 'POST' and self.path == '/api/v2/campo/visitas':
+            return campo.LIMITE_REQUISICAO
+        return super().max_content_length
+
+    @max_content_length.setter
+    def max_content_length(self, valor):
+        Flask.request_class.max_content_length.fset(self, valor)
+
+
+app.request_class = _Requisicao
 
 socketio = SocketIO(app, cors_allowed_origins=SOCKETIO_ALLOWED_ORIGINS, async_mode='gevent')
 
@@ -65,6 +112,8 @@ TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 # NOC_SENSOR_API_KEY na Central é apenas a opção compartilhada legada de transição.
 NOC_SENSOR_API_KEY = os.environ.get("NOC_SENSOR_API_KEY", "").strip()
 NOC_SENSOR_AUTH_REQUIRED = os.environ.get("NOC_SENSOR_AUTH_REQUIRED", "0").strip().lower() in ('1', 'true', 'yes', 'on')
+# Agentes geram a própria chave; no primeiro contato a Central a vincula ao MAC.
+NOC_SENSOR_AUTO_ENROLL = os.environ.get("NOC_SENSOR_AUTO_ENROLL", "1").strip().lower() in ('1', 'true', 'yes', 'on')
 if not NOC_SENSOR_API_KEY:
     print("⚠️ NOC_SENSOR_API_KEY ausente: API de sensores em modo compatibilidade.")
 if not NOC_SENSOR_AUTH_REQUIRED:
@@ -127,6 +176,13 @@ def enforce_csrf():
     return None
 
 
+@app.teardown_request
+def devolver_conexoes_ao_pool(_erro=None):
+    # Várias rotas fecham a conexão só no caminho feliz: um erro no meio (banco
+    # caindo, por exemplo) deixava a conexão presa e esgotava o pool de 10.
+    database.fechar_conexoes_da_requisicao()
+
+
 @app.after_request
 def add_security_headers(response):
     response.headers.setdefault('X-Content-Type-Options', 'nosniff')
@@ -139,8 +195,8 @@ def add_security_headers(response):
         "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; "
         "form-action 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net "
         "https://unpkg.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' "
-        "https://fonts.googleapis.com https://unpkg.com https://cdnjs.cloudflare.com; "
-        "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
+        "https://unpkg.com https://cdnjs.cloudflare.com; "
+        "font-src 'self' data: https://cdnjs.cloudflare.com; "
         "img-src 'self' data: https:; "
         "media-src 'self' https://assets.mixkit.co; connect-src 'self' https://api.ipify.org wss:"
     )
@@ -190,6 +246,26 @@ def _sensor_child_scope_error(conn, sensor_id):
     return None
 
 
+def _vincular_chave_sensor(conn, sensor_id, chave, chave_hash):
+    """Primeiro contato de um sensor sem credencial: vincula a chave que ele gerou.
+
+    Só acontece quando o MAC nunca teve credencial (uma chave revogada nunca é
+    revinculada sozinha). O grupo NexoPulse é avisado de cada vínculo.
+    """
+    conn.execute('''INSERT INTO sensor_credentials (sensor_mac, key_hash, key_prefix, created_at, revoked_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP, NULL) ON CONFLICT(sensor_mac) DO NOTHING''',
+        (sensor_id, chave_hash, chave[:8]))
+    credential = conn.execute(
+        'SELECT key_hash, revoked_at FROM sensor_credentials WHERE sensor_mac=?', (sensor_id,)).fetchone()
+    if credential and credential['key_hash'] == chave_hash:
+        sensor = conn.execute('SELECT nome_local FROM sensores WHERE mac_id=?', (sensor_id,)).fetchone()
+        nome = sensor['nome_local'] if sensor else 'sensor novo'
+        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Credencial vinculada', 'Aviso', 'Chave do agente vinculada no primeiro contato.')", (sensor_id,))
+        enviar_telegram(f"🔐 <b>SENSOR VINCULADO</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(nome))}\n🔖 <b>MAC:</b> {html.escape(str(sensor_id))}\nA chave deste agente passa a ser exigida.", conn=conn)
+    conn.commit()
+    return credential
+
+
 def validar_sensor_ou_sessao():
     if session.get("user_id"):
         return None
@@ -204,12 +280,14 @@ def validar_sensor_ou_sessao():
         if sensor_id:
             conn = database.get_db()
             try:
+                supplied_hash = hashlib.sha256(fornecida.encode('utf-8')).hexdigest()
                 credential = conn.execute(
-                    'SELECT key_hash FROM sensor_credentials WHERE sensor_mac=? AND revoked_at IS NULL',
+                    'SELECT key_hash, revoked_at FROM sensor_credentials WHERE sensor_mac=?',
                     (sensor_id,),
                 ).fetchone()
-                supplied_hash = hashlib.sha256(fornecida.encode('utf-8')).hexdigest()
-                if credential and hmac.compare_digest(str(credential['key_hash']), supplied_hash):
+                if credential is None and NOC_SENSOR_AUTO_ENROLL:
+                    credential = _vincular_chave_sensor(conn, sensor_id, fornecida, supplied_hash)
+                if credential and not credential['revoked_at'] and hmac.compare_digest(str(credential['key_hash']), supplied_hash):
                     scope_error = _sensor_child_scope_error(conn, sensor_id)
                     return scope_error
             finally:
@@ -229,7 +307,24 @@ def exigir_sensor_ou_sessao():
     return None
 
 def enviar_telegram(mensagem, cliente_id=None, conn=None):
-    return notifications.enqueue(mensagem, cliente_id, conn=conn)
+    """O grupo NexoPulse recebe todos os eventos; o grupo do cliente, só os dele."""
+    owns_connection = conn is None
+    conn = conn or database.get_db()
+    try:
+        mensagem_master = mensagem
+        if cliente_id:
+            row = conn.execute('SELECT nome, usuario FROM clientes WHERE id = ?', (cliente_id,)).fetchone()
+            nome_cliente = (row['nome'] or row['usuario']) if row else f'#{cliente_id}'
+            mensagem_master = f"{mensagem}\n🏢 <b>Cliente:</b> {html.escape(str(nome_cliente))}"
+        resultado = notifications.enqueue(mensagem_master, None, conn=conn)
+        if cliente_id and notifications.client_has_chat(cliente_id, conn):
+            notifications.enqueue(mensagem, cliente_id, conn=conn)
+        if owns_connection:
+            conn.commit()
+        return resultado
+    finally:
+        if owns_connection:
+            conn.close()
 
 
 @app.route("/api/v2/testar_telegram/<int:cliente_id>", methods=["POST"])
@@ -267,6 +362,19 @@ def testar_telegram(cliente_id):
 
 # Migrations are explicit and fail fast instead of serving against a partial schema.
 database.init_db()
+# Empresa Master (MD Soluções): criada uma vez, com a equipe Master vinculada a ela.
+try:
+    _conn = database.get_db()
+    try:
+        _md = acessos.garantir_empresa_master(_conn, generate_password_hash(os.urandom(32).hex()))
+        _conn.commit()
+        if _md['criada'] or _md['masters'] or _md['sensores']:
+            print(f"✅ Empresa Master #{_md['id']}: criada={_md['criada']}, usuários Master vinculados={_md['masters']}, "
+                  f"sensores transferidos={_md['sensores']}.")
+    finally:
+        _conn.close()
+except Exception as _erro:
+    print(f'⚠️ Não foi possível garantir a Empresa Master: {_erro}')
 conn = database.get_db()
 try:
     if not conn.execute("SELECT id FROM clientes WHERE usuario='admin'").fetchone():
@@ -276,6 +384,8 @@ try:
         conn.execute("INSERT INTO clientes (usuario, senha, role, ativo) VALUES ('admin', ?, 'Administrador Master', 1)",
                      (generate_password_hash(initial_password),))
         conn.commit()
+    # Padrões da saúde do servidor e o destino de alerta do vigia (bot master) no banco.
+    saude.garantir_config(conn, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
 finally:
     conn.close()
 
@@ -292,9 +402,28 @@ if os.environ.get('DISABLE_BACKGROUND_GUARDIAN', '0') != '1':
     threading.Thread(target=_telegram_worker, name='noc-telegram', daemon=True).start()
 
 
+def menu_nexo():
+    """O que o menu mostra para quem está logado: aplicativos com acesso e se gerencia usuários (cache por requisição)."""
+    if 'menu_nexo' not in g:
+        menu = {'acesso': {}, 'gerencia_usuarios': False}
+        if session.get('user_id'):
+            conn = database.get_db()
+            try:
+                menu = {'acesso': acessos.acesso_efetivo(conn, session['user_id']),
+                        'gerencia_usuarios': _pode_gerenciar_usuarios(conn)}
+            finally:
+                conn.close()
+        g.menu_nexo = menu
+    return g.menu_nexo
+
+
+# Site institucional da MD (link da tela de login).
+SITE_URL = os.environ.get('SITE_URL', 'https://www.mdsolucoes.eng.br')
+
+
 @app.context_processor
 def product_context():
-    return {'central_version': CENTRAL_VERSION, 'csrf_token': get_csrf_token}
+    return {'central_version': CENTRAL_VERSION, 'csrf_token': get_csrf_token, 'menu_nexo': menu_nexo, 'site_url': SITE_URL}
 
 
 @socketio.on('connect')
@@ -311,26 +440,99 @@ def tenant_id(conn):
 
 @app.before_request
 def validate_json_body():
+    # Agentes mandam Content-Type: application/json também em GET sem corpo.
+    if request.method in ('GET', 'HEAD', 'DELETE') and not request.get_data(cache=True):
+        return None
     if request.is_json and not isinstance(request.get_json(silent=True), dict):
         return jsonify(error='Objeto JSON válido obrigatório.'), 400
 
 
+# Arquivos do visual (CSS, logos, fontes, service worker, manifesto) não consultam o banco: com o banco
+# do outro lado da tailnet, cada consulta custa centenas de ms e as páginas pedem dezenas desses arquivos.
+ROTAS_SEM_BANCO = {'static', 'manifest', 'service_worker'}
+# Situação da conta (ativa, versão da sessão, empresa) guardada por alguns segundos por usuário.
+# Qualquer requisição que muda dados (POST/PUT/PATCH/DELETE) limpa tudo, então desativar um usuário,
+# trocar a senha ou encerrar sessões vale na hora; o atraso máximo é só para mudança feita direto no banco.
+SESSAO_CACHE_S = 20
+_cache_sessao = {}
+
+
+def _situacao_conta(conn_fn, user_id):
+    agora = time.monotonic()
+    guardada = _cache_sessao.get(user_id)
+    if guardada and agora - guardada[0] < SESSAO_CACHE_S:
+        return guardada[1]
+    row = conn_fn().execute('SELECT ativo, sessao_versao, cliente_pai_id FROM clientes WHERE id=?', (user_id,)).fetchone()
+    situacao = dict(row) if row else None
+    _cache_sessao[user_id] = (agora, situacao)
+    return situacao
+
+
+COMPRIMIR_TIPOS = ('application/json', 'text/html', 'text/css', 'application/javascript', 'text/javascript',
+                   'image/svg+xml', 'text/plain', 'text/csv')
+COMPRIMIR_MIN_BYTES = 1024
+
+
+@app.after_request
+def comprimir_resposta(response):
+    """gzip para respostas de texto acima de 1 KB, quando o navegador aceita.
+
+    O mapa de sensores e os logs viajam a cada poucos segundos para cada tela aberta; JSON comprime
+    80-90%. Fica de fora o que já vem comprimido, o que é enviado aos poucos (arquivos, streaming) e
+    o Socket.IO, que cuida do próprio transporte."""
+    try:
+        if (response.direct_passthrough or response.is_streamed or response.status_code < 200
+                or response.status_code >= 300 or 'Content-Encoding' in response.headers
+                or request.path.startswith('/socket.io')
+                or 'gzip' not in (request.headers.get('Accept-Encoding') or '').lower()
+                or (response.mimetype or '') not in COMPRIMIR_TIPOS):
+            return response
+        dados = response.get_data()
+        if len(dados) < COMPRIMIR_MIN_BYTES:
+            return response
+        comprimido = gzip.compress(dados, compresslevel=5)
+        response.set_data(comprimido)
+        response.headers['Content-Encoding'] = 'gzip'
+        response.headers['Content-Length'] = str(len(comprimido))
+        response.vary.add('Accept-Encoding')
+    except Exception:
+        app.logger.exception('Falha ao comprimir a resposta de %s', request.path)
+    return response
+
+
+@app.after_request
+def esquecer_situacao_das_contas(response):
+    if request.method in MUTATING_METHODS:
+        _cache_sessao.clear()
+    return response
+
+
 @app.before_request
 def enforce_tenant_scope():
-    if not session.get('user_id'):
+    if not session.get('user_id') or request.endpoint in ROTAS_SEM_BANCO:
         return None
     if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
         origin = request.headers.get('Origin')
         if origin and urlsplit(origin).netloc != request.host:
             return jsonify(error='Origem não autorizada.'), 403
-    conn = database.get_db()
+    conexoes = []
+
+    def banco():
+        # Só abre conexão quando alguma checagem precisa (a maioria das páginas da MD não precisa).
+        if not conexoes:
+            conexoes.append(database.get_db())
+        return conexoes[0]
     try:
-        current = conn.execute('SELECT ativo FROM clientes WHERE id=?', (session['user_id'],)).fetchone()
-        if not current or current['ativo'] == 0:
+        current = _situacao_conta(banco, session['user_id'])
+        if not current or current['ativo'] == 0 or session.get('sv', 0) != (current['sessao_versao'] or 0):
             session.clear()
+            if request.method == 'GET' and not request.path.startswith('/api/'):
+                flash('Sua sessão foi encerrada. Entre de novo.')
+                return redirect(url_for('login'))
             return jsonify(error='Sessão inválida.'), 401
         master = session.get('role') in ('Administrador Master', 'Operador Master')
-        tenant = None if master else tenant_id(conn)
+        tenant = None if master else (session['user_id'] if session.get('role') == 'Cliente' else current['cliente_pai_id'])
+        conn = _ConexaoPreguicosa(banco)
         args = request.view_args or {}
         data = request.get_json(silent=True) or {}
         if not isinstance(data, dict):
@@ -363,6 +565,565 @@ def enforce_tenant_scope():
             if data.get('role') not in ('Administrador Cliente', 'Operador Cliente'):
                 return jsonify(error='Perfil não autorizado.'), 403
     finally:
+        for c in conexoes:
+            c.close()
+
+
+class _ConexaoPreguicosa:
+    """Entrega execute() da conexão só quando alguém consulta de fato."""
+    def __init__(self, abrir):
+        self._abrir = abrir
+
+    def execute(self, *args):
+        return self._abrir().execute(*args)
+
+
+# Rotas que, mesmo em GET, entregam poder de agir (token de acesso local ao sensor).
+ROTAS_GET_DE_OPERADOR = {'gerar_token_local'}
+
+
+def _resposta_sem_acesso(mensagem):
+    if request.path.startswith('/api/'):
+        return jsonify(error=mensagem), 403
+    return render_template('sem_acesso.html', mensagem=mensagem), 403
+
+
+ROTAS_DURANTE_CADASTRO_2FA = {'conta', 'conta_2fa_iniciar', 'conta_2fa_confirmar', 'logout', 'static', 'manifest',
+                              'service_worker', 'privacidade', 'healthz'}
+
+
+@app.before_request
+def exigir_cadastro_2fa():
+    """Empresa (ou a MD) exige verificação em duas etapas e o usuário ainda não cadastrou: só a Minha conta abre."""
+    if not session.get('user_id') or not session.get('precisa_2fa') or request.endpoint in ROTAS_DURANTE_CADASTRO_2FA:
+        return None
+    if request.path.startswith('/api/'):
+        return jsonify(error='Ative a verificação em duas etapas para continuar.'), 403
+    return redirect(url_for('conta'))
+
+
+@app.before_request
+def exigir_acesso_aplicativo():
+    """Acesso efetivo = aplicativo contratado pela empresa ∩ nível do usuário (Família Nexo)."""
+    if not session.get('user_id') or session.get('role') in acessos.ROLES_MASTER:
+        return None
+    aplicativo = acessos.aplicativo_da_rota(request.endpoint)
+    if not aplicativo:
+        return None
+    leitura = request.method in ('GET', 'HEAD') and request.endpoint not in ROTAS_GET_DE_OPERADOR
+    # No NexoDesk, quem tem leitura também abre e responde os próprios chamados (as regras finas ficam em nexodesk.py).
+    minimo = 'leitura' if leitura or aplicativo == 'desk' else 'operador'
+    conn = database.get_db()
+    try:
+        nivel = acessos.nivel_app(conn, session['user_id'], aplicativo)
+    finally:
+        conn.close()
+    if not nivel:
+        return _resposta_sem_acesso(f'O {acessos.APLICATIVOS[aplicativo]} não está liberado para você. '
+                                    'Fale com o administrador da sua empresa ou com a MD.')
+    if not acessos.nivel_suficiente(nivel, minimo):
+        return _resposta_sem_acesso('Seu acesso a este aplicativo é somente leitura.')
+    return None
+
+
+def _exige_2fa(conn, usuario):
+    """A empresa do usuário (ou a MD, para a equipe MD) tornou a verificação em duas etapas obrigatória."""
+    if usuario['role'] in acessos.ROLES_MASTER:
+        row = conn.execute("SELECT valor FROM config_sistema WHERE chave='acessos_exigir_2fa_md'").fetchone()
+        return bool(row and row['valor'] == '1')
+    empresa = acessos.empresa_de(usuario)
+    row = conn.execute('SELECT exigir_2fa FROM clientes WHERE id=?', (empresa,)).fetchone() if empresa else None
+    return bool(row and row['exigir_2fa'])
+
+
+def _iniciar_sessao(conn, user, metodo):
+    """Login concluído (senha e, se ativa, a segunda etapa): monta a sessão e registra na auditoria."""
+    user = dict(user)
+    session.clear()
+    session['logged_in'] = True; session['usuario'] = user['usuario']; session['role'] = user['role']
+    session['user_id'] = user['id']; session['logo_cliente'] = user.get('logo_url', '')
+    session['sv'] = user.get('sessao_versao') or 0
+    session['_csrf_token'] = secrets.token_urlsafe(32)
+    session.permanent = True
+    if not user.get('totp_ativo') and _exige_2fa(conn, user):
+        session['precisa_2fa'] = True
+    seguranca.limpar_falhas(conn, user['usuario'])
+    _auditar(conn, 'login', alvo=user['usuario'], autor=user, detalhes={'metodo': metodo})
+    conn.commit()
+
+
+def _mensagem_bloqueio(ate):
+    return f'Muitas tentativas. Por segurança, este acesso ficou bloqueado; tente de novo em {seguranca.minutos_restantes(ate)} min.'
+
+
+def _falha_login(conn, usuario_digitado, alvo, acao):
+    """Conta a falha (senha ou código) e devolve a mensagem para a tela."""
+    empresa = acessos.empresa_de(alvo) if alvo else None
+    acessos.registrar(conn, None, None, empresa, acao, usuario_digitado[:80])
+    ate = seguranca.registrar_falha(conn, usuario_digitado)
+    if ate:
+        acessos.registrar(conn, None, None, empresa, 'login_bloqueado', usuario_digitado[:80],
+                          {'minutos': seguranca.BLOQUEIO_S // 60})
+    conn.commit()
+    return _mensagem_bloqueio(ate) if ate else None
+
+
+def _autor(conn):
+    return acessos._usuario(conn, session['user_id'])
+
+
+def _auditar(conn, acao, alvo=None, detalhes=None, empresa_id=None, autor=None):
+    autor = autor or _autor(conn)
+    if empresa_id is None and autor:
+        empresa_id = acessos.empresa_de(autor)
+    acessos.registrar(conn, autor['id'] if autor else None, autor['usuario'] if autor else None,
+                      empresa_id, acao, alvo, detalhes)
+
+
+def _auditar_alvo(conn, acao, id_alvo, detalhes=None):
+    alvo = acessos._usuario(conn, id_alvo)
+    _auditar(conn, acao, alvo=alvo['usuario'] if alvo else str(id_alvo), detalhes=detalhes,
+             empresa_id=acessos.empresa_de(alvo) if alvo else None)
+
+
+def _bloqueio_delegacao(api=True):
+    """Resposta 403 quando a MD desligou a delegação de acessos da empresa do autor; senão None."""
+    conn = database.get_db()
+    try:
+        if _pode_gerenciar_usuarios(conn):
+            return None
+    finally:
+        conn.close()
+    mensagem = 'A gestão de usuários da sua empresa é feita pela MD.'
+    return (jsonify(error=mensagem), 403) if api else (render_template('sem_acesso.html', mensagem=mensagem), 403)
+
+
+def _pode_gerenciar_usuarios(conn):
+    """Perfil com direito à tela de usuários e, fora da MD, delegação ligada pela MD."""
+    if session.get('role') not in ('Administrador Master', 'Cliente', 'Administrador Cliente'):
+        return False
+    autor = _autor(conn)
+    return bool(autor) and acessos.pode_administrar_empresa(conn, autor)
+
+
+# ==========================================
+# 📦 PACOTE E INSTALADOR DO AGENTE
+# ==========================================
+# Só o que o sensor precisa para rodar; docs e o instalador do Windows ficam no servidor.
+ARQUIVOS_AGENTE = ['nexopulse_edge.py', 'host_metrics.py', 'starlink.py', 'netdiag.py', 'nomes_rede.py', 'fila_envio.py', 'requirements-agente.txt',
+                   'descoberta.py', 'localizacao_sensor.py', 'cftv.py', 'comunicacao.py', 'oui.py', 'dados/oui.tsv.gz', 'levantamento.py', 'edge_local.py', 'mapa_rede.py',
+                   'templates/edge/painel.html', 'templates/edge/relatorio.html', 'templates/edge/login.html',
+                   'templates/edge/diagrama.html',
+                   'static/product.css', 'static/sensor.css', 'static/brand.js', 'static/host.js', 'static/mapa_rede.js',
+                   'static/brand/nexopulse/favicon.svg', 'static/brand/nexopulse/favicon.ico',
+                   'static/brand/nexopulse/logo-claro.svg', 'static/brand/nexopulse/logo-escuro.svg',
+                   # Ícones e fontes dentro do sensor: o painel local funciona igual sem internet.
+                   'static/vendor/fontawesome/css/all.min.css', 'static/vendor/fontawesome/LICENSE.txt',
+                   'static/vendor/fontawesome/webfonts/fa-solid-900.woff2', 'static/vendor/fontawesome/webfonts/fa-regular-400.woff2',
+                   'static/vendor/fontawesome/webfonts/fa-brands-400.woff2', 'static/vendor/fontawesome/webfonts/fa-v4compatibility.woff2',
+                   'static/fontes/fontes.css', 'static/fontes/inter.woff2', 'static/fontes/jetbrains-mono.woff2',
+                   'static/fontes/OFL-inter.txt', 'static/fontes/OFL-jetbrains-mono.txt',
+                   'requirements-starlink.txt', 'linux/install.sh', 'linux/nexopulse-admin', 'linux/nexopulse-guard.sh',
+                   'linux/liberar-root.sh']
+
+
+def _calcular_build_agente():
+    """Versão do pacote do sensor: muda só quando o código do sensor muda (não a cada deploy da Central)."""
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    soma = hashlib.sha256()
+    for relativo in ARQUIVOS_AGENTE:
+        soma.update(relativo.encode())
+        with open(os.path.join(raiz, relativo), 'rb') as arquivo:
+            soma.update(arquivo.read())
+    return f'{CENTRAL_VERSION}+{soma.hexdigest()[:10]}'
+
+
+AGENT_BUILD = _calcular_build_agente()
+
+
+def _url_central():
+    proto = request.headers.get('X-Forwarded-Proto', request.scheme).split(',')[0].strip()
+    return f"{proto}://{request.host}"
+
+
+@app.route('/agente/pacote.tar.gz')
+def pacote_agente():
+    """Pacote do NexoPulse Edge montado a partir dos arquivos desta versão da Central."""
+    import io, tarfile
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode='w:gz') as tar:
+        for relativo in ARQUIVOS_AGENTE:
+            info = tar.gettarinfo(os.path.join(raiz, relativo), arcname=f'nexopulse-edge/{relativo}')
+            info.uid = info.gid = 0
+            info.uname = info.gname = ''
+            with open(os.path.join(raiz, relativo), 'rb') as arquivo:
+                tar.addfile(info, arquivo)
+        versao = f'{AGENT_BUILD}\n'.encode()
+        info = tarfile.TarInfo('nexopulse-edge/VERSION')
+        info.size, info.mtime, info.mode = len(versao), int(time.time()), 0o644
+        tar.addfile(info, io.BytesIO(versao))
+    resposta = app.response_class(buffer.getvalue(), mimetype='application/gzip')
+    resposta.headers['Content-Disposition'] = f'attachment; filename=nexopulse-edge-{CENTRAL_VERSION}.tar.gz'
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
+
+
+@app.route('/instalar.sh')
+def instalar_sh():
+    """Instalador de uma linha: curl -fsSL <central>/instalar.sh | bash"""
+    central = _url_central()
+    script = f"""#!/usr/bin/env bash
+# Instalador do NexoPulse Edge para esta Central ({central}).
+# Uso: curl -fsSL {central}/instalar.sh | bash
+#   Nome personalizado: curl -fsSL {central}/instalar.sh | NOC_SENSOR_NOME="Loja Centro" bash
+#   Com ações de root (atualizar sistema / reiniciar máquina): ... | NEXOPULSE_ROOT=1 bash
+set -euo pipefail
+if [ "$(id -u)" -eq 0 ]; then echo "Rode como usuário normal (o instalador pede sudo quando precisa)."; exit 1; fi
+DESTINO="${{NEXOPULSE_DIR:-$HOME/nexopulse-edge}}"
+TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+echo "==> Baixando o NexoPulse Edge de {central}..."
+curl -fsSL "{central}/agente/pacote.tar.gz" -o "$TMP/pacote.tar.gz"
+mkdir -p "$DESTINO"
+tar -xzf "$TMP/pacote.tar.gz" -C "$TMP"
+# Preserva a identidade e a chave do sensor em reinstalações.
+cp -a "$TMP/nexopulse-edge/." "$DESTINO/"
+cd "$DESTINO"
+NOC_CENTRAL_URL="{central}/api/v2/report_data" bash linux/install.sh
+echo "Pasta do agente: $DESTINO"
+"""
+    return app.response_class(script, mimetype='text/x-shellscript', headers={'Cache-Control': 'no-store'})
+
+
+@app.route('/verificar-windows.ps1')
+def verificar_windows():
+    """Verificação do sensor no Windows (só lê e testa; não muda nada na máquina)."""
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(raiz, 'windows', 'verificar-nexopulse-windows.ps1'), encoding='utf-8') as arquivo:
+        resposta = app.response_class(arquivo.read(), mimetype='text/plain')
+    resposta.headers['Content-Disposition'] = 'attachment; filename=verificar-nexopulse.ps1'
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
+
+
+@app.route('/ponte-painel-windows.ps1')
+def ponte_painel_windows():
+    """Ponte para abrir o painel local no próprio Windows do sensor (rede espelhada do WSL)."""
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(raiz, 'windows', 'ponte-painel-local.ps1'), encoding='utf-8') as arquivo:
+        resposta = app.response_class(arquivo.read(), mimetype='text/plain')
+    resposta.headers['Content-Disposition'] = 'attachment; filename=ponte-painel-local.ps1'
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
+
+
+@app.route('/vigia-windows.ps1')
+def vigia_windows():
+    """Vigia do sensor no Windows: religa o NexoPulse Edge (WSL) sozinho se ele parar."""
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(raiz, 'windows', 'vigia-nexopulse.ps1'), encoding='utf-8') as arquivo:
+        resposta = app.response_class(arquivo.read(), mimetype='text/plain')
+    resposta.headers['Content-Disposition'] = 'attachment; filename=vigia-nexopulse.ps1'
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
+
+
+@app.route('/instalar-windows.ps1')
+def instalar_windows():
+    """Instalador para Windows (via WSL), já apontando para esta Central."""
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(raiz, 'windows', 'instalar-nexopulse-wsl.ps1'), encoding='utf-8') as arquivo:
+        script = arquivo.read().replace("'https://nexopulse.up.railway.app'", f"'{_url_central()}'")
+    resposta = app.response_class(script, mimetype='text/plain')
+    resposta.headers['Content-Disposition'] = 'attachment; filename=instalar-nexopulse.ps1'
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
+
+
+@app.route('/privacidade')
+def privacidade():
+    # Página pública: exigida pelo Google para publicar o app OAuth do backup.
+    return render_template('privacidade.html')
+
+
+@app.route('/saude')
+def pagina_saude():
+    if session.get('role') != 'Administrador Master':
+        return "Acesso Negado.", 403
+    return render_template('saude.html')
+
+
+@app.route('/guias')
+def pagina_guias():
+    """Guias de instalação do sensor (PDF) e os comandos prontos, para a equipe da MD."""
+    if session.get('role') != 'Administrador Master':
+        return "Acesso Negado.", 403
+    central = _url_central()
+    try:
+        campo = app_campo.ultima_versao()
+    except Exception:
+        campo = None
+    return render_template('guias.html', guias=[guias.guia(s, central) for s in guias.SISTEMAS], campo=campo)
+
+
+@app.route('/guias/<sistema>.pdf')
+def guia_pdf(sistema):
+    if session.get('role') != 'Administrador Master':
+        return "Acesso Negado.", 403
+    if sistema not in guias.SISTEMAS:
+        return "Guia não encontrado.", 404
+    return _pdf_resposta(guias.gerar_pdf(sistema, _url_central()), f'nexopulse-guia-instalacao-{sistema}.pdf',
+                         request.args.get('baixar') == '1')
+
+
+# ------------------------------------------------------------------ NexoCampo: acesso do app e visitas de campo
+def _campo_autor(conn):
+    """Técnico da MD dono do token do app (Authorization: Bearer ...); None se o token não vale."""
+    cabecalho = request.headers.get('Authorization', '')
+    token = cabecalho[7:].strip() if cabecalho.lower().startswith('bearer ') else ''
+    return campo.usuario_do_token(conn, token)
+
+
+@app.route('/api/v2/campo/entrar', methods=['POST'])
+def campo_entrar():
+    dados = request.get_json(silent=True) or request.form
+    usuario_digitado = str(dados.get('usuario') or '').strip()
+    senha = str(dados.get('senha') or '').strip()
+    conn = database.get_db()
+    try:
+        ate = seguranca.bloqueado_ate(conn, usuario_digitado)
+        if ate:
+            return jsonify(error=_mensagem_bloqueio(ate)), 429
+        user = conn.execute('SELECT * FROM clientes WHERE usuario = ?', (usuario_digitado,)).fetchone()
+        guardada = str(user['senha']) if user else ''
+        ok = bool(user) and dict(user).get('ativo', 1) and guardada.startswith(('scrypt:', 'pbkdf2:')) and check_password_hash(guardada, senha)
+        if not ok:
+            return jsonify(error=_falha_login(conn, usuario_digitado, dict(user) if user else None, 'campo_login_falhou')
+                           or 'Usuário ou senha incorretos.'), 401
+        user = dict(user)
+        if not nexodesk.eh_md(user):
+            return jsonify(error='O NexoCampo é para a equipe da MD.'), 403
+        if user.get('totp_ativo'):
+            codigo = str(dados.get('codigo') or '').strip()
+            if not codigo:
+                return jsonify(error='Digite o código do aplicativo autenticador.', precisa_codigo=True), 401
+            segredo = seguranca.decifrar(user['totp_segredo'])
+            passo = seguranca.verificar_totp(segredo, codigo, user['totp_ultimo_passo']) if segredo else None
+            if passo is None:
+                return jsonify(error=_falha_login(conn, user['usuario'], user, 'campo_2fa_falhou') or 'Código incorreto.',
+                               precisa_codigo=True), 401
+            conn.execute('UPDATE clientes SET totp_ultimo_passo=? WHERE id=?', (passo, user['id']))
+        token = campo.criar_token(conn, user['id'], str(dados.get('aparelho') or ''))
+        seguranca.limpar_falhas(conn, user['usuario'])
+        _auditar(conn, 'campo_login', alvo=user['usuario'], autor=user, detalhes={'aparelho': str(dados.get('aparelho') or '')[:120]})
+        conn.commit()
+        return jsonify(token=token, nome=user.get('nome') or user['usuario'])
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/campo/sair', methods=['POST'])
+def campo_sair():
+    cabecalho = request.headers.get('Authorization', '')
+    conn = database.get_db()
+    try:
+        campo.revogar(conn, cabecalho[7:].strip())
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/campo/locais')
+def campo_locais():
+    conn = database.get_db()
+    try:
+        autor = _campo_autor(conn)
+        if not autor:
+            return jsonify(error='Entre de novo no app.'), 401
+        conn.commit()
+        return jsonify(empresas=campo.locais(conn))
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/campo/visitas', methods=['POST'])
+def campo_receber_visita():
+    conn = database.get_db()
+    try:
+        autor = _campo_autor(conn)
+        if not autor:
+            return jsonify(error='Entre de novo no app.'), 401
+        arquivo = request.files.get('pdf')
+        pdf = arquivo.read() if arquivo else None
+        try:
+            visita_id, novo, chamado = campo.receber(conn, autor, request.form, pdf)
+        except (campo.Recusa, nexodesk.Recusa) as r:
+            conn.rollback()
+            return jsonify(error=r.mensagem), r.status
+        _auditar(conn, 'campo_visita_recebida', alvo=f'visita {visita_id}', autor=autor,
+                 empresa_id=int(request.form.get('empresa_id') or 0) or None)
+        conn.commit()
+        return jsonify(status='OK', numero=visita_id, novo=novo, chamado=chamado), 201 if novo else 200
+    finally:
+        conn.close()
+
+
+@app.route('/campo')
+def pagina_campo():
+    if session.get('role') != 'Administrador Master':
+        return "Acesso Negado.", 403
+    conn = database.get_db()
+    try:
+        visitas = campo.listar(conn)
+    finally:
+        conn.close()
+    return render_template('campo.html', visitas=visitas, quando=lambda t: datetime.fromtimestamp(t, hub.FUSO_BR).strftime('%d/%m/%Y %H:%M') if t else '—')
+
+
+@app.route('/campo/<int:visita_id>.<formato>')
+def campo_arquivo(visita_id, formato):
+    if session.get('role') != 'Administrador Master':
+        return "Acesso Negado.", 403
+    conn = database.get_db()
+    try:
+        v = campo.visita(conn, visita_id)
+    finally:
+        conn.close()
+    if not v or formato not in ('pdf', 'json'):
+        return "Visita não encontrada.", 404
+    if formato == 'pdf':
+        if not v['pdf']:
+            return "Esta visita chegou sem PDF.", 404
+        return _pdf_resposta(bytes(v['pdf']), f'visita-campo-{visita_id}.pdf', request.args.get('baixar') == '1')
+    resposta = app.response_class(v['dados'], mimetype='application/json')
+    resposta.headers['Content-Disposition'] = f'attachment; filename="visita-campo-{visita_id}.json"'
+    return resposta
+
+
+# ------------------------------------------------------------------ NexoGuard (fase 1: só a MD vê)
+def _guard_negado():
+    if session.get('role') not in acessos.ROLES_MASTER:
+        return "Acesso Negado.", 403
+    return None
+
+
+@app.route('/guard')
+def pagina_guard():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    negado = _guard_negado()
+    if negado:
+        return negado
+    estado = request.args.get('estado') if request.args.get('estado') in nexoguard.ESTADOS else 'aberto'
+    empresa_id = request.args.get('empresa', type=int)
+    conn = database.get_db()
+    try:
+        achados = nexoguard.listar(conn, estado, empresa_id)
+        resumo = nexoguard.resumo(conn, empresa_id)
+        empresas = [dict(r) for r in conn.execute(
+            "SELECT DISTINCT c.id, c.nome, c.usuario FROM guard_achados g JOIN sensores s ON s.mac_id = g.sensor_mac "
+            "JOIN clientes c ON c.id = s.cliente_id").fetchall()]
+        empresas.sort(key=lambda e: (e['nome'] or e['usuario'] or '').lower())
+    finally:
+        conn.close()
+    return render_template('guard.html', achados=achados, resumo=resumo, estado=estado, empresa_id=empresa_id,
+                           empresas=empresas, gravidades=nexoguard.GRAVIDADES, rotulo_gravidade=nexoguard.ROTULO_GRAVIDADE,
+                           rotulo_estado=nexoguard.ROTULO_ESTADO,
+                           quando=lambda t: datetime.fromtimestamp(t, hub.FUSO_BR).strftime('%d/%m/%Y %H:%M') if t else '—')
+
+
+@app.route('/api/v2/guard/<int:achado_id>/<acao>', methods=['POST'])
+def guard_acao(achado_id, acao):
+    if 'user_id' not in session:
+        return jsonify(error='Faça login.'), 401
+    if session.get('role') not in acessos.ROLES_MASTER:
+        return jsonify(error='Somente a MD altera achados do NexoGuard nesta fase.'), 403
+    if acao not in ('aceitar', 'reabrir'):
+        return jsonify(error='Ação desconhecida.'), 404
+    conn = database.get_db()
+    try:
+        autor = _autor(conn)
+        try:
+            if acao == 'aceitar':
+                motivo = (request.get_json(silent=True) or {}).get('motivo')
+                a = nexoguard.aceitar(conn, achado_id, autor['usuario'], motivo if isinstance(motivo, str) else None)
+                detalhes = f"{a['titulo']} em {a['ip']}: {motivo.strip()}"
+            else:
+                a = nexoguard.reabrir(conn, achado_id)
+                detalhes = f"{a['titulo']} em {a['ip']}"
+        except nexoguard.Recusa as r:
+            return jsonify(error=r.mensagem), r.status
+        _auditar(conn, f'guard_{acao}', alvo=f'achado {achado_id}', detalhes=detalhes, empresa_id=a.get('empresa_id'), autor=autor)
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+# ------------------------------------------------------------------ NexoCampo (app Android de campo)
+@app.route('/app/nexocampo/versao')
+def nexocampo_versao():
+    """O app pergunta qual é a versão mais nova (sem login: só o número da versão e o tamanho)."""
+    try:
+        v = app_campo.ultima_versao()
+    except app_campo.SemConfiguracao:
+        return jsonify(error='Atualização do app não configurada na Central.'), 503
+    except Exception as erro:
+        app.logger.warning('NexoCampo: não consegui ler as versões no GitHub: %s', erro)
+        return jsonify(error='Não foi possível consultar a versão agora.'), 502
+    if not v:
+        return jsonify(error='Nenhuma versão publicada.'), 404
+    return jsonify(versao=v['versao'], versao_codigo=v['versao_codigo'], tamanho=v['tamanho'],
+                   publicado_em=v['publicado_em'], url=f"{_url_central()}/app/nexocampo.apk")
+
+
+@app.route('/app/nexocampo.apk')
+def nexocampo_apk():
+    try:
+        v = app_campo.ultima_versao()
+        if not v:
+            return "Nenhuma versão publicada.", 404
+        caminho = app_campo.arquivo_apk(v)
+    except app_campo.SemConfiguracao:
+        return "Atualização do app não configurada na Central.", 503
+    except Exception as erro:
+        app.logger.warning('NexoCampo: falha ao baixar o APK: %s', erro)
+        return "Não foi possível obter o app agora.", 502
+    resposta = send_file(caminho, mimetype='application/vnd.android.package-archive', as_attachment=True,
+                         download_name=f"nexocampo-{v['versao']}.apk", max_age=0)
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
+
+
+@app.route('/api/v2/saude', methods=['GET'])
+def api_saude():
+    if session.get('role') != 'Administrador Master':
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        checks = saude.coletar(conn, _contexto_saude())
+        anteriores = {r['chave']: dict(r) for r in conn.execute("SELECT chave, desde, falhas, notificado FROM saude_estado").fetchall()}
+        for c in checks:
+            c.update({k: anteriores.get(c['chave'], {}).get(k) for k in ('desde', 'falhas', 'notificado')})
+        return jsonify(central=checks, vigia=saude.estado_vigia(conn), config=saude.ler_config(conn),
+                       editaveis={k: list(v) for k, v in saude.EDITAVEIS.items()},
+                       processo=saude.info_processo(), versao=CENTRAL_VERSION, agora=time.time())
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/saude/config', methods=['POST'])
+def api_saude_config():
+    if session.get('role') != 'Administrador Master':
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        ok, erro = saude.salvar_config(conn, request.get_json(silent=True) or {})
+        if not ok:
+            return jsonify(error=erro), 400
+        return jsonify(status='OK', config=saude.ler_config(conn))
+    finally:
         conn.close()
 
 
@@ -385,8 +1146,11 @@ PENDING_COMMANDS = {}
 AUTO_SPEEDTEST_DONE = set()
 
 GUARDIAO_INTERVALO = max(10, int(os.environ.get("GUARDIAO_INTERVALO", "15")))
+# Sem heartbeat (report_data) por mais que isso, o site vira "sem comunicação".
+SITE_SEM_COMUNICACAO_S = max(30, int(os.environ.get("SITE_SEM_COMUNICACAO_S", "60")))
 _guardiao_lock = threading.Lock()
 _guardiao_ultima_execucao = 0.0
+_guardiao_ultima_execucao_ts = None  # relógio de parede, para a página de saúde
 
 PING_HISTORY_INTERVAL = max(30, int(os.environ.get("PING_HISTORY_INTERVAL", "60")))
 _ultimo_historico_ping = {}
@@ -431,7 +1195,9 @@ def consumir_comando(conn, sensor_mac):
             (sensor_mac,),
         ).fetchone()
         conn.commit()
-        return row["comando"] if row else "none"
+        comando = row["comando"] if row else "none"
+        _marcar_acao_enviada(conn, comando)
+        return comando
 
     row = db_execute(
         conn,
@@ -442,24 +1208,33 @@ def consumir_comando(conn, sensor_mac):
         return "none"
     db_execute(conn, "DELETE FROM comandos_pendentes WHERE id = ?", (row["id"],))
     conn.commit()
+    _marcar_acao_enviada(conn, row["comando"])
     return row["comando"]
+
+
+def _marcar_acao_enviada(conn, comando):
+    if comando.startswith('acao:') and comando.split(':')[1].isdigit():
+        conn.execute("UPDATE acoes_remotas SET status='enviada' WHERE id=? AND status='pendente'", (int(comando.split(':')[1]),))
+        conn.commit()
 
 
 # ==========================================
 # ⚡ FUNÇÃO GUARDIÃ GLOBAL (CRON DA NUVEM)
 # ==========================================
 def verificar_quedas_global(conn, force=False):
-    global _guardiao_ultima_execucao
+    global _guardiao_ultima_execucao, _guardiao_ultima_execucao_ts
 
     agora_monotonic = time.monotonic()
     with _guardiao_lock:
         if not force and (agora_monotonic - _guardiao_ultima_execucao) < GUARDIAO_INTERVALO:
             return
         _guardiao_ultima_execucao = agora_monotonic
+        _guardiao_ultima_execucao_ts = time.time()
 
     caidos = []
     is_postgres = bool(os.environ.get('DATABASE_URL'))
-    condicao = "last_seen < NOW() - INTERVAL '60 seconds'" if is_postgres else "last_seen < datetime('now', '-60 seconds')"
+    limite = int(SITE_SEM_COMUNICACAO_S)
+    condicao = f"last_seen < NOW() - INTERVAL '{limite} seconds'" if is_postgres else f"last_seen < datetime('now', '-{limite} seconds')"
 
     try:
         # Puxa os sensores que acabaram de cair
@@ -472,6 +1247,26 @@ def verificar_quedas_global(conn, force=False):
         print(f"Erro na varredura do Guardião: {e}")
         return
 
+    # Cada queda vira o diagnóstico "Site sem comunicação"; vários sites do mesmo
+    # provedor caindo juntos viram um alerta só ("Possível queda do provedor").
+    diags = {}
+    try:
+        inicio = time.time() - SITE_SEM_COMUNICACAO_S
+        for c in caidos:
+            diag = {'chave': 'sem_comunicacao', 'causa': diagnostico.CAUSAS['sem_comunicacao'], 'gravidade': 'Crítica',
+                    'confianca': 'alta', 'inicio': inicio, 'evidencias': {'sem_heartbeat_s': int(SITE_SEM_COMUNICACAO_S)}}
+            diag['mensagem'] = diagnostico.mensagem(diag, str(c['nome_local'] or c['mac_id']))
+            diags[c['mac_id']] = (diag, conn.execute('''INSERT INTO diagnosticos (sensor_mac, chave, camada, causa, gravidade, confianca, inicio, atualizado_em,
+                evidencias, acao, mensagem, estado, notificado) VALUES (?, 'sem_comunicacao', 'comunicacao', ?, 'Crítica', 'alta', ?, ?, ?, ?, ?, 'ativo', 1) RETURNING id''',
+                (c['mac_id'], diag['causa'], inicio, time.time(), json.dumps(diag['evidencias']),
+                 'verificar energia, link e o sensor no local', diag['mensagem'])).fetchone()['id'])
+        if caidos:
+            _correlacionar_provedores(conn)
+        conn.commit()
+    except Exception as err:
+        conn.rollback()
+        print(f"Erro ao registrar diagnóstico de queda: {err}")
+
     # Processa os disparos reais de alertas para o Telegram
     for c in caidos:
         try:
@@ -482,7 +1277,12 @@ def verificar_quedas_global(conn, force=False):
             db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Queda de Conexão', 'Crítica', 'Sensor parou de responder.')", (mac,))
             conn.commit()
 
-            enviar_telegram(f"🚨 <b>QUEDA CRÍTICA DETECTADA</b>\n\n🏢 <b>Host:</b> {html.escape(str(nome))}\n🆔 <b>MAC:</b> {html.escape(str(mac))}\n❌ <b>Status:</b> OFFLINE TOTAL", cliente_id=cid, conn=conn)
+            diag, diag_id = diags.get(mac, (None, None))
+            agrupado = diag_id and conn.execute('SELECT grupo_id FROM diagnosticos WHERE id=?', (diag_id,)).fetchone()['grupo_id']
+            if agrupado:
+                continue  # o alerta do provedor já cobre este site
+            detalhe = f"\n🔎 {html.escape(diag['mensagem'])}" if diag else ''
+            enviar_telegram(f"🚨 <b>QUEDA CRÍTICA DETECTADA</b>\n\n🏢 <b>Host:</b> {html.escape(str(nome))}\n🆔 <b>MAC:</b> {html.escape(str(mac))}\n❌ <b>Status:</b> OFFLINE TOTAL{detalhe}", cliente_id=cid, conn=conn)
             conn.commit()
         except Exception as err:
             print(f"Erro ao emitir alerta de queda: {err}")
@@ -511,16 +1311,132 @@ if os.environ.get("DISABLE_BACKGROUND_GUARDIAN", "0") != "1":
     ).start()
 
 # ==========================================
+# 🩺 SAÚDE DO SERVIDOR (verificações internas e alertas para o grupo master)
+# ==========================================
+SAUDE_INTERVALO = max(30, int(os.environ.get("SAUDE_INTERVALO", "60")))
+GUARDIAO_LIGADO = os.environ.get("DISABLE_BACKGROUND_GUARDIAN", "0") != "1"
+
+
+def _contexto_saude():
+    return {
+        'pool': database._pg_pool,
+        'guardiao_ligado': GUARDIAO_LIGADO,
+        'guardiao_intervalo_s': GUARDIAO_INTERVALO,
+        'guardiao_idade_s': (time.time() - _guardiao_ultima_execucao_ts) if _guardiao_ultima_execucao_ts else None,
+    }
+
+
+def verificar_saude(conn):
+    checks = saude.coletar(conn, _contexto_saude())
+    saude.aplicar(conn, checks, saude.ler_config(conn),
+                  lambda texto: enviar_telegram(html.escape(texto).replace('SAÚDE DO SERVIDOR', '<b>SAÚDE DO SERVIDOR</b>')
+                                                .replace('SERVIDOR NORMALIZADO', '<b>SERVIDOR NORMALIZADO</b>'), conn=conn))
+    conn.commit()
+    return checks
+
+
+def _loop_saude():
+    while True:
+        time.sleep(SAUDE_INTERVALO)
+        conn = None
+        try:
+            conn = database.get_db()
+            verificar_saude(conn)
+        except Exception as e:
+            # Com o banco fora, quem avisa é o vigia (ops/vigia), que roda fora da Central.
+            print(f"⚠️ Verificação de saúde: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+
+if GUARDIAO_LIGADO:
+    threading.Thread(target=_loop_saude, name="noc-saude", daemon=True).start()
+
+# ==========================================
+# 📄 NEXOREPORT: FECHAMENTO DO MÊS
+# ==========================================
+NEXOREPORT_INTERVALO = max(60, int(os.environ.get('NEXOREPORT_INTERVALO', '900')))
+_nexoreport_falhas_avisadas = set()
+
+
+def fechar_relatorios_pendentes(agora=None):
+    """Dia 1 às 00:30 (e a cada 15 min até dar certo): fecha o mês anterior das empresas com o NexoReport."""
+    conn = database.get_db()
+    try:
+        emitidos, falhas = nexoreport.fechar_pendentes(conn, agora, RETENCAO_MEDICOES_S)
+        for empresa_id in emitidos:
+            acessos.registrar(conn, None, 'automático', empresa_id, 'relatorio_emitido', str(empresa_id), 'fechamento automático do mês')
+        novas = [f for f in falhas if f[0] not in _nexoreport_falhas_avisadas]
+        if novas:
+            _nexoreport_falhas_avisadas.update(e for e, _ in novas)
+            enviar_telegram('📄 <b>NEXOREPORT</b>\n\nNão consegui fechar o mês de ' + ', '.join(f'empresa {e}' for e, _ in novas) +
+                            '. Vou tentar de novo a cada 15 min; as medições ficam guardadas por 40 dias.', conn=conn)
+        conn.commit()
+        return emitidos, falhas
+    finally:
+        conn.close()
+
+
+def _loop_nexoreport():
+    while True:
+        time.sleep(NEXOREPORT_INTERVALO)
+        try:
+            fechar_relatorios_pendentes()
+        except Exception as e:
+            print(f"⚠️ NexoReport: {e}")
+
+
+if GUARDIAO_LIGADO:
+    threading.Thread(target=_loop_nexoreport, name="noc-nexoreport", daemon=True).start()
+
+DESK_PRAZOS_INTERVALO = int(os.environ.get('DESK_PRAZOS_INTERVALO_S', '300'))
+
+
+def verificar_prazos_desk(agora=None):
+    """Avisa no Telegram da MD os chamados perto de vencer e com prazo estourado (uma vez por marco)."""
+    conn = database.get_db()
+    try:
+        avisos = nexodesk.verificar_prazos(conn, agora)
+        for texto in avisos:
+            notifications.enqueue(texto, None, conn=conn)
+        for c in nexodesk.fechar_automaticos(conn, agora):
+            _desk_aviso_cliente(conn, c, 'fechado', 'Fechado automaticamente: 3 dias úteis sem resposta depois de resolvido. '
+                                                    f'Se o problema voltar, responda no chamado em até {nexodesk.REABRIR_DIAS} dias para reabrir.')
+        conn.commit()
+        return avisos
+    finally:
+        conn.close()
+
+
+def _loop_desk_prazos():
+    while True:
+        time.sleep(DESK_PRAZOS_INTERVALO)
+        try:
+            verificar_prazos_desk()
+        except Exception as e:
+            print(f"⚠️ NexoDesk (prazos): {e}")
+
+
+if GUARDIAO_LIGADO:
+    threading.Thread(target=_loop_desk_prazos, name="noc-desk-prazos", daemon=True).start()
+
+# ==========================================
 # 🔐 SISTEMA DE LOGIN E SESSÃO
 # ==========================================
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     erro = None
+    if request.method == 'GET' and request.args.get('cancelar'):
+        session.pop('2fa_pendente', None)
     if request.method == 'POST':
         usuario_digitado = request.form.get('usuario', '').strip()
         senha_digitada = request.form.get('senha', '').strip()
         conn = database.get_db()
         try:
+            ate = seguranca.bloqueado_ate(conn, usuario_digitado)
+            if ate:
+                return render_template('login.html', erro=_mensagem_bloqueio(ate))
             user = db_execute(conn, "SELECT * FROM clientes WHERE usuario = ?", (usuario_digitado,)).fetchone()
 
             stored_password = str(user['senha']) if user else ''
@@ -530,20 +1446,91 @@ def login():
                 if not is_hashed:
                     conn.execute('UPDATE clientes SET senha=? WHERE id=?', (generate_password_hash(senha_digitada), user['id']))
                     conn.commit()
-                session.clear()
-                session['logged_in'] = True; session['usuario'] = user['usuario']; session['role'] = user['role']
-                session['user_id'] = user['id']; session['logo_cliente'] = dict(user).get('logo_url', '')
-                session['_csrf_token'] = secrets.token_urlsafe(32)
-                session.permanent = True
-                return redirect(url_for('index'))
+                if dict(user).get('totp_ativo'):
+                    # Aparelho lembrado (cookie válido para este usuário): a senha basta por até 30 dias.
+                    lembrado = confiaveis.reconhecer(conn, user['id'], request.cookies.get(confiaveis.nome_do_cookie(user['id'])))
+                    conn.commit()
+                    if lembrado:
+                        _iniciar_sessao(conn, user, 'dispositivo_lembrado')
+                        return redirect(url_for('hub'))
+                    # Senha certa, falta o código: nada de sessão ainda, só a etapa pendente (5 minutos).
+                    session.clear()
+                    session['2fa_pendente'] = {'id': user['id'], 'ate': time.time() + 300}
+                    return redirect(url_for('login_2fa'))
+                _iniciar_sessao(conn, user, 'senha')
+                return redirect(url_for('hub'))
             else:
-                erro = "Usuário ou senha incorretos!"
+                erro = _falha_login(conn, usuario_digitado, dict(user) if user else None, 'login_falhou') or 'Usuário ou senha incorretos.'
         except Exception:
             app.logger.exception('Falha no processo de autenticação')
             erro = 'Não foi possível autenticar agora. Tente novamente.'
         finally: conn.close()
 
     return render_template('login.html', erro=erro)
+
+
+def _lembrar_se_pedido(conn, user, resposta):
+    """Marcou "lembrar este dispositivo" na segunda etapa: grava o aparelho e devolve o cookie (30 dias)."""
+    if request.form.get('lembrar') != '1':
+        return resposta
+    valor, segundos = confiaveis.lembrar(conn, user['id'], request.headers.get('User-Agent'), request.remote_addr)
+    _auditar(conn, 'dispositivo_lembrado', alvo=user['usuario'], autor=user,
+             detalhes={'aparelho': confiaveis.rotulo(request.headers.get('User-Agent'))})
+    conn.commit()
+    resposta.set_cookie(confiaveis.nome_do_cookie(user['id']), valor, max_age=segundos, httponly=True,
+                        secure=app.config['SESSION_COOKIE_SECURE'], samesite='Lax', path='/')
+    return resposta
+
+
+def _aparelho_atual(usuario_id):
+    """Id do aparelho lembrado deste navegador (para não esquecê-lo ao sair dos outros)."""
+    return confiaveis.id_do_cookie(request.cookies.get(confiaveis.nome_do_cookie(usuario_id)))
+
+
+@app.route('/login/2fa', methods=['GET', 'POST'])
+def login_2fa():
+    """Segunda etapa: código do aplicativo autenticador ou um código de recuperação."""
+    pendente = session.get('2fa_pendente')
+    if not pendente or pendente.get('ate', 0) < time.time():
+        session.pop('2fa_pendente', None)
+        if pendente:
+            flash('O tempo para digitar o código acabou. Entre de novo.')
+        return redirect(url_for('login'))
+    erro = None
+    if request.method == 'POST':
+        digitado = request.form.get('codigo', '').strip()
+        conn = database.get_db()
+        try:
+            user = conn.execute('SELECT * FROM clientes WHERE id=?', (pendente['id'],)).fetchone()
+            if not user or not user['ativo'] or not user['totp_ativo']:
+                session.pop('2fa_pendente', None)
+                return redirect(url_for('login'))
+            user = dict(user)
+            ate = seguranca.bloqueado_ate(conn, user['usuario'])
+            if ate:
+                session.pop('2fa_pendente', None)
+                return render_template('login.html', erro=_mensagem_bloqueio(ate))
+            segredo = seguranca.decifrar(user['totp_segredo'])
+            passo = seguranca.verificar_totp(segredo, digitado, user['totp_ultimo_passo']) if segredo else None
+            if passo is not None:
+                conn.execute('UPDATE clientes SET totp_ultimo_passo=? WHERE id=?', (passo, user['id']))
+                _iniciar_sessao(conn, user, '2fa')
+                return _lembrar_se_pedido(conn, user, redirect(url_for('hub')))
+            restantes = seguranca.usar_codigo_recuperacao(user['codigos_recuperacao'], digitado)
+            if restantes is not None:
+                conn.execute('UPDATE clientes SET codigos_recuperacao=? WHERE id=?', (restantes, user['id']))
+                _iniciar_sessao(conn, user, 'codigo_recuperacao')
+                if seguranca.codigos_restantes(restantes) <= 2:
+                    flash('Você usou um código de recuperação e restam poucos. Gere novos em Minha conta.')
+                return _lembrar_se_pedido(conn, user, redirect(url_for('hub')))
+            bloqueio = _falha_login(conn, user['usuario'], user, '2fa_falhou')
+            if bloqueio:
+                session.pop('2fa_pendente', None)
+                return render_template('login.html', erro=bloqueio)
+            erro = 'Código inválido ou já usado. Confira o aplicativo e tente de novo.'
+        finally:
+            conn.close()
+    return render_template('login.html', etapa='2fa', erro=erro)
 
 @app.route('/logout', methods=['POST'])
 def logout(): session.clear(); return redirect(url_for('login'))
@@ -560,7 +1547,512 @@ def ack_alerta():
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
 
-@app.route('/')
+@app.route('/', endpoint='hub')
+def hub_inicio():
+    """Página inicial do NexoHub: cards dos aplicativos (cliente) ou todos os clientes (MD)."""
+    if 'usuario' not in session: return redirect(url_for('login'))
+    conn = database.get_db()
+    try:
+        master = session.get('role') in acessos.ROLES_MASTER
+        ver_como = request.args.get('ver_como', type=int) if master else None
+        if master and not ver_como:
+            return render_template('hub.html', modo='md', pessoa=_nome_curto(conn), empresas=hub.visao_md(conn), total=hub.resumo_pulse(conn),
+                                   atencao=hub.precisa_de_atencao(conn, AGENT_BUILD), grafico=hub.disponibilidade_por_dia(conn),
+                                   eventos=hub.eventos_recentes(conn),
+                                   sem_empresa=hub.sem_empresa(conn), aplicativos=acessos.APLICATIVOS,
+                                   disponibilidade=hub.disponibilidade_mes(conn),
+                                   desk=nexodesk.contar_abertos(conn, _autor(conn)), guard=nexoguard.resumo(conn))
+        if ver_como:
+            # "Ver como cliente": a MD enxerga o Hub da conta principal da empresa, só para consulta.
+            empresa = _empresa_ou_404(conn, ver_como)
+            if not empresa:
+                return redirect(url_for('hub'))
+            empresa_id, acesso = empresa['id'], acessos.acesso_efetivo(conn, empresa['id'])
+        else:
+            empresa_id = acessos.empresa_de(_autor(conn))
+            acesso = acessos.acesso_efetivo(conn, session['user_id'])
+        dono = conn.execute('SELECT nome, usuario, logo_url FROM clientes WHERE id=?', (empresa_id,)).fetchone() if empresa_id else None
+        return render_template('hub.html', modo='cliente', pessoa=_nome_curto(conn), cards=hub.cards(conn, empresa_id, acesso, usuario=acessos._usuario(conn, empresa_id if ver_como else session['user_id'])) if empresa_id else [],
+                               empresa=(dict(dono) if dono else None), ver_como=ver_como, rotulos_nivel=acessos.ROTULOS_NIVEL)
+    finally:
+        conn.close()
+
+
+
+# ==========================================
+# 📄 NEXOREPORT: PÁGINA, PDF E REEMISSÃO
+# ==========================================
+_cache_pdf = {}  # (empresa, mês, versão) -> bytes; o PDF de uma versão emitida nunca muda
+CACHE_PDF_MAX = 12
+
+
+def _empresa_do_relatorio(conn, empresa_id):
+    """A empresa pedida, se quem está logado pode vê-la. Senão None.
+
+    MD (Master): qualquer empresa cliente, com ou sem o NexoReport no contrato (para conferir a prévia antes de
+    oferecer). Cliente: só a própria, e só com o NexoReport contratado."""
+    master = session.get('role') in acessos.ROLES_MASTER
+    if not master and empresa_id != acessos.empresa_de(_autor(conn)):
+        return None
+    row = conn.execute("SELECT id, nome, usuario FROM clientes WHERE id = ? AND role = 'Cliente'", (empresa_id,)).fetchone()
+    if not row or (not master and not acessos.contrato(conn, empresa_id).get('report')):
+        return None
+    return row
+
+
+def _pdf_resposta(pdf, nome_arquivo, baixar):
+    resposta = app.response_class(pdf, mimetype='application/pdf')
+    resposta.headers['Content-Disposition'] = f'{"attachment" if baixar else "inline"}; filename="{nome_arquivo}"'
+    resposta.headers['Cache-Control'] = 'private, no-store'
+    return resposta
+
+
+def _nome_pdf(empresa, ano_mes, sufixo=''):
+    base = unicodedata.normalize('NFKD', empresa['nome'] or empresa['usuario']).encode('ascii', 'ignore').decode()
+    return f"nexoreport-{re.sub(r'[^A-Za-z0-9]+', '-', base).strip('-').lower() or 'empresa'}-{ano_mes}{sufixo}.pdf"
+
+
+@app.route('/report')
+def report_pagina():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    conn = database.get_db()
+    try:
+        master = session.get('role') in acessos.ROLES_MASTER
+        if master:
+            # Todas as empresas clientes; as sem o NexoReport no contrato vêm marcadas e depois das contratadas.
+            empresas = [dict(r) for r in conn.execute(
+                "SELECT id, nome, usuario FROM clientes WHERE role = 'Cliente' AND COALESCE(ativo, 1) = 1").fetchall()]
+            for e in empresas:
+                e['contratado'] = bool(acessos.contrato(conn, e['id']).get('report'))
+            empresas.sort(key=lambda e: (not e['contratado'], (e['nome'] or e['usuario'] or '').lower()))
+            escolhida = request.args.get('empresa', type=int) or (empresas[0]['id'] if empresas else None)
+        else:
+            escolhida = acessos.empresa_de(_autor(conn))
+            empresas = []
+        empresa = _empresa_do_relatorio(conn, escolhida) if escolhida else None
+        meses = []
+        if empresa:
+            for m in nexoreport.listar(conn, empresa['id']):
+                r = nexoreport.relatorio(conn, empresa['id'], m['ano_mes'])
+                d = r['dados']
+                meses.append({'ano_mes': m['ano_mes'], 'versao': m['versao'], 'rotulo': d['periodo']['rotulo'],
+                              'pct': d['totais']['pct'], 'situacao': d['totais']['situacao'], 'quedas': d['totais']['quedas'],
+                              'fora_s': d['totais']['fora_s'], 'meta': d['meta'], 'criado_em': r['criado_em'], 'criado_por': r['criado_por']})
+        proximo = nexoreport.mes_a_fechar(time.time() + 40 * 86400)
+        contratado = bool(empresa) and bool(acessos.contrato(conn, empresa['id']).get('report'))
+        return render_template('report/index.html', master=master, empresas=empresas, empresa=dict(empresa) if empresa else None,
+                               contratado=contratado,
+                               meses=meses, pct=nexoreport_pdf.pct_txt, dur=nexoreport_pdf.dur_txt,
+                               rotulo_situacao=nexoreport_pdf.ROTULO_SITUACAO, primeiro_mes=nexoreport.PRIMEIRO_MES,
+                               proximo_rotulo=f'{hub.MESES[proximo[1] - 1]} de {proximo[0]}', meta=hub.meta_da_empresa(conn, empresa['id']) if empresa else None)
+    finally:
+        conn.close()
+
+
+@app.route('/report/<int:empresa_id>/<ano_mes>.pdf')
+def report_pdf(empresa_id, ano_mes):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    conn = database.get_db()
+    try:
+        empresa = _empresa_do_relatorio(conn, empresa_id)
+        if not empresa:
+            return _resposta_sem_acesso('Relatório não encontrado para a sua empresa.')
+        versao = request.args.get('versao', type=int)
+        r = nexoreport.relatorio(conn, empresa_id, ano_mes, versao)
+        if not r:
+            return _resposta_sem_acesso('Este mês ainda não tem relatório emitido.')
+        baixar = request.args.get('baixar') == '1'
+        _auditar(conn, 'relatorio_baixado' if baixar else 'relatorio_visto', alvo=f'{ano_mes} v{r["versao"]}', empresa_id=empresa_id)
+        conn.commit()
+    finally:
+        conn.close()
+    chave = (empresa_id, ano_mes, r['versao'])
+    pdf = _cache_pdf.get(chave)
+    if pdf is None:
+        pdf = nexoreport_pdf.gerar_pdf(r['dados'], r['versao'])
+        if len(_cache_pdf) >= CACHE_PDF_MAX:
+            _cache_pdf.pop(next(iter(_cache_pdf)))
+        _cache_pdf[chave] = pdf
+    return _pdf_resposta(pdf, _nome_pdf(empresa, ano_mes, f'-v{r["versao"]}' if r['versao'] > 1 else ''), baixar)
+
+
+@app.route('/report/<int:empresa_id>/previa.pdf')
+def report_previa(empresa_id):
+    """Mês corrente até agora, sem gravar: para a MD acompanhar antes do fechamento."""
+    if session.get('role') not in acessos.ROLES_MASTER:
+        return _resposta_sem_acesso('A prévia do mês é só para a equipe da MD.')
+    conn = database.get_db()
+    try:
+        empresa = _empresa_do_relatorio(conn, empresa_id)
+        if not empresa:
+            return _resposta_sem_acesso('Empresa sem o NexoReport contratado.')
+        local = datetime.now(hub.FUSO_BR)
+        dados = nexoreport.consolidar(conn, empresa_id, local.year, local.month, retencao_s=RETENCAO_MEDICOES_S)
+    finally:
+        conn.close()
+    return _pdf_resposta(nexoreport_pdf.gerar_pdf(dados), _nome_pdf(empresa, f'{local.year:04d}-{local.month:02d}', '-previa'), False)
+
+
+@app.route('/api/v2/report/<int:empresa_id>/<ano_mes>/emitir', methods=['POST'])
+def report_emitir(empresa_id, ano_mes):
+    """A MD emite (ou reemite) um mês já terminado: vira uma nova versão; as anteriores ficam guardadas."""
+    if session.get('role') != 'Administrador Master':
+        return jsonify(error='Só o Administrador Master emite relatórios.'), 403
+    m = re.fullmatch(r'(\d{4})-(\d{2})', ano_mes)
+    if not m or not 1 <= int(m.group(2)) <= 12:
+        return jsonify(error='Mês inválido.'), 400
+    ano, mes = int(m.group(1)), int(m.group(2))
+    if hub.limites_do_mes(ano, mes)[1] > time.time():
+        return jsonify(error='O mês ainda não terminou. Use a prévia.'), 400
+    conn = database.get_db()
+    try:
+        empresa = _empresa_do_relatorio(conn, empresa_id)
+        if not empresa:
+            return jsonify(error='Empresa sem o NexoReport contratado.'), 404
+        dados = nexoreport.consolidar(conn, empresa_id, ano, mes, retencao_s=RETENCAO_MEDICOES_S)
+        versao = nexoreport.gravar(conn, empresa_id, ano, mes, dados, criado_por=session.get('usuario'), nova_versao=True)
+        _auditar(conn, 'relatorio_emitido', alvo=f'{ano_mes} v{versao}', empresa_id=empresa_id)
+        conn.commit()
+        return jsonify(status='OK', versao=versao, parcial_qualidade=bool(dados.get('qualidade_desde'))), 201
+    finally:
+        conn.close()
+
+
+@app.errorhandler(413)
+def corpo_grande_demais(_erro):
+    mensagem = (f'Os arquivos passam do limite: até {nexodesk.MAX_ARQUIVOS} arquivos de '
+                f'{nexodesk.MAX_ARQUIVO // (1024 * 1024)} MB.' if request.path.startswith('/api/v2/desk/')
+                else 'Envio grande demais.')
+    if request.path.startswith('/api/'):
+        return jsonify(error=mensagem), 413
+    return mensagem, 413
+
+
+# ==========================================
+# 🎧 NEXODESK: chamados e suporte (docs/nexodesk/ESCOPO.md)
+# ==========================================
+def _desk_arquivos():
+    return [(f.filename, f.read()) for f in request.files.getlist('arquivos') if f and f.filename]
+
+
+def _desk_aviso_md(conn, texto):
+    """Avisa o grupo de Telegram da MD (falha de envio não impede o chamado)."""
+    try:
+        notifications.enqueue(texto, None, conn=conn)
+    except Exception as erro:  # noqa: BLE001
+        print(f'⚠️ NexoDesk: aviso do Telegram não entrou na fila: {erro}')
+
+
+def _desk_aviso_cliente(conn, c, o_que, texto=None):
+    """Avisa o grupo de Telegram da empresa, se ela tiver um configurado."""
+    try:
+        mensagem = nexodesk.aviso_cliente(c, o_que, texto)
+        if mensagem and notifications.client_has_chat(c['empresa_id'], conn):
+            notifications.enqueue(mensagem, c['empresa_id'], conn=conn)
+    except Exception as erro:  # noqa: BLE001
+        print(f'⚠️ NexoDesk: aviso ao cliente não entrou na fila: {erro}')
+
+
+def _desk_chamado_visivel(conn, numero):
+    autor = _autor(conn)
+    chamado = nexodesk.chamado(conn, numero)
+    if not chamado or not nexodesk.pode_ver(conn, autor, chamado):
+        return autor, None
+    return autor, chamado
+
+
+@app.route('/desk')
+def desk_lista():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    conn = database.get_db()
+    try:
+        autor = _autor(conn)
+        md = nexodesk.eh_md(autor)
+        if md:
+            filtros = {'eu': autor['id'], 'empresa_id': request.args.get('empresa', type=int),
+                       'responsavel': request.args.get('responsavel') or None, 'status': request.args.get('status') or 'abertos',
+                       'categoria': request.args.get('categoria') or None, 'busca': request.args.get('busca') or '',
+                       'prazo': request.args.get('prazo') or None}
+            chamados, contadores = nexodesk.fila(conn, filtros)
+            return render_template('desk/fila.html', chamados=chamados, contadores=contadores, filtros=filtros,
+                                   no_prazo=nexodesk.no_prazo_do_mes(conn),
+                                   empresas=nexodesk.empresas_para_md(conn), equipe=nexodesk.equipe_md(conn),
+                                   categorias=nexodesk.CATEGORIAS, status_rotulos=nexodesk.STATUS, eu=autor['id'])
+        todos = request.args.get('ver') == 'todos'
+        empresa_id = request.args.get('empresa', type=int) if md else None
+        chamados = nexodesk.listar(conn, autor, abertos=not todos, empresa_id=empresa_id)
+        empresa = None
+        if not md:
+            row = conn.execute('SELECT nome, usuario FROM clientes WHERE id = ?', (acessos.empresa_de(autor),)).fetchone()
+            empresa = (row['nome'] or row['usuario']) if row else None
+        return render_template('desk/lista.html', md=md, chamados=chamados, todos=todos, empresa=empresa,
+                               empresas=nexodesk.empresas_para_md(conn) if md else [], empresa_id=empresa_id,
+                               toda_empresa=md or nexodesk.ve_toda_empresa(conn, autor),
+                               total_abertos=None if not todos else len(nexodesk.listar(conn, autor, abertos=True, empresa_id=empresa_id)))
+    finally:
+        conn.close()
+
+
+@app.route('/desk/novo')
+def desk_novo():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    conn = database.get_db()
+    try:
+        autor = _autor(conn)
+        md = nexodesk.eh_md(autor)
+        empresas = nexodesk.empresas_para_md(conn) if md else []
+        empresa_id = request.args.get('empresa', type=int) if md else acessos.empresa_de(autor)
+        # Chamado a partir de uma queda do NexoPulse: o formulário vem preenchido (a pessoa revisa antes de abrir).
+        previa, ja_aberto, diag = {}, None, None
+        if request.args.get('diagnostico'):
+            diag = nexodesk.diagnostico_da_empresa(conn, request.args.get('diagnostico'), None if md else empresa_id)
+            if diag:
+                previa = nexodesk.rascunho_da_queda(diag)
+                if md:
+                    empresa_id = diag['cliente_id']
+                existente = nexodesk.chamados_das_quedas(conn, [diag['id']]).get(diag['id'])
+                ja_aberto = existente if existente and existente['aberto'] else None
+        if md and empresa_id not in {e['id'] for e in empresas}:
+            empresa_id = None
+        return render_template('desk/novo.html', md=md, empresas=empresas, empresa_id=empresa_id, previa=previa, ja_aberto=ja_aberto,
+                               locais=nexodesk.locais_da_empresa(conn, empresa_id) if empresa_id else [],
+                               categorias=nexodesk.CATEGORIAS, impactos=nexodesk.IMPACTOS, prioridades=nexodesk.PRIORIDADES,
+                               canais={c: nexodesk.CANAIS[c] for c in nexodesk.CANAIS_DA_MD},
+                               max_arquivos=nexodesk.MAX_ARQUIVOS, max_mb=nexodesk.MAX_ARQUIVO // (1024 * 1024),
+                               tipos=sorted(nexodesk.TIPOS_ANEXO), telefone_md=nexodesk.TELEFONE_MD,
+                               contrato=nexodesk.sla_da_empresa(conn, empresa_id) if empresa_id else None,
+                               horarios=sla.HORARIOS)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/desk/chamados', methods=['POST'])
+def desk_criar():
+    if 'user_id' not in session:
+        return jsonify(error='Faça login de novo.'), 401
+    conn = database.get_db()
+    try:
+        autor = _autor(conn)
+        try:
+            numero = nexodesk.abrir(conn, autor, request.form, _desk_arquivos())
+        except nexodesk.Recusa as r:
+            conn.rollback()
+            return jsonify(error=r.mensagem), r.status
+        c = nexodesk.chamado(conn, numero)
+        _auditar(conn, 'chamado_aberto', alvo=f'#{numero}', empresa_id=c['empresa_id'])
+        _desk_aviso_md(conn, f"🎧 <b>Chamado #{numero}</b> aberto ({html.escape(c['prioridade_rotulo'])})\n"
+                             f"🏢 {html.escape(c['empresa'])} · {html.escape(c['solicitante'] or '')}\n"
+                             f"📝 {html.escape(c['titulo'])}")
+        conn.commit()
+        return jsonify(status='OK', numero=numero), 201
+    finally:
+        conn.close()
+
+
+@app.route('/desk/<int:numero>')
+def desk_ver(numero):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    conn = database.get_db()
+    try:
+        autor, c = _desk_chamado_visivel(conn, numero)
+        if not c:
+            return render_template('sem_acesso.html', mensagem='Chamado não encontrado ou sem permissão para vê-lo.'), 404
+        md = nexodesk.eh_md(autor)
+        queda = nexodesk.diagnostico_da_empresa(conn, c['diagnostico_id']) if c.get('diagnostico_id') else None
+        return render_template('desk/chamado.html', md=md, c=c, mensagens=nexodesk.mensagens(conn, numero, md), queda=queda,
+                               quando_txt=nexodesk.quando_txt, duracao_txt=nexodesk.duracao_txt,
+                               equipe=nexodesk.equipe_md(conn) if md else [], eu=autor['id'],
+                               fecha_sozinho=nexodesk.quando_txt(nexodesk.prazo_fechamento(c)) if nexodesk.prazo_fechamento(c) else None,
+                               pode_reabrir=nexodesk.pode_reabrir(c), reabrir_dias=nexodesk.REABRIR_DIAS,
+                               pode_cancelar=not md and nexodesk.nivel(conn, autor) == 'admin' and c['status'] in ('novo', 'atendimento', 'aguardando'),
+                               prazo_manual_local=datetime.fromtimestamp(c['prazo_manual'], hub.FUSO_BR).strftime('%Y-%m-%dT%H:%M') if c.get('prazo_manual') else None,
+                               prioridades=nexodesk.PRIORIDADES, categorias=nexodesk.CATEGORIAS,
+                               max_arquivos=nexodesk.MAX_ARQUIVOS, max_mb=nexodesk.MAX_ARQUIVO // (1024 * 1024),
+                               tipos=sorted(nexodesk.TIPOS_ANEXO))
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/desk/<int:numero>/mensagens', methods=['POST'])
+def desk_responder(numero):
+    if 'user_id' not in session:
+        return jsonify(error='Faça login de novo.'), 401
+    conn = database.get_db()
+    try:
+        autor, c = _desk_chamado_visivel(conn, numero)
+        if not c:
+            return jsonify(error='Chamado não encontrado.'), 404
+        nota = request.form.get('nota') == '1'
+        try:
+            status = nexodesk.responder(conn, autor, c, request.form.get('texto'), _desk_arquivos(), nota=nota,
+                                        depois=request.form.get('depois') or None)
+        except nexodesk.Recusa as r:
+            conn.rollback()
+            return jsonify(error=r.mensagem), r.status
+        if not nexodesk.eh_md(autor):
+            _desk_aviso_md(conn, f"💬 <b>Chamado #{numero}</b>: nova mensagem de {html.escape(nexodesk.nome_de(autor))}\n"
+                                 f"🏢 {html.escape(c['empresa'])} · {html.escape(c['titulo'])}")
+        elif not nota:
+            _desk_aviso_cliente(conn, c, request.form.get('depois') or 'resposta', request.form.get('texto'))
+        conn.commit()
+        return jsonify(status='OK', situacao=status), 201
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/desk/<int:numero>', methods=['PATCH'])
+def desk_atualizar(numero):
+    """A MD muda responsável, prioridade, categoria ou status (cancelar, reabrir)."""
+    if 'user_id' not in session:
+        return jsonify(error='Faça login de novo.'), 401
+    if session.get('role') not in acessos.ROLES_MASTER:
+        return jsonify(error='Só a MD muda os dados do chamado.'), 403
+    dados = request.get_json(silent=True) or {}
+    permitidos = {k: dados[k] for k in ('responsavel_id', 'prioridade', 'categoria', 'status', 'prazo_manual') if k in dados}
+    if not permitidos:
+        return jsonify(error='Nada para mudar.'), 400
+    conn = database.get_db()
+    try:
+        autor, c = _desk_chamado_visivel(conn, numero)
+        if not c:
+            return jsonify(error='Chamado não encontrado.'), 404
+        try:
+            c = nexodesk.atualizar(conn, autor, c, permitidos)
+        except nexodesk.Recusa as r:
+            conn.rollback()
+            return jsonify(error=r.mensagem), r.status
+        conn.commit()
+        return jsonify(status='OK', chamado={k: c[k] for k in ('status', 'prioridade', 'categoria', 'responsavel_id')})
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/desk/<int:numero>/confirmar', methods=['POST'])
+def desk_confirmar(numero):
+    """O cliente confirma a solução (nota de 1 a 5 opcional) e o chamado fecha; a MD também pode fechar."""
+    if 'user_id' not in session:
+        return jsonify(error='Faça login de novo.'), 401
+    dados = request.get_json(silent=True) or {}
+    conn = database.get_db()
+    try:
+        autor, c = _desk_chamado_visivel(conn, numero)
+        if not c:
+            return jsonify(error='Chamado não encontrado.'), 404
+        try:
+            nexodesk.confirmar(conn, autor, c, dados.get('nota'), dados.get('comentario'))
+        except nexodesk.Recusa as r:
+            conn.rollback()
+            return jsonify(error=r.mensagem), r.status
+        if nexodesk.eh_md(autor):
+            _desk_aviso_cliente(conn, c, 'fechado')
+        else:
+            nota = f" · nota {c['avaliacao']}/5" if c.get('avaliacao') else ''
+            _desk_aviso_md(conn, f"🔒 <b>Chamado #{numero}</b>: {html.escape(nexodesk.nome_de(autor))} confirmou a solução{nota}\n"
+                                 f"🏢 {html.escape(c['empresa'])} · {html.escape(c['titulo'])}"
+                                 + (f"\n💬 {html.escape(c['avaliacao_comentario'][:280])}" if c.get('avaliacao_comentario') else ''))
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/desk/<int:numero>/cancelar', methods=['POST'])
+def desk_cancelar(numero):
+    """O administrador da empresa cancela um chamado ainda não resolvido."""
+    if 'user_id' not in session:
+        return jsonify(error='Faça login de novo.'), 401
+    conn = database.get_db()
+    try:
+        autor, c = _desk_chamado_visivel(conn, numero)
+        if not c:
+            return jsonify(error='Chamado não encontrado.'), 404
+        try:
+            nexodesk.cancelar_pelo_cliente(conn, autor, c)
+        except nexodesk.Recusa as r:
+            conn.rollback()
+            return jsonify(error=r.mensagem), r.status
+        _desk_aviso_md(conn, f"🚫 <b>Chamado #{numero}</b> cancelado por {html.escape(nexodesk.nome_de(autor))}\n"
+                             f"🏢 {html.escape(c['empresa'])} · {html.escape(c['titulo'])}")
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/desk/sla/<int:empresa_id>', methods=['GET', 'PUT'])
+def desk_sla(empresa_id):
+    """SLA do contrato da empresa: a MD consulta; só o Administrador Master altera (com auditoria)."""
+    if 'user_id' not in session or session.get('role') not in acessos.ROLES_MASTER:
+        return jsonify(error='Só a MD vê o SLA dos contratos.'), 403
+    conn = database.get_db()
+    try:
+        if not conn.execute("SELECT 1 FROM clientes WHERE id = ? AND role = 'Cliente'", (empresa_id,)).fetchone():
+            return jsonify(error='Empresa não encontrada.'), 404
+        atual = nexodesk.sla_da_empresa(conn, empresa_id)
+        if request.method == 'GET':
+            return jsonify(**atual, padrao=sla.PADRAO, horarios=sla.HORARIOS)
+        if session.get('role') != 'Administrador Master':
+            return jsonify(error='Só o Administrador Master altera o SLA.'), 403
+        dados = request.get_json(silent=True) or {}
+        try:
+            nexodesk.definir_sla(conn, empresa_id, None if dados.get('padrao') else dados)
+        except ValueError as erro:
+            return jsonify(error=str(erro)), 400
+        novo = nexodesk.sla_da_empresa(conn, empresa_id)
+        if (atual['horario'], atual['prazos'], atual['proprio']) != (novo['horario'], novo['prazos'], novo['proprio']):
+            _auditar(conn, 'sla_alterado', alvo=f'empresa #{empresa_id}', empresa_id=empresa_id,
+                     detalhes={'antes': {k: atual[k] for k in ('horario', 'prazos')} if atual['proprio'] else 'padrão',
+                               'depois': {k: novo[k] for k in ('horario', 'prazos')} if novo['proprio'] else 'padrão'})
+        conn.commit()
+        return jsonify(status='OK', **novo)
+    finally:
+        conn.close()
+
+
+@app.route('/desk/anexo/<int:anexo_id>')
+def desk_anexo(anexo_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    conn = database.get_db()
+    try:
+        a = nexodesk.anexo(conn, anexo_id)
+        autor, c = _desk_chamado_visivel(conn, a['chamado_id']) if a else (None, None)
+        if not a or not c:
+            return render_template('sem_acesso.html', mensagem='Arquivo não encontrado ou sem permissão para baixá-lo.'), 404
+        if not nexodesk.eh_md(autor):
+            tipo = conn.execute('SELECT tipo FROM chamado_mensagens WHERE id = ?', (a['mensagem_id'],)).fetchone()
+            if not tipo or tipo['tipo'] == 'nota':
+                return render_template('sem_acesso.html', mensagem='Arquivo não encontrado ou sem permissão para baixá-lo.'), 404
+        baixar = request.args.get('baixar') == '1' or a['tipo_mime'] not in nexodesk.ABRE_NO_NAVEGADOR
+        if request.args.get('mini') != '1':   # a miniatura na conversa não vai para a auditoria
+            _auditar(conn, 'anexo_baixado' if baixar else 'anexo_visto', alvo=f"#{c['numero']} {a['nome']}", empresa_id=c['empresa_id'])
+            conn.commit()
+        nome_ascii = unicodedata.normalize('NFKD', a['nome']).encode('ascii', 'ignore').decode().replace('"', '') or 'arquivo'
+        resposta = app.response_class(a['conteudo'], mimetype=a['tipo_mime'])
+        resposta.headers['Content-Disposition'] = f'{"attachment" if baixar else "inline"}; filename="{nome_ascii}"'
+        resposta.headers['Cache-Control'] = 'private, no-store'
+        resposta.headers['X-Content-Type-Options'] = 'nosniff'
+        if a['tipo_mime'].startswith('image/'):
+            resposta.headers['Content-Security-Policy'] = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox"
+        return resposta
+    finally:
+        conn.close()
+
+
+def _nome_curto(conn):
+    """Primeiro nome de quem está logado, para a saudação do Início (cai no usuário se não houver nome)."""
+    row = conn.execute('SELECT nome, usuario FROM clientes WHERE id=?', (session['user_id'],)).fetchone()
+    nome = ((row['nome'] if row else None) or session.get('usuario') or '').strip()
+    primeiro = nome.split()[0] if nome else 'você'
+    return primeiro[:1].upper() + primeiro[1:]
+
+
+@app.route('/pulse')
 def index():
     if 'usuario' not in session: return redirect(url_for('login'))
     return render_template('index.html', nome=session['usuario'])
@@ -612,6 +2104,9 @@ def report_data():
         except Exception: app.logger.exception('Falha em operação auxiliar')
 
         sensor = db_execute(conn, "SELECT * FROM sensores WHERE mac_id = ?", (mac,)).fetchone()
+        # O agente sugere o hostname; nomes dados na Central nunca são sobrescritos.
+        nome_sugerido = data.get('nome_local') if isinstance(data.get('nome_local'), str) else ''
+        nome_sugerido = ''.join(ch for ch in nome_sugerido if ch.isprintable()).strip()[:160] or 'Novo Sensor'
 
         if sensor:
             sensor_dict = dict(sensor)
@@ -621,30 +2116,37 @@ def report_data():
             if estado_anterior == 'OFFLINE' or sensor_dict.get('status') == 'offline':
                 try:
                     db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Conexão Restaurada', 'Aviso', 'O sensor restabeleceu a comunicação com a rede')", (mac,))
-                    enviar_telegram(f"✅ <b>CONEXÃO RESTAURADA</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor_dict.get('nome_local', mac)))}\n🌐 <b>Status:</b> ONLINE", cliente_id=sensor_dict.get('cliente_id'), conn=conn)
+                    queda = conn.execute("SELECT id, inicio, grupo_id FROM diagnosticos WHERE sensor_mac=? AND chave='sem_comunicacao' AND estado='ativo' ORDER BY inicio LIMIT 1", (mac,)).fetchone()
+                    duracao = ''
+                    if queda:
+                        conn.execute("UPDATE diagnosticos SET estado='resolvido', fim=? WHERE sensor_mac=? AND chave='sem_comunicacao' AND estado='ativo'", (time.time(), mac))
+                        duracao = f"\n⏱️ <b>Fora do ar:</b> ~{max(1, round((time.time() - queda['inicio']) / 60))} min"
+                        _correlacionar_provedores(conn)
+                    enviar_telegram(f"✅ <b>CONEXÃO RESTAURADA</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor_dict.get('nome_local', mac)))}\n🌐 <b>Status:</b> ONLINE{duracao}", cliente_id=sensor_dict.get('cliente_id'), conn=conn)
                 except Exception: app.logger.exception('Falha em operação auxiliar')
 
             db_execute(conn, '''UPDATE sensores SET
                 ip_sensor = ?, cpu_usage = ?, ram_usage = ?, temp = ?, gpu_temp = ?,
                 status = 'online', memoria_alerta = 'ONLINE', ping_gateway = ?, ping_global = ?,
                 ip_gateway = ?, last_seen = CURRENT_TIMESTAMP,
-                disco = ?, net_up = ?, net_down = ?, portas = ?
+                disco = ?, net_up = ?, net_down = ?, portas = ?,
+                nome_local = CASE WHEN nome_local IS NULL OR nome_local IN ('Novo Sensor', 'Sensor Novo') THEN ? ELSE nome_local END
                 WHERE mac_id = ?''',
                 (ip_display, data.get('cpu_usage'), data.get('ram_usage'),
                  data.get('temp'), data.get('gpu_temp'), data.get('ping_gateway'),
                  data.get('ping_global'), data.get('ip_gateway'),
                  data.get('disco'), data.get('net_up'), data.get('net_down'), data.get('portas'),
-                 mac))
+                 nome_sugerido, mac))
             conn.commit()
         else:
             db_execute(conn, '''INSERT INTO sensores
                 (mac_id, nome_local, ip_sensor, cpu_usage, ram_usage, temp, gpu_temp, status, memoria_alerta, lat, lon, ping_gateway, ping_global, ip_gateway, last_seen, alerta_reconhecido, em_manutencao)
-                VALUES (?, 'Novo Sensor', ?, ?, ?, ?, ?, 'online', 'ONLINE', NULL, NULL, ?, ?, ?, CURRENT_TIMESTAMP, 1, 0)''',
-                (mac, ip_display, data.get('cpu_usage'), data.get('ram_usage'),
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'online', 'ONLINE', NULL, NULL, ?, ?, ?, CURRENT_TIMESTAMP, 1, 0)''',
+                (mac, nome_sugerido, ip_display, data.get('cpu_usage'), data.get('ram_usage'),
                  data.get('temp'), data.get('gpu_temp'), data.get('ping_gateway'),
                  data.get('ping_global'), data.get('ip_gateway')))
             conn.commit()
-            enviar_telegram(f"🎉 <b>NOVO SENSOR REGISTRADO</b>\n\n🖥️ <b>MAC:</b> {html.escape(str(mac))}\n🌐 <b>IP:</b> {html.escape(str(ip_display))}", conn=conn)
+            enviar_telegram(f"🎉 <b>NOVO SENSOR REGISTRADO</b>\n\n🖥️ <b>Nome:</b> {html.escape(nome_sugerido)}\n🔖 <b>MAC:</b> {html.escape(str(mac))}\n🌐 <b>IP:</b> {html.escape(str(ip_display))}", conn=conn)
 
         if data.get('location_source') == 'ip' and data.get('latitude') is not None:
             try:
@@ -668,14 +2170,25 @@ def report_data():
             interface_up = COALESCE(?, interface_up),
             scan_rede = COALESCE(?, scan_rede),
             scan_limitado = COALESCE(?, scan_limitado),
-            agent_version = COALESCE(?, agent_version)
+            agent_version = COALESCE(?, agent_version),
+            agent_build = COALESCE(?, agent_build),
+            build_recusado = COALESCE(?, build_recusado),
+            auto_update_guard = COALESCE(?, auto_update_guard)
             WHERE mac_id = ?''',
             (data.get('disco'), data.get('net_up'), data.get('net_down'), data.get('portas'),
              data.get('so_nome'), data.get('so_versao'), data.get('so_arquitetura'),
              data.get('interface_nome'), data.get('interface_mac'), data.get('rede_mascara'),
              data.get('rede_cidr'), data.get('link_speed_mbps'), data.get('interface_up'),
-             data.get('scan_rede'), data.get('scan_limitado'), data.get('agent_version'), mac))
+             data.get('scan_rede'), data.get('scan_limitado'), data.get('agent_version'),
+             _texto_curto(data.get('agent_build')), _texto_curto(data.get('build_recusado')),
+             None if data.get('auto_update_guard') is None else int(bool(data.get('auto_update_guard'))), mac))
         conn.commit()
+        if sensor:
+            try:
+                _registrar_mudanca_de_versao(conn, mac, sensor_dict, data)
+                _agendar_atualizacao_automatica(conn, mac, sensor_dict, data)
+            except Exception:
+                app.logger.exception('Falha ao tratar a versão do sensor')
 
         try:
             # Estado atual continua sendo atualizado a cada batimento, mas o histórico
@@ -694,11 +2207,32 @@ def report_data():
         except Exception as e:
             print(f"⚠️ Falha ao gravar histórico de ping: {e}")
 
+        if isinstance(data.get('host_info'), dict):
+            try:
+                atual = db_execute(conn, "SELECT nome_local, cliente_id, host_info, alertas_host FROM sensores WHERE mac_id = ?", (mac,)).fetchone()
+                processar_host_info(conn, mac, dict(atual) if atual else None, data['host_info'])
+            except Exception:
+                app.logger.exception('Falha ao processar métricas do host')
+
         comando = consumir_comando(conn, mac)
+        resultado_mapa_local = None
+        try:
+            resultado_mapa_local = _receber_mapa_local(conn, mac, data.get('mapa_rede_local'))
+            conn.commit()
+        except Exception:
+            app.logger.exception('Falha ao receber o diagrama editado no painel local')
+        mapa_para_sensor = _mapa_para_o_sensor(conn, mac, data.get('mapa_rede_versao'))
         conn.close()
 
-        socketio.emit('atualizacao_global', {})
-        return jsonify({"status": "OK", "command": comando})
+        avisar_telas()
+        resposta = {"status": "OK", "command": comando}
+        if mapa_para_sensor:
+            resposta["mapa_rede"] = mapa_para_sensor
+        if resultado_mapa_local:
+            resposta["mapa_rede_local"] = resultado_mapa_local
+        if PAINEL_LOCAL:
+            resposta["painel_local"] = PAINEL_LOCAL
+        return jsonify(resposta)
 
     except Exception:
         app.logger.exception('Falha ao receber telemetria')
@@ -724,42 +2258,19 @@ def public_cron_trigger():
 # ==========================================
 # 🔑 TOKEN DE ACESSO AO PAINEL LOCAL DO AGENTE
 # ==========================================
-@app.route('/api/v2/gerar_token_local/<mac>')
-def gerar_token_local(mac):
-    # Só quem já está autenticado na central pode gerar acesso ao painel local de um site
-    if 'usuario' not in session:
-        return jsonify({"erro": "Não autenticado"}), 401
-    if not JWT_PRIVATE_KEY:
-        return jsonify({"erro": "JWT_PRIVATE_KEY não configurada no servidor (variável de ambiente ausente)"}), 500
-    payload = {
-        "mac": mac,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=1)
-    }
-    token = jwt.encode(payload, JWT_PRIVATE_KEY, algorithm="RS256")
-    return jsonify({"token": token, "mac": mac, "expira_em_horas": 1})
-
 # ==========================================
-# 🔄 VERSÃO DO AGENTE (PARA O AUTO-UPDATE)
+# 🔄 VERSÃO DO AGENTE
 # ==========================================
-# Atualize os dois valores abaixo toda vez que compilar e publicar uma nova versão do agente.
-VERSAO_AGENTE_ATUAL = WINDOWS_BINARY_VERSION
-URL_DOWNLOAD_AGENTE = os.environ.get('WINDOWS_AGENT_URL', '').strip()
-WINDOWS_AGENT_SHA256 = os.environ.get('WINDOWS_AGENT_SHA256', '').strip().lower()
-
+# O agente é só Linux (no Windows, via WSL): a Central anuncia a versão e o
+# sensor é atualizado pela ação "Atualizar agente" ou reinstalando.
 @app.route('/api/v2/agent_versao')
 def agent_versao():
-    artifact_ready = bool(
-        URL_DOWNLOAD_AGENTE.startswith('https://')
-        and re.fullmatch(r'[0-9a-f]{64}', WINDOWS_AGENT_SHA256)
-    )
     return jsonify({
-        "versao": VERSAO_AGENTE_ATUAL,
-        "url_download": URL_DOWNLOAD_AGENTE if artifact_ready else '',
-        "sha256": WINDOWS_AGENT_SHA256 if artifact_ready else '',
-        "update_available": artifact_ready,
-        "platform": "windows",
+        "versao": CENTRAL_VERSION,
+        "platform": "linux",
+        "update_command": f"curl -fsSL {_url_central()}/instalar.sh | bash",
         "central_version": CENTRAL_VERSION,
-        "source_version": CENTRAL_VERSION,
+        "build": AGENT_BUILD,
     })
 
 # ==========================================
@@ -938,6 +2449,48 @@ def telemetria_global():
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
 
+def _texto_da_rede(valor, maximo):
+    """Texto que vem da rede do cliente (nome de equipamento): limpa em vez de recusar a lista toda."""
+    if not isinstance(valor, str):
+        return None
+    limpo = ''.join(c for c in valor if c.isprintable() and c not in '<>').strip()
+    return limpo[:maximo] or None
+
+
+TIPOS_CFTV = ('Câmera IP', 'NVR/DVR', 'Equipamento de CFTV', 'Controle de acesso/Interfone')
+TIPOS_COMUNICACAO = ('Roteador/Firewall', 'Switch', 'Access Point/Rádio', 'ONU/ONT', 'Starlink', 'Roteador 4G/LTE',
+                     'Gateway industrial', 'Equipamento de comunicação')
+TIPOS_EQUIPAMENTO = TIPOS_CFTV + TIPOS_COMUNICACAO
+
+
+def _identificacao_da_rede(valor, tipos):
+    """Identificação (CFTV ou comunicação) enviada pelo Edge: só os campos conhecidos, com tamanho limitado."""
+    if not isinstance(valor, dict) or valor.get('tipo') not in tipos:
+        return None
+    listas = {chave: [t for t in (_texto_da_rede(x, 160) for x in (valor.get(chave) or [])[:10]) if t]
+              for chave in ('evidencias', 'portas', 'riscos') if isinstance(valor.get(chave) or [], list)}
+    return json.dumps({
+        'tipo': valor['tipo'],
+        'confianca': valor.get('confianca') if valor.get('confianca') in ('alta', 'media', 'baixa') else 'baixa',
+        'fabricante': _texto_da_rede(valor.get('fabricante'), 80),
+        'modelo': _texto_da_rede(valor.get('modelo'), 120),
+        'firmware': _texto_da_rede(valor.get('firmware'), 120),
+        'nome': _texto_da_rede(valor.get('nome'), 120),
+        'onvif': bool(valor.get('onvif')),
+        'evidencias': listas.get('evidencias', []),
+        'portas': listas.get('portas', []),
+        'riscos': listas.get('riscos', []),
+    }, ensure_ascii=False)
+
+
+def _cftv_da_rede(valor):
+    return _identificacao_da_rede(valor, TIPOS_CFTV)
+
+
+def _comunicacao_da_rede(valor):
+    return _identificacao_da_rede(valor, TIPOS_COMUNICACAO)
+
+
 @app.route('/api/v2/atualizar_dispositivos', methods=['POST'])
 def atualizar_dispositivos():
     auth_error = exigir_sensor_ou_sessao()
@@ -951,13 +2504,38 @@ def atualizar_dispositivos():
         for item in lista:
             if not isinstance(item, dict):
                 raise ValueError('Dispositivo inválido.')
+            # Equipamento de outra VLAN (rede roteada) chega sem MAC, com a rede de origem.
+            rede_origem = _texto_da_rede(item.get('rede'), 43)
+            mac = bounded_text(item.get('mac'), 'MAC', maximum=80, allow_empty=bool(rede_origem)) or None
+            # A marca vem da base do IEEE na Central (vale também para sensores antigos);
+            # o que o sensor mandar só é usado se a base não conhecer o prefixo.
+            registro, fonte = oui.fabricante(mac)
+            if not registro:
+                enviado = _texto_da_rede(item.get('fabricante'), 160)
+                if enviado and enviado != 'Desconhecido':
+                    registro, fonte = enviado, 'sensor'
+            hostname_fonte = item.get('hostname_fonte') if item.get('hostname_fonte') in ('dns', 'netbios', 'mdns') else None
+            hostname = _texto_da_rede(item.get('hostname'), 120)
             normalized_devices.append({
                 'ip': bounded_text(item.get('ip'), 'IP', maximum=64),
-                'mac': bounded_text(item.get('mac'), 'MAC', maximum=80),
-                'fabricante': bounded_text(item.get('fabricante', 'Desconhecido'), 'Fabricante', maximum=160),
+                'mac': mac,
+                'fabricante': oui.marca(registro) if fonte in ('ieee', 'sensor') else (registro or 'Desconhecido'),
+                'fabricante_registro': registro if fonte in ('ieee', 'sensor') else None,
+                'fabricante_fonte': fonte,
+                'hostname': hostname,
+                'hostname_fonte': hostname_fonte if hostname else None,
                 'status': bounded_text(item.get('status', 'desconhecido'), 'Status', maximum=32),
                 'neighbor_state': bounded_text(item.get('neighbor_state', ''), 'Estado L2', maximum=64, allow_empty=True),
                 'latencia': item.get('latencia'),
+                'modelo': _texto_da_rede(item.get('modelo'), 120),
+                'tipo_equipamento': item.get('tipo_equipamento') if item.get('tipo_equipamento') in TIPOS_EQUIPAMENTO else None,
+                'cftv': _cftv_da_rede(item.get('cftv')),
+                'comunicacao': _comunicacao_da_rede(item.get('comunicacao')),
+                'firmware': _texto_da_rede(item.get('firmware'), 120),
+                'rede_origem': rede_origem,
+                # NexoGuard: portas que responderam e UPnP de roteador. Sensor antigo não manda: fica o que já havia.
+                'portas_abertas': nexoguard.portas_da_rede(item.get('portas_abertas')),
+                'upnp_igd': int(item['upnp_igd']) if isinstance(item.get('upnp_igd'), bool) else None,
             })
     except ValueError as error:
         return jsonify(error=str(error)), 400
@@ -965,23 +2543,48 @@ def atualizar_dispositivos():
     sensor_data = db_execute(conn, "SELECT ip_gateway FROM sensores WHERE mac_id = ?", (sensor_mac,)).fetchone()
     ip_gw = sensor_data['ip_gateway'] if sensor_data else None
 
-
-
-
     nomes_salvos = {row['mac']: row['nome'] for row in conn.execute("SELECT mac, nome FROM nomes_conhecidos").fetchall()}
+    visto_em = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
-    db_execute(conn, "DELETE FROM dispositivos WHERE sensor_mac = ?", (sensor_mac,))
-    for disp in normalized_devices:
-        nome = nomes_salvos.get(disp['mac'])
-        if not nome: nome = "Gateway / Roteador" if disp['ip'] == ip_gw else "Desconhecido"
-        status_disp = disp.get('status', 'desconhecido')
-        db_execute(
-            conn,
-            "INSERT INTO dispositivos (sensor_mac, ip, mac, fabricante, nome_custom, status, latencia, neighbor_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (sensor_mac, disp['ip'], disp['mac'], disp.get('fabricante', 'Desconhecido'), nome,
-             status_disp, disp.get('latencia'), disp.get('neighbor_state'))
-        )
+    # Inventário por MAC: quem trocou de IP é o mesmo registro (sem duplicar) e quem saiu da rede
+    # continua, como "offline", com o visto_em da última vez em que apareceu (o diagrama precisa dele).
+    existentes = {}
+    for row in conn.execute('SELECT id, ip, mac FROM dispositivos WHERE sensor_mac = ? ORDER BY id DESC', (sensor_mac,)).fetchall():
+        chave = edge_local.chave_dispositivo(dict(row))
+        if chave in existentes:
+            db_execute(conn, 'DELETE FROM dispositivos WHERE id = ?', (row['id'],))   # duplicado de antes desta versão
+        else:
+            existentes[chave] = row['id']
+    atuais = {}
+    for disp in edge_local.deduplicar_por_mac(normalized_devices):
+        chave = edge_local.chave_dispositivo(disp)
+        if chave not in atuais or edge_local._ip_ordem(disp['ip']) < edge_local._ip_ordem(atuais[chave]['ip']):
+            atuais[chave] = disp
+    campos = ('ip', 'mac', 'fabricante', 'nome_custom', 'status', 'latencia', 'neighbor_state', 'fabricante_registro',
+              'fabricante_fonte', 'hostname', 'hostname_fonte', 'visto_em', 'modelo', 'tipo_equipamento', 'cftv',
+              'comunicacao', 'firmware', 'rede_origem')
+    for chave, disp in atuais.items():
+        # nome_custom é só o apelido dado pelo usuário (ou o gateway); a tela cai para hostname e marca.
+        nome = nomes_salvos.get(disp['mac']) or ("Gateway / Roteador" if disp['ip'] == ip_gw else None)
+        campos_disp = campos + (('portas_abertas', 'upnp_igd') if disp.get('portas_abertas') is not None else ())
+        valores = {**{k: disp.get(k) for k in campos_disp}, 'nome_custom': nome, 'visto_em': visto_em}
+        if chave in existentes:
+            db_execute(conn, f"UPDATE dispositivos SET {', '.join(k + ' = ?' for k in campos_disp)} WHERE id = ?",
+                       (*[valores[k] for k in campos_disp], existentes[chave]))
+        else:
+            db_execute(conn, f"INSERT INTO dispositivos (sensor_mac, {', '.join(campos_disp)}) VALUES ({', '.join('?' for _ in range(len(campos_disp) + 1))})",
+                       (sensor_mac, *[valores[k] for k in campos_disp]))
+    fora = [i for chave, i in existentes.items() if chave not in atuais]
+    if fora:
+        db_execute(conn, f"UPDATE dispositivos SET status = 'offline', latencia = NULL, neighbor_state = NULL "
+                         f"WHERE id IN ({', '.join('?' for _ in fora)})", fora)
     conn.commit()
+    try:
+        nexoguard.sincronizar(conn, sensor_mac)
+        conn.commit()
+    except Exception:   # o inventário já foi salvo; um erro nas regras não pode derrubar a recepção
+        conn.rollback()
+        app.logger.exception('NexoGuard: falha ao sincronizar os achados de %s', sensor_mac)
     conn.close()
     return jsonify({"status": "OK"})
 
@@ -1037,11 +2640,7 @@ def alertas_ia():
 
     for alerta in normalized_alerts:
         db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, ?, ?, ?)", (mac, alerta['tipo'], alerta['gravidade'], alerta['detalhes']))
-        if alerta['gravidade'] == 'Crítica':
-            icone = "🔥" if "Superaquecimento" in alerta['tipo'] else ("🌪️" if "Tempestade" in alerta['tipo'] else "🖥️")
-            enviar_telegram(f"🚨 <b>ALERTA CRÍTICO</b>\n\n{icone} <b>Sensor:</b> {html.escape(str(nome_sensor))}\n⚠️ <b>Evento:</b> {html.escape(str(alerta['tipo']))}\n❌ <b>Detalhe:</b> {html.escape(str(alerta['detalhes']))}", cliente_id=cid, conn=conn)
-        elif alerta['gravidade'] == 'OK' and ('Restaurad' in alerta['tipo']):
-            enviar_telegram(f"✅ <b>SISTEMA NORMALIZADO</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(nome_sensor))}\n🟢 <b>Evento:</b> {html.escape(str(alerta['tipo']))}\nℹ️ <b>Detalhe:</b> {html.escape(str(alerta['detalhes']))}", cliente_id=cid, conn=conn)
+        _notificar_alerta(conn, {'mac_id': mac, 'nome_local': nome_sensor, 'cliente_id': cid}, alerta)
 
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
@@ -1108,9 +2707,78 @@ def resumir_conectividade(sensores):
     return resumo
 
 
+# Várias telas abertas pedem o mapa ao mesmo tempo: dentro de MAPA_CACHE_S, quem tem o mesmo escopo
+# (MD vê tudo; cliente vê a própria empresa) recebe o mesmo resultado sem nova consulta ao banco.
+MAPA_CACHE_S = 3.0
+_mapa_cache = {}
+_mapa_cache_lock = threading.Lock()
+
+
+def _escopo_do_mapa():
+    role = session.get('role')
+    if role in ('Administrador Master', 'Operador Master'):
+        return 'md'
+    return f"u{session.get('user_id')}:{role}"
+
+
+# Cada batimento de cada sensor avisava todas as telas; com muitos sensores eram vários avisos por
+# segundo. Agora sai no máximo um aviso a cada AVISO_TELAS_S (o último batimento nunca se perde:
+# um aviso atrasado é agendado para o fim do intervalo).
+AVISO_TELAS_S = 3.0
+_aviso_telas = {'ultimo': 0.0, 'agendado': False}
+_aviso_telas_lock = threading.Lock()
+
+
+def avisar_telas():
+    agora = time.monotonic()
+    with _aviso_telas_lock:
+        espera = AVISO_TELAS_S - (agora - _aviso_telas['ultimo'])
+        if espera <= 0:
+            _aviso_telas['ultimo'] = agora
+        elif _aviso_telas['agendado']:
+            return
+        else:
+            _aviso_telas['agendado'] = True
+    if espera <= 0:
+        socketio.emit('atualizacao_global', {})
+        return
+
+    def _depois():
+        socketio.sleep(espera)
+        with _aviso_telas_lock:
+            _aviso_telas['agendado'] = False
+            _aviso_telas['ultimo'] = time.monotonic()
+        socketio.emit('atualizacao_global', {})
+    socketio.start_background_task(_depois)
+
+
 @app.route('/api/v2/mapa_sensores')
 def api_mapa_sensores():
     if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 401
+    escopo, agora = _escopo_do_mapa(), time.monotonic()
+    with _mapa_cache_lock:
+        guardado = _mapa_cache.get(escopo)
+    if guardado and agora - guardado[0] < MAPA_CACHE_S:
+        corpo, etag = guardado[1], guardado[2]
+    else:
+        resposta = _montar_mapa_sensores()
+        if resposta.status_code != 200 or b'"error_sql"' in resposta.get_data():
+            return resposta
+        corpo = resposta.get_data()
+        etag = hashlib.sha256(corpo).hexdigest()[:20]
+        with _mapa_cache_lock:
+            _mapa_cache[escopo] = (agora, corpo, etag)
+    # Nada mudou desde a última vez que esta tela buscou: só o aviso de "igual", sem o mapa.
+    if request.if_none_match and etag in request.if_none_match:
+        resposta = app.response_class(status=304)
+    else:
+        resposta = app.response_class(corpo, mimetype='application/json')
+    resposta.set_etag(etag)
+    resposta.headers['Cache-Control'] = 'private, no-cache'
+    return resposta
+
+
+def _montar_mapa_sensores():
     role = session.get('role'); user_id = session.get('user_id')
     conn = database.get_db()
 
@@ -1192,7 +2860,7 @@ def reportar_velocidade():
         conn.commit()
         conn.close()
 
-        socketio.emit('atualizacao_global', {})
+        avisar_telas()
         return jsonify({"status": "OK"})
     except Exception as e:
         print(f"Erro ao salvar Speedtest: {e}")
@@ -1272,6 +2940,261 @@ def get_dispositivos(mac_id):
     conn.close()
     return jsonify([dict(d) for d in dispositivos])
 
+@app.route('/api/v2/levantamento/<mac_id>/<formato>', methods=['GET'])
+def exportar_levantamento(mac_id, formato):
+    """Levantamento de rede do sensor em JSON (para IA e integrações) ou XLSX."""
+    if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 403
+    if formato not in ('json', 'xlsx', 'csv'):
+        return jsonify(error='Formato inválido: use json, xlsx ou csv.'), 400
+    conn = database.get_db()
+    try:
+        sensor = db_execute(conn, "SELECT * FROM sensores WHERE mac_id = ?", (mac_id,)).fetchone()
+        if not sensor:
+            return jsonify(error='Sensor não encontrado.'), 404
+        dispositivos = db_execute(conn, "SELECT * FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
+    finally:
+        conn.close()
+    dados = levantamento.montar(sensor, dispositivos, CENTRAL_VERSION, ocultar_nomes=request.args.get('ocultar_nomes') == '1')
+    if not dados['nomes_ocultos']:
+        dados['diagrama'] = mapa_rede.resumo_ligacoes(mapa_rede.montar(sensor, dispositivos, mapa_rede.carregar(sensor['mapa_rede'])))
+    if formato == 'json':
+        resposta = app.response_class(json.dumps(dados, ensure_ascii=False, indent=2), mimetype='application/json')
+    elif formato == 'csv':
+        resposta = app.response_class(levantamento.para_csv(dados), mimetype='text/csv; charset=utf-8')
+    else:
+        resposta = app.response_class(levantamento.para_xlsx(dados),
+                                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resposta.headers['Content-Disposition'] = f'attachment; filename="{levantamento.nome_arquivo(dados, formato)}"'
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
+
+MAPA_HISTORICO_MAX = 30
+ROTULO_ORIGEM_MAPA = {'central': 'Central', 'painel_local': 'Painel local do sensor', 'restauracao': 'Restauração'}
+
+
+def _quando_iso(texto):
+    try:
+        quando = datetime.fromisoformat(str(texto))
+    except (TypeError, ValueError):
+        return None
+    return quando if quando.tzinfo else quando.replace(tzinfo=timezone.utc)
+
+
+def _guardar_mapa_no_historico(conn, mac, mapa_json, em, por, origem, motivo):
+    """Guarda a versão que está saindo (as 30 últimas por sensor), para conferir ou restaurar."""
+    if not mapa_json:
+        return
+    conn.execute('INSERT INTO mapa_rede_historico (sensor_mac, mapa, em, por, origem, motivo, guardado_em) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                 (mac, mapa_json, em, por, origem, motivo, time.time()))
+    ids = [r['id'] for r in conn.execute('SELECT id FROM mapa_rede_historico WHERE sensor_mac = ? ORDER BY id DESC', (mac,)).fetchall()]
+    for velho in ids[MAPA_HISTORICO_MAX:]:
+        conn.execute('DELETE FROM mapa_rede_historico WHERE id = ?', (velho,))
+
+
+def _receber_mapa_local(conn, mac, dados):
+    """Edição do diagrama feita no painel local do sensor. Vale a mais recente: se a Central foi editada
+    depois, a do sensor vai para o histórico; senão, a da Central vai para o histórico e a do sensor vale."""
+    if not isinstance(dados, dict):
+        return None
+    em = str(dados.get('em') or '')[:40]
+    quando = _quando_iso(em)
+    if not quando:
+        return {'em': em, 'aplicado': False}
+    try:
+        mapa = mapa_rede.validar(dados.get('mapa'))
+    except ValueError:
+        return {'em': em, 'aplicado': False}
+    row = conn.execute('SELECT mapa_rede, mapa_rede_em, mapa_rede_por FROM sensores WHERE mac_id = ?', (mac,)).fetchone()
+    if not row:
+        return None
+    if row['mapa_rede_em'] == em:
+        return {'em': em, 'aplicado': True}   # a mesma edição chegou de novo
+    mapa_json = json.dumps(mapa, ensure_ascii=False)
+    central = _quando_iso(row['mapa_rede_em'])
+    if central is None or quando > central:
+        _guardar_mapa_no_historico(conn, mac, row['mapa_rede'], row['mapa_rede_em'], row['mapa_rede_por'], 'central',
+                                   'Substituída por uma edição mais recente feita no painel local do sensor')
+        conn.execute('UPDATE sensores SET mapa_rede=?, mapa_rede_em=?, mapa_rede_por=? WHERE mac_id=?',
+                     (mapa_json, em, 'painel local do sensor', mac))
+        return {'em': em, 'aplicado': True}
+    ja = conn.execute("SELECT 1 FROM mapa_rede_historico WHERE sensor_mac = ? AND origem = 'painel_local' AND em = ?", (mac, em)).fetchone()
+    if not ja:
+        _guardar_mapa_no_historico(conn, mac, mapa_json, em, 'painel local do sensor', 'painel_local',
+                                   'Não aplicada: a Central tinha uma edição mais recente')
+    return {'em': em, 'aplicado': False}
+
+
+def _mapa_para_o_sensor(conn, mac, versao_do_sensor):
+    """Diagrama salvo na Central para o painel local desenhar sem internet: só vai quando mudou."""
+    try:
+        row = conn.execute('SELECT mapa_rede, mapa_rede_em, provedor FROM sensores WHERE mac_id = ?', (mac,)).fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+    versao = f"{row['mapa_rede_em'] or 'sem-mapa'}|{row['provedor'] or ''}"
+    if versao_do_sensor == versao:
+        return None
+    mapa = mapa_rede.carregar(row['mapa_rede']) if row['mapa_rede'] else None
+    return {'versao': versao, 'em': row['mapa_rede_em'], 'provedor': row['provedor'], 'mapa': mapa}
+
+
+def _arvore_do_sensor(conn, mac_id):
+    sensor = db_execute(conn, "SELECT * FROM sensores WHERE mac_id = ?", (mac_id,)).fetchone()
+    if not sensor:
+        return None, None, None
+    dispositivos = db_execute(conn, "SELECT * FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
+    mapa = mapa_rede.carregar(sensor['mapa_rede'])
+    return sensor, mapa, mapa_rede.montar(sensor, dispositivos, mapa)
+
+
+@app.route('/api/v2/sensor/<mac_id>/mapa_rede/historico', methods=['GET'])
+def mapa_rede_historico(mac_id):
+    """Versões substituídas do diagrama, da mais recente para a mais antiga."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        rows = conn.execute('SELECT id, mapa, em, por, origem, motivo, guardado_em FROM mapa_rede_historico WHERE sensor_mac = ? ORDER BY id DESC',
+                            (mac_id,)).fetchall()
+    finally:
+        conn.close()
+    versoes = []
+    for r in rows:
+        mapa = mapa_rede.carregar(r['mapa'])
+        versoes.append({'id': r['id'], 'em': r['em'], 'por': r['por'], 'origem': ROTULO_ORIGEM_MAPA.get(r['origem'], r['origem']),
+                        'motivo': r['motivo'], 'guardado_em': r['guardado_em'],
+                        'ligacoes': sum(1 for c in mapa['nos'].values() if c.get('pai')), 'adicionados': len(mapa['extras'])})
+    return jsonify(versoes=versoes)
+
+
+@app.route('/api/v2/sensor/<mac_id>/mapa_rede/historico/<int:versao_id>/restaurar', methods=['POST'])
+def mapa_rede_restaurar(mac_id, versao_id):
+    """Volta uma versão guardada; a que estava em vigor vai para o histórico."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        alvo = conn.execute('SELECT mapa, em, por FROM mapa_rede_historico WHERE id = ? AND sensor_mac = ?', (versao_id, mac_id)).fetchone()
+        atual = conn.execute('SELECT mapa_rede, mapa_rede_em, mapa_rede_por FROM sensores WHERE mac_id = ?', (mac_id,)).fetchone()
+        if not alvo or not atual:
+            return jsonify(error='Versão não encontrada.'), 404
+        try:
+            mapa = mapa_rede.validar(json.loads(alvo['mapa']))
+        except (ValueError, TypeError):
+            return jsonify(error='Esta versão está danificada e não pode ser restaurada.'), 400
+        _guardar_mapa_no_historico(conn, mac_id, atual['mapa_rede'], atual['mapa_rede_em'], atual['mapa_rede_por'], 'restauracao',
+                                   f"Substituída ao restaurar uma versão anterior ({session.get('usuario')})")
+        conn.execute('UPDATE sensores SET mapa_rede=?, mapa_rede_em=?, mapa_rede_por=? WHERE mac_id=?',
+                     (json.dumps(mapa, ensure_ascii=False), datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                      f"{session.get('usuario')} (restaurou a versão de {alvo['por'] or 'antes'})", mac_id))
+        conn.commit()
+        sensor, mapa, arvore = _arvore_do_sensor(conn, mac_id)
+        return jsonify(mapa=mapa, arvore=arvore, tipos=mapa_rede.TIPOS, meios=mapa_rede.MEIOS,
+                       atualizado_em=sensor['mapa_rede_em'], atualizado_por=sensor['mapa_rede_por'])
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/sensor/<mac_id>/esquecer_dispositivo', methods=['POST'])
+def esquecer_dispositivo(mac_id):
+    """Tira do inventário um equipamento que saiu da rede (volta sozinho se aparecer de novo)."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    chave = str((request.get_json(silent=True) or {}).get('chave') or '')[:80]
+    if not chave:
+        return jsonify(error='Equipamento não informado.'), 400
+    conn = database.get_db()
+    try:
+        alvo = next((r for r in conn.execute("SELECT id, ip, mac, status FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
+                     if edge_local.chave_dispositivo(dict(r)) == chave), None)
+        if not alvo:
+            return jsonify(error='Equipamento não encontrado.'), 404
+        if alvo['status'] != 'offline':
+            return jsonify(error='Só dá para esquecer um equipamento que está fora da rede.'), 400
+        conn.execute('DELETE FROM dispositivos WHERE id = ?', (alvo['id'],))
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/sensor/<mac_id>/mapa_rede', methods=['GET', 'PUT'])
+def mapa_rede_sensor(mac_id):
+    """Diagrama da rede: GET devolve o mapa salvo e a árvore pronta; PUT salva o que a equipe informou."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        if request.method == 'PUT':
+            try:
+                mapa = mapa_rede.validar((request.get_json(silent=True) or {}).get('mapa'))
+            except ValueError as erro:
+                return jsonify(error=str(erro)), 400
+            anterior = conn.execute('SELECT mapa_rede, mapa_rede_em, mapa_rede_por FROM sensores WHERE mac_id=?', (mac_id,)).fetchone()
+            if anterior:
+                _guardar_mapa_no_historico(conn, mac_id, anterior['mapa_rede'], anterior['mapa_rede_em'], anterior['mapa_rede_por'],
+                                           'central', f"Substituída por uma edição na Central ({session.get('usuario')})")
+            cur = conn.execute('UPDATE sensores SET mapa_rede=?, mapa_rede_em=?, mapa_rede_por=? WHERE mac_id=?',
+                               (json.dumps(mapa, ensure_ascii=False), datetime.now(timezone.utc).isoformat(timespec='seconds'),
+                                session.get('usuario'), mac_id))
+            if not cur.rowcount:
+                return jsonify(error='Sensor não encontrado.'), 404
+            conn.commit()
+        sensor, mapa, arvore = _arvore_do_sensor(conn, mac_id)
+        if sensor is None:
+            return jsonify(error='Sensor não encontrado.'), 404
+        return jsonify(mapa=mapa, arvore=arvore, tipos=mapa_rede.TIPOS, meios=mapa_rede.MEIOS,
+                       atualizado_em=sensor['mapa_rede_em'], atualizado_por=sensor['mapa_rede_por'])
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/sensor/<mac_id>/diagrama.svg')
+def diagrama_rede_svg(mac_id):
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        sensor, _, arvore = _arvore_do_sensor(conn, mac_id)
+    finally:
+        conn.close()
+    if sensor is None:
+        return jsonify(error='Sensor não encontrado.'), 404
+    resposta = app.response_class(mapa_rede.svg(arvore), mimetype='image/svg+xml')
+    nome = re.sub(r'[^A-Za-z0-9]+', '-', unicodedata.normalize('NFKD', sensor['nome_local'] or 'sensor').encode('ascii', 'ignore').decode()).strip('-') or 'sensor'
+    resposta.headers['Content-Disposition'] = f'attachment; filename="diagrama-rede-{nome}.svg"'
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
+
+@app.route('/api/v2/sensor/<mac_id>/diagrama.pdf')
+def diagrama_rede_pdf(mac_id):
+    """O mesmo diagrama em PDF (A4 paisagem), para mandar ao cliente ou anexar a um laudo."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        sensor, _, arvore = _arvore_do_sensor(conn, mac_id)
+    finally:
+        conn.close()
+    if sensor is None:
+        return jsonify(error='Sensor não encontrado.'), 404
+    try:
+        from weasyprint import HTML
+    except ImportError:
+        return jsonify(error='Geração de PDF indisponível neste servidor; use o SVG.'), 501
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    pagina = render_template('pdf/diagrama.html', sensor=dict(sensor), svg=mapa_rede.svg(arvore),
+                             informado=bool(sensor['mapa_rede']), fora=sum(1 for n in arvore if n.get('status') == 'offline'),
+                             emitido=datetime.now(hub.FUSO_BR).strftime('%d/%m/%Y %H:%M'))
+    pdf = HTML(string=pagina, base_url=raiz + '/').write_pdf()
+    nome = re.sub(r'[^A-Za-z0-9]+', '-', unicodedata.normalize('NFKD', sensor['nome_local'] or 'sensor').encode('ascii', 'ignore').decode()).strip('-') or 'sensor'
+    resposta = app.response_class(pdf, mimetype='application/pdf')
+    resposta.headers['Content-Disposition'] = f'attachment; filename="diagrama-rede-{nome}.pdf"'
+    resposta.headers['Cache-Control'] = 'no-store'
+    return resposta
+
+
 @app.route('/manifest.json')
 def manifest():
     response = send_from_directory('static', 'manifest.json')
@@ -1287,23 +3210,64 @@ def service_worker():
 @app.route('/usuarios')
 def gerenciar_usuarios():
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return "Acesso Negado.", 403
+    bloqueio = _bloqueio_delegacao(api=False)
+    if bloqueio: return bloqueio
     conn = database.get_db()
     if session['role'] == 'Administrador Master':
-        usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id FROM clientes ORDER BY id DESC").fetchall()
-        clientes_pais = conn.execute("SELECT id, nome FROM clientes WHERE role = 'Cliente'").fetchall()
+        usuarios = conn.execute("SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id, totp_ativo, empresa_master, meta_disponibilidade FROM clientes ORDER BY id DESC").fetchall()
+        clientes_pais = conn.execute("SELECT id, nome, usuario, empresa_master FROM clientes WHERE role = 'Cliente' ORDER BY empresa_master DESC, nome").fetchall()
     else:
         if session['role'] == 'Cliente': tenant_id = session['user_id']
         else:
             user_info = db_execute(conn, "SELECT cliente_pai_id FROM clientes WHERE id = ?", (session['user_id'],)).fetchone()
             tenant_id = user_info['cliente_pai_id']
-        usuarios = db_execute(conn, "SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id FROM clientes WHERE cliente_pai_id = ? ORDER BY id DESC", (tenant_id,)).fetchall()
+        usuarios = db_execute(conn, "SELECT id, nome, usuario, role, ativo, cliente_pai_id, logo_url, telegram_token, telegram_chat_id, totp_ativo, empresa_master, meta_disponibilidade FROM clientes WHERE cliente_pai_id = ? ORDER BY id DESC", (tenant_id,)).fetchall()
         clientes_pais = []
-    conn.close()
-    return render_template('usuarios.html', usuarios=[dict(u) for u in usuarios], role_atual=session['role'], telegram_tenant=locals().get('tenant_id', 0), clientes_pais=[dict(c) for c in clientes_pais])
+    try:
+        usuarios = [dict(u) for u in usuarios]
+        contratos = {}
+        for u in usuarios:
+            empresa = acessos.empresa_de(u)
+            if empresa is not None and empresa not in contratos:
+                contratos[empresa] = acessos.contrato(conn, empresa)
+            u['acesso'] = acessos.acesso_efetivo(conn, u['id'])
+            u['niveis'] = acessos.niveis_registrados(conn, u['id'])
+            u['empresa_id'] = empresa
+            u['contrato'] = contratos.get(empresa, {})
+            u['editavel'] = u['role'] not in acessos.ROLES_MASTER and u['id'] != session['user_id']
+            # Sessões e 2FA: qualquer usuário listado, menos a própria conta (essa vai pela Minha conta).
+            u['gerenciavel'] = u['id'] != session['user_id']
+        empresas = []
+        seguranca_acesso = {}
+        if session['role'] == 'Administrador Master':
+            empresas = [{**dict(c), 'contrato': acessos.contrato(conn, c['id']), 'delegacao': acessos.delegacao_ativa(conn, c['id'])}
+                        for c in conn.execute("SELECT id, nome, usuario, ativo, exigir_2fa, empresa_master FROM clientes WHERE role='Cliente' ORDER BY empresa_master DESC, nome").fetchall()]
+            md = conn.execute("SELECT valor FROM config_sistema WHERE chave='acessos_exigir_2fa_md'").fetchone()
+            seguranca_acesso['exigir_2fa_md'] = bool(md and md['valor'] == '1')
+        else:
+            empresa_row = conn.execute('SELECT id, exigir_2fa FROM clientes WHERE id=?', (tenant_id,)).fetchone()
+            seguranca_acesso['empresa_id'] = tenant_id
+            seguranca_acesso['exigir_2fa_empresa'] = bool(empresa_row and empresa_row['exigir_2fa'])
+        meu_acesso = acessos.acesso_efetivo(conn, session['user_id'])
+        dados_acessos = {
+            'master': session['role'] == 'Administrador Master', 'meu_acesso': meu_acesso,
+            'aplicativos': list(acessos.APLICATIVOS.items()), 'rotulos': acessos.ROTULOS_NIVEL,  # lista: o JSON ordenaria as chaves
+            'usuarios': {str(u['id']): {'nome': u['nome'] or u['usuario'], 'contrato': u['contrato'],
+                                        'niveis': u['niveis'], 'acesso': u['acesso']}
+                         for u in usuarios if u['editavel']},
+        }
+    finally:
+        conn.close()
+    return render_template('usuarios.html', usuarios=usuarios, pode_editar_sla=session.get('role') == 'Administrador Master', senha_minimo=seguranca.SENHA_MINIMO, role_atual=session['role'], telegram_tenant=locals().get('tenant_id', 0),
+                           clientes_pais=[dict(c) for c in clientes_pais], empresas=empresas, meu_acesso=meu_acesso,
+                           aplicativos=acessos.APLICATIVOS, rotulos_nivel=acessos.ROTULOS_NIVEL,
+                           perfis_prontos=acessos.PERFIS_PRONTOS, dados_acessos=dados_acessos, seguranca_acesso=seguranca_acesso)
 
 @app.route('/api/v2/usuarios', methods=['POST'])
 def criar_usuario():
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return jsonify({"error": "Acesso Negado"}), 403
+    bloqueio = _bloqueio_delegacao()
+    if bloqueio: return bloqueio
     data = request.json
     try:
         nome = bounded_text(data.get('nome'), 'Nome', maximum=160)
@@ -1311,6 +3275,9 @@ def criar_usuario():
         if not re.fullmatch(r'[A-Za-z0-9._@-]+', usuario):
             raise ValueError('Usuário deve usar apenas letras, números, ponto, hífen, @ ou underscore.')
         senha = bounded_secret(data.get('senha'), 'Senha')
+        fraca = seguranca.validar_senha_forte(senha, usuario)
+        if fraca:
+            raise ValueError(fraca)
         role = bounded_text(data.get('role'), 'Perfil', maximum=40)
         if role not in ALLOWED_ROLES:
             raise ValueError('Perfil inválido.')
@@ -1330,10 +3297,14 @@ def criar_usuario():
     else:
         cliente_pai = data.get('cliente_pai')
         if not cliente_pai or cliente_pai == "null": cliente_pai = None
+    if role in acessos.ROLES_MASTER:
+        cliente_pai = acessos.empresa_master_id(conn)   # a equipe Master pertence à Empresa Master
     try:
         if db_execute(conn, 'SELECT id FROM clientes WHERE usuario = ?', (usuario,)).fetchone():
             return jsonify(error='Usuário já existe.', status='Erro: Usuário já existe'), 409
         db_execute(conn, "INSERT INTO clientes (nome, usuario, senha, role, cliente_pai_id, ativo, logo_url, telegram_token, telegram_chat_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)", (nome, usuario, senha_hash, role, cliente_pai, logo_url, tg_token, tg_chat))
+        novo = db_execute(conn, 'SELECT id, role, cliente_pai_id FROM clientes WHERE usuario = ?', (usuario,)).fetchone()
+        _auditar(conn, 'usuario_criado', alvo=usuario, detalhes={'perfil': role}, empresa_id=acessos.empresa_de(dict(novo)) if novo else None)
         conn.commit(); status = "OK"
     except Exception:
         app.logger.exception('Falha ao criar usuário')
@@ -1344,31 +3315,64 @@ def criar_usuario():
 @app.route('/api/v2/usuarios/<int:id_user>/toggle_status', methods=['POST'])
 def toggle_user_status(id_user):
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return jsonify({"error": "Acesso Negado"}), 403
+    bloqueio = _bloqueio_delegacao()
+    if bloqueio: return bloqueio
     if id_user == session['user_id'] or id_user == 1: return jsonify({"error": "Ação não permitida"}), 403
     conn = database.get_db()
+    if id_user == acessos.empresa_master_id(conn):
+        conn.close()
+        return jsonify({"error": "A Empresa Master não pode ser desativada."}), 403
     user = db_execute(conn, "SELECT ativo FROM clientes WHERE id = ?", (id_user,)).fetchone()
-    novo_status = 0 if user.get('ativo', 1) == 1 else 1
+    novo_status = 0 if dict(user).get('ativo', 1) == 1 else 1
     db_execute(conn, "UPDATE clientes SET ativo = ? WHERE id = ?", (novo_status, id_user))
+    _auditar_alvo(conn, 'usuario_ativado' if novo_status else 'usuario_desativado', id_user)
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
 
 @app.route('/api/v2/usuarios/<int:id_user>/senha', methods=['POST'])
 def alterar_senha_user(id_user):
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return jsonify({"error": "Acesso Negado"}), 403
+    bloqueio = _bloqueio_delegacao()
+    if bloqueio: return bloqueio
     data = request.json
     try:
         senha = bounded_secret(data.get('senha'), 'Senha')
+        fraca = seguranca.validar_senha_forte(senha)
+        if fraca:
+            raise ValueError(fraca)
     except ValueError as error:
         return jsonify(error=str(error)), 400
     nova_senha = generate_password_hash(senha)
     conn = database.get_db()
-    db_execute(conn, "UPDATE clientes SET senha = ? WHERE id = ?", (nova_senha, id_user))
+    # Senha redefinida por um administrador derruba as sessões abertas do usuário.
+    db_execute(conn, "UPDATE clientes SET senha = ?, sessao_versao = COALESCE(sessao_versao, 0) + 1 WHERE id = ?", (nova_senha, id_user))
+    confiaveis.esquecer(conn, id_user)
+    _auditar_alvo(conn, 'senha_redefinida', id_user)
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
+
+_SEM_MUDANCA = object()
+
+
+def _meta_do_pedido(data):
+    """Meta em % (90 a 100, até duas casas); vazio volta para a referência padrão (None)."""
+    valor = data.get('meta_disponibilidade')
+    if valor in (None, ''):
+        return None
+    try:
+        meta = float(str(valor).replace(',', '.'))
+    except ValueError:
+        raise ValueError('Meta de disponibilidade inválida.') from None
+    if not math.isfinite(meta) or not 90 <= meta <= 100:
+        raise ValueError('A meta de disponibilidade deve ficar entre 90% e 100%.')
+    return round(meta, 2)
+
 
 @app.route('/api/v2/usuarios/<int:id_user>/info', methods=['PUT'])
 def editar_usuario_info(id_user):
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return jsonify({"error": "Acesso Negado"}), 403
+    bloqueio = _bloqueio_delegacao()
+    if bloqueio: return bloqueio
     data = request.json
     try:
         nome = bounded_text(data.get('nome'), 'Nome', maximum=160)
@@ -1380,6 +3384,8 @@ def editar_usuario_info(id_user):
             raise ValueError('URL do logo deve usar HTTP ou HTTPS.')
         tg_token = bounded_text(data.get('telegram_token', ''), 'Token Telegram', maximum=256, allow_empty=True)
         tg_chat = bounded_text(data.get('telegram_chat_id', ''), 'Chat Telegram', maximum=128, allow_empty=True)
+        # Meta de disponibilidade do contrato (NexoReport): só a MD define; vazio = referência padrão.
+        meta = _meta_do_pedido(data) if 'meta_disponibilidade' in data and session.get('role') == 'Administrador Master' else _SEM_MUDANCA
     except ValueError as error:
         return jsonify(error=str(error), status='Erro de validação'), 400
     conn = database.get_db()
@@ -1388,6 +3394,13 @@ def editar_usuario_info(id_user):
         if existing:
             return jsonify(error='Login já está em uso.', status='Erro: Login já está em uso.'), 409
         db_execute(conn, "UPDATE clientes SET nome = ?, usuario = ?, logo_url = ?, telegram_token = ?, telegram_chat_id = ? WHERE id = ?", (nome, usuario, logo_url, tg_token, tg_chat, id_user))
+        if meta is not _SEM_MUDANCA:
+            alvo = conn.execute('SELECT role, meta_disponibilidade FROM clientes WHERE id = ?', (id_user,)).fetchone()
+            if alvo and alvo['role'] == 'Cliente' and alvo['meta_disponibilidade'] != meta:
+                conn.execute('UPDATE clientes SET meta_disponibilidade = ? WHERE id = ?', (meta, id_user))
+                _auditar_alvo(conn, 'meta_disponibilidade', id_user,
+                              f"{alvo['meta_disponibilidade'] if alvo['meta_disponibilidade'] is not None else 'padrão'} → {meta if meta is not None else 'padrão'}")
+        _auditar_alvo(conn, 'usuario_editado', id_user)
         conn.commit(); status = "OK"
     except Exception:
         app.logger.exception('Falha ao editar usuário')
@@ -1398,26 +3411,571 @@ def editar_usuario_info(id_user):
 @app.route('/api/v2/usuarios/<int:id_user>', methods=['DELETE'])
 def deletar_usuario(id_user):
     if 'user_id' not in session or session.get('role') not in ['Administrador Master', 'Cliente', 'Administrador Cliente']: return jsonify({"error": "Acesso Negado"}), 403
+    bloqueio = _bloqueio_delegacao()
+    if bloqueio: return bloqueio
     if id_user == session['user_id'] or id_user == 1: return jsonify({"error": "Ação não permitida"}), 403
     conn = database.get_db()
+    if id_user == acessos.empresa_master_id(conn):
+        conn.close()
+        return jsonify({"error": "A Empresa Master não pode ser excluída."}), 403
+    _auditar_alvo(conn, 'usuario_excluido', id_user)
+    acessos.remover_registros_do_usuario(conn, id_user)
     db_execute(conn, "DELETE FROM clientes WHERE id = ?", (id_user,))
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
+
+# ==========================================
+# 🔑 CENTRAL DE ACESSOS NEXO (contratos, níveis, delegação, auditoria)
+# ==========================================
+def _exigir_master():
+    if session.get('role') != 'Administrador Master':
+        return jsonify(error='Somente a MD gerencia contratos e delegação.'), 403
+    return None
+
+
+def _empresa_ou_404(conn, empresa_id):
+    row = conn.execute("SELECT id, nome, usuario FROM clientes WHERE id=? AND role='Cliente'", (empresa_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def _resumo_usuario(conn, usuario):
+    return {'id': usuario['id'], 'nome': usuario['nome'], 'usuario': usuario['usuario'], 'perfil': usuario['role'],
+            'ativo': bool(usuario.get('ativo', 1)), 'empresa_id': acessos.empresa_de(usuario),
+            'niveis': acessos.niveis_registrados(conn, usuario['id']),
+            'acesso_efetivo': acessos.acesso_efetivo(conn, usuario['id'])}
+
+
+@app.route('/api/v2/acessos/me')
+def acessos_me():
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        autor = _autor(conn)
+        empresa = acessos.empresa_de(autor)
+        return jsonify(aplicativos=acessos.APLICATIVOS, acesso=acessos.acesso_efetivo(conn, autor['id']),
+                       contratado=acessos.contrato(conn, empresa) if empresa else {a: True for a in acessos.APLICATIVOS},
+                       pode_gerenciar_usuarios=_pode_gerenciar_usuarios(conn))
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/empresas')
+def acessos_empresas():
+    negado = _exigir_master()
+    if negado: return negado
+    conn = database.get_db()
+    try:
+        empresas = conn.execute("SELECT id, nome, usuario, ativo FROM clientes WHERE role='Cliente' ORDER BY nome").fetchall()
+        return jsonify(empresas=[{**dict(e), 'contrato': acessos.contrato(conn, e['id']),
+                                  'delegacao': acessos.delegacao_ativa(conn, e['id'])} for e in empresas])
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/empresas/<int:empresa_id>/contrato', methods=['POST'])
+def acessos_contrato(empresa_id):
+    negado = _exigir_master()
+    if negado: return negado
+    data = request.get_json(silent=True) or {}
+    aplicativo, ativo = data.get('aplicativo'), data.get('ativo')
+    if aplicativo not in acessos.APLICATIVOS or not isinstance(ativo, bool):
+        return jsonify(error='Informe aplicativo válido e ativo (true/false).'), 400
+    conn = database.get_db()
+    try:
+        empresa = _empresa_ou_404(conn, empresa_id)
+        if not empresa:
+            return jsonify(error='Empresa não encontrada.'), 404
+        antes = acessos.contrato(conn, empresa_id)[aplicativo]
+        acessos.definir_contrato(conn, empresa_id, aplicativo, ativo)
+        _auditar(conn, 'contrato_alterado', alvo=empresa['usuario'], empresa_id=empresa_id,
+                 detalhes={'aplicativo': aplicativo, 'antes': antes, 'depois': ativo})
+        conn.commit()
+        return jsonify(status='OK', contrato=acessos.contrato(conn, empresa_id))
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/empresas/<int:empresa_id>/delegacao', methods=['POST'])
+def acessos_delegacao(empresa_id):
+    negado = _exigir_master()
+    if negado: return negado
+    ativo = (request.get_json(silent=True) or {}).get('ativo')
+    if not isinstance(ativo, bool):
+        return jsonify(error='Informe ativo (true/false).'), 400
+    conn = database.get_db()
+    try:
+        empresa = _empresa_ou_404(conn, empresa_id)
+        if not empresa:
+            return jsonify(error='Empresa não encontrada.'), 404
+        conn.execute('UPDATE clientes SET delegacao_acessos=? WHERE id=?', (1 if ativo else 0, empresa_id))
+        _auditar(conn, 'delegacao_alterada', alvo=empresa['usuario'], empresa_id=empresa_id, detalhes={'ativo': ativo})
+        conn.commit()
+        return jsonify(status='OK', delegacao=ativo)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/usuarios')
+def acessos_usuarios():
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        if not _pode_gerenciar_usuarios(conn):
+            return jsonify(error='Sem permissão para gerenciar acessos.'), 403
+        campos = 'SELECT id, nome, usuario, role, ativo, cliente_pai_id FROM clientes'
+        if session.get('role') == 'Administrador Master':
+            rows = conn.execute(f"{campos} WHERE role NOT IN ('Administrador Master', 'Operador Master') ORDER BY id").fetchall()
+        else:
+            empresa = acessos.empresa_de(_autor(conn))
+            rows = conn.execute(f'{campos} WHERE id=? OR cliente_pai_id=? ORDER BY id', (empresa, empresa)).fetchall()
+        return jsonify(usuarios=[_resumo_usuario(conn, dict(r)) for r in rows])
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/usuarios/<int:id_user>/nivel', methods=['POST'])
+def acessos_nivel(id_user):
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    data = request.get_json(silent=True) or {}
+    aplicativo, nivel = data.get('aplicativo'), data.get('nivel')
+    conn = database.get_db()
+    try:
+        erro = acessos.validar_mudanca_nivel(conn, session['user_id'], id_user, aplicativo, nivel)
+        if erro:
+            return jsonify(error=erro), 403
+        antes = acessos.niveis_registrados(conn, id_user).get(aplicativo)
+        acessos.definir_nivel(conn, id_user, aplicativo, nivel)
+        _auditar_alvo(conn, 'nivel_alterado', id_user, detalhes={'aplicativo': aplicativo, 'antes': antes or 'padrão', 'depois': nivel})
+        conn.commit()
+        return jsonify(status='OK', usuario=_resumo_usuario(conn, acessos._usuario(conn, id_user)))
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/usuarios/<int:id_user>/perfil', methods=['POST'])
+def acessos_perfil(id_user):
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    perfil = (request.get_json(silent=True) or {}).get('perfil')
+    if perfil not in acessos.PERFIS_PRONTOS:
+        return jsonify(error='Perfil pronto desconhecido.'), 400
+    conn = database.get_db()
+    try:
+        mudancas = acessos.mudancas_do_perfil(conn, id_user, perfil)
+        if not mudancas:
+            return jsonify(error='Usuário sem empresa ou sem aplicativos contratados.'), 400
+        # Tudo ou nada: valida cada aplicativo antes de gravar qualquer um.
+        for aplicativo, nivel in mudancas.items():
+            erro = acessos.validar_mudanca_nivel(conn, session['user_id'], id_user, aplicativo, nivel)
+            if erro:
+                return jsonify(error=erro), 403
+        for aplicativo, nivel in mudancas.items():
+            acessos.definir_nivel(conn, id_user, aplicativo, nivel)
+        _auditar_alvo(conn, 'perfil_aplicado', id_user, detalhes={'perfil': acessos.PERFIS_PRONTOS[perfil]['nome'], 'niveis': mudancas})
+        conn.commit()
+        return jsonify(status='OK', usuario=_resumo_usuario(conn, acessos._usuario(conn, id_user)))
+    finally:
+        conn.close()
+
+
+# ==========================================
+# 🔐 SEGURANÇA DE ACESSO: Minha conta, verificação em duas etapas e sessões
+# ==========================================
+def _usuario_completo(conn, usuario_id):
+    row = conn.execute('SELECT * FROM clientes WHERE id=?', (usuario_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def _codigo_da_conta(user, digitado):
+    """Confere um código (aplicativo ou recuperação) do próprio usuário; grava o uso. True se valeu.
+
+    Erros contam no mesmo bloqueio do login: sessão aberta não vira porta para chutar códigos."""
+    conn = database.get_db()
+    try:
+        if seguranca.bloqueado_ate(conn, user['usuario']):
+            return False
+        segredo = seguranca.decifrar(user['totp_segredo']) if user.get('totp_segredo') else None
+        passo = seguranca.verificar_totp(segredo, digitado, user.get('totp_ultimo_passo')) if segredo else None
+        if passo is not None:
+            conn.execute('UPDATE clientes SET totp_ultimo_passo=? WHERE id=?', (passo, user['id']))
+            conn.commit()
+            return True
+        restantes = seguranca.usar_codigo_recuperacao(user.get('codigos_recuperacao'), digitado)
+        if restantes is not None:
+            conn.execute('UPDATE clientes SET codigos_recuperacao=? WHERE id=?', (restantes, user['id']))
+            conn.commit()
+            return True
+        seguranca.registrar_falha(conn, user['usuario'])
+        conn.commit()
+        return False
+    finally:
+        conn.close()
+
+
+def _nova_versao_de_sessao(conn, usuario_id):
+    conn.execute('UPDATE clientes SET sessao_versao = COALESCE(sessao_versao, 0) + 1 WHERE id=?', (usuario_id,))
+    return conn.execute('SELECT sessao_versao FROM clientes WHERE id=?', (usuario_id,)).fetchone()['sessao_versao']
+
+
+@app.route('/conta')
+def conta():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    conn = database.get_db()
+    try:
+        user = _usuario_completo(conn, session['user_id'])
+        empresa_id = acessos.empresa_de(user)
+        empresa = conn.execute('SELECT nome, usuario FROM clientes WHERE id=?', (empresa_id,)).fetchone() if empresa_id else None
+        return render_template('conta.html', user=user, empresa=(dict(empresa) if empresa else None),
+                               exige_2fa=_exige_2fa(conn, user), obrigatorio_agora=bool(session.get('precisa_2fa')),
+                               lembrados=confiaveis.listar(conn, user['id']), aparelho_atual=_aparelho_atual(user['id']),
+                               quando=lambda t: datetime.fromtimestamp(t, hub.FUSO_BR).strftime('%d/%m/%Y %H:%M') if t else '—',
+                               codigos_restantes=seguranca.codigos_restantes(user.get('codigos_recuperacao')),
+                               cifra_disponivel=seguranca.cifra_disponivel(), senha_minimo=seguranca.SENHA_MINIMO)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/conta/senha', methods=['POST'])
+def conta_senha():
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    data = request.get_json(silent=True) or {}
+    conn = database.get_db()
+    try:
+        user = _usuario_completo(conn, session['user_id'])
+        if seguranca.bloqueado_ate(conn, user['usuario']):
+            return jsonify(error='Muitas tentativas. Tente de novo em alguns minutos.'), 429
+        guardada = str(user.get('senha') or '')
+        if not guardada.startswith(('scrypt:', 'pbkdf2:')) or not check_password_hash(guardada, str(data.get('atual') or '')):
+            seguranca.registrar_falha(conn, user['usuario'])
+            conn.commit()
+            return jsonify(error='A senha atual não confere.'), 400
+        nova = data.get('nova')
+        fraca = seguranca.validar_senha_forte(nova, user['usuario'])
+        if fraca:
+            return jsonify(error=fraca), 400
+        conn.execute('UPDATE clientes SET senha=? WHERE id=?', (generate_password_hash(nova), user['id']))
+        # Troca de senha encerra as outras sessões; esta continua.
+        session['sv'] = _nova_versao_de_sessao(conn, user['id'])
+        confiaveis.esquecer(conn, user['id'], exceto=_aparelho_atual(user['id']))
+        _auditar(conn, 'senha_trocada', alvo=user['usuario'], detalhes={'propria': True})
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/conta/2fa/iniciar', methods=['POST'])
+def conta_2fa_iniciar():
+    """Gera o segredo (guardado cifrado, ainda inativo) e devolve o que o aplicativo autenticador precisa."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    if not seguranca.cifra_disponivel():
+        return jsonify(error='Verificação em duas etapas indisponível: configure FLASK_SECRET_KEY no servidor.'), 503
+    conn = database.get_db()
+    try:
+        user = _usuario_completo(conn, session['user_id'])
+        if user.get('totp_ativo'):
+            return jsonify(error='A verificação em duas etapas já está ativa.'), 409
+        segredo = seguranca.gerar_segredo()
+        conn.execute('UPDATE clientes SET totp_segredo=?, totp_ultimo_passo=NULL WHERE id=?', (seguranca.cifrar(segredo), user['id']))
+        conn.commit()
+        return jsonify(segredo=segredo, uri=seguranca.uri_otpauth(segredo, user['usuario']))
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/conta/2fa/confirmar', methods=['POST'])
+def conta_2fa_confirmar():
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    digitado = (request.get_json(silent=True) or {}).get('codigo')
+    conn = database.get_db()
+    try:
+        user = _usuario_completo(conn, session['user_id'])
+        if user.get('totp_ativo') or not user.get('totp_segredo'):
+            return jsonify(error='Comece a ativação de novo.'), 409
+        if seguranca.bloqueado_ate(conn, user['usuario']):
+            return jsonify(error='Muitas tentativas. Tente de novo em alguns minutos.'), 429
+        segredo = seguranca.decifrar(user['totp_segredo'])
+        passo = seguranca.verificar_totp(segredo, digitado) if segredo else None
+        if passo is None:
+            seguranca.registrar_falha(conn, user['usuario'])
+            conn.commit()
+            return jsonify(error='Código inválido. Confira o horário do celular e tente o código atual.'), 400
+        codigos, guardados = seguranca.gerar_codigos_recuperacao()
+        conn.execute('UPDATE clientes SET totp_ativo=1, totp_ultimo_passo=?, codigos_recuperacao=? WHERE id=?',
+                     (passo, guardados, user['id']))
+        session.pop('precisa_2fa', None)
+        _auditar(conn, '2fa_ativado', alvo=user['usuario'])
+        conn.commit()
+        return jsonify(status='OK', codigos_recuperacao=codigos)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/conta/2fa/desativar', methods=['POST'])
+def conta_2fa_desativar():
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        user = _usuario_completo(conn, session['user_id'])
+        if not user.get('totp_ativo'):
+            return jsonify(error='A verificação em duas etapas não está ativa.'), 409
+        if _exige_2fa(conn, user):
+            return jsonify(error='A verificação em duas etapas é obrigatória para a sua empresa.'), 403
+    finally:
+        conn.close()
+    if not _codigo_da_conta(user, (request.get_json(silent=True) or {}).get('codigo')):
+        return jsonify(error='Código inválido.'), 400
+    conn = database.get_db()
+    try:
+        conn.execute('UPDATE clientes SET totp_ativo=0, totp_segredo=NULL, totp_ultimo_passo=NULL, codigos_recuperacao=NULL WHERE id=?', (user['id'],))
+        confiaveis.esquecer(conn, user['id'])
+        _auditar(conn, '2fa_desativado', alvo=user['usuario'])
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/conta/2fa/codigos', methods=['POST'])
+def conta_2fa_codigos():
+    """Novos códigos de recuperação (os antigos deixam de valer). Pede um código atual."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        user = _usuario_completo(conn, session['user_id'])
+    finally:
+        conn.close()
+    if not user.get('totp_ativo'):
+        return jsonify(error='A verificação em duas etapas não está ativa.'), 409
+    if not _codigo_da_conta(user, (request.get_json(silent=True) or {}).get('codigo')):
+        return jsonify(error='Código inválido.'), 400
+    codigos, guardados = seguranca.gerar_codigos_recuperacao()
+    conn = database.get_db()
+    try:
+        conn.execute('UPDATE clientes SET codigos_recuperacao=? WHERE id=?', (guardados, user['id']))
+        _auditar(conn, '2fa_codigos_gerados', alvo=user['usuario'])
+        conn.commit()
+        return jsonify(status='OK', codigos_recuperacao=codigos)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/conta/dispositivos/esquecer', methods=['POST'])
+def conta_esquecer_dispositivos():
+    """Esquece um aparelho lembrado ({"id": n}) ou todos ({"todos": true}): o próximo login nele pede o código."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    data = request.get_json(silent=True) or {}
+    alvo = data.get('id')
+    if not data.get('todos') and not (isinstance(alvo, int) and not isinstance(alvo, bool)):
+        return jsonify(error='Diga qual aparelho esquecer.'), 400
+    conn = database.get_db()
+    try:
+        n = confiaveis.esquecer(conn, session['user_id'], None if data.get('todos') else alvo)
+        if not n and not data.get('todos'):
+            return jsonify(error='Aparelho não encontrado.'), 404
+        _auditar(conn, 'dispositivo_esquecido', alvo=session.get('usuario'), detalhes={'quantos': n})
+        conn.commit()
+        return jsonify(status='OK', esquecidos=n)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/conta/sessoes/encerrar', methods=['POST'])
+def conta_encerrar_sessoes():
+    """Sai de todos os outros aparelhos; esta sessão continua."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        session['sv'] = _nova_versao_de_sessao(conn, session['user_id'])
+        confiaveis.esquecer(conn, session['user_id'], exceto=_aparelho_atual(session['user_id']))
+        _auditar(conn, 'sessoes_encerradas', alvo=session.get('usuario'), detalhes={'propria': True})
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+def _alvo_gerenciavel(conn, id_user):
+    """(alvo, None) se quem pede pode agir sobre esse usuário na Central de Acessos; senão (None, resposta de erro)."""
+    autor, alvo = _autor(conn), _usuario_completo(conn, id_user)
+    if not alvo:
+        return None, (jsonify(error='Usuário não encontrado.'), 404)
+    if alvo['id'] == autor['id']:
+        return None, (jsonify(error='Para a sua própria conta, use Minha conta.'), 403)
+    if autor['role'] == 'Administrador Master':
+        return alvo, None
+    if (alvo['role'] in acessos.ROLES_MASTER or not acessos.pode_administrar_empresa(conn, autor)
+            or acessos.empresa_de(autor) != acessos.empresa_de(alvo)):
+        return None, (jsonify(error='Sem permissão para gerenciar este usuário.'), 403)
+    return alvo, None
+
+
+@app.route('/api/v2/acessos/usuarios/<int:id_user>/encerrar_sessoes', methods=['POST'])
+def acessos_encerrar_sessoes(id_user):
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        alvo, erro = _alvo_gerenciavel(conn, id_user)
+        if erro:
+            return erro
+        _nova_versao_de_sessao(conn, alvo['id'])
+        _auditar_alvo(conn, 'sessoes_encerradas', alvo['id'])
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/usuarios/<int:id_user>/redefinir_2fa', methods=['POST'])
+def acessos_redefinir_2fa(id_user):
+    """Celular perdido: tira a verificação do usuário (e encerra as sessões dele). Se for obrigatória, ele cadastra de novo no próximo login."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        alvo, erro = _alvo_gerenciavel(conn, id_user)
+        if erro:
+            return erro
+        conn.execute('UPDATE clientes SET totp_ativo=0, totp_segredo=NULL, totp_ultimo_passo=NULL, codigos_recuperacao=NULL WHERE id=?', (alvo['id'],))
+        _nova_versao_de_sessao(conn, alvo['id'])
+        confiaveis.esquecer(conn, alvo['id'])
+        _auditar_alvo(conn, '2fa_redefinido', alvo['id'])
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/empresas/<int:empresa_id>/exigir_2fa', methods=['POST'])
+def acessos_exigir_2fa(empresa_id):
+    """A MD ou o administrador da própria empresa (com delegação) torna a verificação obrigatória."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    ativo = (request.get_json(silent=True) or {}).get('ativo')
+    if not isinstance(ativo, bool):
+        return jsonify(error='Informe ativo (true/false).'), 400
+    conn = database.get_db()
+    try:
+        autor = _autor(conn)
+        if autor['role'] != 'Administrador Master' and not (
+                acessos.pode_administrar_empresa(conn, autor) and acessos.empresa_de(autor) == empresa_id):
+            return jsonify(error='Sem permissão para esta empresa.'), 403
+        empresa = _empresa_ou_404(conn, empresa_id)
+        if not empresa:
+            return jsonify(error='Empresa não encontrada.'), 404
+        conn.execute('UPDATE clientes SET exigir_2fa=? WHERE id=?', (1 if ativo else 0, empresa_id))
+        _auditar(conn, 'exigencia_2fa_alterada', alvo=empresa['usuario'], empresa_id=empresa_id, detalhes={'ativo': ativo})
+        conn.commit()
+        return jsonify(status='OK', exigir_2fa=ativo)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/md/exigir_2fa', methods=['POST'])
+def acessos_exigir_2fa_md():
+    negado = _exigir_master()
+    if negado: return negado
+    ativo = (request.get_json(silent=True) or {}).get('ativo')
+    if not isinstance(ativo, bool):
+        return jsonify(error='Informe ativo (true/false).'), 400
+    conn = database.get_db()
+    try:
+        conn.execute("INSERT INTO config_sistema (chave, valor, atualizado_em) VALUES ('acessos_exigir_2fa_md', ?, ?) "
+                     "ON CONFLICT (chave) DO UPDATE SET valor=excluded.valor, atualizado_em=excluded.atualizado_em",
+                     ('1' if ativo else '0', time.time()))
+        _auditar(conn, 'exigencia_2fa_alterada', alvo='Equipe MD', detalhes={'ativo': ativo, 'equipe_md': True})
+        conn.commit()
+        return jsonify(status='OK', exigir_2fa_md=ativo)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acessos/auditoria')
+def acessos_auditoria():
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    try:
+        limite = min(max(int(request.args.get('limite', 100)), 1), 500)
+    except ValueError:
+        return jsonify(error='Limite inválido.'), 400
+    conn = database.get_db()
+    try:
+        if not _pode_gerenciar_usuarios(conn):
+            return jsonify(error='Sem permissão para ver a auditoria.'), 403
+        # No Postgres criado_em fica no fuso da sessão; com o fuso explícito o navegador converte certo.
+        quando = ("criado_em AT TIME ZONE current_setting('TimeZone') AS criado_em" if os.environ.get('DATABASE_URL') else 'criado_em')
+        campos = f'SELECT id, {quando}, autor, empresa_id, acao, alvo, detalhes FROM auditoria_acessos'
+        if session.get('role') == 'Administrador Master':
+            rows = conn.execute(f'{campos} ORDER BY id DESC LIMIT ?', (limite,)).fetchall()
+        else:
+            rows = conn.execute(f'{campos} WHERE empresa_id=? ORDER BY id DESC LIMIT ?',
+                                (acessos.empresa_de(_autor(conn)), limite)).fetchall()
+        return jsonify(registros=[{**dict(r), 'criado_em': str(r['criado_em'])} for r in rows])
+    finally:
+        conn.close()
+
 
 @app.route('/sensores')
 def gerenciar_sensores():
     if 'user_id' not in session or session.get('role') != 'Administrador Master': return "Acesso Negado.", 403
     conn = database.get_db()
-    sensores = conn.execute('''SELECT s.mac_id, s.nome_local, s.status, s.ip_sensor, s.cliente_id,
-        c.nome as cliente_nome, sc.key_prefix,
+    sensores = conn.execute('''SELECT s.mac_id, s.nome_local, s.status, s.ip_sensor, s.cliente_id, s.camadas_rede, s.provedor,
+        s.agent_build, s.build_recusado, s.auto_atualizar, s.acoes_remotas, s.auto_update_guard, s.em_manutencao, s.last_seen,
+        c.nome as cliente_nome, c.empresa_master, sc.key_prefix,
         CASE WHEN sc.key_hash IS NOT NULL AND sc.revoked_at IS NULL THEN 1 ELSE 0 END AS credential_active
         FROM sensores s
         LEFT JOIN clientes c ON s.cliente_id = c.id
         LEFT JOIN sensor_credentials sc ON sc.sensor_mac = s.mac_id
         ORDER BY s.cliente_id ASC''').fetchall()
-    clientes = conn.execute("SELECT id, nome FROM clientes WHERE role IN ('Cliente', 'Administrador Master')").fetchall()
+    # Atualização do agente que ainda está na fila ou rodando, por sensor (a tela mostra "Atualizando…").
+    atualizando = {r['sensor_mac'] for r in conn.execute(
+        "SELECT DISTINCT sensor_mac FROM acoes_remotas WHERE acao='atualizar_agente' AND status IN ('pendente', 'enviada')").fetchall()}
+    sensores = [{**dict(r), 'camadas': _json_ou(r['camadas_rede'], None), 'last_seen_ts': hub._epoch(r['last_seen']),
+                 'versao': _situacao_versao(r, r['mac_id'] in atualizando)} for r in sensores]
+    # Sem empresa primeiro (precisa alocar), depois a Empresa Master e os clientes por nome; dentro, offline primeiro.
+    sensores.sort(key=lambda s: (s['cliente_id'] is not None, not s['empresa_master'], (s['cliente_nome'] or '').lower(),
+                                 s['status'] == 'online', (s['nome_local'] or '').lower()))
+    # Destinos: só empresas, a Empresa Master primeiro.
+    clientes = conn.execute("SELECT id, nome, usuario, empresa_master FROM clientes WHERE role = 'Cliente' "
+                            "ORDER BY empresa_master DESC, nome").fetchall()
     conn.close()
-    return render_template('sensores.html', sensores=[dict(s) for s in sensores], clientes=[dict(c) for c in clientes])
+    resumo = {'total': len(sensores), 'online': sum(1 for x in sensores if x['status'] == 'online'),
+              'offline': sum(1 for x in sensores if x['status'] and x['status'] != 'online'),
+              'sem_empresa': sum(1 for x in sensores if not x['cliente_id']),
+              'antigos': sum(1 for x in sensores if x['versao']['estado'] in ('antiga', 'desfeita'))}
+    grupos = []
+    for sensor in sensores:  # já em ordem: cada empresa vira um bloco na tela
+        if not grupos or grupos[-1]['cliente_id'] != sensor['cliente_id']:
+            grupos.append({'cliente_id': sensor['cliente_id'], 'nome': sensor['cliente_nome'], 'master': bool(sensor['empresa_master']), 'sensores': []})
+        grupos[-1]['sensores'].append(sensor)
+    return render_template('sensores.html', grupos=grupos, clientes=[dict(c) for c in clientes], resumo=resumo,
+                           build_central=AGENT_BUILD, filtro=request.args.get('filtro', 'todos'))
+
+
+def _situacao_versao(sensor, atualizando=False):
+    """Versão do agente frente à da Central, em linguagem da tela: em dia, antiga, desfeita, atualizando ou desconhecida."""
+    build = sensor['agent_build']
+    if atualizando:
+        return {'estado': 'atualizando', 'rotulo': 'Atualizando…', 'build': build}
+    if not build:
+        return {'estado': 'desconhecida', 'rotulo': 'Não informada', 'build': None}
+    if build == AGENT_BUILD:
+        return {'estado': 'em_dia', 'rotulo': 'Em dia', 'build': build}
+    if sensor['build_recusado'] and sensor['build_recusado'] == AGENT_BUILD:
+        return {'estado': 'desfeita', 'rotulo': 'Versão nova falhou', 'build': build}
+    return {'estado': 'antiga', 'rotulo': 'Versão antiga', 'build': build}
 
 
 @app.route('/api/v2/sensor_credential/<mac_id>', methods=['POST', 'DELETE'])
@@ -1457,12 +4015,803 @@ def sensor_credential(mac_id):
     finally:
         conn.close()
 
+# ==========================================
+# 🩺 MÉTRICAS ESTENDIDAS DO HOST: guarda o último estado e alerta mudanças
+# ==========================================
+LIMITE_HOST_INFO = 32 * 1024
+
+
+def _problemas_host(info):
+    """Problemas atuais do host, por chave estável -> (gravidade, descrição)."""
+    problemas = {}
+    for d in info.get('discos') or []:
+        if isinstance(d, dict) and (d.get('percentual') or 0) >= 90:
+            problemas[f"disco:{d.get('ponto')}"] = ('Crítica', f"Disco {d.get('ponto')} em {d.get('percentual')}% ({d.get('usado_gb')} de {d.get('total_gb')} GB)")
+    sw = info.get('swap') or {}
+    if (sw.get('total_mb') or 0) > 0 and (sw.get('percentual') or 0) >= 80:
+        problemas['swap'] = ('Alerta', f"Swap em {sw.get('percentual')}%: memória quase esgotada")
+    for nome in info.get('servicos_falha') or []:
+        problemas[f"servico:{nome}"] = ('Alerta', f"Serviço com falha: {nome}")
+    for d in ((info.get('smart') or {}).get('discos') or []):
+        if isinstance(d, dict) and d.get('ok') is False:
+            problemas[f"smart:{d.get('dispositivo')}"] = ('Crítica', f"SMART reprova o disco {d.get('dispositivo')} ({d.get('modelo') or 'modelo desconhecido'})")
+    if (info.get('dns') or {}).get('ok') is False:
+        problemas['dns'] = ('Alerta', 'Resolução de DNS falhando na máquina')
+    if info.get('hora_sincronizada') is False:
+        problemas['hora'] = ('Aviso', 'Relógio da máquina sem sincronização (NTP)')
+    return problemas
+
+
+def processar_host_info(conn, mac, sensor, info):
+    if not isinstance(info, dict):
+        return
+    bruto = json.dumps(info, ensure_ascii=False)
+    if len(bruto) > LIMITE_HOST_INFO:
+        return
+    nome = html.escape(str((sensor or {}).get('nome_local') or mac))
+    cid = (sensor or {}).get('cliente_id')
+    try:
+        anterior = json.loads((sensor or {}).get('host_info') or '{}')
+    except ValueError:
+        anterior = {}
+    try:
+        ativos = set(json.loads((sensor or {}).get('alertas_host') or '[]'))
+    except ValueError:
+        ativos = set()
+
+    boot_novo = (info.get('sistema') or {}).get('boot_time')
+    boot_antigo = (anterior.get('sistema') or {}).get('boot_time')
+    if isinstance(boot_novo, int) and isinstance(boot_antigo, int) and abs(boot_novo - boot_antigo) > 120:
+        quando = datetime.fromtimestamp(boot_novo, timezone.utc).astimezone(timezone(timedelta(hours=-3))).strftime('%d/%m %H:%M')
+        db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Máquina reiniciada', 'Alerta', ?)", (mac, f'A máquina foi reiniciada ({quando}).'))
+        enviar_telegram(f"🔄 <b>MÁQUINA REINICIOU</b>\n\n🖥️ <b>Sensor:</b> {nome}\n🕒 <b>Ligou às:</b> {quando}", cliente_id=cid, conn=conn)
+
+    problemas = _problemas_host(info)
+    for chave in sorted(set(problemas) - ativos):
+        gravidade, texto = problemas[chave]
+        db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Saúde do host', ?, ?)", (mac, gravidade, texto))
+        icone = '🚨' if gravidade == 'Crítica' else '⚠️'
+        enviar_telegram(f"{icone} <b>SAÚDE DO HOST</b>\n\n🖥️ <b>Sensor:</b> {nome}\n{html.escape(texto)}", cliente_id=cid, conn=conn)
+    for chave in sorted(ativos - set(problemas)):
+        db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Saúde do host', 'Aviso', ?)", (mac, f"Normalizado: {chave.split(':', 1)[-1]}"))
+        enviar_telegram(f"✅ <b>HOST NORMALIZADO</b>\n\n🖥️ <b>Sensor:</b> {nome}\n🟢 {html.escape(chave.split(':', 1)[-1])}", cliente_id=cid, conn=conn)
+
+    db_execute(conn, 'UPDATE sensores SET host_info=?, alertas_host=? WHERE mac_id=?', (bruto, json.dumps(sorted(problemas)), mac))
+    conn.commit()
+
+
+# ==========================================
+# 🩺 DIAGNÓSTICO DE REDE (medições do Edge → camadas → diagnósticos)
+# ==========================================
+MAX_ITENS_MEDICAO = 200
+LIMITE_ITEM_MEDICAO = 32 * 1024
+NOTIFICAR_ATE_S = 600  # medição mais velha que isso (veio do buffer) entra na linha do tempo sem Telegram
+# 40 dias: o fechamento do mês (NexoReport, dia 1) precisa das medições do mês inteiro, com folga para atraso.
+RETENCAO_MEDICOES_S = max(1, int(os.environ.get('DIAG_RETENCAO_DIAS', '40'))) * 86400
+ICONES_GRAVIDADE = {'Crítica': '🚨', 'Alerta': '⚠️', 'Aviso': 'ℹ️'}
+_ultima_limpeza_medicoes = 0.0
+
+
+def _json_ou(valor, padrao):
+    try:
+        return json.loads(valor) if valor else padrao
+    except (TypeError, ValueError):
+        return padrao
+
+
+def _num_ou_none(v):
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else None
+
+
+GRAVIDADES_ALERTA = ('Crítica', 'Alerta', 'Aviso', 'OK')
+ATRASO_OFFLINE_S = 120          # alerta que chega mais de 2 min depois de acontecer = registrado com a Central fora
+RESUMO_MAX_EVENTOS = 10
+
+
+def _alerta_valido(item):
+    a = item.get('alerta')
+    return (isinstance(item.get('id'), str) and 8 <= len(item['id']) <= 64 and isinstance(a, dict)
+            and all(isinstance(a.get(k), str) for k in ('tipo', 'gravidade', 'detalhes')) and a['tipo'].strip())
+
+
+def _item_medicao_valido(item, agora):
+    if not isinstance(item, dict) or item.get('tipo') not in ('rede', 'starlink', 'rota', 'alerta'):
+        return False
+    if item['tipo'] == 'alerta' and not _alerta_valido(item):
+        return False
+    ts = _num_ou_none(item.get('coletado_em'))
+    if ts is None or not agora - 8 * 86400 <= ts <= agora + 300:
+        return False
+    return len(json.dumps(item, ensure_ascii=False)) <= LIMITE_ITEM_MEDICAO
+
+
+def _notificar_diag(conn, sensor, diag, titulo=None):
+    icone = ICONES_GRAVIDADE.get(diag['gravidade'], '⚠️')
+    texto = (f"{icone} <b>{html.escape((titulo or diag['causa']).upper())}</b>\n\n{html.escape(diag['mensagem'])}"
+             f"\n🎯 <b>Confiança:</b> {html.escape(diag['confianca'] or '-')}")
+    enviar_telegram(texto, cliente_id=(sensor or {}).get('cliente_id'), conn=conn)
+
+
+def _registrar_diag_log(conn, mac, diag, prefixo=''):
+    db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Diagnóstico de rede', ?, ?)",
+               (mac, diag['gravidade'], f"{prefixo}{diag['mensagem']}"))
+
+
+def _aplicar_diagnosticos(conn, sensor, achados, inicio, fim, lim):
+    """Abre, confirma e resolve os diagnósticos de um sensor a partir de uma janela."""
+    mac = sensor['mac_id']
+    site = str(sensor.get('nome_local') or mac)
+    recente = time.time() - fim <= NOTIFICAR_ATE_S
+    ativos = {r['chave']: dict(r) for r in conn.execute(
+        "SELECT * FROM diagnosticos WHERE sensor_mac=? AND estado='ativo' AND chave <> 'sem_comunicacao'", (mac,)).fetchall()}
+    for a in achados:
+        atual = ativos.pop(a['chave'], None)
+        diag = {**a, 'inicio': atual['inicio'] if atual else inicio}
+        diag['mensagem'] = diagnostico.mensagem(diag, site, sensor.get('provedor'))
+        ev = json.dumps(a['evidencias'], ensure_ascii=False)
+        if atual:
+            gravidade = a['gravidade'] if diagnostico.ORDEM_GRAVIDADE.get(a['gravidade'], 0) > diagnostico.ORDEM_GRAVIDADE.get(atual['gravidade'], 0) else atual['gravidade']
+            diag['gravidade'] = gravidade
+            conn.execute("UPDATE diagnosticos SET janelas=janelas+1, janelas_ok=0, evidencias=?, gravidade=?, confianca=?, mensagem=?, detalhe=?, atualizado_em=? WHERE id=?",
+                         (ev, gravidade, a['confianca'], diag['mensagem'], a.get('detalhe'), fim, atual['id']))
+            diag_id, janelas, notificado, grupo = atual['id'], atual['janelas'] + 1, atual['notificado'], atual['grupo_id']
+        else:
+            cur = conn.execute('''INSERT INTO diagnosticos (sensor_mac, provedor, chave, camada, causa, gravidade, confianca, inicio, atualizado_em,
+                evidencias, acao, detalhe, mensagem, estado, janelas, janelas_ok, notificado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ativo', 1, 0, 0) RETURNING id''',
+                (mac, sensor.get('provedor'), a['chave'], a['camada'], a['causa'], a['gravidade'], a['confianca'], inicio, fim,
+                 ev, a['acao'], a.get('detalhe'), diag['mensagem']))
+            diag_id, janelas, notificado, grupo = cur.fetchone()['id'], 1, 0, None
+        # Achados de provedor esperam uma janela a mais: dá tempo de a correlação juntar os sites.
+        necessario = lim['confirmar_janelas'] + (1 if a['chave'] in diagnostico.CORRELACIONAVEIS else 0)
+        if not notificado and janelas >= necessario:
+            if a['chave'] in diagnostico.CORRELACIONAVEIS:
+                _correlacionar_provedores(conn, lim)
+                grupo = conn.execute('SELECT grupo_id FROM diagnosticos WHERE id=?', (diag_id,)).fetchone()['grupo_id']
+            _registrar_diag_log(conn, mac, diag, '(registrado após reconexão) ' if not recente else '')
+            if recente and not grupo:
+                _notificar_diag(conn, sensor, diag)
+            conn.execute('UPDATE diagnosticos SET notificado=? WHERE id=?', (1 if recente and not grupo else 2, diag_id))
+    for atual in ativos.values():  # não apareceu nesta janela
+        if atual['janelas_ok'] + 1 < lim['resolver_janelas']:
+            conn.execute('UPDATE diagnosticos SET janelas_ok=janelas_ok+1 WHERE id=?', (atual['id'],))
+            continue
+        conn.execute("UPDATE diagnosticos SET estado='resolvido', fim=?, janelas_ok=janelas_ok+1 WHERE id=?", (atual['atualizado_em'] or fim, atual['id']))
+        if atual['notificado'] == 1 and recente:
+            duracao = max(1, round(((atual['atualizado_em'] or fim) - atual['inicio']) / 60))
+            enviar_telegram(f"✅ <b>NORMALIZADO</b>\n\n🖥️ <b>Site:</b> {html.escape(site)}\n🟢 {html.escape(atual['causa'])} (durou ~{duracao} min)",
+                            cliente_id=sensor.get('cliente_id'), conn=conn)
+        db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Diagnóstico de rede', 'OK', ?)",
+                   (mac, f"Normalizado: {atual['causa']}"))
+
+
+def _correlacionar_provedores(conn, lim=None):
+    """Vários sites do mesmo provedor com problema ao mesmo tempo viram um diagnóstico só."""
+    lim = lim or diagnostico.limiares()
+    if os.environ.get('DATABASE_URL'):
+        conn.execute('SELECT pg_advisory_xact_lock(220002)')
+    chaves = sorted(diagnostico.CORRELACIONAVEIS)
+    marcadores = ','.join('?' * len(chaves))
+    ativos = [dict(r) for r in conn.execute(
+        f"""SELECT d.id, d.sensor_mac, d.chave, d.inicio, d.notificado, s.provedor, s.nome_local, s.cliente_id
+            FROM diagnosticos d JOIN sensores s ON s.mac_id = d.sensor_mac
+            WHERE d.estado='ativo' AND d.chave IN ({marcadores})""", chaves).fetchall()]
+    grupos_abertos = {r['provedor']: dict(r) for r in conn.execute(
+        "SELECT * FROM diagnosticos WHERE chave='queda_provedor' AND estado='ativo'").fetchall()}
+    grupos = diagnostico.correlacionar(ativos, lim, grupos_abertos.keys())
+    agora = time.time()
+    for provedor, membros in grupos.items():
+        nomes = sorted({str(m['nome_local'] or m['sensor_mac']) for m in membros})
+        ev = {'sites': len(nomes), 'nomes': nomes[:20], 'sensores': sorted({m['sensor_mac'] for m in membros})}
+        existente = next((g for p, g in grupos_abertos.items() if p.lower() == provedor.lower()), None)
+        diag = {'chave': 'queda_provedor', 'causa': f"{diagnostico.CAUSAS['queda_provedor']} {provedor}", 'gravidade': 'Crítica',
+                'confianca': 'alta' if len(nomes) >= 2 * lim['correlacao_min_sites'] else 'média', 'evidencias': ev,
+                'inicio': existente['inicio'] if existente else min(m['inicio'] for m in membros)}
+        diag['mensagem'] = diagnostico.mensagem(diag, None, provedor)
+        if existente:
+            gid = existente['id']
+            conn.execute('UPDATE diagnosticos SET evidencias=?, mensagem=?, confianca=?, atualizado_em=? WHERE id=?',
+                         (json.dumps(ev, ensure_ascii=False), diag['mensagem'], diag['confianca'], agora, gid))
+        else:
+            gid = conn.execute('''INSERT INTO diagnosticos (sensor_mac, provedor, chave, camada, causa, gravidade, confianca, inicio, atualizado_em,
+                evidencias, acao, mensagem, estado, notificado) VALUES (NULL, ?, 'queda_provedor', 'provedor', ?, 'Crítica', ?, ?, ?, ?, ?, ?, 'ativo', 1) RETURNING id''',
+                (provedor, diag['causa'], diag['confianca'], diag['inicio'], agora, json.dumps(ev, ensure_ascii=False),
+                 'acionar o provedor; não é falha local dos sites', diag['mensagem'])).fetchone()['id']
+            db_execute(conn, "INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (NULL, 'Diagnóstico de rede', 'Crítica', ?)", (diag['mensagem'],))
+            if agora - diag['inicio'] <= NOTIFICAR_ATE_S + lim['correlacao_janela_s']:
+                enviar_telegram(f"📡 <b>POSSÍVEL QUEDA DO PROVEDOR</b>\n\n{html.escape(diag['mensagem'])}", conn=conn)
+                # Cada cliente afetado recebe só os próprios sites.
+                por_cliente = {}
+                for m in membros:
+                    if m['cliente_id']:
+                        por_cliente.setdefault(m['cliente_id'], set()).add(str(m['nome_local'] or m['sensor_mac']))
+                for cid, sites in por_cliente.items():
+                    if notifications.client_has_chat(cid, conn):
+                        notifications.enqueue(f"📡 <b>POSSÍVEL QUEDA DO PROVEDOR</b>\n\n{html.escape(provedor)} instável: {html.escape(', '.join(sorted(sites)))} "
+                                              f"afetado(s) junto com outros sites — acionar o provedor.", cid, conn=conn)
+        ids = [m['id'] for m in membros]
+        conn.execute(f"UPDATE diagnosticos SET grupo_id=? WHERE id IN ({','.join('?' * len(ids))})", (gid, *ids))
+    for provedor, grupo in grupos_abertos.items():
+        if not any(p.lower() == provedor.lower() for p in grupos):
+            conn.execute("UPDATE diagnosticos SET estado='resolvido', fim=? WHERE id=?", (agora, grupo['id']))
+            enviar_telegram(f"✅ <b>PROVEDOR NORMALIZADO</b>\n\n🟢 {html.escape(provedor)}: os sites voltaram ao normal.", conn=conn)
+
+
+def _guardar_janela_rede(conn, mac, item):
+    """Grava a janela num único INSERT (cada ida ao banco custa ~200 ms pela tailnet).
+
+    Devolve False se a janela já estava gravada (lote reenviado pelo agente).
+    """
+    ts = item['coletado_em']
+    linhas = []
+    for a in item.get('alvos') or []:
+        if isinstance(a, dict):
+            linhas.append((mac, ts, 'icmp', str(a.get('papel'))[:20], str(a.get('alvo'))[:80], _num_ou_none(a.get('latencia_ms')),
+                           _num_ou_none(a.get('jitter_ms')), _num_ou_none(a.get('perda_pct')), a.get('enviados') if isinstance(a.get('enviados'), int) else None))
+    for d in item.get('dns') or []:
+        if isinstance(d, dict):
+            linhas.append((mac, ts, 'dns', 'dns', str(d.get('servidor'))[:80], _num_ou_none(d.get('tempo_ms')), None,
+                           _num_ou_none(d.get('falha_pct')), d.get('consultas') if isinstance(d.get('consultas'), int) else None))
+    if not linhas:
+        return True
+    valores = ', '.join(['(?, ?, ?, ?, ?, ?, ?, ?, ?)'] * len(linhas))
+    cur = conn.execute(f'INSERT INTO medicoes_rede (sensor_mac, coletado_em, tipo, papel, alvo, latencia_ms, jitter_ms, perda_pct, amostras) '
+                       f'VALUES {valores} ON CONFLICT DO NOTHING', [v for linha in linhas for v in linha])
+    return cur.rowcount != 0
+
+
+def processar_medicoes(conn, sensor, itens, provedor_info=None):
+    global _ultima_limpeza_medicoes
+    mac = sensor['mac_id']
+    agora = time.time()
+    lim = diagnostico.limiares()
+    if isinstance(provedor_info, dict) and isinstance(provedor_info.get('nome'), str) and provedor_info['nome'].strip() \
+            and sensor.get('provedor_origem') != 'manual':
+        nome = ''.join(ch for ch in provedor_info['nome'] if ch.isprintable()).strip()[:80]
+        origem = provedor_info.get('origem') if provedor_info.get('origem') in ('antena', 'ip', 'manual') else 'ip'
+        if nome != sensor.get('provedor'):
+            conn.execute('UPDATE sensores SET provedor=?, provedor_origem=? WHERE mac_id=?', (nome, f'edge-{origem}', mac))
+            sensor['provedor'] = nome
+    validos = sorted((i for i in itens if _item_medicao_valido(i, agora)), key=lambda i: i['coletado_em'])
+    starlink_atual = _json_ou(sensor.get('starlink_info'), None)
+    for item in validos:
+        ts = item['coletado_em']
+        if item['tipo'] == 'starlink':
+            dados = {k: v for k, v in item.items() if k != 'tipo'}
+            nova = conn.execute('INSERT INTO starlink_medicoes (sensor_mac, coletado_em, dados) VALUES (?, ?, ?) ON CONFLICT DO NOTHING',
+                                (mac, ts, json.dumps(dados, ensure_ascii=False))).rowcount != 0
+            if nova and (not starlink_atual or ts >= (starlink_atual.get('coletado_em') or 0)):
+                starlink_atual = dados
+                conn.execute('UPDATE sensores SET starlink_info=? WHERE mac_id=?', (json.dumps(dados, ensure_ascii=False), mac))
+        elif item['tipo'] == 'alerta':
+            _receber_alerta_guardado(conn, sensor, item, agora)
+        elif item['tipo'] == 'rota':
+            conn.execute('INSERT INTO rotas_rede (sensor_mac, coletado_em, motivo, ferramenta, saltos, pior_salto) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
+                         (mac, ts, str(item.get('motivo'))[:20], str(item.get('ferramenta'))[:20],
+                          json.dumps(item.get('saltos') or [], ensure_ascii=False), json.dumps(item.get('pior_salto'), ensure_ascii=False) if item.get('pior_salto') else None))
+        else:
+            if not _guardar_janela_rede(conn, mac, item):
+                continue  # janela repetida: já avaliada
+            sl = starlink_atual if diagnostico.starlink_valida(starlink_atual, ts, lim) else None
+            resultado = diagnostico.avaliar(item, sl, lim)
+            inicio = _num_ou_none(item.get('inicio')) or ts
+            _aplicar_diagnosticos(conn, sensor, resultado['achados'], inicio, ts, lim)
+            if ts >= (sensor.get('diag_atualizado_em') or 0):
+                sensor['diag_atualizado_em'] = ts
+                conn.execute('UPDATE sensores SET camadas_rede=?, diag_atualizado_em=? WHERE mac_id=?',
+                             (json.dumps(resultado['camadas']), ts, mac))
+    if agora - _ultima_limpeza_medicoes > 3600:
+        _ultima_limpeza_medicoes = agora
+        for tabela in ('medicoes_rede', 'starlink_medicoes', 'rotas_rede'):
+            conn.execute(f'DELETE FROM {tabela} WHERE coletado_em < ?', (agora - RETENCAO_MEDICOES_S,))
+    return len(validos), len(itens) - len(validos)
+
+
+def _notificar_alerta(conn, sensor, alerta):
+    """Telegram de um alerta do sensor: crítico e normalização (o resto fica só no histórico)."""
+    nome_sensor, cid = sensor.get('nome_local') or sensor.get('mac_id'), sensor.get('cliente_id')
+    if alerta['gravidade'] == 'Crítica':
+        icone = "🔥" if "Superaquecimento" in alerta['tipo'] else ("🌪️" if "Tempestade" in alerta['tipo'] else "🖥️")
+        enviar_telegram(f"🚨 <b>ALERTA CRÍTICO</b>\n\n{icone} <b>Sensor:</b> {html.escape(str(nome_sensor))}\n⚠️ <b>Evento:</b> {html.escape(str(alerta['tipo']))}\n❌ <b>Detalhe:</b> {html.escape(str(alerta['detalhes']))}", cliente_id=cid, conn=conn)
+    elif alerta['gravidade'] == 'OK' and ('Restaurad' in alerta['tipo'] or 'Restabelecid' in alerta['tipo']):
+        enviar_telegram(f"✅ <b>SISTEMA NORMALIZADO</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(nome_sensor))}\n🟢 <b>Evento:</b> {html.escape(str(alerta['tipo']))}\nℹ️ <b>Detalhe:</b> {html.escape(str(alerta['detalhes']))}", cliente_id=cid, conn=conn)
+
+
+def _sql_epoch():
+    # Mesmo relógio do DEFAULT CURRENT_TIMESTAMP de logs_ia: UTC no SQLite, fuso da sessão no PostgreSQL.
+    return "(to_timestamp(?) AT TIME ZONE current_setting('TimeZone'))" if os.environ.get('DATABASE_URL') else "datetime(?, 'unixepoch')"
+
+
+def _limpo(texto, maximo):
+    return ''.join(c for c in str(texto) if c.isprintable() and c not in '<>').strip()[:maximo]
+
+
+def _receber_alerta_guardado(conn, sensor, item, agora):
+    """Alerta que o sensor não conseguiu entregar na hora e mandou pela fila. Entra no histórico com o
+    horário em que aconteceu; se chegou com atraso (Central fora), não vira mensagem avulsa no Telegram:
+    soma no resumo do período, mandado quando a fila do sensor esvazia."""
+    a, ts = item['alerta'], item['coletado_em']
+    tipo, detalhes = _limpo(a['tipo'], 160), _limpo(a['detalhes'], 1000)
+    gravidade = a['gravidade'] if a['gravidade'] in GRAVIDADES_ALERTA else 'Alerta'
+    atrasado = agora - ts > ATRASO_OFFLINE_S
+    if atrasado:
+        detalhes = f"{detalhes} · registrado pelo sensor com a Central indisponível"[:1100]
+    nova = conn.execute(
+        f"INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes, data_hora, origem_id, registrado_offline) "
+        f"VALUES (?, ?, ?, ?, {_sql_epoch()}, ?, ?) ON CONFLICT (sensor_mac, origem_id) DO NOTHING",
+        (sensor['mac_id'], tipo, gravidade, detalhes, ts, item['id'], 1 if atrasado else 0)).rowcount != 0
+    if not nova:
+        return   # reenvio do mesmo alerta (resposta anterior se perdeu): já está no histórico
+    if not atrasado:
+        _notificar_alerta(conn, sensor, {'tipo': tipo, 'gravidade': gravidade, 'detalhes': detalhes})
+        return
+    linha = conn.execute('SELECT dados FROM resumos_offline WHERE sensor_mac=?', (sensor['mac_id'],)).fetchone()
+    r = _json_ou(linha['dados'], None) if linha else None
+    r = r or {'total': 0, 'por_gravidade': {}, 'inicio': ts, 'fim': ts, 'eventos': []}
+    r['total'] += 1
+    r['por_gravidade'][gravidade] = r['por_gravidade'].get(gravidade, 0) + 1
+    r['inicio'], r['fim'] = min(r['inicio'], ts), max(r['fim'], ts)
+    r['eventos'].append({'ts': ts, 'tipo': tipo, 'gravidade': gravidade})
+    # Guarda os mais importantes: críticos primeiro, depois os mais recentes.
+    r['eventos'] = sorted(r['eventos'], key=lambda e: (e['gravidade'] != 'Crítica', -e['ts']))[:RESUMO_MAX_EVENTOS]
+    conn.execute('INSERT INTO resumos_offline (sensor_mac, dados) VALUES (?, ?) ON CONFLICT (sensor_mac) DO UPDATE SET dados=excluded.dados',
+                 (sensor['mac_id'], json.dumps(r, ensure_ascii=False)))
+
+
+def _enviar_resumo_offline(conn, sensor):
+    """Um resumo só no Telegram com os alertas que chegaram atrasados, quando a fila do sensor esvazia."""
+    linha = conn.execute('SELECT dados FROM resumos_offline WHERE sensor_mac=?', (sensor['mac_id'],)).fetchone()
+    if not linha:
+        return False
+    conn.execute('DELETE FROM resumos_offline WHERE sensor_mac=?', (sensor['mac_id'],))
+    r = _json_ou(linha['dados'], None)
+    if not r or not r.get('total'):
+        return False
+    hora = lambda ts: datetime.fromtimestamp(ts, timezone.utc).astimezone(FUSO_BRASIL).strftime('%d/%m %H:%M')
+    g = r['por_gravidade']
+    contagem = ' · '.join(f"{n} {rotulo}" for rotulo, n in (('crítico(s)', g.get('Crítica', 0)), ('alerta(s)', g.get('Alerta', 0) + g.get('Aviso', 0)),
+                                                            ('normalização(ões)', g.get('OK', 0))) if n)
+    icones = {**ICONES_GRAVIDADE, 'OK': '✅'}
+    linhas = '\n'.join(f"{icones.get(e['gravidade'], '•')} {hora(e['ts'])} · {html.escape(e['tipo'])}" for e in sorted(r['eventos'], key=lambda e: e['ts']))
+    resto = r['total'] - len(r['eventos'])
+    texto = (f"📥 <b>EVENTOS DURANTE A INDISPONIBILIDADE</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor.get('nome_local') or sensor['mac_id']))}\n"
+             f"🕒 <b>Período:</b> {hora(r['inicio'])} a {hora(r['fim'])}\n📊 <b>Total:</b> {r['total']} evento(s) — {contagem}\n\n{linhas}"
+             + (f"\n… e mais {resto} no histórico do sensor." if resto > 0 else ''))
+    enviar_telegram(texto, cliente_id=sensor.get('cliente_id'), conn=conn)
+    return True
+
+
+@app.route('/api/v2/medicoes', methods=['POST'])
+def receber_medicoes():
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error:
+        return auth_error
+    data = request.get_json(silent=True) or {}
+    mac, itens = data.get('mac_id'), data.get('itens')
+    if not isinstance(mac, str) or not isinstance(itens, list) or len(itens) > MAX_ITENS_MEDICAO:
+        return jsonify(error=f'mac_id e itens (até {MAX_ITENS_MEDICAO}) obrigatórios.'), 400
+    conn = database.get_db()
+    try:
+        sensor = conn.execute('SELECT * FROM sensores WHERE mac_id=?', (mac,)).fetchone()
+        if not sensor:
+            return jsonify(error='Sensor ainda não registrado.'), 404
+        aceitos, descartados = processar_medicoes(conn, dict(sensor), itens, data.get('provedor'))
+        # Fila do sensor esvaziou (ou sensor antigo, que não informa): manda o resumo do período fora.
+        restantes = data.get('restantes')
+        if not isinstance(restantes, int) or restantes <= 0:
+            _enviar_resumo_offline(conn, dict(sensor))
+        conn.commit()
+        # Item inválido é descartado, não devolvido: senão travaria a fila do Edge.
+        return jsonify(status='OK', aceitos=aceitos, descartados=descartados)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _diag_publico(r):
+    d = dict(r)
+    d['evidencias'] = _json_ou(d.get('evidencias'), {})
+    for campo in ('janelas_ok', 'notificado'):
+        d.pop(campo, None)
+    return d
+
+
+@app.route('/api/v2/sensor/<mac_id>/diagnostico', methods=['GET'])
+def diagnostico_sensor(mac_id):
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        sensor = conn.execute('SELECT mac_id, nome_local, provedor, provedor_origem, starlink_info, camadas_rede, diag_atualizado_em, status FROM sensores WHERE mac_id=?', (mac_id,)).fetchone()
+        if not sensor:
+            return jsonify(error='Sensor não encontrado.'), 404
+        diags = [_diag_publico(r) for r in conn.execute(
+            'SELECT * FROM diagnosticos WHERE sensor_mac=? ORDER BY inicio DESC LIMIT 40', (mac_id,)).fetchall()]
+        chamados = nexodesk.chamados_das_quedas(conn, [d['id'] for d in diags])   # chamado aberto a partir da queda
+        for d in diags:
+            d['chamado'] = chamados.get(d['id'])
+        grupos_ids = sorted({d['grupo_id'] for d in diags if d.get('grupo_id')})
+        grupos = [_diag_publico(r) for r in conn.execute(
+            f"SELECT * FROM diagnosticos WHERE id IN ({','.join('?' * len(grupos_ids))})", grupos_ids).fetchall()] if grupos_ids else []
+        rota = conn.execute('SELECT coletado_em, motivo, ferramenta, saltos, pior_salto FROM rotas_rede WHERE sensor_mac=? ORDER BY coletado_em DESC LIMIT 1', (mac_id,)).fetchone()
+        desde = time.time() - 2 * 3600
+        serie = [dict(r) for r in conn.execute(
+            "SELECT coletado_em, papel, alvo, latencia_ms, jitter_ms, perda_pct FROM medicoes_rede WHERE sensor_mac=? AND tipo='icmp' AND coletado_em >= ? ORDER BY coletado_em",
+            (mac_id, desde)).fetchall()]
+        return jsonify(
+            camadas=_json_ou(sensor['camadas_rede'], None), atualizado_em=sensor['diag_atualizado_em'], status=sensor['status'],
+            provedor=sensor['provedor'], provedor_origem=sensor['provedor_origem'],
+            starlink=_json_ou(sensor['starlink_info'], None),
+            ativos=[d for d in diags if d['estado'] == 'ativo'], linha_do_tempo=diags, grupos=grupos,
+            rota={**dict(rota), 'saltos': _json_ou(rota['saltos'], []), 'pior_salto': _json_ou(rota['pior_salto'], None)} if rota else None,
+            serie=serie)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/sensor/<mac_id>/provedor', methods=['POST'])
+def definir_provedor(mac_id):
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    nome = (request.get_json(silent=True) or {}).get('provedor')
+    if nome is not None and not isinstance(nome, str):
+        return jsonify(error='Provedor inválido.'), 400
+    nome = ''.join(ch for ch in (nome or '') if ch.isprintable()).strip()[:80]
+    conn = database.get_db()
+    try:
+        # Vazio devolve a identificação para o Edge (antena Starlink ou IP público).
+        conn.execute('UPDATE sensores SET provedor=?, provedor_origem=? WHERE mac_id=?', (nome or None, 'manual' if nome else None, mac_id))
+        conn.commit()
+        return jsonify(status='OK', provedor=nome or None)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/diagnosticos', methods=['GET'])
+def diagnosticos_ativos():
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        master = session.get('role') in ('Administrador Master', 'Operador Master')
+        sql = '''SELECT d.*, s.nome_local FROM diagnosticos d LEFT JOIN sensores s ON s.mac_id = d.sensor_mac WHERE d.estado='ativo' '''
+        params = ()
+        if not master:
+            sql += ' AND s.cliente_id = ?'
+            params = (tenant_id(conn),)
+        linhas = conn.execute(sql + ' ORDER BY d.inicio DESC LIMIT 200', params).fetchall()
+        camadas = {}
+        filtro = '' if master else ' WHERE cliente_id = ?'
+        for r in conn.execute('SELECT mac_id, camadas_rede FROM sensores' + filtro, () if master else (tenant_id(conn),)).fetchall():
+            camadas[r['mac_id']] = _json_ou(r['camadas_rede'], None)
+        return jsonify(ativos=[_diag_publico(r) for r in linhas], camadas=camadas)
+    finally:
+        conn.close()
+
+
+# ==========================================
+# 🛠️ AÇÕES REMOTAS (Administrador Master, com senha e auditoria)
+# ==========================================
+ACOES_REMOTAS = {
+    'diagnostico': 'Coletar diagnóstico',
+    'atualizar_sistema': 'Atualizar sistema operacional',
+    'atualizar_agente': 'Atualizar agente NexoPulse',
+    'reiniciar_agente': 'Reiniciar serviço do agente',
+    'reiniciar_maquina': 'Reiniciar a máquina',
+}
+# Rótulos também das ações internas (não aparecem como botão nas ações do Master).
+ROTULOS_ACOES = {**ACOES_REMOTAS, 'capturar_local': 'Capturar localização no sensor'}
+_falhas_senha = {}
+
+
+def _exigir_master_com_senha():
+    """Só o Administrador Master, e só reconfirmando a senha (5 erros = 10 min bloqueado)."""
+    if session.get('role') != 'Administrador Master' or 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    agora = time.time()
+    falhas = [t for t in _falhas_senha.get(session['user_id'], []) if agora - t < 600]
+    if len(falhas) >= 5:
+        return jsonify(error='Muitas tentativas. Tente de novo em alguns minutos.'), 429
+    senha = (request.get_json(silent=True) or {}).get('senha') or ''
+    conn = database.get_db()
+    try:
+        row = conn.execute('SELECT senha FROM clientes WHERE id=?', (session['user_id'],)).fetchone()
+    finally:
+        conn.close()
+    guardada = str(row['senha']) if row else ''
+    ok = bool(senha) and guardada.startswith(('scrypt:', 'pbkdf2:')) and check_password_hash(guardada, senha)
+    if not ok:
+        _falhas_senha[session['user_id']] = falhas + [agora]
+        return jsonify(error='Senha incorreta.'), 401
+    _falhas_senha.pop(session['user_id'], None)
+    return None
+
+
+ACAO_SEM_RESPOSTA_MIN = 40  # maior que o tempo limite da ação mais longa (atualizar sistema, 30 min)
+
+
+def _expirar_acoes_sem_resposta(conn, mac_id):
+    """Ação entregue que nunca voltou (resposta perdida, agente reiniciado) não fica 'Executando' para sempre."""
+    # Compara com o relógio do próprio banco: no Postgres criado_em fica no fuso da sessão, no SQLite em UTC.
+    if os.environ.get("DATABASE_URL"):
+        limite = f"CURRENT_TIMESTAMP - INTERVAL '{ACAO_SEM_RESPOSTA_MIN} minutes'"
+    else:
+        limite = f"datetime('now', '-{ACAO_SEM_RESPOSTA_MIN} minutes')"
+    conn.execute("UPDATE acoes_remotas SET status='erro', saida=?, concluido_em=CURRENT_TIMESTAMP "
+                 f"WHERE sensor_mac=? AND status IN ('pendente', 'enviada') AND criado_em < {limite}",
+                 ('O sensor não confirmou a execução (a resposta pode ter se perdido). Tente de novo.', mac_id))
+    conn.commit()
+
+
+# ==========================================
+# 🔄 ATUALIZAÇÃO AUTOMÁTICA DOS SENSORES
+# ==========================================
+# Na janela da madrugada, a Central pede "atualizar_agente" aos sensores com versão
+# diferente da dela. Só para sensores com a guarda do systemd (volta sozinha para a
+# versão anterior se a nova não conseguir falar com a Central) e com o interruptor ligado.
+AUTO_UPDATE_HORA = int(os.environ.get('NEXOPULSE_AUTO_UPDATE_HORA', '4'))  # hora de Brasília
+AUTO_UPDATE_INTERVALO_H = 6  # não repete a tentativa no mesmo sensor antes disso
+FUSO_BRASIL = timezone(timedelta(hours=-3))
+
+
+def _texto_curto(valor):
+    return valor.strip()[:80] if isinstance(valor, str) else None
+
+
+def _agora_brasil():
+    return datetime.now(FUSO_BRASIL)
+
+
+def _limite_sql(horas):
+    """Instante 'agora - N horas' no relógio do próprio banco (Postgres ou SQLite)."""
+    if os.environ.get("DATABASE_URL"):
+        return f"CURRENT_TIMESTAMP - INTERVAL '{int(horas)} hours'"
+    return f"datetime('now', '-{int(horas)} hours')"
+
+
+def _registrar_mudanca_de_versao(conn, mac, anterior, data):
+    nome = html.escape(str(anterior.get('nome_local') or mac))
+    build_novo, build_antigo = _texto_curto(data.get('agent_build')), anterior.get('agent_build')
+    if build_novo and build_antigo and build_novo != build_antigo:
+        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Atualização', 'OK', ?)",
+                     (mac, f"Agente atualizado: {build_antigo} → {build_novo}."))
+        enviar_telegram(f"🔄 <b>SENSOR ATUALIZADO</b>\n\n🖥️ <b>Sensor:</b> {nome}\n📦 <b>Versão:</b> {html.escape(build_antigo)} → {html.escape(build_novo)}",
+                        cliente_id=None, conn=conn)
+    recusado = _texto_curto(data.get('build_recusado'))
+    if recusado and recusado != (anterior.get('build_recusado') or ''):
+        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Atualização', 'Alerta', ?)",
+                     (mac, f"Versão {recusado} não funcionou e foi desfeita; o sensor voltou para {build_novo or 'a anterior'}."))
+        enviar_telegram(f"↩️ <b>ATUALIZAÇÃO DESFEITA</b>\n\n🖥️ <b>Sensor:</b> {nome}\n📦 <b>Versão recusada:</b> {html.escape(recusado)}\n"
+                        f"✅ <b>Voltou para:</b> {html.escape(build_novo or 'a anterior')}\n\nA versão nova não conseguiu falar com a Central depois de 3 tentativas.",
+                        cliente_id=None, conn=conn)
+    conn.commit()
+
+
+def _agendar_atualizacao_automatica(conn, mac, sensor, data):
+    build = _texto_curto(data.get('agent_build'))
+    if not (sensor.get('auto_atualizar', 1) and data.get('auto_update_guard') and build):
+        return False
+    if build == AGENT_BUILD or _texto_curto(data.get('build_recusado')) == AGENT_BUILD:
+        return False
+    agora = _agora_brasil()
+    if agora.hour != AUTO_UPDATE_HORA:
+        return False
+    # Cada sensor tem seu minuto dentro da hora: uma versão ruim não derruba todos de uma vez.
+    if agora.minute < int(hashlib.sha256(mac.encode()).hexdigest(), 16) % 50:
+        return False
+    recente = conn.execute(
+        "SELECT 1 FROM acoes_remotas WHERE sensor_mac=? AND acao='atualizar_agente' AND "
+        f"(status IN ('pendente', 'enviada') OR criado_em > {_limite_sql(AUTO_UPDATE_INTERVALO_H)}) LIMIT 1", (mac,)).fetchone()
+    if recente:
+        return False
+    cur = conn.execute("INSERT INTO acoes_remotas (sensor_mac, acao, solicitante, status) VALUES (?, 'atualizar_agente', 'automático', 'pendente') RETURNING id",
+                       (mac,))
+    id_acao = cur.fetchone()['id']
+    conn.execute('INSERT INTO comandos_pendentes (sensor_mac, comando) VALUES (?, ?)', (mac, f'acao:{id_acao}:atualizar_agente'))
+    conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Atualização', 'Aviso', ?)",
+                 (mac, f"Atualização automática iniciada: {build} → {AGENT_BUILD} (#{id_acao})."))
+    enviar_telegram(f"⏳ <b>ATUALIZAÇÃO AUTOMÁTICA</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor.get('nome_local') or mac))}\n"
+                    f"📦 <b>Versão:</b> {html.escape(build)} → {html.escape(AGENT_BUILD)}", cliente_id=None, conn=conn)
+    conn.commit()
+    return True
+
+
+@app.route('/api/v2/sensor/<mac_id>/auto_atualizar', methods=['POST'])
+def alternar_auto_atualizar(mac_id):
+    erro = _exigir_master_com_senha()
+    if erro:
+        return erro
+    ligar = bool((request.get_json(silent=True) or {}).get('ligar'))
+    conn = database.get_db()
+    try:
+        sensor = conn.execute('SELECT nome_local FROM sensores WHERE mac_id=?', (mac_id,)).fetchone()
+        if not sensor:
+            return jsonify(error='Sensor não encontrado.'), 404
+        conn.execute('UPDATE sensores SET auto_atualizar=? WHERE mac_id=?', (1 if ligar else 0, mac_id))
+        estado = 'LIGADA' if ligar else 'DESLIGADA'
+        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Atualização', 'Aviso', ?)",
+                     (mac_id, f"Atualização automática {estado.lower()} por {session.get('usuario')}."))
+        enviar_telegram(f"🔄 <b>ATUALIZAÇÃO AUTOMÁTICA {estado}</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor['nome_local']))}\n👤 <b>Por:</b> {html.escape(str(session.get('usuario')))}", conn=conn)
+        conn.commit()
+        return jsonify(status='OK', auto_atualizar=ligar)
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/sensor/<mac_id>/acoes', methods=['GET', 'POST'])
+def acoes_remotas(mac_id):
+    if session.get('role') != 'Administrador Master':
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        sensor = conn.execute('SELECT mac_id, nome_local, acoes_remotas, auto_atualizar, agent_build, build_recusado, auto_update_guard '
+                              'FROM sensores WHERE mac_id=?', (mac_id,)).fetchone()
+        if not sensor:
+            return jsonify(error='Sensor não encontrado.'), 404
+        if request.method == 'GET':
+            _expirar_acoes_sem_resposta(conn, mac_id)
+            # No Postgres o horário é do fuso da sessão: devolve com o deslocamento para o navegador converter certo.
+            campos = ("criado_em AT TIME ZONE current_setting('TimeZone') AS criado_em, concluido_em AT TIME ZONE current_setting('TimeZone') AS concluido_em"
+                      if os.environ.get("DATABASE_URL") else 'criado_em, concluido_em')
+            try:
+                limite = max(1, min(100, int(request.args.get('limite', 15))))
+            except ValueError:
+                limite = 15
+            total = conn.execute('SELECT COUNT(*) AS n FROM acoes_remotas WHERE sensor_mac=?', (mac_id,)).fetchone()['n']
+            linhas = conn.execute(f'SELECT id, acao, solicitante, status, codigo, saida, {campos} FROM acoes_remotas WHERE sensor_mac=? ORDER BY id DESC LIMIT ?', (mac_id, limite)).fetchall()
+            return jsonify(permitido=bool(sensor['acoes_remotas']), acoes=ACOES_REMOTAS, rotulos=ROTULOS_ACOES,
+                           auto_atualizar=bool(sensor['auto_atualizar']), guarda=bool(sensor['auto_update_guard']),
+                           build_sensor=sensor['agent_build'], build_central=AGENT_BUILD, build_recusado=sensor['build_recusado'] or None,
+                           total_historico=total,
+                           historico=[{k: (str(v) if k in ('criado_em', 'concluido_em') and v is not None else v) for k, v in dict(r).items()} for r in linhas])
+    finally:
+        conn.close()
+    erro = _exigir_master_com_senha()
+    if erro:
+        return erro
+    acao = (request.get_json(silent=True) or {}).get('acao')
+    if acao not in ACOES_REMOTAS:
+        return jsonify(error='Ação desconhecida.'), 400
+    if not sensor['acoes_remotas']:
+        return jsonify(error='Ações remotas estão desligadas para este sensor.'), 409
+    conn = database.get_db()
+    try:
+        cur = conn.execute('INSERT INTO acoes_remotas (sensor_mac, acao, solicitante, status) VALUES (?, ?, ?, ?) RETURNING id',
+                           (mac_id, acao, session.get('usuario'), 'pendente'))
+        id_acao = cur.fetchone()['id']
+        conn.execute('INSERT INTO comandos_pendentes (sensor_mac, comando) VALUES (?, ?)', (mac_id, f'acao:{id_acao}:{acao}'))
+        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Ação remota', 'Aviso', ?)",
+                     (mac_id, f"{ACOES_REMOTAS[acao]} solicitada por {session.get('usuario')} (#{id_acao})."))
+        enviar_telegram(f"⚠️ <b>AÇÃO REMOTA</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor['nome_local']))}\n🛠️ <b>Ação:</b> {ACOES_REMOTAS[acao]}\n👤 <b>Por:</b> {html.escape(str(session.get('usuario')))}", conn=conn)
+        conn.commit()
+        return jsonify(status='OK', id=id_acao), 201
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/sensor/<mac_id>/permitir_acoes', methods=['POST'])
+def permitir_acoes_remotas(mac_id):
+    erro = _exigir_master_com_senha()
+    if erro:
+        return erro
+    permitir = bool((request.get_json(silent=True) or {}).get('permitir'))
+    conn = database.get_db()
+    try:
+        sensor = conn.execute('SELECT nome_local FROM sensores WHERE mac_id=?', (mac_id,)).fetchone()
+        if not sensor:
+            return jsonify(error='Sensor não encontrado.'), 404
+        conn.execute('UPDATE sensores SET acoes_remotas=? WHERE mac_id=?', (1 if permitir else 0, mac_id))
+        estado = 'LIGADAS' if permitir else 'DESLIGADAS'
+        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Ação remota', 'Aviso', ?)",
+                     (mac_id, f"Ações remotas {estado.lower()} por {session.get('usuario')}."))
+        enviar_telegram(f"🔧 <b>AÇÕES REMOTAS {estado}</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(sensor['nome_local']))}\n👤 <b>Por:</b> {html.escape(str(session.get('usuario')))}", conn=conn)
+        conn.commit()
+        return jsonify(status='OK', permitido=permitir)
+    finally:
+        conn.close()
+
+
+# Captura da localização na máquina do sensor: só lê a posição, então qualquer usuário com acesso
+# ao sensor pode pedir (sem senha do Master e sem depender do interruptor de ações remotas).
+CAPTURA_LOCAL_PRAZO_S = 120
+
+
+@app.route('/api/v2/sensor/<mac_id>/capturar_local', methods=['POST'])
+def pedir_captura_local(mac_id):
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        if not conn.execute('SELECT 1 FROM sensores WHERE mac_id=?', (mac_id,)).fetchone():
+            return jsonify(error='Sensor não encontrado.'), 404
+        cur = conn.execute("INSERT INTO acoes_remotas (sensor_mac, acao, solicitante, status) VALUES (?, 'capturar_local', ?, 'pendente') RETURNING id",
+                           (mac_id, session.get('usuario')))
+        id_acao = cur.fetchone()['id']
+        conn.execute('INSERT INTO comandos_pendentes (sensor_mac, comando) VALUES (?, ?)', (mac_id, f'acao:{id_acao}:capturar_local'))
+        conn.commit()
+        return jsonify(status='OK', id=id_acao, prazo_s=CAPTURA_LOCAL_PRAZO_S), 201
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/sensor/<mac_id>/capturar_local/<int:id_acao>')
+def ver_captura_local(mac_id, id_acao):
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    conn = database.get_db()
+    try:
+        row = conn.execute("SELECT status, saida FROM acoes_remotas WHERE id=? AND sensor_mac=? AND acao='capturar_local'",
+                           (id_acao, mac_id)).fetchone()
+        if not row:
+            return jsonify(error='Pedido não encontrado.'), 404
+        if row['status'] in ('pendente', 'enviada'):
+            return jsonify(status='aguardando', entregue=row['status'] == 'enviada')
+        try:
+            resultado = json.loads(row['saida'] or '')
+        except ValueError:
+            resultado = None
+        if not isinstance(resultado, dict):
+            saida = row['saida'] or ''
+            if 'ação desconhecida' in saida:
+                saida = 'Este sensor está numa versão antiga do agente, que ainda não sabe capturar a localização. Atualize o agente e tente de novo.'
+            return jsonify(status='erro', tentativas=[(saida or 'O sensor não devolveu a localização.')[-400:]])
+        local = resultado.get('local') if resultado.get('ok') else None
+        if isinstance(local, dict):
+            try:
+                validado = parse_location({**local, 'location_source': local.get('location_source'),
+                                           'accuracy_m': local.get('accuracy_m')})
+            except ValueError:
+                validado = None
+            if validado and validado['latitude'] is not None:
+                return jsonify(status='ok', latitude=validado['latitude'], longitude=validado['longitude'],
+                               accuracy_m=local.get('accuracy_m'), location_source=validado['location_source'],
+                               referencia=str(local.get('referencia') or '')[:120] or None,
+                               tentativas=[str(t)[:400] for t in resultado.get('tentativas') or []][:5])
+        return jsonify(status='erro', tentativas=[str(t)[:400] for t in resultado.get('tentativas') or []][:5])
+    finally:
+        conn.close()
+
+
+@app.route('/api/v2/acao_resultado', methods=['POST'])
+def acao_resultado():
+    auth_error = exigir_sensor_ou_sessao()
+    if auth_error:
+        return auth_error
+    data = request.get_json(silent=True) or {}
+    mac, id_acao = data.get('mac_id'), data.get('id')
+    if not isinstance(id_acao, int):
+        return jsonify(error='id inválido'), 400
+    codigo = data.get('codigo') if isinstance(data.get('codigo'), int) else None
+    saida = str(data.get('saida') or '')[-16000:]
+    conn = database.get_db()
+    try:
+        row = conn.execute('SELECT sensor_mac, acao FROM acoes_remotas WHERE id=?', (id_acao,)).fetchone()
+        if not row or row['sensor_mac'] != mac:
+            return jsonify(error='Ação não pertence a este sensor.'), 403
+        status = 'concluida' if codigo == 0 else 'erro'
+        conn.execute('UPDATE acoes_remotas SET status=?, codigo=?, saida=?, concluido_em=CURRENT_TIMESTAMP WHERE id=?', (status, codigo, saida, id_acao))
+        conn.execute("INSERT INTO logs_ia (sensor_mac, tipo_evento, gravidade, detalhes) VALUES (?, 'Ação remota', ?, ?)",
+                     (mac, 'Aviso' if codigo == 0 else 'Alerta', f"{ROTULOS_ACOES.get(row['acao'], row['acao'])} (#{id_acao}): {'concluída' if codigo == 0 else f'falhou (código {codigo})'}."))
+        if row['acao'] == 'atualizar_agente' and codigo != 0:
+            nome = conn.execute('SELECT nome_local FROM sensores WHERE mac_id=?', (mac,)).fetchone()
+            enviar_telegram(f"❌ <b>ATUALIZAÇÃO FALHOU</b>\n\n🖥️ <b>Sensor:</b> {html.escape(str(nome['nome_local'] if nome else mac))}\n"
+                            f"O sensor segue na versão atual.\n\n<pre>{html.escape(saida[-600:])}</pre>", conn=conn)
+        conn.commit()
+        return jsonify(status='OK')
+    finally:
+        conn.close()
+
+
 @app.route('/api/v2/alocar_sensor', methods=['POST'])
 def alocar_sensor():
     if 'user_id' not in session or session.get('role') != 'Administrador Master': return jsonify({"error": "Acesso Negado"}), 403
     data = request.json; cliente_id = data.get('cliente_id')
     if not cliente_id or cliente_id == "null": cliente_id = None
     conn = database.get_db()
+    if cliente_id is not None and not conn.execute("SELECT 1 FROM clientes WHERE id = ? AND role = 'Cliente'", (cliente_id,)).fetchone():
+        conn.close()
+        return jsonify({"error": "Escolha uma empresa."}), 400
     db_execute(conn, "UPDATE sensores SET cliente_id = ? WHERE mac_id = ?", (cliente_id, data.get('mac_id')))
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
@@ -1601,12 +4950,18 @@ def gerar_relatorio(mac_id):
         print("Erro relatorio:", e)
         logs = []
 
-    try: dispositivos = db_execute(conn, "SELECT ip, mac, fabricante, nome_custom, status FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
+    try: dispositivos = db_execute(conn, "SELECT * FROM dispositivos WHERE sensor_mac = ?", (mac_id,)).fetchall()
     except: dispositivos = []
+    try:
+        diagrama_svg = mapa_rede.svg(mapa_rede.montar(sensor, dispositivos, mapa_rede.carregar(sensor['mapa_rede'])))
+    except Exception:
+        app.logger.exception('Falha ao desenhar o diagrama do relatório')
+        diagrama_svg = ''
 
     conn.close()
 
-    return render_template('relatorio.html', sensor=dict(sensor), logs=[dict(l) for l in logs], dispositivos=[dict(d) for d in dispositivos], data_emissao=datetime.now().strftime('%d/%m/%Y às %H:%M'), periodo_str=periodo_str)
+    return render_template('relatorio.html', sensor=dict(sensor), logs=[dict(l) for l in logs], dispositivos=[dict(d) for d in dispositivos], data_emissao=datetime.now().strftime('%d/%m/%Y às %H:%M'), periodo_str=periodo_str,
+                           diagrama_svg=diagrama_svg, diagrama_informado=bool(sensor['mapa_rede']))
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=10000, debug=False)

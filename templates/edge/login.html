@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#082E56">
+    <meta name="referrer" content="same-origin">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.svg" type="image/svg+xml">
+    <title>NexoPulse Edge · Entrar</title>
+    <link rel="stylesheet" href="/static/product.css?v=nexopulse-6">
+    <script src="/static/brand.js?v=nexopulse-2"></script>
+    <style>
+        body { margin:0; min-height:100vh; display:grid; place-items:center; padding:16px; box-sizing:border-box;
+               font-family:'Inter',system-ui,sans-serif; background:var(--bg-base); color:var(--text-main); }
+        .caixa { width:100%; max-width:380px; background:var(--bg-card); border:1px solid var(--border); border-radius:14px;
+                 padding:28px 24px; box-shadow:var(--shadow); display:flex; flex-direction:column; gap:14px; }
+        .marca { display:flex; align-items:center; gap:10px; }
+        .marca img { height:40px; }
+        h1 { margin:6px 0 0; font-size:1.15rem; }
+        .sub { margin:0; color:var(--text-muted); font-size:.85rem; }
+        .sub b { color:var(--text-main); font-family:'JetBrains Mono',monospace; font-weight:600; }
+        label { display:flex; flex-direction:column; gap:5px; font-size:.85rem; color:var(--text-muted); }
+        input { padding:11px 12px; background:var(--bg-input); border:1px solid var(--border); color:var(--text-main);
+                border-radius:8px; font:inherit; font-size:1rem; }
+        input:focus { outline:none; border-color:var(--blue); }
+        button { padding:12px; border:0; border-radius:8px; background:var(--blue); color:var(--bg-base); font:inherit; font-weight:700; cursor:pointer; }
+        button:hover { filter:brightness(1.08); }
+        .erro { margin:0; padding:10px 12px; border-radius:8px; border:1px solid var(--status-crit); color:var(--status-crit);
+                background:color-mix(in srgb,var(--status-crit) 8%,transparent); font-size:.88rem; }
+        .aviso { margin:0; padding:10px 12px; border-radius:8px; border:1px solid var(--status-warn); color:var(--status-warn);
+                 background:color-mix(in srgb,var(--status-warn) 8%,transparent); font-size:.85rem; }
+        .rodape { margin:0; color:var(--text-muted); font-size:.75rem; text-align:center; }
+    </style>
+</head>
+<body>
+    <form class="caixa" method="post" action="/login" autocomplete="on">
+        <div class="marca">
+            <img class="brand-logo-dark" src="/static/brand/nexopulse/logo-escuro.svg" alt="NexoPulse" width="140" height="40">
+            <img class="brand-logo-light" src="/static/brand/nexopulse/logo-claro.svg" alt="NexoPulse" width="140" height="40">
+        </div>
+        <div>
+            <h1>Painel local do sensor</h1>
+            <p class="sub"><b>{{ sensor.nome_local }}</b> · {{ sensor.ip_sensor or '' }}</p>
+        </div>
+        {% if sem_credencial %}
+        <p class="aviso">Este sensor ainda não recebeu o usuário e a senha do painel local. Eles chegam da Central no primeiro contato com a internet (ou defina NOC_EDGE_SENHA na instalação).</p>
+        {% endif %}
+        {% if erro %}<p class="erro" role="alert">{{ erro }}</p>{% endif %}
+        <input type="hidden" name="proximo" value="{{ proximo }}">
+        <label>Usuário<input name="usuario" autocomplete="username" required {% if not usuario %}autofocus{% endif %} autocapitalize="none" spellcheck="false" value="{{ usuario }}"></label>
+        <label>Senha<input name="senha" type="password" autocomplete="current-password" required {% if usuario %}autofocus{% endif %}></label>
+        <button type="submit">Entrar</button>
+        <p class="rodape">NexoPulse Edge · MD Soluções Tecnológicas</p>
+    </form>
+</body>
+</html>

@@ -6,9 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="manifest" href="/manifest.json?v=nexopulse-2">
     <meta name="theme-color" content="#082E56">
-    <link rel="icon" href="/static/favicon.png" type="image/png">
-    <title>NexoPulse Central - Dashboard Operacional</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="apple-touch-icon" href="/static/brand/nexopulse/apple-touch-icon.png">
+    <title>NexoPulse - Operação</title>
+    <link rel="stylesheet" href="/static/fontes/fontes.css?v=1">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -19,8 +21,6 @@
         .alerta-vermelho { animation: piscar-fundo 1.5s infinite; }
         @keyframes piscar-fundo { 0% { box-shadow: inset 0 0 0px color-mix(in srgb, var(--status-crit) 0%, transparent); } 50% { box-shadow: inset 0 0 80px color-mix(in srgb, var(--status-crit) 40%, transparent); } 100% { box-shadow: inset 0 0 0px color-mix(in srgb, var(--status-crit) 0%, transparent); } }
         body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: var(--bg-base); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden;}
-        .navbar { background: var(--overlay); backdrop-filter: blur(10px); padding: 10px 30px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; z-index: 1000; flex-shrink: 0; transition: 0.3s;}
-        .navbar-brand { font-size: 1.4em; font-weight: bold; color: var(--blue); display: flex; align-items: center; gap: 15px;}
         .main-layout { display: grid; grid-template-columns: 1fr 380px; gap: 20px; padding: 20px; flex-grow: 1; overflow: hidden; transition: 0.3s;}
         .main-layout.sidebar-collapsed { grid-template-columns: 1fr 44px; }
         .content-area { display: flex; flex-direction: column; gap: 20px; overflow-y: auto; padding-right: 10px;}
@@ -59,7 +59,8 @@
         
         .terminal-wrapper { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 15px; border-top: 4px solid var(--yellow); flex-grow: 1; display: flex; flex-direction: column; min-height: 250px; transition: 0.3s;}
         .terminal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 10px; font-weight: bold; font-size: 1em; color: var(--yellow); }
-        .terminal-box { background: var(--bg-input); padding: 15px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.85em; flex-grow: 1; overflow-y: auto; border: 1px inset var(--border); box-shadow: inset 0 0 15px rgba(0,0,0,0.8); }
+        .terminal-box { background: var(--bg-input); padding: 15px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.85em; flex-grow: 1; overflow-y: auto; overscroll-behavior: contain; max-height: 380px; min-height: 0; border: 1px inset var(--border); box-shadow: inset 0 0 15px rgba(0,0,0,0.8); }
+        @media (max-width: 760px) { .terminal-box { max-height: 300px; } }
         
         .sidebar-header { padding: 20px; border-bottom: 1px solid var(--border); background: var(--bg-input); position: relative; }
         .sidebar-title { font-size: 1.1em; font-weight: bold; color: var(--blue); margin-bottom: 15px; display: flex; align-items: center; gap: 10px;}
@@ -71,7 +72,7 @@
         .s-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;}
         .s-title { font-size: 1em; font-weight: bold; color: var(--text-main); margin-bottom: 2px; }
         .s-mac { font-family: 'JetBrains Mono', monospace; font-size: 0.7em; color: var(--text-muted); }
-        .s-cliente { font-size: 0.75em; color: var(--yellow); margin-top: 5px; font-weight: bold;}
+        .s-cliente { font-size: 0.75em; color: var(--text-muted); margin-top: 4px; display: flex; align-items: center; gap: 6px; } .s-cliente i { width: 14px; text-align: center; opacity: .8; }
         .status-badge { padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.7em; border: 1px solid transparent; }
         .badge-on { background: color-mix(in srgb, var(--status-ok) 10%, transparent); color: var(--status-ok); border-color: var(--status-ok); }
         .badge-off { background: color-mix(in srgb, var(--status-crit) 10%, transparent); color: var(--status-crit); border-color: var(--status-crit); animation: blink 1s infinite;}
@@ -86,39 +87,29 @@
         .btn-logout:hover { color: var(--red); }
         ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: var(--bg-base); } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; } ::-webkit-scrollbar-thumb:hover { background: var(--blue); }
     </style>
-<link rel="stylesheet" href="/static/product.css?v=nexopulse-2">
+<link rel="stylesheet" href="/static/product.css?v=nexopulse-6">
 <script src="/static/brand.js?v=nexopulse-2"></script>
 </head>
 <body>
 {% include '_brand_bar.html' %}
     <audio id="alarme-critico" src="https://assets.mixkit.co/active_storage/sfx/991/991-preview.mp3" preload="auto"></audio>
-    <nav class="navbar">
-        <div class="navbar-brand">
-            {% if session.logo_cliente %}
-                <img src="{{ session.logo_cliente }}" alt="Logo Cliente" style="height: 35px; border-radius: 4px; border: 1px solid var(--border); object-fit: contain;">
-            {% else %}
-                <img src="/static/brand/nexopulse-symbol.png" alt="NexoPulse" style="height: 38px; object-fit: contain;">
-            {% endif %}
-            <span>CENTRAL DE OPERAÇÕES</span>
-        </div>
-        <div style="display: flex; gap: 20px; align-items: center;">
-            {% if session.role == 'Administrador Master' %}
-                <a href="/sensores" class="btn-logout" style="color: var(--yellow);"><i class="fa-solid fa-satellite-dish"></i> Gestão de Sensores</a>
-                <a href="/usuarios" class="btn-logout" style="color: var(--blue);"><i class="fa-solid fa-users-gear"></i> Gestão de Usuários</a>
-            {% endif %}
-            <button id="btn-ack" onclick="reconhecerAlertas()" style="display: none; background: var(--status-crit); color: var(--bg-base); border: none; padding: 8px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-right: 20px; animation: blink 1s infinite;"><i class="fa-solid fa-triangle-exclamation"></i> ESTOU CIENTE</button>
-            <button onclick="toggleTelao()" style="background: color-mix(in srgb, var(--purple) 20%, transparent); color: var(--purple); border: 1px solid var(--purple); padding: 8px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s;"><i class="fa-solid fa-tv"></i> Telão</button>
-            <span style="color: var(--text-muted); font-size: 0.9em; margin-left: 10px; padding-left: 15px; border-left: 1px solid var(--border);">Operador: <strong style="color: var(--text-main);">{{ session.usuario }}</strong></span>
-            <form method="POST" action="/logout" style="display:inline;">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn-logout" style="background:none;border:0;cursor:pointer;"><i class="fa-solid fa-right-from-bracket"></i> Sair</button>
-            </form>
-        </div>
-    </nav>
 
     <div class="main-layout">
         <div class="content-area">
-            
+            <div class="page-head">
+                <div>
+                    <h1>
+                        {% if session.logo_cliente %}<img src="{{ session.logo_cliente }}" alt="" class="client-logo">{% else %}<i class="fa-solid fa-gauge-high"></i>{% endif %}
+                        Central de Operações
+                    </h1>
+                    <p>Estado da rede, dos sensores e dos provedores em tempo real.</p>
+                </div>
+                <div class="page-actions">
+                    <button id="btn-ack" class="action-btn btn-danger-solid" onclick="reconhecerAlertas()" style="display: none;"><i class="fa-solid fa-triangle-exclamation"></i> Estou ciente</button>
+                    <button class="action-btn btn-secondary" onclick="toggleTelao()"><i class="fa-solid fa-expand"></i> Tela cheia</button>
+                </div>
+            </div>
+
             <div class="clock-card">
                 <div class="clock-item"><div class="clock-label"><i class="fa-solid fa-clock"></i> TOKYO</div><div id="clk-tk" class="clock-time">--:--:--</div></div>
                 <div class="clock-item"><div class="clock-label"><i class="fa-solid fa-clock"></i> LONDON</div><div id="clk-ln" class="clock-time">--:--:--</div></div>
@@ -243,10 +234,17 @@
         layerSensores.addTo(map);
         setTimeout(() => { map.invalidateSize(); }, 800);
 
+        // Mapa: com a aba escondida não busca nada; ao voltar, busca na hora. A Central responde
+        // "nada mudou" (304, sem corpo) quando o mapa é o mesmo da última busca.
+        let etagMapa = null, ultimoMapa = null;
         async function carregarSensores() {
+            if (document.hidden) return;
             try {
-                const response = await fetch('/api/v2/mapa_sensores');
+                const response = await fetch('/api/v2/mapa_sensores', { headers: etagMapa ? { 'If-None-Match': etagMapa } : {} });
+                if (response.status === 304 && ultimoMapa) return;
+                etagMapa = response.headers.get('ETag');
                 const data = await response.json();
+                ultimoMapa = data;
 
                 if (data.error_sql) {
                     document.getElementById('sensor-list').innerHTML = `<div style="background: color-mix(in srgb, var(--status-crit) 20%, transparent); border: 2px solid var(--red); color: var(--text-main); padding: 15px; margin: 15px; border-radius: 8px;"><b style="color: var(--red);">❌ Falha ao carregar sensores.</b><br><br>${escapeHtml(data.error_sql)}</div>`;
@@ -336,7 +334,7 @@
                 document.getElementById('sensor-list').innerHTML = htmlSidebar || '<p style="text-align:center; color:var(--text-muted); margin-top:30px;">Nenhum sensor atende ao filtro.</p>';
                 
                 filtrarSensores(); checarDefcon(nao_reconhecidos);
-                const btnAck = document.getElementById('btn-ack'); if (btnAck) btnAck.style.display = (nao_reconhecidos > 0) ? 'block' : 'none';
+                const btnAck = document.getElementById('btn-ack'); if (btnAck) btnAck.style.display = (nao_reconhecidos > 0) ? 'inline-flex' : 'none';
 
             } catch (error) { 
                 console.error(error);
@@ -346,6 +344,7 @@
         async function reconhecerAlertas() { await fetch('/api/v2/ack_alerta', { method: 'POST' }); carregarSensores(); }
 
         async function carregarLogsGlobais() {
+            if (document.hidden) return;
             try {
                 const res = await fetch('/api/v2/logs_globais'); const logs = await res.json();
                 let html = '';
@@ -358,7 +357,7 @@
             const painel = document.documentElement;
             if (!document.fullscreenElement) {
                 painel.requestFullscreen();
-                document.querySelector('.navbar').style.display = 'none';
+                document.querySelector('.app-bar').style.display = 'none';
                 document.querySelector('.sidebar-area').style.display = 'none';
                 document.querySelector('.main-layout').style.gridTemplateColumns = '1fr';
                 document.getElementById('container-mapa').style.height = '45vh';
@@ -367,7 +366,7 @@
         }
         document.addEventListener('fullscreenchange', () => {
             if (!document.fullscreenElement) {
-                document.querySelector('.navbar').style.display = 'flex';
+                document.querySelector('.app-bar').style.display = '';
                 document.querySelector('.sidebar-area').style.display = 'flex';
                 document.querySelector('.main-layout').style.gridTemplateColumns = '1fr 380px';
                 document.getElementById('container-mapa').style.height = '350px';
@@ -427,6 +426,9 @@
         // Polling é apenas fallback. O tempo real fica a cargo do Socket.IO.
         setInterval(carregarSensores, 30000);
         setInterval(carregarLogsGlobais, 30000);
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) { carregarSensores(); carregarLogsGlobais(); }
+        });
 
         try {
             const socket = io();
@@ -436,12 +438,12 @@
                 // Consolida vários batimentos dos sensores em uma atualização visual.
                 // Logs globais continuam no polling de 30 s para não consultar o banco
                 // a cada pacote de telemetria.
-                if(!aguardandoSocket) {
+                if(!aguardandoSocket && !document.hidden) {
                     aguardandoSocket = true;
                     setTimeout(() => {
                         carregarSensores();
                         aguardandoSocket = false;
-                    }, 5000);
+                    }, 10000);
                 }
             });
             

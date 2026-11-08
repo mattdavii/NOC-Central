@@ -1,0 +1,14 @@
+<footer class="rodape">
+  <div class="miolo">
+    <img src="/img/md-logo.png" alt="MD Soluções Tecnológicas" width="640" height="227">
+    <span class="lema">Conectando inovação, tecnologia e inteligência ao futuro.</span>
+    <nav aria-label="Rodapé">
+      <a href="/">A MD</a>
+      <a href="/nexopulse">NexoPulse</a>
+      <a href="/nexoreport">NexoReport</a>
+      <a href="{{ env "SITE_HUB_URL" | default "https://hub.mdsolucoes.eng.br" }}">Área do cliente: NexoHub</a>
+      <a href="{{ env "SITE_HUB_URL" | default "https://hub.mdsolucoes.eng.br" }}/privacidade">Política de privacidade</a>
+    </nav>
+    <span class="dados">© 2026 MD Soluções Tecnológicas{{ with env "SITE_CNPJ" }} · CNPJ {{ . }}{{ end }}{{ with env "SITE_CIDADE" }} · {{ . }}{{ end }}</span>
+  </div>
+</footer>

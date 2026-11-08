@@ -6,9 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="manifest" href="/manifest.json?v=nexopulse-2">
     <meta name="theme-color" content="#082E56">
-    <link rel="icon" href="/static/favicon.png" type="image/png">
-    <title>NexoPulse Central - Sala de Operações</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="apple-touch-icon" href="/static/brand/nexopulse/apple-touch-icon.png">
+    <title>NexoPulse - Sala de Operações</title>
+    <link rel="stylesheet" href="/static/fontes/fontes.css?v=1">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
 
@@ -100,14 +102,14 @@
         body.alert-mode { animation: bg-alert 2s infinite; }
         @keyframes bg-alert { 0%, 100% { background-color: var(--bg-base); } 50% { background-color: color-mix(in srgb, var(--status-crit) 18%, var(--bg-base)); } }
     </style>
-<link rel="stylesheet" href="/static/product.css?v=nexopulse-2">
+<link rel="stylesheet" href="/static/product.css?v=nexopulse-6">
 <script src="/static/brand.js?v=nexopulse-2"></script>
 </head>
 <body>
 {% include '_brand_bar.html' %}
 
     <div class="tv-header">
-        <div class="tv-logo"><img src="/static/brand/nexopulse-symbol.png" alt="" style="height:54px; width:54px; object-fit:contain;"> Sala de Operações</div>
+        <div class="tv-logo"><img class="brand-logo-dark" src="/static/brand/nexopulse/simbolo-escuro.svg" alt="" style="height:54px; width:54px; object-fit:contain;"><img class="brand-logo-light" src="/static/brand/nexopulse/simbolo-claro.svg" alt="" style="height:54px; width:54px; object-fit:contain;"> Sala de Operações</div>
         
         <div class="tv-stats">
             <div class="stat-box">
@@ -161,9 +163,13 @@
         }, 1000);
 
         // MOTOR DE DADOS DA GRADE
+        let etagTV = null;
         async function buscarDadosTV() {
+            if (document.hidden) return;
             try {
-                const res = await fetch('/api/v2/mapa_sensores');
+                const res = await fetch('/api/v2/mapa_sensores', { headers: etagTV ? { 'If-None-Match': etagTV } : {} });
+                if (res.status === 304) return;
+                etagTV = res.headers.get('ETag');
                 const data = await res.json();
                 const sensores = data.sensores || [];
                 
@@ -304,8 +310,10 @@
         }, 60); // Velocidade do scroll suave
 
         // TAXAS DE ATUALIZAÇÃO
-        setInterval(buscarDadosTV, 5000);
-        setInterval(buscarLogsTV, 15000); // Atualiza os logs a cada 15 seg
+        // 10 s na grade e 30 s nos logs: a TV continua "ao vivo" com um terço do tráfego de antes.
+        setInterval(buscarDadosTV, 10000);
+        setInterval(buscarLogsTV, 30000);
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) { buscarDadosTV(); buscarLogsTV(); } });
         buscarDadosTV();
         buscarLogsTV();
 

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" role="img" aria-label="NexoPulse">
+<title>NexoPulse</title>
+<defs><linearGradient id="nexoFavGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#08ABD0"/><stop offset="100%" stop-color="#04B89C"/></linearGradient></defs>
+<rect width="32" height="32" rx="7" fill="#0B1B32"/>
+<path d="M16 4.6 L25.9 10.3 V21.7 L16 27.4 L6.1 21.7 V10.3 Z" fill="none" stroke="url(#nexoFavGrad)" stroke-width="2.6" stroke-linejoin="round"/>
+<path d="M9.2 16.6 H11.6 L13.1 19.6 L15.6 11.2 L18.1 20.2 L20.1 14.6 L21.4 16.6 H22.8" fill="none" stroke="#4DE6D9" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

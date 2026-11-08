@@ -1,0 +1,18 @@
+{
+  "cores": {
+    "navy": "#0B1B32",
+    "cyan": "#08ABD0",
+    "green": "#04B89C",
+    "pale": "#F3F7FB",
+    "white": "#FFFFFF",
+    "muted_light": "#566982",
+    "muted_dark": "#BDCCDC"
+  },
+  "gradiente": [
+    "#08ABD0",
+    "#05B7BE",
+    "#04B89C"
+  ],
+  "tipografia_sugerida": "Inter Display",
+  "arquivos_finalizados": "SVG com texto convertido em contornos vetoriais"
+}

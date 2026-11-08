@@ -4,9 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#082E56">
-    <link rel="icon" href="/static/favicon.png" type="image/png">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/brand/nexopulse/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="apple-touch-icon" href="/static/brand/nexopulse/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.json?v=nexopulse-2">
     <title>NexoPulse - Relatório Executivo - {{ sensor.nome_local }}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/fontes/fontes.css?v=1">
     <style>
         body { font-family: 'Inter', sans-serif; color: #333; margin: 0; padding: 0; background: #eee; }
         /* Documento para impressão: cores fixas de fundo claro, independentes do tema da tela. */
@@ -29,9 +32,19 @@
         .badge.aviso { background: #fef3c7; color: #92400E; }
         .badge.desconhecido { background: transparent; color: #526077; border: 1px dashed #526077; }
         .footer { text-align: center; margin-top: 50px; font-size: 12px; color: #526077; border-top: 1px solid #e5e7eb; padding-top: 20px; }
+        .diagrama { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #fbfdff; break-inside: avoid; }
+        .diagrama svg { display: block; max-height: 240mm; }
+        .diagrama-nota { font-size: 12px; color: #526077; margin: 0 0 10px; }
+        .diagrama-legenda { font-size: 11px; color: #526077; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 8px 0 0; }
+        .diagrama-legenda span { display: inline-block; }
+        .l-cabo, .l-fibra, .l-sem-fio { width: 22px; height: 0; border-top: 2px solid #8EA3B8; margin-right: -8px; }
+        .l-fibra { border-top-color: #E39B2D; }
+        .l-sem-fio { border-top-style: dashed; }
+        .pt { width: 8px; height: 8px; border-radius: 50%; margin-right: -8px; }
+        .pt.ok { background: #05A88C; } .pt.aviso { background: #E39B2D; } .pt.critica { background: #DC2626; }
         @media print { body { background: #fff; } .a4-page { box-shadow: none; margin: 0; width: auto; min-height: auto; } }
     </style>
-<link rel="stylesheet" href="/static/product.css?v=nexopulse-2">
+<link rel="stylesheet" href="/static/product.css?v=nexopulse-6">
 <script src="/static/brand.js?v=nexopulse-2"></script>
 </head>
 <body>
@@ -45,7 +58,7 @@
             {% if sensor.logo_url %}
             <img src="{{ sensor.logo_url }}" alt="Logo do Cliente">
             {% else %}
-            <img src="/static/brand/nexopulse-logo-light.png" alt="NexoPulse">
+            <img src="/static/brand/nexopulse/logo-claro.svg" alt="NexoPulse">
             {% endif %}
         </div>
 
@@ -97,6 +110,13 @@
             </tbody>
         </table>
 
+        {% if diagrama_svg %}
+        <h3 class="section-title">Diagrama da rede</h3>
+        <p class="diagrama-nota">{% if diagrama_informado %}Ligações observadas pelo sensor e completadas pela equipe técnica no local (equipamentos como switches e conversores, e o meio de cada ligação).{% else %}Ligações observadas pelo sensor: todos os equipamentos aparecem no gateway porque ainda não foi informado como a rede está montada.{% endif %}</p>
+        <div class="diagrama">{{ diagrama_svg|safe }}</div>
+        <p class="diagrama-legenda"><span class="l-cabo"></span> Cabo <span class="l-fibra"></span> Fibra <span class="l-sem-fio"></span> Wi-Fi ou rádio <span class="pt ok"></span> Online <span class="pt aviso"></span> Sem resposta a ping <span class="pt critica"></span> Offline</p>
+        {% endif %}
+
         <h3 class="section-title">Dispositivos Descobertos na Rede Local</h3>
         <table>
             <thead>
@@ -112,7 +132,7 @@
                 <tr>
                     <td style="font-family: 'JetBrains Mono', monospace; font-weight: bold;">{{ d.ip }}</td>
                     <td style="font-family: 'JetBrains Mono', monospace; color: #526077;">{{ d.mac }}</td>
-                    <td>{{ d.nome_custom or d.fabricante }}</td>
+                    <td>{{ d.nome_custom or d.hostname or d.fabricante }}</td>
                     <td>
                         {% if d.status == 'online' %}<span class="badge ok">Online</span>
                         {% elif d.status == 'sem_icmp' %}<span class="badge aviso">Sem ICMP</span>
@@ -128,7 +148,7 @@
         </table>
 
         <div class="footer">
-            <img src="/static/brand/nexopulse-logo-light.png" alt="NexoPulse" width="140" height="42" style="display:block; margin: 0 auto 8px;">
+            <img src="/static/brand/nexopulse/logo-claro.svg" alt="NexoPulse" width="140" height="40" style="display:block; margin: 0 auto 8px;">
             <strong>NexoPulse Central</strong> · Network Intelligence &amp; Monitoring<br>
             Gerado a partir dos eventos e dispositivos registrados pelo sensor NexoPulse Edge no período indicado.
         </div>

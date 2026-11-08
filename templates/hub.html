@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#082E56">
+    <link rel="icon" href="/static/brand/nexohub/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/brand/nexohub/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="apple-touch-icon" href="/static/brand/nexohub/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.json?v=nexopulse-2">
+    <title>NexoHub - Início</title>
+    <link rel="stylesheet" href="/static/fontes/fontes.css?v=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/product.css?v=nexopulse-6">
+    <style>
+        body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-base); color: var(--text-main); }
+        .sym { width: 44px; height: 44px; flex: none; }
+        .sym-light { display: none; }
+        html[data-theme="light"] .sym-dark { display: none; }
+        html[data-theme="light"] .sym-light { display: block; }
+        .ver-como { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px;
+                    margin-bottom: 22px; border: 1px solid var(--yellow); border-radius: 10px; color: var(--text-main);
+                    background: color-mix(in srgb, var(--yellow) 10%, transparent); }
+        .ver-como a { color: var(--text-main); font-weight: 600; }
+        .saudacao { display: flex; align-items: center; gap: 16px; }
+        .saudacao img { max-height: 48px; max-width: 160px; object-fit: contain; }
+        .apps { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 18px; align-items: start; }
+        .app-card { border-radius: 16px; }
+        .app-card { display: flex; flex-direction: column; gap: 14px; padding: 22px; border-radius: 14px; background: var(--bg-card); border: 1px solid var(--border); box-shadow: var(--shadow); }
+        .app-card.vitrine { background: transparent; border-style: dashed; box-shadow: none; }
+        .app-card header { display: flex; align-items: center; gap: 14px; }
+        .app-card h2 { margin: 0; font-size: 1.15rem; }
+        .app-card .sub { margin: 2px 0 0; font-size: .82rem; color: var(--text-muted); }
+        .app-card p { margin: 0; color: var(--text-muted); font-size: .92rem; }
+        .etiqueta { margin-left: auto; font-size: .72rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-muted); white-space: nowrap; }
+        .etiqueta.ok { color: var(--blue); border-color: var(--blue); }
+        .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .kpi { padding: 10px 12px; border-radius: 10px; background: var(--bg-input); }
+        .kpi strong { display: block; font-size: 1.5rem; line-height: 1.2; }
+        .kpi span { font-size: .78rem; color: var(--text-muted); }
+        .lista-diag { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+        .lista-diag li { display: flex; gap: 10px; align-items: baseline; font-size: .88rem; }
+        .lista-diag .site { font-weight: 600; }
+        .lista-diag .quando, .queda .quando { color: var(--text-muted); font-size: .8rem; white-space: nowrap; margin-left: auto; }
+        .tudo-ok { color: var(--status-ok); font-weight: 600; font-size: .9rem; }
+        .queda { font-size: .85rem; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap; }
+        .abrir { margin-top: auto; align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 8px;
+                 background: var(--blue); color: var(--bg-base); font-weight: 700; text-decoration: none; }
+        .filtros { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-bottom: 14px; }
+        .filtros input[type="search"] { flex: 1 1 240px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-main); padding: 10px 12px; border-radius: 8px; font: inherit; }
+        table.clientes { width: 100%; border-collapse: collapse; }
+        table.clientes th { text-align: left; padding: 12px; border-bottom: 2px solid var(--border); color: var(--blue); font-size: .85em; }
+        table.clientes td { padding: 12px; border-bottom: 1px solid var(--border); font-size: .9em; vertical-align: middle; }
+        .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .apps-empresa { margin-top: 6px; }
+        .sites-linha { display: flex; flex-direction: column; gap: 2px; white-space: nowrap; }
+        table.clientes td[data-label="Última queda"] { min-width: 150px; }
+        table.clientes .acoes-linha { flex-direction: column; gap: 6px; }
+        .chip { font-size: .75em; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
+        .num-off { color: var(--status-crit); font-weight: 700; }
+        .acoes-linha { display: flex; gap: 12px; flex-wrap: wrap; }
+        .acoes-linha a { white-space: nowrap; font-weight: 600; text-decoration: none; }
+        .vazio { color: var(--text-muted); }
+        .disp { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 10px; background: var(--bg-input); border-left: 4px solid var(--status-ok); }
+        .disp strong { font-size: 2rem; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+        .disp .disp-txt { display: flex; flex-direction: column; gap: 2px; }
+        .disp .disp-txt span { font-size: .88rem; color: var(--text-main); font-weight: 600; }
+        .disp .disp-txt small { font-size: .8rem; color: var(--text-muted); }
+        .disp.atencao { border-left-color: var(--yellow); }
+        .disp.critico { border-left-color: var(--status-crit); }
+        .disp.atencao strong { color: var(--yellow); }
+        .disp.critico strong { color: var(--status-crit); }
+        .pct { font-variant-numeric: tabular-nums; font-weight: 600; }
+        .pct.atencao { color: var(--yellow); }
+        .pct.critico { color: var(--status-crit); }
+        table.clientes th button { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+        table.clientes th button:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
+        table.clientes th button i { font-size: .75em; opacity: .45; }
+        table.clientes th[aria-sort] button i { opacity: 1; }
+        /* Início da MD: atenção, mês e eventos ao redor da tabela de clientes. */
+        /* Duas colunas independentes: um bloco curto de um lado não abre buraco no outro. */
+        .painel-md { display: grid; gap: 18px; grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr); align-items: start; }
+        .col-principal, .col-lateral { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+        .bloco { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; min-width: 0; }
+        .bloco-cab { display: flex; align-items: baseline; gap: 10px; margin: 0 0 14px; padding: 0; }
+        .bloco-cab h2 { margin: 0; font-size: 1rem; }
+        .bloco-nota { margin-left: auto; font-size: .78rem; color: var(--text-muted); }
+        .contagem { margin-left: auto; min-width: 24px; text-align: center; font-size: .8rem; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+                    background: color-mix(in srgb, var(--status-crit) 18%, transparent); color: var(--status-crit); }
+
+        .mes-topo { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 18px 28px; margin-bottom: 18px; }
+        .mes-numero strong { display: block; font-size: 3rem; line-height: 1; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+        .mes-numero span { display: block; margin-top: 6px; font-size: .88rem; color: var(--text-muted); }
+        .mes-numero.atencao strong { color: var(--status-warn); } .mes-numero.critico strong { color: var(--status-crit); }
+        .contadores { display: grid; grid-template-columns: repeat(4, auto); gap: 4px 26px; margin: 0; }
+        .contadores dt { font-size: .74rem; color: var(--text-muted); }
+        .contadores dd { margin: 2px 0 0; font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+        .grafico-mes { margin: 0; }
+        .grafico-mes figcaption { display: flex; flex-wrap: wrap; gap: 6px 12px; justify-content: space-between; font-size: .82rem; font-weight: 600; margin-bottom: 8px; }
+        .legenda-mini { font-weight: 400; color: var(--text-muted); }
+        .grafico-area { position: relative; }
+        .grafico-mes svg { display: block; width: 100%; height: auto; overflow: visible; }
+        .eixo-grade { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 4; }
+        .eixo-base { stroke: var(--border); stroke-width: 1; }
+        .eixo-txt { fill: var(--text-muted); font-size: 10px; font-family: inherit; }
+        .hoje-txt { fill: var(--text-main); font-weight: 700; }
+        .dia .alvo { fill: transparent; }
+        .dia .barra { fill: var(--blue); }
+        .dia .zero { fill: color-mix(in srgb, var(--status-ok) 55%, var(--border)); }
+        .dia:hover .alvo, .dia:focus-visible .alvo { fill: color-mix(in srgb, var(--blue) 10%, transparent); }
+        .dia:focus-visible { outline: none; }
+        .dia.futuro .eixo-txt { opacity: .55; }
+        .dica { position: absolute; top: -6px; transform: translate(-50%, -100%); pointer-events: none; white-space: nowrap; z-index: 2;
+                background: var(--surface-raised, var(--bg-input)); color: var(--text-main); border: 1px solid var(--border);
+                border-radius: 8px; padding: 6px 10px; font-size: .8rem; box-shadow: var(--shadow); }
+        .como-tabela { margin-top: 10px; font-size: .82rem; }
+        .como-tabela summary { cursor: pointer; color: var(--text-muted); }
+        .como-tabela table { margin-top: 8px; border-collapse: collapse; width: 100%; }
+        .como-tabela th, .como-tabela td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+
+        .lista-atencao { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+        .lista-atencao a { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; text-decoration: none; color: var(--text-main);
+                           background: var(--bg-input); border-left: 3px solid var(--border); }
+        .lista-atencao a:hover { background: color-mix(in srgb, var(--blue) 10%, var(--bg-input)); }
+        .lista-atencao .critico a { border-left-color: var(--status-crit); } .lista-atencao .critico .marca { color: var(--status-crit); }
+        .lista-atencao .atencao a { border-left-color: var(--status-warn); } .lista-atencao .atencao .marca { color: var(--status-warn); }
+        .lista-atencao .info .marca { color: var(--blue); }
+        .lista-atencao .texto { display: flex; flex-direction: column; min-width: 0; }
+        .lista-atencao .texto strong { font-size: .9rem; }
+        .lista-atencao .texto span { font-size: .8rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .lista-atencao .quando { margin-left: auto; font-size: .78rem; color: var(--text-muted); white-space: nowrap; }
+        .mais { margin: 10px 0 0; font-size: .82rem; color: var(--text-muted); }
+        .nada-pendente { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 10px;
+                         background: color-mix(in srgb, var(--status-ok) 10%, transparent); }
+        .nada-pendente i { color: var(--status-ok); font-size: 1.3rem; margin-top: 2px; }
+        .nada-pendente div { display: flex; flex-direction: column; gap: 2px; font-size: .88rem; }
+        .nada-pendente span { color: var(--text-muted); font-size: .82rem; }
+
+        .linha-tempo { list-style: none; margin: 0; padding: 0; position: relative; }
+        .linha-tempo::before { content: ''; position: absolute; left: 5px; top: 8px; bottom: 8px; width: 2px; background: var(--border); }
+        .linha-tempo li { position: relative; display: flex; gap: 14px; padding: 0 0 14px; }
+        .linha-tempo li:last-child { padding-bottom: 0; }
+        .linha-tempo .ponto { flex: none; width: 12px; height: 12px; margin-top: 4px; border-radius: 50%; background: var(--text-muted);
+                              box-shadow: 0 0 0 3px var(--bg-card); position: relative; }
+        .ev-queda .ponto { background: var(--status-crit); } .ev-volta .ponto { background: var(--status-ok); }
+        .ev-alerta .ponto { background: var(--status-warn); } .ev-acao .ponto { background: var(--blue); }
+        .linha-tempo p { margin: 0; }
+        .ev-titulo { font-size: .88rem; font-weight: 600; } .ev-titulo a { color: var(--text-main); text-decoration: none; }
+        .ev-titulo a:hover { text-decoration: underline; }
+        .ev-meta, .ev-detalhe { font-size: .78rem; color: var(--text-muted); }
+        .ev-detalhe { margin-top: 2px !important; overflow-wrap: anywhere; }
+        .ev-vezes { font-weight: 700; color: var(--text-main); }
+
+        @media (max-width: 1080px) {
+            .painel-md { display: flex; flex-direction: column; }
+            .col-principal, .col-lateral { display: contents; }
+            .painel-md > * , .painel-md .bloco { min-width: 0; max-width: 100%; box-sizing: border-box; }
+            .bloco.atencao { order: 1; } .bloco.resumo-mes { order: 2; } .bloco.clientes-bloco { order: 3; } .bloco.eventos { order: 4; }
+        }
+        table.clientes tr[hidden] { display: none !important; }
+        @media (max-width: 640px) {
+            .grafico-area { overflow-x: auto; overscroll-behavior-x: contain; }
+            .grafico-mes svg { min-width: 600px; }
+            .apps { grid-template-columns: 1fr; } .kpi strong { font-size: 1.25rem; }
+            .bloco { padding: 16px; } .mes-numero strong { font-size: 2.4rem; }
+            .contadores { grid-template-columns: repeat(2, auto); }
+        }
+        /* Abertura: faixa de comando escura nos dois temas (o "console" do NexoHub) e os atalhos dos aplicativos. */
+        .faixa { --fx-texto: #E8F1FA; --fx-suave: #9FB4CB; --fx-linha: rgba(125, 211, 252, .16); --fx-ciano: #22C1EE;
+                 --fx-ok: #4ADE80; --fx-atencao: #FBBF24; --fx-critico: #F87171;
+                 position: relative; overflow: hidden; margin: 6px 0 18px; border-radius: 18px; color: var(--fx-texto);
+                 background: radial-gradient(120% 140% at 85% 30%, #0F3B66 0%, #0A2747 45%, #071A31 100%);
+                 border: 1px solid #16406A; box-shadow: 0 24px 60px -30px rgba(3, 18, 36, .8); }
+        .faixa-malha { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+        .malha-linhas path { fill: none; stroke: var(--fx-linha); stroke-width: 1.2; }
+        .malha-nos circle { fill: #2D6C9C; }
+        .no-central { fill: var(--fx-ciano); }
+        .no-pulso { fill: none; stroke: var(--fx-ciano); stroke-width: 1.5; transform-origin: 640px 120px; transform-box: view-box; animation: pulso 3.2s ease-out infinite; }
+        @keyframes pulso { from { transform: scale(1); opacity: .9; } to { transform: scale(4.2); opacity: 0; } }
+        .faixa-conteudo { position: relative; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+                          gap: 28px 40px; padding: 34px 36px 30px; }
+        .faixa-ola h1 { margin: 0; font-size: clamp(1.7rem, 3.4vw, 2.35rem); font-weight: 700; letter-spacing: -.025em; line-height: 1.1; }
+        .faixa-data { margin: 12px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; color: var(--fx-suave); font-size: .95rem; }
+        .faixa-hora { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 1.05rem; color: var(--fx-texto); font-variant-numeric: tabular-nums; }
+        .faixa-seg { color: var(--fx-suave); }
+        .faixa-nota { margin: 8px 0 0; font-weight: 600; color: var(--fx-texto); }
+        .faixa-status { display: flex; flex-wrap: wrap; gap: 0; margin: 0; border: 1px solid rgba(125, 211, 252, .18); border-radius: 14px;
+                        background: rgba(4, 16, 31, .55); backdrop-filter: blur(6px); }
+        .faixa-status > div { padding: 14px 20px; min-width: 104px; border-left: 1px solid rgba(125, 211, 252, .14); }
+        .faixa-status > div:first-child { border-left: 0; }
+        .faixa-status dt { font-size: .78rem; color: var(--fx-suave); white-space: nowrap; }
+        .faixa-status dd { margin: 4px 0 0; font-size: 1.6rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+        .faixa-status .destaque dd { font-size: 2.1rem; color: var(--fx-ok); }
+        .faixa-status .atencao dd { color: var(--fx-atencao); }
+        .faixa-status .critico dd { color: var(--fx-critico); }
+        .faixa-status .ok dd { color: var(--fx-ok); }
+
+        .atalhos { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 0 0 30px; }
+        .atalho { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 16px; border-radius: 14px;
+                  text-decoration: none; color: var(--text-main); background: var(--bg-card); border: 1px solid var(--border);
+                  transition: border-color .15s ease, background-color .15s ease; }
+        a.atalho:hover { border-color: color-mix(in srgb, var(--blue) 65%, var(--border)); background: color-mix(in srgb, var(--blue) 6%, var(--bg-card)); }
+        a.atalho:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+        .atalho-icone { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 12px;
+                        background: color-mix(in srgb, var(--blue) 10%, var(--bg-input)); }
+        .atalho-icone img { width: 32px; height: 32px; }
+        .atalho-icone i { font-size: 1.2rem; color: var(--blue); }
+        .atalho-icone .sym-light { display: none; }
+        html[data-theme="light"] .atalho-icone .sym-dark { display: none; }
+        html[data-theme="light"] .atalho-icone .sym-light { display: block; }
+        .atalho-texto { display: flex; flex-direction: column; gap: 3px; min-width: 0; max-width: 100%; }
+        .atalho-rotulo { font-weight: 700; font-size: .95rem; }
+        .atalho-nota { font-size: .78rem; color: var(--text-muted); line-height: 1.35; }
+        .atalho-seta { position: absolute; top: 18px; right: 16px; font-size: .72rem; color: var(--text-muted); transition: transform .15s ease; }
+        a.atalho:hover .atalho-seta { transform: translateX(3px); color: var(--blue); }
+        .atalho.indisponivel { opacity: .55; }
+        .titulo-secao { font-size: 1.05rem; margin: 4px 0 14px; color: var(--text-main); font-weight: 700; letter-spacing: -.01em; }
+        .bloco { border-radius: 16px; }
+        .bloco-cab h2 { font-size: 1.02rem; letter-spacing: -.01em; }
+        @media (prefers-reduced-motion: reduce) { .no-pulso { animation: none; opacity: 0; } .atalho, .atalho-seta { transition: none; } }
+        @media (max-width: 760px) {
+            .faixa { border-radius: 14px; }
+            .faixa-malha { opacity: .45; }
+            .faixa-conteudo { padding: 24px 20px 20px; }
+            .faixa-status { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+            .faixa-status > div { border-left: 0; border-top: 1px solid rgba(125, 211, 252, .14); padding: 12px 16px; }
+            .faixa-status > div:nth-child(-n+2) { border-top: 0; }
+            .faixa-status > div:nth-child(even) { border-left: 1px solid rgba(125, 211, 252, .14); }
+            .faixa-status .destaque dd { font-size: 1.7rem; }
+            .faixa-status dt { white-space: normal; }
+            .faixa-status > .destaque:nth-last-child(odd):first-child { grid-column: 1 / -1; }
+            .atalhos { grid-template-columns: 1fr 1fr; gap: 10px; }
+            .atalho { padding: 14px; gap: 10px; }
+        }
+    </style>
+<script src="/static/brand.js?v=nexopulse-2"></script>
+</head>
+<body>
+{% include '_brand_bar.html' %}
+<main class="page-main">
+{% with mensagens = get_flashed_messages() %}{% for m in mensagens %}
+    <div class="ver-como" role="status"><span><i class="fa-solid fa-circle-info"></i> {{ m }}</span><a href="/conta">Minha conta</a></div>
+{% endfor %}{% endwith %}
+
+{% macro pct(d) -%}{{ ('%.1f' % d.pct)|replace('.', ',') }}%{%- endmacro %}
+
+{% macro simbolo(app) -%}
+    <img class="sym sym-dark" src="/static/brand/nexo{{ app }}/simbolo-escuro.svg" alt="" aria-hidden="true">
+    <img class="sym sym-light" src="/static/brand/nexo{{ app }}/simbolo-claro.svg" alt="" aria-hidden="true">
+{%- endmacro %}
+
+{% if modo == 'md' %}
+    {% set atalhos = [
+        {'rotulo': 'NexoPulse', 'href': '/pulse', 'marca': 'pulse', 'nota': 'Operação'},
+        {'rotulo': 'Sensores', 'href': '/sensores', 'icone': 'fa-satellite-dish',
+         'nota': (total.offline ~ ' offline') if total.offline else ((total.online ~ ' online') if total.online else None)},
+        {'rotulo': 'Acessos', 'href': '/usuarios', 'icone': 'fa-users-gear', 'nota': 'Empresas e usuários'},
+        {'rotulo': 'Saúde', 'href': '/saude', 'icone': 'fa-heart-pulse', 'nota': 'Central e banco'},
+        {'rotulo': 'NexoGuard', 'href': '/guard', 'marca': 'guard',
+         'nota': (guard.estados.aberto ~ ' achado' ~ ('s' if guard.estados.aberto != 1 else '') ~ ' aberto' ~ ('s' if guard.estados.aberto != 1 else '')) if guard and guard.estados.aberto else 'Segurança da rede'},
+        {'rotulo': 'NexoReport', 'href': '/report', 'marca': 'report', 'nota': 'Relatórios mensais'},
+        {'rotulo': 'NexoDesk', 'href': '/desk', 'marca': 'desk',
+         'nota': (desk.abertos ~ ' chamado' ~ ('s' if desk.abertos != 1 else '') ~ ' aberto' ~ ('s' if desk.abertos != 1 else '')) if desk and desk.abertos else 'Chamados'},
+    ] %}
+    {% set lancador_nota = None %}
+    {% set estado_rede = [
+        {'rotulo': 'Disponibilidade no mês', 'valor': pct(disponibilidade) if disponibilidade else '—', 'destaque': True,
+         'classe': disponibilidade.faixa if disponibilidade else None},
+        {'rotulo': 'Sites online', 'valor': total.online},
+        {'rotulo': 'Offline', 'valor': total.offline, 'classe': 'critico' if total.offline else None},
+        {'rotulo': 'Precisam de atenção', 'valor': atencao|length, 'classe': 'atencao' if atencao else None},
+    ] %}
+    {% include '_lancador.html' %}
+
+    <h2 class="titulo-secao">Visão geral da operação</h2>
+
+    <div class="painel-md">
+    <div class="col-principal">
+    <section class="bloco resumo-mes" id="resumo-mes" aria-labelledby="t-mes">
+        <div class="bloco-cab"><h2 id="t-mes">{{ grafico.mes|capitalize }} até agora</h2>
+            <span class="bloco-nota">todos os sites fora de manutenção</span></div>
+        <div class="mes-topo">
+            <div class="mes-numero {{ disponibilidade.faixa if disponibilidade else '' }}">
+                <strong>{% if disponibilidade %}{{ pct(disponibilidade) }}{% else %}—{% endif %}</strong>
+                <span>de disponibilidade{% if disponibilidade %}{% if disponibilidade.quedas %} · {{ disponibilidade.quedas }} queda{{ 's' if disponibilidade.quedas != 1 }}, {{ disponibilidade.fora_txt }} fora{% else %} · nenhuma queda{% endif %}{% endif %}</span>
+            </div>
+            <dl class="contadores">
+                <div><dt>Sites online</dt><dd class="{{ 'status-ok' if total.online }}">{{ total.online }}</dd></div>
+                <div><dt>Offline</dt><dd class="{{ 'num-off' if total.offline }}">{{ total.offline }}</dd></div>
+                <div><dt>Em manutenção</dt><dd>{{ total.manutencao }}</dd></div>
+                <div><dt>Empresas</dt><dd>{{ empresas|length }}</dd></div>
+            </dl>
+        </div>
+
+        {% set dias = grafico.dias %}
+        {% set hoje_dia = (dias|selectattr('hoje')|map(attribute='dia')|first) or 0 %}
+        {% set larg = 24 %}
+        {% set alto = 110 %}
+        {% set teto = [grafico.pior_s, 600]|max %}
+        <figure class="grafico-mes">
+            <figcaption>
+                <span>Tempo sem comunicação por dia</span>
+                <span class="legenda-mini">{% if grafico.dias_medidos %}{{ grafico.dias_sem_queda }} de {{ grafico.dias_medidos }} dia{{ 's' if grafico.dias_medidos != 1 }} sem queda{% endif %}</span>
+            </figcaption>
+            <div class="grafico-area">
+            <svg viewBox="0 0 {{ dias|length * larg + 44 }} {{ alto + 26 }}" role="img"
+                 aria-label="Tempo sem comunicação por dia em {{ grafico.mes }}; pior dia: {{ (grafico.pior_s // 60) }} minutos">
+                <line class="eixo-grade" x1="40" x2="{{ dias|length * larg + 44 }}" y1="8" y2="8"></line>
+                <text class="eixo-txt" x="34" y="12" text-anchor="end">{{ (teto // 60) }} min</text>
+                <line class="eixo-base" x1="40" x2="{{ dias|length * larg + 44 }}" y1="{{ alto + 8 }}" y2="{{ alto + 8 }}"></line>
+                <text class="eixo-txt" x="34" y="{{ alto + 11 }}" text-anchor="end">0</text>
+                {% for d in dias %}
+                {% set x = 44 + loop.index0 * larg %}
+                {% set h = ((d.fora_s / teto) * (alto - 2))|round(1) if d.fora_s else 0 %}
+                <g class="dia{% if d.futuro %} futuro{% elif d.pct is none %} sem-dado{% endif %}{% if d.hoje %} hoje{% endif %}"
+                   {% if not d.futuro %}tabindex="0" data-tip="{{ d.data }}{% if d.pct is none %}: sem sites monitorados{% elif d.fora_s %}: {{ d.fora_txt }} sem comunicação{% if d.quedas %}, {{ d.quedas }} queda{{ 's' if d.quedas != 1 }}{% endif %} ({{ ('%.1f' % d.pct)|replace('.', ',') }}%){% else %}: sem queda{% endif %}"{% endif %}>
+                    <rect class="alvo" x="{{ x }}" y="0" width="{{ larg }}" height="{{ alto + 26 }}"></rect>
+                    {% if h >= 6 %}
+                    <path class="barra" d="M{{ x + 5 }},{{ alto + 8 }} V{{ alto + 12 - h }} q0,-4 4,-4 h{{ larg - 18 }} q4,0 4,4 V{{ alto + 8 }} Z"></path>
+                    {% elif h %}
+                    <rect class="barra" x="{{ x + 5 }}" y="{{ alto + 8 - [h, 2]|max }}" width="{{ larg - 10 }}" height="{{ [h, 2]|max }}" rx="1"></rect>
+                    {% elif not d.futuro and d.pct is not none %}
+                    <rect class="zero" x="{{ x + 5 }}" y="{{ alto + 5 }}" width="{{ larg - 10 }}" height="3" rx="1.5"></rect>
+                    {% endif %}
+                    {% if d.hoje or ((d.dia == 1 or d.dia % 5 == 0) and (d.dia - hoje_dia)|abs > 1) %}
+                    <text class="eixo-txt{% if d.hoje %} hoje-txt{% endif %}" x="{{ x + larg / 2 }}" y="{{ alto + 23 }}" text-anchor="middle">{{ 'hoje' if d.hoje else d.dia }}</text>
+                    {% endif %}
+                </g>
+                {% endfor %}
+            </svg>
+            <div class="dica" role="status" hidden></div>
+            </div>
+            <details class="como-tabela">
+                <summary>Ver em tabela</summary>
+                <table>
+                    <thead><tr><th>Dia</th><th>Sem comunicação</th><th>Quedas</th><th>Disponibilidade</th></tr></thead>
+                    <tbody>
+                    {% for d in dias if not d.futuro and d.pct is not none %}
+                    <tr><td>{{ d.data }}</td><td>{{ d.fora_txt or '—' }}</td><td>{{ d.quedas or '—' }}</td><td>{{ ('%.1f' % d.pct)|replace('.', ',') }}%</td></tr>
+                    {% else %}
+                    <tr><td colspan="4" class="vazio">Nenhum site monitorado neste mês ainda.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </details>
+        </figure>
+    </section>
+
+    <section class="bloco clientes-bloco" aria-labelledby="t-clientes">
+        <div class="bloco-cab"><h2 id="t-clientes">Clientes</h2><span class="bloco-nota">{{ empresas|length }} empresa{{ 's' if empresas|length != 1 }}</span></div>
+        <div class="filtros">
+            <input type="search" id="filtro" placeholder="Filtrar por nome da empresa" aria-label="Filtrar clientes" oninput="filtrar()">
+            <label class="switch-label"><input type="checkbox" id="so-problema" onchange="filtrar()"> Só com problema agora</label>
+        </div>
+        <table class="clientes cards-mobile">
+            <thead><tr>
+                <th><button type="button" data-ordem="nome">Empresa <i class="fa-solid fa-sort" aria-hidden="true"></i></button></th>
+                <th><button type="button" data-ordem="offline">Sites <i class="fa-solid fa-sort" aria-hidden="true"></i></button></th>
+                <th><button type="button" data-ordem="disp">Disponibilidade no mês <i class="fa-solid fa-sort" aria-hidden="true"></i></button></th>
+                <th><button type="button" data-ordem="alertas">Alertas <i class="fa-solid fa-sort" aria-hidden="true"></i></button></th>
+                <th><button type="button" data-ordem="queda">Última queda <i class="fa-solid fa-sort" aria-hidden="true"></i></button></th>
+                <th>Ações</th></tr></thead>
+            <tbody>
+            {% for e in empresas %}
+            <tr data-nome="{{ e.nome|lower }}" data-problema="{{ 1 if e.offline or e.alertas else 0 }}" data-master="{{ 1 if e.master else 0 }}"
+                data-offline="{{ e.offline }}" data-alertas="{{ e.alertas }}" data-disp="{{ e.disponibilidade.pct if e.disponibilidade else 101 }}"
+                data-queda="{{ e.ultima_queda.inicio if e.ultima_queda else 0 }}">
+                <td data-label="Empresa"><strong>{{ e.nome }}</strong>{% if e.master %} <span class="chip">Empresa Master</span>{% endif %}{% if not e.ativo %} <span class="chip vazio">inativa</span>{% endif %}
+                    <div class="chips apps-empresa" aria-label="Aplicativos contratados">
+                    {% for app, nome in aplicativos.items() if e.contrato[app] %}<span class="chip">{{ nome }}</span>{% else %}<span class="chip vazio">Nenhum aplicativo</span>{% endfor %}
+                    </div></td>
+                <td data-label="Sites">
+                    {% if e.sites %}
+                    <span class="sites-linha"><span class="status-ok">{{ e.online }} online</span>{% if e.offline %}<span class="num-off">{{ e.offline }} offline</span>{% endif %}{% if e.manutencao %}<span>{{ e.manutencao }} em manutenção</span>{% endif %}</span>
+                    {% else %}<span class="vazio">sem sensores</span>{% endif %}
+                </td>
+                <td data-label="Disponibilidade no mês">{% if e.disponibilidade %}<span class="pct {{ e.disponibilidade.faixa }}" title="{{ e.disponibilidade.quedas }} queda(s), {{ e.disponibilidade.fora_txt }} sem comunicação">{{ pct(e.disponibilidade) }}</span>{% else %}<span class="vazio">—</span>{% endif %}</td>
+                <td data-label="Alertas">{% if e.alertas %}<span class="num-off">{{ e.alertas }}</span>{% else %}<span class="vazio">—</span>{% endif %}</td>
+                <td data-label="Última queda">{% if e.ultima_queda %}{{ e.ultima_queda.site }} · <span data-ts="{{ e.ultima_queda.inicio }}"></span>{% if e.ultima_queda.ativa %} <span class="num-off">(em andamento)</span>{% endif %}{% else %}<span class="vazio">—</span>{% endif %}</td>
+                <td data-label="Ações"><div class="acoes-linha">
+                    <a href="/?ver_como={{ e.id }}"><i class="fa-solid fa-eye"></i> Ver como cliente</a>
+                    <a href="/usuarios#empresas"><i class="fa-solid fa-file-signature"></i> Contrato</a>
+                </div></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="vazio">Nenhuma empresa cadastrada ainda. Cadastre em <a href="/usuarios">Acessos</a>.</td></tr>
+            {% endfor %}
+            <tr id="nenhum-filtro" hidden><td colspan="6" class="vazio">Nenhuma empresa com esse filtro.</td></tr>
+            </tbody>
+        </table>
+    </section>
+    </div>
+    <div class="col-lateral">
+    <section class="bloco atencao" id="atencao" aria-labelledby="t-atencao">
+        <div class="bloco-cab"><h2 id="t-atencao">Precisa de atenção</h2>
+            {% if atencao %}<span class="contagem">{{ atencao|length }}</span>{% endif %}</div>
+        {% if atencao %}
+        <ul class="lista-atencao">
+            {% for i in atencao[:8] %}
+            <li class="{{ i.nivel }}">
+                <a href="{{ i.link }}">
+                    <span class="marca" aria-hidden="true"><i class="fa-solid {{ {'critico': 'fa-circle-exclamation', 'atencao': 'fa-triangle-exclamation', 'info': 'fa-circle-info'}[i.nivel] }}"></i></span>
+                    <span class="texto">
+                        <strong>{{ i.titulo }}</strong>
+                        <span>{{ i.site }}{% if i.empresa %} · {{ i.empresa }}{% endif %}</span>
+                    </span>
+                    {% if i.desde %}<span class="quando" data-ts="{{ i.desde }}"></span>{% endif %}
+                    <span class="sr-only">({{ {'critico': 'crítico', 'atencao': 'atenção', 'info': 'informativo'}[i.nivel] }})</span>
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
+        {% if atencao|length > 8 %}<p class="mais">E mais {{ atencao|length - 8 }}. Veja todos na <a href="/pulse">Operação</a>.</p>{% endif %}
+        {% else %}
+        <div class="nada-pendente">
+            <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+            <div><strong>Nada pendente agora</strong><span>Todos os sites estão comunicando e sem diagnóstico aberto.</span></div>
+        </div>
+        {% endif %}
+    </section>
+
+    <section class="bloco eventos" id="eventos" aria-labelledby="t-eventos">
+        <div class="bloco-cab"><h2 id="t-eventos">Últimos eventos</h2><span class="bloco-nota">7 dias</span></div>
+        {% if eventos %}
+        <ol class="linha-tempo">
+            {% for ev in eventos %}
+            <li class="ev-{{ ev.tipo }}">
+                <span class="ponto" aria-hidden="true"></span>
+                <div>
+                    <p class="ev-titulo">{% if ev.link %}<a href="{{ ev.link }}">{{ ev.titulo }}</a>{% else %}{{ ev.titulo }}{% endif %}</p>
+                    <p class="ev-meta">{% if ev.site %}{{ ev.site }} · {% endif %}<span data-ts="{{ ev.quando }}"></span></p>
+                    {% if ev.vezes > 1 %}<p class="ev-detalhe"><span class="ev-vezes">{{ ev.vezes }} vezes</span> desde <span data-ts="{{ ev.primeiro }}"></span>{% if ev.detalhe == 'Em aberto' %} · em aberto agora{% endif %}</p>
+                    {% elif ev.detalhe and ev.detalhe != ev.titulo %}<p class="ev-detalhe">{{ ev.detalhe }}</p>{% endif %}
+                </div>
+            </li>
+            {% endfor %}
+        </ol>
+        {% else %}
+        <p class="vazio">Nada registrado nos últimos 7 dias.</p>
+        {% endif %}
+    </section>
+
+    </div>
+    </div>
+
+{% else %}
+    {% if ver_como %}
+    <div class="ver-como" role="status">
+        <span><i class="fa-solid fa-eye"></i> Você está vendo o NexoHub como <strong>{{ empresa.nome or empresa.usuario }}</strong> vê. Somente consulta.</span>
+        <a href="/"><i class="fa-solid fa-arrow-left"></i> Voltar para a visão da MD</a>
+    </div>
+    {% endif %}
+
+    {% set atalhos = [] %}
+    {% for c in cards %}
+        {% set _ = atalhos.append({'rotulo': c.nome, 'marca': c.app,
+            'href': {'pulse': '/pulse', 'report': '/report', 'desk': '/desk'}.get(c.app) if c.estado == 'liberado' else None,
+            'nota': {'liberado': None, 'em_breve': 'Em breve', 'vitrine': 'Não contratado'}[c.estado]}) %}
+    {% endfor %}
+    {% set _ = atalhos.append({'rotulo': 'Minha conta', 'href': '/conta', 'icone': 'fa-user-gear'}) %}
+    {% set lancador_nota = (empresa.nome or empresa.usuario) if empresa else None %}
+    {% set estado_rede = [] %}
+    {% for c in cards if c.app == 'pulse' and c.estado == 'liberado' %}
+        {% if c.disponibilidade %}{% set _ = estado_rede.append({'rotulo': 'Disponibilidade em ' ~ c.disponibilidade.mes, 'valor': pct(c.disponibilidade),
+                                                               'destaque': True, 'classe': c.disponibilidade.faixa}) %}{% endif %}
+        {% set _ = estado_rede.append({'rotulo': 'Sites online', 'valor': c.resumo.online}) %}
+        {% set _ = estado_rede.append({'rotulo': 'Offline', 'valor': c.resumo.offline, 'classe': 'critico' if c.resumo.offline else None}) %}
+    {% endfor %}
+    {% include '_lancador.html' %}
+
+    <h2 class="titulo-secao">Seus aplicativos</h2>
+
+    <div class="apps">
+    {% for c in cards %}
+        <article class="app-card {{ c.estado }}">
+            <header>
+                {{ simbolo(c.app) }}
+                <div>
+                    <h2>{% if c.estado == 'vitrine' %}Conheça o {% endif %}{{ c.nome }}</h2>
+                    {% if c.estado == 'liberado' %}<p class="sub">Seu acesso: {{ rotulos_nivel[c.nivel] }}</p>{% endif %}
+                </div>
+                {% if c.estado == 'liberado' %}<span class="etiqueta ok">Ativo</span>
+                {% elif c.estado == 'em_breve' %}<span class="etiqueta">Em breve</span>
+                {% else %}<span class="etiqueta">Não contratado</span>{% endif %}
+            </header>
+
+            {% if c.estado == 'liberado' and c.app == 'pulse' %}
+                {% set r = c.resumo %}
+                {% set d = c.disponibilidade %}
+                {% if d %}
+                <div class="disp {{ d.faixa }}">
+                    <strong>{{ pct(d) }}</strong>
+                    <div class="disp-txt">
+                        <span>de disponibilidade em {{ d.mes }}</span>
+                        <small>{% if d.quedas %}{{ d.quedas }} queda{{ 's' if d.quedas != 1 }}, {{ d.fora_txt }} sem comunicação{% else %}Nenhuma queda este mês{% endif %}</small>
+                    </div>
+                </div>
+                {% endif %}
+                <div class="kpis">
+                    <div class="kpi"><strong class="status-ok">{{ r.online }}</strong><span>online</span></div>
+                    <div class="kpi"><strong class="{{ 'num-off' if r.offline }}">{{ r.offline }}</strong><span>offline</span></div>
+                    <div class="kpi"><strong>{{ r.manutencao }}</strong><span>em manutenção</span></div>
+                </div>
+                {% if r.diagnosticos %}
+                <div>
+                    <p style="margin-bottom:8px;"><strong>{{ r.total_diagnosticos }} diagnóstico{{ 's' if r.total_diagnosticos != 1 }} ativo{{ 's' if r.total_diagnosticos != 1 }}</strong></p>
+                    <ul class="lista-diag">
+                        {% for d in r.diagnosticos %}
+                        <li><span class="site">{{ d.site }}</span><span>{{ d.causa }}</span><span class="quando" data-ts="{{ d.inicio }}"></span></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% elif r.sites %}
+                <p class="tudo-ok"><i class="fa-solid fa-circle-check"></i> Tudo funcionando: nenhum diagnóstico ativo.</p>
+                {% else %}
+                <p>Nenhum site monitorado ainda. A MD instala os sensores e eles aparecem aqui.</p>
+                {% endif %}
+                {% if r.ultima_queda %}
+                <div class="queda"><span>Última queda: <strong>{{ r.ultima_queda.site }}</strong>{% if r.ultima_queda.ativa %} (em andamento){% endif %}</span><span class="quando" data-ts="{{ r.ultima_queda.inicio }}"></span></div>
+                {% endif %}
+                {% if not ver_como %}
+                <a class="abrir" href="/pulse"><i class="fa-solid fa-gauge-high"></i> Abrir a Operação</a>
+                {% endif %}
+            {% elif c.estado == 'liberado' and c.app == 'report' %}
+                {% if c.ultimo %}
+                <div class="disp {{ {'ok': 'ok', 'atencao': 'atencao', 'critico': 'critico'}.get(c.ultimo.situacao, '') }}">
+                    <strong>{{ ('%.1f' % c.ultimo.pct).replace('.', ',') ~ '%' if c.ultimo.pct is not none else '—' }}</strong>
+                    <div class="disp-txt">
+                        <span>de disponibilidade em {{ c.ultimo.rotulo }}</span>
+                        <small>Último relatório emitido</small>
+                    </div>
+                </div>
+                {% else %}
+                <p>O primeiro relatório sai automaticamente no dia 1, com os números do mês que terminou.</p>
+                {% endif %}
+                {% if not ver_como %}
+                <a class="abrir" href="/report"><i class="fa-solid fa-file-pdf"></i> Abrir os relatórios</a>
+                {% endif %}
+            {% elif c.estado == 'liberado' and c.app == 'desk' %}
+            {% set d = c.desk %}
+            {% if d and d.abertos %}
+            <div class="kpis">
+                <div class="kpi"><strong>{{ d.abertos }}</strong><span>aberto{{ 's' if d.abertos != 1 }}</span></div>
+                <div class="kpi"><strong class="{{ 'num-off' if d.com_voce }}">{{ d.com_voce }}</strong><span>esperando você</span></div>
+            </div>
+            <ul class="lista-diag">
+                {% for r in d.recentes %}
+                <li><span class="site">#{{ r.numero }}</span><span>{{ r.titulo }}</span><span class="quando" data-ts="{{ r.atualizado_em }}"></span></li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p>Nenhum chamado aberto. Precisa de ajuda da MD? Abra um chamado e acompanhe a resposta por aqui.</p>
+            {% endif %}
+            {% if not ver_como %}
+            <a class="abrir" href="/desk"><i class="fa-solid fa-headset"></i> {{ 'Ver os chamados' if d and d.abertos else 'Abrir um chamado' }}</a>
+            {% endif %}
+            {% elif c.estado == 'em_breve' %}
+                <p>{{ c.descricao }}</p>
+                <p>Já está no seu contrato. Assim que estiver disponível, ele aparece aqui.</p>
+            {% else %}
+                <p>{{ c.descricao }}</p>
+                <p>Fale com a MD para incluir no seu contrato.</p>
+            {% endif %}
+        </article>
+    {% else %}
+        <p class="vazio">Nenhum aplicativo liberado para você ainda. Fale com o administrador da sua empresa ou com a MD.</p>
+    {% endfor %}
+    </div>
+{% endif %}
+</main>
+<script>
+    // Datas vêm em segundos (epoch); mostra "há X" para o recente e a data local para o resto.
+    function formatarDatas(raiz) {
+        raiz.querySelectorAll('[data-ts]').forEach(el => {
+            const ts = Number(el.dataset.ts);
+            if (!ts) return;
+            const segundos = Math.max(0, Date.now() / 1000 - ts);
+            const data = new Date(ts * 1000);
+            el.title = data.toLocaleString('pt-BR');
+            if (segundos < 3600) el.textContent = 'há ' + Math.max(1, Math.round(segundos / 60)) + ' min';
+            else if (segundos < 86400) el.textContent = 'há ' + Math.round(segundos / 3600) + ' h';
+            else el.textContent = data.toLocaleString('pt-BR', {dateStyle: 'short', timeStyle: 'short'});
+        });
+    }
+
+    function filtrar() {
+        const campo = document.getElementById('filtro');
+        if (!campo) return;
+        const termo = campo.value.trim().toLowerCase();
+        const soProblema = document.getElementById('so-problema').checked;
+        let visiveis = 0;
+        document.querySelectorAll('table.clientes tbody tr[data-nome]').forEach(tr => {
+            const mostra = tr.dataset.nome.includes(termo) && (!soProblema || tr.dataset.problema === '1');
+            tr.hidden = !mostra;
+            if (mostra) visiveis++;
+        });
+        document.getElementById('nenhum-filtro').hidden = visiveis > 0;
+    }
+
+    // Ordenação da tabela da MD. Sem escolha, vale a ordem do servidor (Empresa Master e quem tem problema primeiro).
+    // "Pior primeiro" é o primeiro clique em cada coluna numérica; o segundo inverte.
+    let ordem = null;
+    const PIOR_PRIMEIRO = {offline: 'desc', alertas: 'desc', queda: 'desc', disp: 'asc', nome: 'asc'};
+    function ordenar() {
+        const corpo = document.querySelector('table.clientes tbody');
+        if (!corpo || !ordem) return;
+        const linhas = [...corpo.querySelectorAll('tr[data-nome]')];
+        const sinal = ordem.sentido === 'asc' ? 1 : -1;
+        linhas.sort((a, b) => {
+            if (ordem.campo === 'nome') return sinal * a.dataset.nome.localeCompare(b.dataset.nome, 'pt-BR');
+            return sinal * (Number(a.dataset[ordem.campo]) - Number(b.dataset[ordem.campo])) || a.dataset.nome.localeCompare(b.dataset.nome, 'pt-BR');
+        });
+        const fim = document.getElementById('nenhum-filtro');
+        linhas.forEach(tr => corpo.insertBefore(tr, fim));
+        document.querySelectorAll('table.clientes th').forEach(th => {
+            const botao = th.querySelector('button[data-ordem]');
+            const ativo = botao && botao.dataset.ordem === ordem.campo;
+            if (ativo) th.setAttribute('aria-sort', ordem.sentido === 'asc' ? 'ascending' : 'descending'); else th.removeAttribute('aria-sort');
+            const icone = botao && botao.querySelector('i');
+            if (icone) icone.className = 'fa-solid ' + (ativo ? (ordem.sentido === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort');
+        });
+    }
+    document.querySelectorAll('table.clientes th button[data-ordem]').forEach(botao => botao.addEventListener('click', () => {
+        const campo = botao.dataset.ordem;
+        const inverso = s => (s === 'asc' ? 'desc' : 'asc');
+        ordem = {campo, sentido: ordem && ordem.campo === campo ? inverso(ordem.sentido) : PIOR_PRIMEIRO[campo]};
+        ordenar();
+    }));
+
+    // Atualiza os números a cada minuto sem recarregar a página: mantém rolagem, filtro e ordenação.
+    const PARTES = ['.faixa-status', '.mes-topo', '.grafico-mes figcaption', '.grafico-area svg', '.como-tabela table', '#atencao', '#eventos',
+                    'table.clientes tbody', '.apps'];
+    async function atualizar() {
+        if (document.visibilityState !== 'visible') return;
+        try {
+            const resposta = await fetch(location.href, {credentials: 'same-origin', cache: 'no-store'});
+            if (resposta.redirected || !resposta.ok) { if (resposta.redirected) location.reload(); return; }
+            const novo = new DOMParser().parseFromString(await resposta.text(), 'text/html');
+            PARTES.forEach(seletor => {
+                const atual = document.querySelector(seletor), chegou = novo.querySelector(seletor);
+                if (atual && chegou) atual.innerHTML = chegou.innerHTML;
+            });
+            formatarDatas(document);
+            ordenar();
+            filtrar();
+        } catch (_) { /* sem rede: tenta de novo no próximo minuto */ }
+    }
+
+    // Dica do gráfico do mês: passa o mouse (ou o foco do teclado) sobre um dia.
+    const areaGrafico = document.querySelector('.grafico-area');
+    if (areaGrafico) {
+        const dica = areaGrafico.querySelector('.dica');
+        const mostrar = alvo => {
+            const dia = alvo && alvo.closest('.dia[data-tip]');
+            if (!dia) { dica.hidden = true; return; }
+            const caixa = dia.getBoundingClientRect(), base = areaGrafico.getBoundingClientRect();
+            dica.textContent = dia.dataset.tip;
+            dica.hidden = false;
+            const meia = dica.offsetWidth / 2;
+            dica.style.left = Math.min(Math.max(caixa.left - base.left + caixa.width / 2, meia), base.width - meia) + 'px';
+        };
+        areaGrafico.addEventListener('mouseover', e => mostrar(e.target));
+        areaGrafico.addEventListener('mouseleave', () => { dica.hidden = true; });
+        areaGrafico.addEventListener('focusin', e => mostrar(e.target));
+        areaGrafico.addEventListener('focusout', () => { dica.hidden = true; });
+    }
+
+    formatarDatas(document);
+    setInterval(atualizar, 60000);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') atualizar(); });
+</script>
+</body>
+</html>
