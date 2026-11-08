@@ -36,6 +36,7 @@ import urllib.error
 import re
 import unicodedata
 import hashlib
+import gzip
 from datetime import datetime, timedelta, timezone
 
 # Chave privada RSA usada para assinar os tokens de acesso local do agente (nexopulse_edge.py guarda só a pública)
@@ -465,6 +466,38 @@ def _situacao_conta(conn_fn, user_id):
     situacao = dict(row) if row else None
     _cache_sessao[user_id] = (agora, situacao)
     return situacao
+
+
+COMPRIMIR_TIPOS = ('application/json', 'text/html', 'text/css', 'application/javascript', 'text/javascript',
+                   'image/svg+xml', 'text/plain', 'text/csv')
+COMPRIMIR_MIN_BYTES = 1024
+
+
+@app.after_request
+def comprimir_resposta(response):
+    """gzip para respostas de texto acima de 1 KB, quando o navegador aceita.
+
+    O mapa de sensores e os logs viajam a cada poucos segundos para cada tela aberta; JSON comprime
+    80-90%. Fica de fora o que já vem comprimido, o que é enviado aos poucos (arquivos, streaming) e
+    o Socket.IO, que cuida do próprio transporte."""
+    try:
+        if (response.direct_passthrough or response.is_streamed or response.status_code < 200
+                or response.status_code >= 300 or 'Content-Encoding' in response.headers
+                or request.path.startswith('/socket.io')
+                or 'gzip' not in (request.headers.get('Accept-Encoding') or '').lower()
+                or (response.mimetype or '') not in COMPRIMIR_TIPOS):
+            return response
+        dados = response.get_data()
+        if len(dados) < COMPRIMIR_MIN_BYTES:
+            return response
+        comprimido = gzip.compress(dados, compresslevel=5)
+        response.set_data(comprimido)
+        response.headers['Content-Encoding'] = 'gzip'
+        response.headers['Content-Length'] = str(len(comprimido))
+        response.vary.add('Accept-Encoding')
+    except Exception:
+        app.logger.exception('Falha ao comprimir a resposta de %s', request.path)
+    return response
 
 
 @app.after_request
@@ -2191,7 +2224,7 @@ def report_data():
         mapa_para_sensor = _mapa_para_o_sensor(conn, mac, data.get('mapa_rede_versao'))
         conn.close()
 
-        socketio.emit('atualizacao_global', {})
+        avisar_telas()
         resposta = {"status": "OK", "command": comando}
         if mapa_para_sensor:
             resposta["mapa_rede"] = mapa_para_sensor
@@ -2674,9 +2707,78 @@ def resumir_conectividade(sensores):
     return resumo
 
 
+# Várias telas abertas pedem o mapa ao mesmo tempo: dentro de MAPA_CACHE_S, quem tem o mesmo escopo
+# (MD vê tudo; cliente vê a própria empresa) recebe o mesmo resultado sem nova consulta ao banco.
+MAPA_CACHE_S = 3.0
+_mapa_cache = {}
+_mapa_cache_lock = threading.Lock()
+
+
+def _escopo_do_mapa():
+    role = session.get('role')
+    if role in ('Administrador Master', 'Operador Master'):
+        return 'md'
+    return f"u{session.get('user_id')}:{role}"
+
+
+# Cada batimento de cada sensor avisava todas as telas; com muitos sensores eram vários avisos por
+# segundo. Agora sai no máximo um aviso a cada AVISO_TELAS_S (o último batimento nunca se perde:
+# um aviso atrasado é agendado para o fim do intervalo).
+AVISO_TELAS_S = 3.0
+_aviso_telas = {'ultimo': 0.0, 'agendado': False}
+_aviso_telas_lock = threading.Lock()
+
+
+def avisar_telas():
+    agora = time.monotonic()
+    with _aviso_telas_lock:
+        espera = AVISO_TELAS_S - (agora - _aviso_telas['ultimo'])
+        if espera <= 0:
+            _aviso_telas['ultimo'] = agora
+        elif _aviso_telas['agendado']:
+            return
+        else:
+            _aviso_telas['agendado'] = True
+    if espera <= 0:
+        socketio.emit('atualizacao_global', {})
+        return
+
+    def _depois():
+        socketio.sleep(espera)
+        with _aviso_telas_lock:
+            _aviso_telas['agendado'] = False
+            _aviso_telas['ultimo'] = time.monotonic()
+        socketio.emit('atualizacao_global', {})
+    socketio.start_background_task(_depois)
+
+
 @app.route('/api/v2/mapa_sensores')
 def api_mapa_sensores():
     if 'user_id' not in session: return jsonify({"error": "Acesso Negado"}), 401
+    escopo, agora = _escopo_do_mapa(), time.monotonic()
+    with _mapa_cache_lock:
+        guardado = _mapa_cache.get(escopo)
+    if guardado and agora - guardado[0] < MAPA_CACHE_S:
+        corpo, etag = guardado[1], guardado[2]
+    else:
+        resposta = _montar_mapa_sensores()
+        if resposta.status_code != 200 or b'"error_sql"' in resposta.get_data():
+            return resposta
+        corpo = resposta.get_data()
+        etag = hashlib.sha256(corpo).hexdigest()[:20]
+        with _mapa_cache_lock:
+            _mapa_cache[escopo] = (agora, corpo, etag)
+    # Nada mudou desde a última vez que esta tela buscou: só o aviso de "igual", sem o mapa.
+    if request.if_none_match and etag in request.if_none_match:
+        resposta = app.response_class(status=304)
+    else:
+        resposta = app.response_class(corpo, mimetype='application/json')
+    resposta.set_etag(etag)
+    resposta.headers['Cache-Control'] = 'private, no-cache'
+    return resposta
+
+
+def _montar_mapa_sensores():
     role = session.get('role'); user_id = session.get('user_id')
     conn = database.get_db()
 
@@ -2758,7 +2860,7 @@ def reportar_velocidade():
         conn.commit()
         conn.close()
 
-        socketio.emit('atualizacao_global', {})
+        avisar_telas()
         return jsonify({"status": "OK"})
     except Exception as e:
         print(f"Erro ao salvar Speedtest: {e}")

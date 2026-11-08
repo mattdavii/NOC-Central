@@ -25,6 +25,7 @@ def client():
         conn.execute("SELECT setval(pg_get_serial_sequence('clientes', 'id'), (SELECT MAX(id) FROM clientes))")
     conn.commit();conn.close()
     central._cache_sessao.clear()
+    central._mapa_cache.clear()
     central.app.config['TESTING'] = True
     return central.app.test_client()
 

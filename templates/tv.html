@@ -163,9 +163,13 @@
         }, 1000);
 
         // MOTOR DE DADOS DA GRADE
+        let etagTV = null;
         async function buscarDadosTV() {
+            if (document.hidden) return;
             try {
-                const res = await fetch('/api/v2/mapa_sensores');
+                const res = await fetch('/api/v2/mapa_sensores', { headers: etagTV ? { 'If-None-Match': etagTV } : {} });
+                if (res.status === 304) return;
+                etagTV = res.headers.get('ETag');
                 const data = await res.json();
                 const sensores = data.sensores || [];
                 
@@ -306,8 +310,10 @@
         }, 60); // Velocidade do scroll suave
 
         // TAXAS DE ATUALIZAÇÃO
-        setInterval(buscarDadosTV, 5000);
-        setInterval(buscarLogsTV, 15000); // Atualiza os logs a cada 15 seg
+        // 10 s na grade e 30 s nos logs: a TV continua "ao vivo" com um terço do tráfego de antes.
+        setInterval(buscarDadosTV, 10000);
+        setInterval(buscarLogsTV, 30000);
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) { buscarDadosTV(); buscarLogsTV(); } });
         buscarDadosTV();
         buscarLogsTV();
 
