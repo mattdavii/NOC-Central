@@ -11,7 +11,7 @@
 {% import 'desk/_prazo.html' as prazo %}
 {% macro iniciais(nome) -%}{%- set partes = (nome or '?').split() -%}{{ (partes[0][:1] ~ (partes[1][:1] if partes|length > 1 else partes[0][1:2])) | upper }}{%- endmacro %}
 <main class="page-main">
-    <div class="cabeca">
+    <div class="cabeca faixa-pagina">
         <div class="marca">
             {% include 'desk/_marca.html' %}
             <div>
