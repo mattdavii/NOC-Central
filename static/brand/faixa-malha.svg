@@ -1,16 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 220">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 220" preserveAspectRatio="xMaxYMid slice">
+  <style>
+    .pulso { transform-box: fill-box; transform-origin: center; animation: pulso 3.2s ease-out infinite; }
+    @keyframes pulso { from { transform: scale(1); opacity: .9; } to { transform: scale(4.2); opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { .pulso { animation: none; opacity: 0; } }
+  </style>
   <g fill="none" stroke="#7DD3FC" stroke-opacity=".16" stroke-width="1.2">
-    <path d="M40 200L120 140L230 160L330 70L440 130L540 60L630 110"/>
-    <path d="M120 140L160 50L330 70L390 205L540 185L630 110"/>
-    <path d="M230 160L280 215L390 205L440 130M160 50L250 18L330 70M440 130L490 22L540 60"/>
-    <path d="M40 200L70 90L120 140M70 90L160 50M540 185L600 215M630 110L638 20"/>
+    <path d="M560 190L640 120L760 150L860 70L980 130L1110 60L1260 110"/>
+    <path d="M640 120L690 40L860 70L930 200L1110 180L1260 110"/>
+    <path d="M760 150L810 210L930 200L980 130M690 40L790 20L860 70M980 130L1040 25L1110 60"/>
+    <path d="M560 190L600 70L640 120M600 70L690 40M1110 180L1200 210M1260 110L1290 30"/>
   </g>
   <g fill="#2D6C9C">
-    <circle cx="40" cy="200" r="3"/><circle cx="70" cy="90" r="3"/><circle cx="160" cy="50" r="3"/>
-    <circle cx="120" cy="140" r="3.5"/><circle cx="250" cy="18" r="2.5"/><circle cx="280" cy="215" r="2.5"/>
-    <circle cx="230" cy="160" r="3.5"/><circle cx="390" cy="205" r="3"/><circle cx="440" cy="130" r="3.5"/>
-    <circle cx="490" cy="22" r="3"/><circle cx="540" cy="60" r="3"/><circle cx="540" cy="185" r="3"/>
-    <circle cx="630" cy="110" r="3"/><circle cx="600" cy="215" r="2.5"/>
+    <circle cx="560" cy="190" r="3"/><circle cx="600" cy="70" r="3"/><circle cx="690" cy="40" r="3"/>
+    <circle cx="760" cy="150" r="3.5"/><circle cx="790" cy="20" r="2.5"/><circle cx="810" cy="210" r="2.5"/>
+    <circle cx="860" cy="70" r="4"/><circle cx="930" cy="200" r="3"/><circle cx="980" cy="130" r="3.5"/>
+    <circle cx="1040" cy="25" r="3"/><circle cx="1110" cy="60" r="3"/><circle cx="1110" cy="180" r="3"/>
+    <circle cx="1260" cy="110" r="3"/><circle cx="1200" cy="210" r="2.5"/><circle cx="1290" cy="30" r="2.5"/>
   </g>
-  <circle cx="330" cy="70" r="5" fill="#22C1EE"/>
+  <circle cx="640" cy="120" r="6" fill="#22C1EE"/>
+  <circle class="pulso" cx="640" cy="120" r="6" fill="none" stroke="#22C1EE" stroke-width="1.5"/>
 </svg>
