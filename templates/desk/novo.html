@@ -11,7 +11,7 @@
 {% set interno = escolhida and escolhida.master %}
 <main class="page-main">
     <div class="trilha"><a href="/desk">{{ 'Chamados' if md else 'Meus chamados' }}</a> / Abrir chamado</div>
-    <div class="cabeca"><div>
+    <div class="cabeca faixa-pagina"><div>
         <h1>{% if interno %}Chamado interno da MD{% elif md %}Abrir chamado em nome de um cliente{% else %}Abrir chamado{% endif %}</h1>
         <p>{% if md %}Para registrar um pedido que chegou por WhatsApp, telefone ou visita, ou uma tarefa interna da MD.
            {% else %}Conte o que está acontecendo. A equipe da MD responde por aqui, e você acompanha tudo nesta página.{% endif %}</p>

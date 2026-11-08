@@ -82,10 +82,36 @@ a.app-user:hover, a.app-user.active { color:var(--blue); }
 .theme-toggle:hover { border-color:var(--blue); color:var(--blue); }
 /* Título padrão das páginas, logo abaixo da barra. */
 .page-head { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin:0 0 22px; }
-.page-head h1 { margin:0; font-size:1.45rem; font-weight:700; letter-spacing:-.01em; color:var(--text-main); display:flex; align-items:center; gap:10px; }
+.page-head h1 { margin:0; font-size:1.55rem; font-weight:700; letter-spacing:-.02em; color:var(--text-main); display:flex; align-items:center; gap:10px; }
 .page-head h1 i { color:var(--blue); font-size:.9em; }
-.page-head p { margin:4px 0 0; color:var(--text-muted); font-size:.9rem; }
+.page-head p { margin:6px 0 0; color:var(--text-muted); font-size:.92rem; max-width:72ch; line-height:1.5; }
 .page-head .page-actions { display:flex; gap:8px; flex-wrap:wrap; }
+
+/* Faixa de cabeçalho: o "console" escuro do NexoHub, igual nos dois temas. Dentro dela valem as cores do tema escuro,
+   então estilos que usam var(--blue), var(--text-muted) etc. (inclusive os inline) ficam legíveis sem ajuste. */
+.page-head, .faixa-pagina {
+  --text-main:#E8F1FA; --text-muted:#9FB4CB; --blue:#22C1EE; --link:#7DD3FC; --green:#2DD4BF; --purple:#7DD3FC;
+  --border:rgba(125,211,252,.24); --bg-input:rgba(4,16,31,.55); --bg-card:rgba(4,16,31,.55); --bg-base:#0B1728;
+  --status-ok:#4ADE80; --status-warn:#FBBF24; --status-crit:#F87171; --red:#F87171; --yellow:#FBBF24;
+  position:relative; color:var(--text-main); padding:26px 30px; border-radius:16px; border:1px solid #16406A;
+  background:url('/static/brand/faixa-malha.svg') right center / auto 100% no-repeat,
+             radial-gradient(120% 140% at 85% 30%, #0F3B66 0%, #0A2747 45%, #071A31 100%);
+  box-shadow:0 24px 60px -34px rgba(3,18,36,.8);
+}
+.page-head .sym-dark, .faixa-pagina .sym-dark { display:block !important; }
+.page-head .sym-light, .faixa-pagina .sym-light { display:none !important; }
+.page-head a:not(.action-btn):not(.btn), .faixa-pagina a:not(.action-btn):not(.btn) { color:var(--link); }
+.page-head .action-btn.btn-secondary, .faixa-pagina .action-btn.btn-secondary,
+.page-head select, .faixa-pagina select { background:rgba(255,255,255,.06); border-color:rgba(125,211,252,.3); color:#E8F1FA; }
+.page-head .action-btn.btn-secondary:hover, .faixa-pagina .action-btn.btn-secondary:hover { background:rgba(255,255,255,.12); }
+.page-head select option, .faixa-pagina select option { color:#082E56; background:#fff; }
+@media(max-width:700px) {
+  .page-head, .faixa-pagina { padding:20px 18px; border-radius:14px; background:radial-gradient(140% 120% at 90% 0%, #0F3B66 0%, #0A2747 50%, #071A31 100%); }
+  .navbar.faixa-pagina { background:radial-gradient(140% 120% at 90% 0%, #0F3B66 0%, #0A2747 50%, #071A31 100%) !important; }
+  .page-head h1 { font-size:1.3rem; }
+  .page-head select, .faixa-pagina select { max-width:100%; min-width:0 !important; }
+  .page-head form, .faixa-pagina form { max-width:100%; }
+}
 .breadcrumb { display:flex; align-items:center; gap:8px; font-size:.82rem; color:var(--text-muted); margin-bottom:6px; }
 .breadcrumb a { color:var(--text-muted); text-decoration:none; }
 .breadcrumb a:hover { color:var(--blue); }
@@ -139,6 +165,8 @@ button.action-btn:disabled { opacity:.55; cursor:progress; }
 @media(prefers-reduced-motion:reduce) { * { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
 .card,.g-card,.kpi-card,.sidebar-area,.login-box { background:var(--bg-card)!important; }
 .navbar,.tv-header { background:var(--overlay)!important; }
+.navbar.faixa-pagina { background:url('/static/brand/faixa-malha.svg') right center / auto 100% no-repeat,
+  radial-gradient(120% 140% at 85% 30%, #0F3B66 0%, #0A2747 45%, #071A31 100%) !important; margin:16px auto 0; max-width:min(1600px, calc(100% - 40px)); box-sizing:border-box; }
 html[data-theme="light"] .terminal-box,
 html[data-theme="light"] #network-topology,
 html[data-theme="light"] #network-modal-canvas { background:#E8F1FA!important; }
