@@ -12,6 +12,7 @@ import app_campo
 import campo
 import nexodesk
 import nexoguard
+import confiaveis
 import sla
 import notifications
 import oui
@@ -1413,6 +1414,12 @@ def login():
                     conn.execute('UPDATE clientes SET senha=? WHERE id=?', (generate_password_hash(senha_digitada), user['id']))
                     conn.commit()
                 if dict(user).get('totp_ativo'):
+                    # Aparelho lembrado (cookie válido para este usuário): a senha basta por até 30 dias.
+                    lembrado = confiaveis.reconhecer(conn, user['id'], request.cookies.get(confiaveis.nome_do_cookie(user['id'])))
+                    conn.commit()
+                    if lembrado:
+                        _iniciar_sessao(conn, user, 'dispositivo_lembrado')
+                        return redirect(url_for('hub'))
                     # Senha certa, falta o código: nada de sessão ainda, só a etapa pendente (5 minutos).
                     session.clear()
                     session['2fa_pendente'] = {'id': user['id'], 'ate': time.time() + 300}
@@ -1427,6 +1434,24 @@ def login():
         finally: conn.close()
 
     return render_template('login.html', erro=erro)
+
+
+def _lembrar_se_pedido(conn, user, resposta):
+    """Marcou "lembrar este dispositivo" na segunda etapa: grava o aparelho e devolve o cookie (30 dias)."""
+    if request.form.get('lembrar') != '1':
+        return resposta
+    valor, segundos = confiaveis.lembrar(conn, user['id'], request.headers.get('User-Agent'), request.remote_addr)
+    _auditar(conn, 'dispositivo_lembrado', alvo=user['usuario'], autor=user,
+             detalhes={'aparelho': confiaveis.rotulo(request.headers.get('User-Agent'))})
+    conn.commit()
+    resposta.set_cookie(confiaveis.nome_do_cookie(user['id']), valor, max_age=segundos, httponly=True,
+                        secure=app.config['SESSION_COOKIE_SECURE'], samesite='Lax', path='/')
+    return resposta
+
+
+def _aparelho_atual(usuario_id):
+    """Id do aparelho lembrado deste navegador (para não esquecê-lo ao sair dos outros)."""
+    return confiaveis.id_do_cookie(request.cookies.get(confiaveis.nome_do_cookie(usuario_id)))
 
 
 @app.route('/login/2fa', methods=['GET', 'POST'])
@@ -1457,14 +1482,14 @@ def login_2fa():
             if passo is not None:
                 conn.execute('UPDATE clientes SET totp_ultimo_passo=? WHERE id=?', (passo, user['id']))
                 _iniciar_sessao(conn, user, '2fa')
-                return redirect(url_for('hub'))
+                return _lembrar_se_pedido(conn, user, redirect(url_for('hub')))
             restantes = seguranca.usar_codigo_recuperacao(user['codigos_recuperacao'], digitado)
             if restantes is not None:
                 conn.execute('UPDATE clientes SET codigos_recuperacao=? WHERE id=?', (restantes, user['id']))
                 _iniciar_sessao(conn, user, 'codigo_recuperacao')
                 if seguranca.codigos_restantes(restantes) <= 2:
                     flash('Você usou um código de recuperação e restam poucos. Gere novos em Minha conta.')
-                return redirect(url_for('hub'))
+                return _lembrar_se_pedido(conn, user, redirect(url_for('hub')))
             bloqueio = _falha_login(conn, user['usuario'], user, '2fa_falhou')
             if bloqueio:
                 session.pop('2fa_pendente', None)
@@ -3219,6 +3244,7 @@ def alterar_senha_user(id_user):
     conn = database.get_db()
     # Senha redefinida por um administrador derruba as sessões abertas do usuário.
     db_execute(conn, "UPDATE clientes SET senha = ?, sessao_versao = COALESCE(sessao_versao, 0) + 1 WHERE id = ?", (nova_senha, id_user))
+    confiaveis.esquecer(conn, id_user)
     _auditar_alvo(conn, 'senha_redefinida', id_user)
     conn.commit(); conn.close()
     return jsonify({"status": "OK"})
@@ -3503,6 +3529,8 @@ def conta():
         empresa = conn.execute('SELECT nome, usuario FROM clientes WHERE id=?', (empresa_id,)).fetchone() if empresa_id else None
         return render_template('conta.html', user=user, empresa=(dict(empresa) if empresa else None),
                                exige_2fa=_exige_2fa(conn, user), obrigatorio_agora=bool(session.get('precisa_2fa')),
+                               lembrados=confiaveis.listar(conn, user['id']), aparelho_atual=_aparelho_atual(user['id']),
+                               quando=lambda t: datetime.fromtimestamp(t, hub.FUSO_BR).strftime('%d/%m/%Y %H:%M') if t else '—',
                                codigos_restantes=seguranca.codigos_restantes(user.get('codigos_recuperacao')),
                                cifra_disponivel=seguranca.cifra_disponivel(), senha_minimo=seguranca.SENHA_MINIMO)
     finally:
@@ -3531,6 +3559,7 @@ def conta_senha():
         conn.execute('UPDATE clientes SET senha=? WHERE id=?', (generate_password_hash(nova), user['id']))
         # Troca de senha encerra as outras sessões; esta continua.
         session['sv'] = _nova_versao_de_sessao(conn, user['id'])
+        confiaveis.esquecer(conn, user['id'], exceto=_aparelho_atual(user['id']))
         _auditar(conn, 'senha_trocada', alvo=user['usuario'], detalhes={'propria': True})
         conn.commit()
         return jsonify(status='OK')
@@ -3605,6 +3634,7 @@ def conta_2fa_desativar():
     conn = database.get_db()
     try:
         conn.execute('UPDATE clientes SET totp_ativo=0, totp_segredo=NULL, totp_ultimo_passo=NULL, codigos_recuperacao=NULL WHERE id=?', (user['id'],))
+        confiaveis.esquecer(conn, user['id'])
         _auditar(conn, '2fa_desativado', alvo=user['usuario'])
         conn.commit()
         return jsonify(status='OK')
@@ -3637,6 +3667,27 @@ def conta_2fa_codigos():
         conn.close()
 
 
+@app.route('/api/v2/conta/dispositivos/esquecer', methods=['POST'])
+def conta_esquecer_dispositivos():
+    """Esquece um aparelho lembrado ({"id": n}) ou todos ({"todos": true}): o próximo login nele pede o código."""
+    if 'user_id' not in session:
+        return jsonify(error='Acesso Negado'), 403
+    data = request.get_json(silent=True) or {}
+    alvo = data.get('id')
+    if not data.get('todos') and not (isinstance(alvo, int) and not isinstance(alvo, bool)):
+        return jsonify(error='Diga qual aparelho esquecer.'), 400
+    conn = database.get_db()
+    try:
+        n = confiaveis.esquecer(conn, session['user_id'], None if data.get('todos') else alvo)
+        if not n and not data.get('todos'):
+            return jsonify(error='Aparelho não encontrado.'), 404
+        _auditar(conn, 'dispositivo_esquecido', alvo=session.get('usuario'), detalhes={'quantos': n})
+        conn.commit()
+        return jsonify(status='OK', esquecidos=n)
+    finally:
+        conn.close()
+
+
 @app.route('/api/v2/conta/sessoes/encerrar', methods=['POST'])
 def conta_encerrar_sessoes():
     """Sai de todos os outros aparelhos; esta sessão continua."""
@@ -3645,6 +3696,7 @@ def conta_encerrar_sessoes():
     conn = database.get_db()
     try:
         session['sv'] = _nova_versao_de_sessao(conn, session['user_id'])
+        confiaveis.esquecer(conn, session['user_id'], exceto=_aparelho_atual(session['user_id']))
         _auditar(conn, 'sessoes_encerradas', alvo=session.get('usuario'), detalhes={'propria': True})
         conn.commit()
         return jsonify(status='OK')
@@ -3696,6 +3748,7 @@ def acessos_redefinir_2fa(id_user):
             return erro
         conn.execute('UPDATE clientes SET totp_ativo=0, totp_segredo=NULL, totp_ultimo_passo=NULL, codigos_recuperacao=NULL WHERE id=?', (alvo['id'],))
         _nova_versao_de_sessao(conn, alvo['id'])
+        confiaveis.esquecer(conn, alvo['id'])
         _auditar_alvo(conn, '2fa_redefinido', alvo['id'])
         conn.commit()
         return jsonify(status='OK')

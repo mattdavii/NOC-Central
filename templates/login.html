@@ -31,6 +31,9 @@
         .btn-login:hover { filter: brightness(1.08); transform: translateY(-1px); }
         .btn-login:focus-visible { outline: 2px solid var(--text-main); outline-offset: 3px; }
         .flash-msg { background: color-mix(in srgb, var(--status-crit) 12%, transparent); color: var(--status-crit); border: 1px solid color-mix(in srgb, var(--status-crit) 40%, transparent); padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 20px; font-weight: bold; font-size: 0.9em; }
+        .login-lembrar { display: flex; gap: 10px; align-items: flex-start; margin: -4px 0 20px; cursor: pointer; font-size: .9rem; }
+        .login-lembrar input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--blue); flex: none; }
+        .login-lembrar small { display: block; color: var(--text-muted); font-size: .8rem; margin-top: 3px; line-height: 1.4; }
         .login-2fa-ajuda { margin: 0 0 16px; color: var(--text-muted); font-size: .88rem; line-height: 1.5; }
         .login-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 18px; margin: 14px 0 0; font-size: .82rem; }
         .login-links a { color: var(--text-muted); }
@@ -73,6 +76,8 @@
                 <input id="login-codigo" type="text" name="codigo" required autofocus autocomplete="one-time-code"
                        inputmode="text" autocapitalize="none" spellcheck="false" maxlength="12" placeholder="123456 ou xxxx-xxxx">
             </div>
+            <label class="login-lembrar"><input type="checkbox" name="lembrar" value="1">
+                <span>Lembrar este dispositivo por 30 dias<small>Nos próximos logins aqui, a senha basta. Não marque em computador compartilhado.</small></span></label>
             <button type="submit" class="btn-login">Confirmar</button>
         </form>
         <a class="login-privacy" href="/login?cancelar=1">Voltar e entrar com outro usuário</a>

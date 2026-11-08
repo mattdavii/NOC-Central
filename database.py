@@ -242,6 +242,9 @@ def init_db():
                              f"local TEXT, tecnico TEXT, quando DOUBLE PRECISION, recebida_em DOUBLE PRECISION NOT NULL, resumo TEXT, "
                              f"dados TEXT NOT NULL, pdf {'BYTEA' if DATABASE_URL else 'BLOB'}",
             # NexoGuard: um achado por (local, equipamento, regra); título e recomendação vêm da regra (nexoguard.py).
+            # Aparelhos lembrados na verificação em duas etapas (confiaveis.py): só o hash do segredo do cookie.
+            'dispositivos_confiaveis': "usuario_id INTEGER NOT NULL, segredo_hash TEXT NOT NULL, rotulo TEXT, ip TEXT, "
+                                       "criado_em DOUBLE PRECISION NOT NULL, expira_em DOUBLE PRECISION NOT NULL, usado_em DOUBLE PRECISION",
             'guard_achados': "sensor_mac TEXT NOT NULL, dispositivo TEXT NOT NULL, ip TEXT, nome TEXT, tipo TEXT, regra TEXT NOT NULL, "
                              "gravidade TEXT NOT NULL, evidencia TEXT, estado TEXT NOT NULL DEFAULT 'aberto', "
                              "primeiro_em DOUBLE PRECISION NOT NULL, visto_em DOUBLE PRECISION NOT NULL, resolvido_em DOUBLE PRECISION, "
@@ -265,6 +268,7 @@ def init_db():
         conn.execute('CREATE INDEX IF NOT EXISTS idx_chamado_anexos ON chamado_anexos (chamado_id)')
         conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_campo_tokens ON campo_tokens (token_hash)')
         conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_visitas_campo ON visitas_campo (uuid)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_dispositivos_confiaveis_usuario ON dispositivos_confiaveis (usuario_id)')
         conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_guard_achados ON guard_achados (sensor_mac, dispositivo, regra)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_guard_achados_estado ON guard_achados (estado, gravidade)')
         conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_relatorios_mensais ON relatorios_mensais (empresa_id, ano_mes, versao)')

@@ -23,6 +23,12 @@
         .dados dt { color: var(--text-muted); } .dados dd { margin: 0; font-weight: 600; }
         .estado { margin-left: auto; font-size: .72rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-muted); }
         .estado.ok { color: var(--status-ok); border-color: var(--status-ok); }
+        h3.sub { margin: 22px 0 6px; font-size: .95rem; }
+        .lembrados { list-style: none; margin: 0 0 12px; padding: 0; }
+        .lembrados li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+        .lembrados li:last-child { border-bottom: 1px solid var(--border); }
+        .lembrados .estado { margin-left: 6px; }
+        .lembrados small { display: block; color: var(--text-muted); font-size: .8rem; margin-top: 3px; }
         .campo { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
         .campo label { font-size: .8rem; color: var(--text-muted); font-weight: 700; }
         .campo input { background: var(--bg-input); border: 1px solid var(--border); color: var(--text-main); padding: 11px; border-radius: 8px; font: inherit; }
@@ -147,6 +153,22 @@
             <h2 id="t-sessoes"><i class="fa-solid fa-laptop"></i> Aparelhos conectados</h2>
             <p>Esqueceu a conta aberta em outro computador ou celular? Saia de todos eles de uma vez; este aparelho continua conectado.</p>
             <button class="btn" type="button" onclick="encerrarOutras()"><i class="fa-solid fa-right-from-bracket"></i> Sair dos outros aparelhos</button>
+            {% if user.totp_ativo %}
+            <h3 class="sub">Aparelhos lembrados</h3>
+            {% if lembrados %}
+            <p>Nestes aparelhos o login pede só a senha, sem o código, até a data indicada. Sair dos outros aparelhos também os esquece.</p>
+            <ul class="lembrados">
+                {% for d in lembrados %}
+                <li><div><strong>{{ d.rotulo }}</strong>{% if d.id == aparelho_atual %} <span class="estado ok">Este aparelho</span>{% endif %}
+                    <small>Último uso {{ quando(d.usado_em) }} · vale até {{ quando(d.expira_em) }}</small></div>
+                    <button class="btn" type="button" onclick="esquecerAparelho({{ d.id }})">Esquecer</button></li>
+                {% endfor %}
+            </ul>
+            {% if lembrados|length > 1 %}<button class="btn perigo" type="button" onclick="esquecerAparelho(null)">Esquecer todos</button>{% endif %}
+            {% else %}
+            <p>Nenhum. Ao digitar o código no login, marque "Lembrar este dispositivo" para não precisar dele por 30 dias nesse aparelho.</p>
+            {% endif %}
+            {% endif %}
             <div class="msg" id="msg-sessoes" role="status"></div>
         </section>
     </div>
@@ -224,10 +246,16 @@
             mensagem('msg-senha', 'Senha trocada. Os outros aparelhos saíram da conta.', true);
         } catch (e) { mensagem('msg-senha', e.message, false); }
     }
+    async function esquecerAparelho(id) {
+        try {
+            await postJson('/api/v2/conta/dispositivos/esquecer', id === null ? { todos: true } : { id });
+            window.location.reload();
+        } catch (e) { mensagem('msg-sessoes', e.message, false); }
+    }
     async function encerrarOutras() {
         try {
             await postJson('/api/v2/conta/sessoes/encerrar');
-            mensagem('msg-sessoes', 'Pronto: os outros aparelhos saíram da conta.', true);
+            mensagem('msg-sessoes', 'Pronto: os outros aparelhos saíram da conta e foram esquecidos.', true);
         } catch (e) { mensagem('msg-sessoes', e.message, false); }
     }
 </script>
