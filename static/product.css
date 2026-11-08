@@ -87,30 +87,53 @@ a.app-user:hover, a.app-user.active { color:var(--blue); }
 .page-head p { margin:6px 0 0; color:var(--text-muted); font-size:.92rem; max-width:72ch; line-height:1.5; }
 .page-head .page-actions { display:flex; gap:8px; flex-wrap:wrap; }
 
-/* Faixa de cabeçalho: o "console" escuro do NexoHub, igual nos dois temas. Dentro dela valem as cores do tema escuro,
-   então estilos que usam var(--blue), var(--text-muted) etc. (inclusive os inline) ficam legíveis sem ajuste. */
+/* Faixa de cabeçalho: o "console" escuro do NexoHub, igual nos dois temas e igual à abertura do Início.
+   Dentro dela valem as cores do tema escuro, então estilos que usam var(--blue), var(--text-muted) etc.
+   (inclusive os inline) ficam legíveis sem ajuste. O ponto da malha pulsa (a animação está no próprio SVG). */
 .page-head, .faixa-pagina {
   --text-main:#E8F1FA; --text-muted:#9FB4CB; --blue:#22C1EE; --link:#7DD3FC; --green:#2DD4BF; --purple:#7DD3FC;
   --border:rgba(125,211,252,.24); --bg-input:rgba(4,16,31,.55); --bg-card:rgba(4,16,31,.55); --bg-base:#0B1728;
   --status-ok:#4ADE80; --status-warn:#FBBF24; --status-crit:#F87171; --red:#F87171; --yellow:#FBBF24;
-  position:relative; color:var(--text-main); padding:26px 30px; border-radius:16px; border:1px solid #16406A;
-  background:url('/static/brand/faixa-malha.svg') right center / auto 100% no-repeat,
+  position:relative; color:var(--text-main); padding:34px 36px 30px; border-radius:18px; border:1px solid #16406A;
+  align-items:center; gap:24px 40px; margin-bottom:22px;
+  background:url('/static/brand/faixa-malha.svg') right center / cover no-repeat,
              radial-gradient(120% 140% at 85% 30%, #0F3B66 0%, #0A2747 45%, #071A31 100%);
-  box-shadow:0 24px 60px -34px rgba(3,18,36,.8);
+  box-shadow:0 24px 60px -30px rgba(3,18,36,.8);
+}
+.page-head h1, .faixa-pagina h1 { font-size:clamp(1.6rem, 3vw, 2.15rem) !important; font-weight:700; letter-spacing:-.025em; line-height:1.15; color:var(--text-main); }
+.page-head p, .faixa-pagina p { color:var(--text-muted); font-size:.95rem; line-height:1.5; }
+@media(min-width:1101px) {
+  /* O texto ocupa a metade esquerda: o ponto da malha fica livre no meio, como no Início. */
+  .page-head > div:first-child, .faixa-pagina:not(.navbar) > div:first-child { max-width:46%; }
 }
 .page-head .sym-dark, .faixa-pagina .sym-dark { display:block !important; }
 .page-head .sym-light, .faixa-pagina .sym-light { display:none !important; }
 .page-head a:not(.action-btn):not(.btn), .faixa-pagina a:not(.action-btn):not(.btn) { color:var(--link); }
-.page-head .action-btn.btn-secondary, .faixa-pagina .action-btn.btn-secondary,
+.page-head .action-btn.btn-secondary, .faixa-pagina .action-btn.btn-secondary, .faixa-pagina .btn:not(.primario),
 .page-head select, .faixa-pagina select { background:rgba(255,255,255,.06); border-color:rgba(125,211,252,.3); color:#E8F1FA; }
 .page-head .action-btn.btn-secondary:hover, .faixa-pagina .action-btn.btn-secondary:hover { background:rgba(255,255,255,.12); }
 .page-head select option, .faixa-pagina select option { color:#082E56; background:#fff; }
+/* Números da página na faixa (mesmo painel do Início). */
+.faixa-status { display:flex; flex-wrap:wrap; margin:0; border:1px solid rgba(125,211,252,.18); border-radius:14px;
+  background:rgba(4,16,31,.55); backdrop-filter:blur(6px); }
+.faixa-status > div { padding:14px 20px; min-width:96px; border-left:1px solid rgba(125,211,252,.14); }
+.faixa-status > div:first-child { border-left:0; }
+.faixa-status dt { font-size:.78rem; color:#9FB4CB; white-space:nowrap; }
+.faixa-status dd { margin:4px 0 0; font-size:1.6rem; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; letter-spacing:-.02em; color:#E8F1FA; }
+.faixa-status .destaque dd { font-size:2.1rem; color:#4ADE80; }
+.faixa-status .ok dd { color:#4ADE80; } .faixa-status .atencao dd { color:#FBBF24; } .faixa-status .critico dd { color:#F87171; }
+.faixa-lado { display:flex; flex-direction:column; align-items:flex-end; gap:12px; }
 @media(max-width:700px) {
-  .page-head, .faixa-pagina { padding:20px 18px; border-radius:14px; background:radial-gradient(140% 120% at 90% 0%, #0F3B66 0%, #0A2747 50%, #071A31 100%); }
+  .page-head, .faixa-pagina { padding:22px 18px 20px; border-radius:14px; background:radial-gradient(140% 120% at 90% 0%, #0F3B66 0%, #0A2747 50%, #071A31 100%); }
   .navbar.faixa-pagina { background:radial-gradient(140% 120% at 90% 0%, #0F3B66 0%, #0A2747 50%, #071A31 100%) !important; }
-  .page-head h1 { font-size:1.3rem; }
   .page-head select, .faixa-pagina select { max-width:100%; min-width:0 !important; }
   .page-head form, .faixa-pagina form { max-width:100%; }
+  .faixa-lado { align-items:stretch; width:100%; }
+  .faixa-status { width:100%; display:grid; grid-template-columns:1fr 1fr; }
+  .faixa-status > div { border-left:0; border-top:1px solid rgba(125,211,252,.14); padding:12px 16px; }
+  .faixa-status > div:nth-child(-n+2) { border-top:0; }
+  .faixa-status > div:nth-child(even) { border-left:1px solid rgba(125,211,252,.14); }
+  .faixa-status dt { white-space:normal; }
 }
 .breadcrumb { display:flex; align-items:center; gap:8px; font-size:.82rem; color:var(--text-muted); margin-bottom:6px; }
 .breadcrumb a { color:var(--text-muted); text-decoration:none; }
@@ -165,7 +188,7 @@ button.action-btn:disabled { opacity:.55; cursor:progress; }
 @media(prefers-reduced-motion:reduce) { * { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
 .card,.g-card,.kpi-card,.sidebar-area,.login-box { background:var(--bg-card)!important; }
 .navbar,.tv-header { background:var(--overlay)!important; }
-.navbar.faixa-pagina { background:url('/static/brand/faixa-malha.svg') right center / auto 100% no-repeat,
+.navbar.faixa-pagina { background:url('/static/brand/faixa-malha.svg') right center / cover no-repeat,
   radial-gradient(120% 140% at 85% 30%, #0F3B66 0%, #0A2747 45%, #071A31 100%) !important; margin:16px auto 0; max-width:min(1600px, calc(100% - 40px)); box-sizing:border-box; }
 html[data-theme="light"] .terminal-box,
 html[data-theme="light"] #network-topology,
@@ -434,3 +457,4 @@ table.procs th:nth-child(n+3),table.procs td:nth-child(n+3) { text-align:right; 
 .saude-config button { justify-self:start; }
 .iface-tag.warn { color:var(--status-warn); border-color:var(--status-warn); }
 @media (max-width: 900px) { .saude-grid { grid-template-columns:1fr; } }
+@media(max-width:700px) { .navbar.faixa-pagina { background:radial-gradient(140% 120% at 90% 0%, #0F3B66 0%, #0A2747 50%, #071A31 100%) !important; } }

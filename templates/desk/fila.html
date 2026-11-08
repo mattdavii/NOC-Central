@@ -19,9 +19,16 @@
                 <p>{{ contadores.abertos }} chamado{{ 's' if contadores.abertos != 1 }} aberto{{ 's' if contadores.abertos != 1 }}{% if contadores.empresas %} em {{ contadores.empresas }} empresa{{ 's' if contadores.empresas != 1 }}{% endif %}</p>
             </div>
         </div>
+        <div class="faixa-lado">
+        <dl class="faixa-status" aria-label="Fila agora">
+            <div class="destaque"><dt>Abertos</dt><dd>{{ contadores.abertos }}</dd></div>
+            <div class="{{ 'atencao' if contadores.novos }}"><dt>Sem responsável</dt><dd>{{ contadores.novos }}</dd></div>
+            <div class="{{ 'critico' if contadores.estourados }}"><dt>Prazo estourado</dt><dd>{{ contadores.estourados }}</dd></div>
+        </dl>
         <div class="acoes-topo">
             {% if da_md %}<a class="btn" href="/desk/novo?empresa={{ da_md.id }}"><i class="fa-solid fa-lock" aria-hidden="true"></i> Chamado interno</a>{% endif %}
             <a class="btn primario" href="/desk/novo"><i class="fa-solid fa-plus" aria-hidden="true"></i> Abrir em nome de um cliente</a>
+        </div>
         </div>
     </div>
 
