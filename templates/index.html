@@ -233,10 +233,17 @@
         layerSensores.addTo(map);
         setTimeout(() => { map.invalidateSize(); }, 800);
 
+        // Mapa: com a aba escondida não busca nada; ao voltar, busca na hora. A Central responde
+        // "nada mudou" (304, sem corpo) quando o mapa é o mesmo da última busca.
+        let etagMapa = null, ultimoMapa = null;
         async function carregarSensores() {
+            if (document.hidden) return;
             try {
-                const response = await fetch('/api/v2/mapa_sensores');
+                const response = await fetch('/api/v2/mapa_sensores', { headers: etagMapa ? { 'If-None-Match': etagMapa } : {} });
+                if (response.status === 304 && ultimoMapa) return;
+                etagMapa = response.headers.get('ETag');
                 const data = await response.json();
+                ultimoMapa = data;
 
                 if (data.error_sql) {
                     document.getElementById('sensor-list').innerHTML = `<div style="background: color-mix(in srgb, var(--status-crit) 20%, transparent); border: 2px solid var(--red); color: var(--text-main); padding: 15px; margin: 15px; border-radius: 8px;"><b style="color: var(--red);">❌ Falha ao carregar sensores.</b><br><br>${escapeHtml(data.error_sql)}</div>`;
@@ -336,6 +343,7 @@
         async function reconhecerAlertas() { await fetch('/api/v2/ack_alerta', { method: 'POST' }); carregarSensores(); }
 
         async function carregarLogsGlobais() {
+            if (document.hidden) return;
             try {
                 const res = await fetch('/api/v2/logs_globais'); const logs = await res.json();
                 let html = '';
@@ -417,6 +425,9 @@
         // Polling é apenas fallback. O tempo real fica a cargo do Socket.IO.
         setInterval(carregarSensores, 30000);
         setInterval(carregarLogsGlobais, 30000);
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) { carregarSensores(); carregarLogsGlobais(); }
+        });
 
         try {
             const socket = io();
@@ -426,12 +437,12 @@
                 // Consolida vários batimentos dos sensores em uma atualização visual.
                 // Logs globais continuam no polling de 30 s para não consultar o banco
                 // a cada pacote de telemetria.
-                if(!aguardandoSocket) {
+                if(!aguardandoSocket && !document.hidden) {
                     aguardandoSocket = true;
                     setTimeout(() => {
                         carregarSensores();
                         aguardandoSocket = false;
-                    }, 5000);
+                    }, 10000);
                 }
             });
             
