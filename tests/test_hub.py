@@ -281,8 +281,8 @@ def test_toda_tela_do_app_permite_instalar_o_pwa():
 def test_inicio_abre_com_saudacao_relogio_e_atalhos(login):
     _cenario()
     md = login(1, 'Administrador Master').get('/').get_data(as_text=True)
-    assert 'class="lancador"' in md and 'data-hora' in md
+    assert 'class="faixa"' in md and 'data-hora' in md and 'class="faixa-status"' in md and 'Sites online' in md
     for destino in ('href="/pulse"', 'href="/sensores"', 'href="/usuarios"', 'href="/saude"'):
         assert destino in md
     cliente = login(2, 'Cliente').get('/').get_data(as_text=True)
-    assert 'class="lancador"' in cliente and 'href="/conta"' in cliente and 'href="/pulse"' in cliente
+    assert 'class="faixa"' in cliente and 'href="/conta"' in cliente and 'href="/pulse"' in cliente

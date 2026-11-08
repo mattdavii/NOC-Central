@@ -12,7 +12,7 @@ MESES = ('janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'a
 
 DESCRICOES = {
     'pulse': 'Monitoramento da rede 24/7: sites, links, provedores e diagnóstico da causa de cada queda.',
-    'guard': 'Postura de segurança: firewall, portas expostas, atualizações e uma nota de 0 a 100.',
+    'guard': 'Segurança da rede: serviços expostos, gerência sem criptografia e firmware desatualizado, com a correção recomendada pela MD.',
     'report': 'Relatório mensal em PDF com o resumo da sua rede, pronto para a diretoria.',
     'desk': 'Chamados e suporte: peça ajuda à MD e acompanhe cada pedido até o fim.',
 }
